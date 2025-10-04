@@ -1,0 +1,78 @@
+/* Scoped login styles */
+.login-page {
+  min-height: 100vh;
+  background: radial-gradient(1200px circle at 10% 10%, rgba(255,65,108,0.10), transparent 40%),
+              radial-gradient(1000px circle at 90% 90%, rgba(255,75,43,0.12), transparent 45%),
+              #f9fafb;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  box-sizing: border-box;
+}
+
+.lp-card {
+  background: #fff;
+  width: 420px;
+  max-width: 92vw;
+  border-radius: 16px;
+  padding: 32px 28px;
+  box-shadow: 0 16px 34px rgba(0,0,0,0.12);
+  display: grid;
+  gap: 12px;
+  box-sizing: border-box;
+}
+
+.lp-card h2 {
+  margin: 0 0 6px 0;
+  text-align: center;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 800;
+  color: #111827;
+}
+
+.lp-banner {
+  font-size: 13px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  text-align: center;
+}
+.lp-banner.success { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+.lp-banner.error   { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+
+.lp-card input {
+  width: 93%;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px 14px;
+  font-size: 15px;
+  outline: none;
+}
+.lp-card input:focus {
+  border-color: #FF416C;
+  background: #fff;
+}
+
+.lp-card button {
+  margin-top: 6px;
+  border-radius: 9999px;
+  border: 0;
+  background: linear-gradient(90deg, #FF4B2B, #FF416C);
+  color: #fff;
+  font-weight: 800;
+  padding: 12px 22px;
+  cursor: pointer;
+  letter-spacing: 0.4px;
+}
+
+.lp-footer {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  font-size: 14px;
+}
+.lp-footer a {
+  color: #FF416C;
+  text-decoration: none;
+  font-weight: 700;
+}
