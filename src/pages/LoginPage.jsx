@@ -76,6 +76,15 @@ export default function LoginPage() {
           <span>Don’t have an account?</span>
           <Link to="/register">Register</Link>
         </div>
+
+        {/* 🏠 Back to Home Button */}
+        <button
+          type="button"
+          className="back-home-btn"
+          onClick={() => navigate("/")}
+        >
+          ← Back to Home
+        </button>
       </form>
     </div>
   );
