@@ -1,142 +1,237 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import {
+  Container,
+  Typography,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Select,
+  MenuItem,
+  Box,
+  Alert,
+} from "@mui/material";
 import api from "../services/api";
-import "./RegisterPage.css";
 
-const RegisterPage = () => {
+const ProductsPage = () => {
+  const [products, setProducts] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [banner, setBanner] = useState(null);
+
+  const [openModal, setOpenModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
   const [formData, setFormData] = useState({
     name: "",
-    surname: "",
-    company_name: "",
-    email: "",
-    password: "",
-    address: "",
-    phone: ""
+    category: "",
+    price: "",
+    quantity: "",
+    supplier_id: "",
   });
 
-  const [message, setMessage] = useState("");
-  const [errors, setErrors] = useState({});
-  const [showUserForm, setShowUserForm] = useState(false);
-
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+  // Fetch products and suppliers
+  const fetchProducts = async () => {
+    try {
+      const res = await api.get("/products");
+      setProducts(res.data);
+    } catch {
+      setBanner({ type: "error", text: "Failed to fetch products." });
+    }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setMessage("");
-    setErrors({});
+  const fetchSuppliers = async () => {
     try {
-      const res = await api.post("/register", formData);
-      if (res.data.success) {
-        setMessage("Company registered successfully!");
-        setFormData({
-          name: "",
-          surname: "",
-          company_name: "",
-          email: "",
-          password: "",
-          address: "",
-          phone: ""
-        });
+      const res = await api.get("/suppliers");
+      setSuppliers(res.data);
+    } catch {
+      setBanner({ type: "error", text: "Failed to fetch suppliers." });
+    }
+  };
+
+  useEffect(() => {
+    fetchProducts();
+    fetchSuppliers();
+  }, []);
+
+  const openAddModal = () => {
+    setFormData({ name: "", category: "", price: "", quantity: "", supplier_id: "" });
+    setEditingProduct(null);
+    setOpenModal(true);
+  };
+
+  const openEditModal = (product) => {
+    setFormData({ ...product });
+    setEditingProduct(product);
+    setOpenModal(true);
+  };
+
+  const handleClose = () => setOpenModal(false);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async () => {
+    setBanner(null);
+    try {
+      if (editingProduct) {
+        // Update
+        await api.put(`/products/${editingProduct.id}`, formData);
+        setBanner({ type: "success", text: "Product updated successfully." });
+      } else {
+        // Create
+        await api.post("/products", formData);
+        setBanner({ type: "success", text: "Product added successfully." });
       }
+      fetchProducts();
+      setOpenModal(false);
     } catch (err) {
-      if (err.response && err.response.data.errors) {
-        setErrors(err.response.data.errors);
-      } else if (err.response && err.response.data.message) {
-        setMessage(err.response.data.message);
-      }
+      setBanner({
+        type: "error",
+        text:
+          err?.response?.data?.message ||
+          "Operation failed. Please check your input.",
+      });
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this product?")) return;
+    try {
+      await api.delete(`/products/${id}`);
+      setBanner({ type: "success", text: "Product deleted successfully." });
+      fetchProducts();
+    } catch {
+      setBanner({ type: "error", text: "Failed to delete product." });
     }
   };
 
   return (
-    <div className="container">
-      <div className={`form-container ${showUserForm ? "sign-up-container" : "sign-in-container"}`}>
-        {/* Company Registration Form */}
-        {!showUserForm && (
-          <form onSubmit={handleSubmit}>
-            <h1>Register Company</h1>
-            {message && <p className="success-message">{message}</p>}
-            <input
-              type="text"
-              name="name"
-              placeholder="Name"
-              value={formData.name}
-              onChange={handleChange}
-            />
-            {errors.name && <p className="error-message">{errors.name[0]}</p>}
-            <input
-              type="text"
-              name="surname"
-              placeholder="Surname"
-              value={formData.surname}
-              onChange={handleChange}
-            />
-            {errors.surname && <p className="error-message">{errors.surname[0]}</p>}
-            <input
-              type="text"
-              name="company_name"
-              placeholder="Company Name"
-              value={formData.company_name}
-              onChange={handleChange}
-            />
-            {errors.company_name && <p className="error-message">{errors.company_name[0]}</p>}
-            <input
-              type="email"
-              name="email"
-              placeholder="Email"
-              value={formData.email}
-              onChange={handleChange}
-            />
-            {errors.email && <p className="error-message">{errors.email[0]}</p>}
-            <input
-              type="password"
-              name="password"
-              placeholder="Password"
-              value={formData.password}
-              onChange={handleChange}
-            />
-            {errors.password && <p className="error-message">{errors.password[0]}</p>}
-            <input
-              type="text"
-              name="address"
-              placeholder="Address"
-              value={formData.address}
-              onChange={handleChange}
-            />
-            <input
-              type="text"
-              name="phone"
-              placeholder="Phone"
-              value={formData.phone}
-              onChange={handleChange}
-            />
-            <button type="submit">Register Company</button>
-            <p className="toggle-form" onClick={() => setShowUserForm(true)}>
-              Register as User
-            </p>
-          </form>
-        )}
+    <Container sx={{ mt: 4 }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+        <Typography variant="h4">Product Management</Typography>
+        <Button variant="contained" onClick={openAddModal}>
+          Add Product
+        </Button>
+      </Box>
 
-        {/* User Registration Form (disabled) */}
-        {showUserForm && (
-          <form>
-            <h1>Register User</h1>
-            <p>This form is currently disabled.</p>
-            <button type="button" onClick={() => setShowUserForm(false)}>
-              Back to Company
-            </button>
-          </form>
-        )}
-      </div>
+      {banner && (
+        <Alert severity={banner.type} sx={{ mb: 2 }}>
+          {banner.text}
+        </Alert>
+      )}
 
-      {/* Link to login page */}
-      <div className="login-link">
-        <p>
-          Already have an account? <a href="/login">Log In</a>
-        </p>
-      </div>
-    </div>
+      <Table>
+        <TableHead>
+          <TableRow>
+            <TableCell>Name</TableCell>
+            <TableCell>Category</TableCell>
+            <TableCell>Price</TableCell>
+            <TableCell>Quantity</TableCell>
+            <TableCell>Supplier</TableCell>
+            <TableCell>Actions</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {products.map((p) => (
+            <TableRow key={p.id}>
+              <TableCell>{p.name}</TableCell>
+              <TableCell>{p.category}</TableCell>
+              <TableCell>${p.price}</TableCell>
+              <TableCell>{p.quantity}</TableCell>
+              <TableCell>
+                {suppliers.find((s) => s.id === p.supplier_id)?.name || "-"}
+              </TableCell>
+              <TableCell>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  sx={{ mr: 1 }}
+                  onClick={() => openEditModal(p)}
+                >
+                  Edit
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="error"
+                  onClick={() => handleDelete(p.id)}
+                >
+                  Delete
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+
+      {/* Modal for Add/Edit */}
+      <Dialog open={openModal} onClose={handleClose}>
+        <DialogTitle>{editingProduct ? "Edit Product" : "Add Product"}</DialogTitle>
+        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
+          <TextField
+            label="Name"
+            name="name"
+            value={formData.name}
+            onChange={handleChange}
+            fullWidth
+          />
+          <TextField
+            label="Category"
+            name="category"
+            value={formData.category}
+            onChange={handleChange}
+            fullWidth
+          />
+          <TextField
+            label="Price"
+            name="price"
+            type="number"
+            value={formData.price}
+            onChange={handleChange}
+            fullWidth
+          />
+          <TextField
+            label="Quantity"
+            name="quantity"
+            type="number"
+            value={formData.quantity}
+            onChange={handleChange}
+            fullWidth
+          />
+          <Select
+            name="supplier_id"
+            value={formData.supplier_id}
+            onChange={handleChange}
+            displayEmpty
+          >
+            <MenuItem value="">
+              <em>Select Supplier</em>
+            </MenuItem>
+            {suppliers.map((s) => (
+              <MenuItem key={s.id} value={s.id}>
+                {s.name}
+              </MenuItem>
+            ))}
+          </Select>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleClose}>Cancel</Button>
+          <Button variant="contained" onClick={handleSubmit}>
+            {editingProduct ? "Update" : "Add"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Container>
   );
 };
 
-export default RegisterPage;
+export default ProductsPage;

@@ -1,67 +1,84 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 import {
-  Container, Typography, Table, TableBody, TableCell, TableHead,
-  TableRow, Button, Box, Select, MenuItem
-} from '@mui/material';
-import api from '../services/api';
+  Container,
+  Typography,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Button,
+  Box,
+  Select,
+  MenuItem,
+  Alert,
+} from "@mui/material";
+import api from "../services/api";
 
 const UsersPage = ({ onLogout, user }) => {
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [selectedRoles, setSelectedRoles] = useState({});
-
-  const fetchUsers = async () => {
-    try {
-      const res = await api.get('/users');
-      setUsers(res.data);
-    } catch {
-      alert('Failed to fetch users');
-    }
-  };
-
-  const fetchRoles = async () => {
-    try {
-      const res = await api.get('/roles');
-      setRoles(res.data);
-    } catch {
-      alert('Failed to fetch roles');
-    }
-  };
+  const [banner, setBanner] = useState(null);
 
   useEffect(() => {
     fetchUsers();
     fetchRoles();
   }, []);
 
+  const fetchUsers = async () => {
+    try {
+      const res = await api.get("/users");
+      setUsers(res.data);
+    } catch {
+      setBanner({ type: "error", text: "Failed to fetch users." });
+    }
+  };
+
+  const fetchRoles = async () => {
+    try {
+      const res = await api.get("/roles");
+      setRoles(res.data);
+    } catch {
+      setBanner({ type: "error", text: "Failed to fetch roles." });
+    }
+  };
+
   const handleRoleChange = (userId, role) => {
-    setSelectedRoles(prev => ({ ...prev, [userId]: role }));
+    setSelectedRoles((prev) => ({ ...prev, [userId]: role }));
   };
 
   const assignRole = async (userId) => {
-    if (!selectedRoles[userId]) return alert('Select a role first');
+    if (!selectedRoles[userId])
+      return setBanner({ type: "warning", text: "Select a role first." });
     try {
-      await api.post(`/users/${userId}/assign-role`, { role: selectedRoles[userId] });
-      alert('Role assigned');
+      await api.post(`/users/${userId}/assign-role`, {
+        role: selectedRoles[userId],
+      });
+      setBanner({ type: "success", text: "Role assigned successfully." });
       fetchUsers();
     } catch {
-      alert('Failed to assign role');
+      setBanner({ type: "error", text: "Failed to assign role." });
     }
   };
 
   const removeRole = async (userId) => {
-    if (!selectedRoles[userId]) return alert('Select a role first');
+    if (!selectedRoles[userId])
+      return setBanner({ type: "warning", text: "Select a role first." });
     try {
-      await api.post(`/users/${userId}/remove-role`, { role: selectedRoles[userId] });
-      alert('Role removed');
+      await api.post(`/users/${userId}/remove-role`, {
+        role: selectedRoles[userId],
+      });
+      setBanner({ type: "success", text: "Role removed successfully." });
       fetchUsers();
     } catch {
-      alert('Failed to remove role');
+      setBanner({ type: "error", text: "Failed to remove role." });
     }
   };
 
   return (
     <Container>
-      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between' }}>
+      <Box sx={{ mt: 3, display: "flex", justifyContent: "space-between" }}>
         <Typography variant="h4">User Management</Typography>
         <Button variant="outlined" color="secondary" onClick={onLogout}>
           Logout
@@ -70,6 +87,12 @@ const UsersPage = ({ onLogout, user }) => {
       <Typography variant="subtitle1" sx={{ mb: 2 }}>
         Logged in as: {user?.name} ({user?.email})
       </Typography>
+
+      {banner && (
+        <Alert severity={banner.type} sx={{ mb: 2 }}>
+          {banner.text}
+        </Alert>
+      )}
 
       <Table>
         <TableHead>
@@ -81,25 +104,41 @@ const UsersPage = ({ onLogout, user }) => {
           </TableRow>
         </TableHead>
         <TableBody>
-          {users.map(u => (
+          {users.map((u) => (
             <TableRow key={u.id}>
               <TableCell>{u.name}</TableCell>
               <TableCell>{u.email}</TableCell>
               <TableCell>
                 <Select
-                  value={selectedRoles[u.id] || ''}
+                  value={selectedRoles[u.id] || ""}
                   onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                  displayEmpty
                 >
-                  {roles.map(role => (
-                    <MenuItem key={role} value={role}>{role}</MenuItem>
+                  <MenuItem value="">
+                    <em>Select Role</em>
+                  </MenuItem>
+                  {roles.map((r) => (
+                    <MenuItem key={r} value={r}>
+                      {r}
+                    </MenuItem>
                   ))}
                 </Select>
               </TableCell>
               <TableCell>
-                <Button onClick={() => assignRole(u.id)} variant="contained" color="primary" size="small" sx={{ mr: 1 }}>
+                <Button
+                  onClick={() => assignRole(u.id)}
+                  variant="contained"
+                  size="small"
+                  sx={{ mr: 1 }}
+                >
                   Assign
                 </Button>
-                <Button onClick={() => removeRole(u.id)} variant="outlined" color="error" size="small">
+                <Button
+                  onClick={() => removeRole(u.id)}
+                  variant="outlined"
+                  color="error"
+                  size="small"
+                >
                   Remove
                 </Button>
               </TableCell>
@@ -112,3 +151,4 @@ const UsersPage = ({ onLogout, user }) => {
 };
 
 export default UsersPage;
+s
