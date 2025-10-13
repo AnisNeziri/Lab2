@@ -14,26 +14,17 @@ export default function LoginPage() {
     e.preventDefault();
     setBanner(null);
 
-    if (!email || !password) {
-      return setBanner({ type: "error", text: "Email and password are required." });
-    }
+    if (!email || !password) return setBanner({ type: "error", text: "Email and password are required." });
 
     setLoading(true);
     try {
       const res = await api.post("/login", { email, password });
       const token = res?.data?.token;
-
-      if (token) {
-        localStorage.setItem("token", token);
-      }
-
+      if (token) localStorage.setItem("token", token);
       setBanner({ type: "success", text: "Welcome back!" });
       navigate("/dashboard");
     } catch (err) {
-      setBanner({
-        type: "error",
-        text: err?.response?.data?.message || "Invalid credentials.",
-      });
+      setBanner({ type: "error", text: err?.response?.data?.message || "Invalid credentials." });
     } finally {
       setLoading(false);
     }
@@ -43,48 +34,12 @@ export default function LoginPage() {
     <div className="login-page">
       <form className="lp-card" onSubmit={onSubmit} noValidate>
         <h2>Log in to AIMS</h2>
-
-        {banner?.type === "success" && (
-          <div className="lp-banner success">{banner.text}</div>
-        )}
-        {banner?.type === "error" && (
-          <div className="lp-banner error">{banner.text}</div>
-        )}
-
-        <input
-          type="email"
-          placeholder="Email address"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          autoComplete="username"
-          required
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete="current-password"
-          required
-        />
-
-        <button type="submit" disabled={loading}>
-          {loading ? "Logging in..." : "Login"}
-        </button>
-
-        <div className="lp-footer">
-          <span>Don’t have an account?</span>
-          <Link to="/register">Register</Link>
-        </div>
-
-        {/* 🏠 Back to Home Button */}
-        <button
-          type="button"
-          className="back-home-btn"
-          onClick={() => navigate("/")}
-        >
-          ← Back to Home
-        </button>
+        {banner?.type && <div className={`lp-banner ${banner.type}`}>{banner.text}</div>}
+        <input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required />
+        <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
+        <button type="submit" disabled={loading}>{loading ? "Logging in..." : "Login"}</button>
+        <div className="lp-footer">Don’t have an account? <Link to="/register">Register</Link></div>
+        <button type="button" className="back-home-btn" onClick={() => navigate("/")}>← Back to Home</button>
       </form>
     </div>
   );

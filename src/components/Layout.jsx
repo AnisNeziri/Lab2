@@ -1,59 +1,38 @@
-import React from 'react';
-import { Outlet, Link, useNavigate } from 'react-router-dom';
-import { Box, Drawer, List, ListItem, ListItemText, Toolbar, AppBar, Typography, Button } from '@mui/material';
-import api from '../services/api';
+import React, { useContext } from "react";
+import { AppBar, Toolbar, Typography, Button, Box } from "@mui/material";
+import { AuthContext } from "../context/AuthContext";
+import { useNavigate } from "react-router-dom";
 
-const drawerWidth = 240;
-
-export default function Layout() {
+const Layout = ({ children }) => {
+  const { user, logout } = useContext(AuthContext);
   const navigate = useNavigate();
 
-  const handleLogout = async () => {
-    try {
-      await api.post('/logout');
-      navigate('/login');
-    } catch {
-      // handle error
-    }
-  };
-
   return (
-    <Box sx={{ display: 'flex' }}>
-      <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
-        <Toolbar>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            Inventory System
+    <>
+      <AppBar position="static" color="primary">
+        <Toolbar sx={{ display: "flex", justifyContent: "space-between" }}>
+          <Typography
+            variant="h6"
+            sx={{ cursor: "pointer" }}
+            onClick={() => navigate("/dashboard")}
+          >
+            AIMS
           </Typography>
-          <Button color="inherit" onClick={handleLogout}>Logout</Button>
+          {user ? (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <Typography>{user.name}</Typography>
+              <Button variant="outlined" onClick={logout}>Logout</Button>
+            </Box>
+          ) : (
+            <Box>
+              <Button color="inherit" onClick={() => navigate("/login")}>Login</Button>
+            </Box>
+          )}
         </Toolbar>
       </AppBar>
-
-      <Drawer
-        variant="permanent"
-        sx={{
-          width: drawerWidth,
-          flexShrink: 0,
-          [`& .MuiDrawer-paper`]: { width: drawerWidth, boxSizing: 'border-box' },
-        }}
-      >
-        <Toolbar />
-        <List>
-          <ListItem button component={Link} to="/dashboard">
-            <ListItemText primary="Dashboard" />
-          </ListItem>
-          <ListItem button component={Link} to="/products">
-            <ListItemText primary="Products" />
-          </ListItem>
-          <ListItem button component={Link} to="/users">
-            <ListItemText primary="Users" />
-          </ListItem>
-        </List>
-      </Drawer>
-
-      <Box component="main" sx={{ flexGrow: 1, bgcolor: 'background.default', p: 3 }}>
-        <Toolbar />
-        <Outlet />
-      </Box>
-    </Box>
+      <Box sx={{ padding: 2 }}>{children}</Box>
+    </>
   );
-}
+};
+
+export default Layout;

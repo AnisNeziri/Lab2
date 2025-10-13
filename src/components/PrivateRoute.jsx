@@ -1,8 +1,8 @@
-import React, { useContext } from 'react';
-import { Navigate } from 'react-router-dom';
-import { AuthContext } from '../context/AuthContext';
+import React, { useContext } from "react";
+import { Navigate } from "react-router-dom";
+import { AuthContext } from "../context/AuthContext";
 
-export default function PrivateRoute({ children }) {
+const PrivateRoute = ({ children }) => {
   const { user } = useContext(AuthContext);
 
   if (!user) {
@@ -10,4 +10,6 @@ export default function PrivateRoute({ children }) {
   }
 
   return children;
-}
+};
+
+export default PrivateRoute;
