@@ -1,41 +1,60 @@
 import React, { createContext, useState, useEffect } from "react";
 import api from "../services/api";
+import { useNavigate } from "react-router-dom";
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
-  // Fetch user info on mount if token exists
+  // Fetch logged-in user info
   useEffect(() => {
     const fetchUser = async () => {
-      const token = localStorage.getItem("token");
-      if (!token) return;
       try {
-        const res = await api.get("/user");
+        const res = await api.get("/me");
         setUser(res.data);
-      } catch {
-        localStorage.removeItem("token");
+      } catch (err) {
+        setUser(null);
+      } finally {
+        setLoading(false);
       }
     };
     fetchUser();
   }, []);
 
+  // Login function
   const login = async (email, password) => {
-    const res = await api.post("/login", { email, password });
-    const token = res?.data?.token;
-    if (token) localStorage.setItem("token", token);
-    const userRes = await api.get("/user");
-    setUser(userRes.data);
+    try {
+      const res = await api.post("/login", { email, password });
+      api.defaults.headers.common["Authorization"] = `Bearer ${res.data.token}`;
+      const userRes = await api.get("/me");
+      setUser(userRes.data);
+
+      // Redirect based on role
+      if (userRes.data.role === "ceo") navigate("/dashboard");
+      else navigate("/dashboard"); // you can customize for staff pages
+    } catch (err) {
+      throw err;
+    }
   };
 
-  const logout = () => {
-    localStorage.removeItem("token");
-    setUser(null);
+  // Logout
+  const logout = async () => {
+    try {
+      await api.post("/logout");
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setUser(null);
+      localStorage.removeItem("auth_token");
+      navigate("/login");
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, setUser, login, logout }}>
+    <AuthContext.Provider value={{ user, setUser, login, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );

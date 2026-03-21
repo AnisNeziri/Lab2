@@ -1,46 +1,60 @@
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import api from "../services/api";
+import React, { useState, useContext } from "react";
+import { AuthContext } from "../context/AuthContext";
+import { useNavigate, Link } from "react-router-dom";
 import "./LoginPage.css";
 
 export default function LoginPage() {
+  const { login } = useContext(AuthContext);
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [banner, setBanner] = useState(null);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const onSubmit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setBanner(null);
-
-    if (!email || !password) return setBanner({ type: "error", text: "Email and password are required." });
-
     setLoading(true);
-    try {
-      const res = await api.post("/login", { email, password });
-      const token = res?.data?.token;
-      if (token) localStorage.setItem("token", token);
-      setBanner({ type: "success", text: "Welcome back!" });
-      navigate("/dashboard");
-    } catch (err) {
-      setBanner({ type: "error", text: err?.response?.data?.message || "Invalid credentials." });
-    } finally {
-      setLoading(false);
+    const success = await login(email, password);
+    if (success) {
+      navigate("/dashboard"); // Redirect to dashboard on successful login
+    } else {
+      setError("Invalid email or password.");
     }
+    setLoading(false);
   };
 
   return (
     <div className="login-page">
-      <form className="lp-card" onSubmit={onSubmit} noValidate>
-        <h2>Log in to AIMS</h2>
-        {banner?.type && <div className={`lp-banner ${banner.type}`}>{banner.text}</div>}
-        <input type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required />
-        <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
-        <button type="submit" disabled={loading}>{loading ? "Logging in..." : "Login"}</button>
-        <div className="lp-footer">Don’t have an account? <Link to="/register">Register</Link></div>
-        <button type="button" className="back-home-btn" onClick={() => navigate("/")}>← Back to Home</button>
-      </form>
+      <div className="lp-card">
+        <h2>Login to AIMS</h2>
+        {error && <div className="lp-banner error">{error}</div>}
+        <form onSubmit={handleSubmit} className="lp-form">
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <button type="submit" disabled={loading}>
+            {loading ? "Logging in..." : "Login"}
+          </button>
+        </form>
+
+        {/* Extra links */}
+        <div className="lp-footer" style={{ marginTop: "12px" }}>
+          <Link to="/reset-password">Forgot Password?</Link>
+          <span style={{ margin: "0 8px" }}>|</span>
+          <Link to="/register">Register</Link>
+        </div>
+      </div>
     </div>
   );
 }

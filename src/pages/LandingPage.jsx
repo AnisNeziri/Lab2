@@ -1,4 +1,4 @@
-import React, { useEffect, useContext } from "react";
+import React, { useEffect, useContext, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AppBar, Toolbar, Typography, Button, Box, Container, Grid, Paper, IconButton
@@ -14,13 +14,21 @@ import slider3 from "../assets/slider3.jpg";
 export default function LandingPage() {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (user) navigate("/dashboard", { replace: true });
+    // Only redirect if user is fully loaded and logged in
+    if (user && user.email) navigate("/dashboard", { replace: true });
+    setLoaded(true);
   }, [user, navigate]);
+
+  if (!loaded) return null; // prevent flicker
+
+  const sliderImages = [slider1, slider2, slider3].filter(Boolean); // skip missing images
 
   return (
     <>
+      {/* Navbar */}
       <AppBar position="static" color="transparent" elevation={0} sx={{ p: 1 }}>
         <Toolbar sx={{ display: "flex", justifyContent: "space-between" }}>
           <Typography
@@ -37,6 +45,7 @@ export default function LandingPage() {
         </Toolbar>
       </AppBar>
 
+      {/* Banner */}
       <Box
         sx={{
           width: "100%",
@@ -49,7 +58,6 @@ export default function LandingPage() {
           justifyContent: "center",
           color: "#fff",
           textAlign: "center",
-          position: "relative",
           mb: 6,
         }}
       >
@@ -63,11 +71,12 @@ export default function LandingPage() {
         </Box>
       </Box>
 
+      {/* Features */}
       <Container sx={{ mb: 8 }}>
         <Typography variant="h4" align="center" sx={{ fontWeight: "bold", mb: 4, color: "primary.main" }}>
           Why Choose AIMS for Your Business
         </Typography>
-        <Box sx={{ display: "flex", flexWrap: "wrap", justifyContent: "space-around", gap: 3 }}>
+        <Box sx={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 3 }}>
           {[
             { title: "Real-Time Tracking", desc: "Always know your inventory levels instantly with live updates." },
             { title: "Powerful Analytics", desc: "Gain insights into sales, stock, and operations with smart reports." },
@@ -76,7 +85,15 @@ export default function LandingPage() {
             <Paper
               key={i}
               elevation={4}
-              sx={{ flex: "1 1 250px", maxWidth: 320, p: 3, textAlign: "center", borderRadius: 3, transition: "0.3s", "&:hover": { transform: "translateY(-6px)", boxShadow: 6 } }}
+              sx={{
+                flex: "1 1 250px",
+                maxWidth: 320,
+                p: 3,
+                textAlign: "center",
+                borderRadius: 3,
+                transition: "0.3s",
+                "&:hover": { transform: "translateY(-6px)", boxShadow: 6 }
+              }}
             >
               <Typography variant="h6" sx={{ fontWeight: "bold", mb: 1 }}>{item.title}</Typography>
               <Typography variant="body2" color="text.secondary">{item.desc}</Typography>
@@ -85,6 +102,7 @@ export default function LandingPage() {
         </Box>
       </Container>
 
+      {/* About */}
       <Container sx={{ mb: 10 }}>
         <Grid container spacing={4} alignItems="center">
           <Grid item xs={12} md={6}>
@@ -97,19 +115,23 @@ export default function LandingPage() {
             </Typography>
           </Grid>
           <Grid item xs={12} md={6}>
-            <Box component="img" src={img1} alt="Our Company" sx={{ width: "100%", borderRadius: 3, boxShadow: 4, transition: "0.3s", "&:hover": { transform: "scale(1.02)" } }} />
+            {img1 && <Box component="img" src={img1} alt="Our Company" sx={{ width: "100%", borderRadius: 3, boxShadow: 4, transition: "0.3s", "&:hover": { transform: "scale(1.02)" } }} />}
           </Grid>
         </Grid>
       </Container>
 
-      <Box sx={{ width: "30%", overflow: "hidden", position: "relative", mb: 10, marginLeft: 80 }}>
-        <Box sx={{ display: "flex", animation: "slide 12s infinite", "@keyframes slide": { "0%": { transform: "translateX(0)" }, "33%": { transform: "translateX(-100%)" }, "66%": { transform: "translateX(-200%)" }, "100%": { transform: "translateX(0)" } } }}>
-          {[slider1, slider2, slider3].map((img, i) => (
-            <Box key={i} component="img" src={img} alt={`Slide ${i + 1}`} sx={{ width: "100%", height: { xs: "30vh", md: "40vh" }, objectFit: "cover", flexShrink: 0, borderRadius: 3, mx: 0.5, boxShadow: 3 }} />
-          ))}
+      {/* Slider */}
+      {sliderImages.length > 0 && (
+        <Box sx={{ width: "100%", maxWidth: 960, mx: "auto", overflow: "hidden", mb: 10 }}>
+          <Box sx={{ display: "flex", animation: "slide 12s infinite", "@keyframes slide": { "0%": { transform: "translateX(0)" }, "33%": { transform: "translateX(-100%)" }, "66%": { transform: "translateX(-200%)" }, "100%": { transform: "translateX(0)" } } }}>
+            {sliderImages.map((img, i) => (
+              <Box key={i} component="img" src={img} alt={`Slide ${i + 1}`} sx={{ width: "100%", height: { xs: "30vh", md: "40vh" }, objectFit: "cover", flexShrink: 0, borderRadius: 3, mx: 0.5, boxShadow: 3 }} />
+            ))}
+          </Box>
         </Box>
-      </Box>
+      )}
 
+      {/* Footer */}
       <Box sx={{ backgroundColor: "#f8f9fa", py: 6, textAlign: "center", borderTop: "1px solid #ddd" }}>
         <Typography variant="h6" fontWeight="bold" color="primary">AIMS Inventory System</Typography>
         <Typography variant="body2" color="text.secondary" mb={2}>Simplify. Optimize. Grow.</Typography>
