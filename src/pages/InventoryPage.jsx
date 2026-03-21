@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from "react";
-import { Container, Typography, Table, TableHead, TableRow, TableCell, TableBody, Button } from "@mui/material";
+import { Container, Typography, Table, TableHead, TableRow, TableCell, TableBody } from "@mui/material";
 import api from "../services/api";
+import EmptyState from "../components/EmptyState";
+import AppSnackbar from "../components/AppSnackbar";
 
 const InventoryPage = () => {
   const [products, setProducts] = useState([]);
+  const [toast, setToast] = useState({ open: false, severity: "info", message: "" });
 
   const fetchInventory = async () => {
     try {
-      const res = await api.get("/inventory/low-stock");
-      setProducts(res.data);
-    } catch (err) {
-      console.error("Failed to fetch inventory", err);
+      const res = await api.get("/inventory");
+      setProducts((res.data || []).filter((p) => p.stock_status === "low"));
+    } catch {
+      setToast({ open: true, severity: "error", message: "Failed to fetch inventory." });
     }
   };
 
@@ -26,23 +29,25 @@ const InventoryPage = () => {
           <TableRow>
             <TableCell>Name</TableCell>
             <TableCell>Quantity</TableCell>
-            <TableCell>Reorder Level</TableCell>
-            <TableCell>Actions</TableCell>
+            <TableCell>Low Stock Threshold</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {products.map(product => (
+          {products.map((product) => (
             <TableRow key={product.id}>
               <TableCell>{product.name}</TableCell>
               <TableCell>{product.quantity}</TableCell>
-              <TableCell>{product.reorder_level}</TableCell>
-              <TableCell>
-                <Button size="small">Adjust Stock</Button>
-              </TableCell>
+              <TableCell>{product.low_stock_threshold}</TableCell>
             </TableRow>
           ))}
+          {!products.length && (
+            <TableRow>
+              <TableCell colSpan={3}><EmptyState label="No low stock products." /></TableCell>
+            </TableRow>
+          )}
         </TableBody>
       </Table>
+      <AppSnackbar open={toast.open} severity={toast.severity} message={toast.message} onClose={() => setToast({ ...toast, open: false })} />
     </Container>
   );
 };
