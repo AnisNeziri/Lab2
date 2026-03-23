@@ -9,14 +9,22 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Fetch logged-in user info
   useEffect(() => {
     const fetchUser = async () => {
+      const token = localStorage.getItem("auth_token");
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
       try {
+        api.defaults.headers.common.Authorization = `Bearer ${token}`;
         const res = await api.get("/me");
         setUser(res.data);
-      } catch (err) {
+      } catch {
         setUser(null);
+        localStorage.removeItem("auth_token");
+        delete api.defaults.headers.common.Authorization;
       } finally {
         setLoading(false);
       }
@@ -24,33 +32,32 @@ export const AuthProvider = ({ children }) => {
     fetchUser();
   }, []);
 
-  // Login function
   const login = async (email, password) => {
-    try {
-      const res = await api.post("/login", { email, password });
-      api.defaults.headers.common["Authorization"] = `Bearer ${res.data.token}`;
-      const userRes = await api.get("/me");
-      setUser(userRes.data);
-
-      // Redirect based on role
-      if (userRes.data.role === "ceo") navigate("/dashboard");
-      else navigate("/dashboard"); // you can customize for staff pages
-    } catch (err) {
-      throw err;
+    const res = await api.post("/login", { email, password });
+    const token = res.data?.token;
+    if (!token) {
+      throw new Error("Missing auth token.");
     }
+
+    localStorage.setItem("auth_token", token);
+    api.defaults.headers.common.Authorization = `Bearer ${token}`;
+
+    const userRes = await api.get("/me");
+    setUser(userRes.data);
+
+    navigate("/dashboard");
+    return true;
   };
 
-  // Logout
   const logout = async () => {
     try {
       await api.post("/logout");
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setUser(null);
-      localStorage.removeItem("auth_token");
-      navigate("/login");
-    }
+    } catch {}
+
+    setUser(null);
+    localStorage.removeItem("auth_token");
+    delete api.defaults.headers.common.Authorization;
+    navigate("/login");
   };
 
   return (

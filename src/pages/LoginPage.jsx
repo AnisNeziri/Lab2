@@ -1,11 +1,10 @@
 import React, { useState, useContext } from "react";
 import { AuthContext } from "../context/AuthContext";
-import { useNavigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import "./LoginPage.css";
 
 export default function LoginPage() {
   const { login } = useContext(AuthContext);
-  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -14,10 +13,10 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    const success = await login(email, password);
-    if (success) {
-      navigate("/dashboard"); // Redirect to dashboard on successful login
-    } else {
+    setError("");
+    try {
+      await login(email, password);
+    } catch {
       setError("Invalid email or password.");
     }
     setLoading(false);
@@ -50,8 +49,6 @@ export default function LoginPage() {
 
         {/* Extra links */}
         <div className="lp-footer" style={{ marginTop: "12px" }}>
-          <Link to="/reset-password">Forgot Password?</Link>
-          <span style={{ margin: "0 8px" }}>|</span>
           <Link to="/register">Register</Link>
         </div>
       </div>
