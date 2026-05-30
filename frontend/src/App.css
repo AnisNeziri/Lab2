@@ -48,7 +48,8 @@ header p {
 }
 
 .product-form input,
-.product-form textarea {
+.product-form textarea,
+.product-form select {
   padding: 0.6rem 0.75rem;
   border: 1px solid #ccc;
   border-radius: 6px;

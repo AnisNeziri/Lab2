@@ -11,7 +11,7 @@ class ProductController extends Controller
 {
     public function index(): JsonResponse
     {
-        $products = Product::orderBy('name')->get();
+        $products = Product::with('category')->orderBy('name')->get();
 
         return response()->json($products);
     }
@@ -19,6 +19,7 @@ class ProductController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'category_id' => ['required', 'exists:categories,id'],
             'name' => ['required', 'string', 'max:255'],
             'sku' => ['required', 'string', 'max:100', 'unique:products,sku'],
             'description' => ['nullable', 'string'],
@@ -33,12 +34,15 @@ class ProductController extends Controller
 
     public function show(Product $product): JsonResponse
     {
+        $product->load('category');
+
         return response()->json($product);
     }
 
     public function update(Request $request, Product $product): JsonResponse
     {
         $validated = $request->validate([
+            'category_id' => ['sometimes', 'required', 'exists:categories,id'],
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'sku' => ['sometimes', 'required', 'string', 'max:100', 'unique:products,sku,' . $product->id],
             'description' => ['nullable', 'string'],

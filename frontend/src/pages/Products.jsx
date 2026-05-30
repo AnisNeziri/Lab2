@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import { getCategories } from '../api/categories'
 import { createProduct, deleteProduct, getProducts, updateProduct } from '../api/products'
 
 const emptyForm = {
+  category_id: '',
   name: '',
   sku: '',
   description: '',
@@ -11,27 +13,32 @@ const emptyForm = {
 
 function Products() {
   const [products, setProducts] = useState([])
+  const [categories, setCategories] = useState([])
   const [form, setForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
 
-  async function loadProducts() {
+  async function loadData() {
     try {
       setLoading(true)
       setError('')
-      const data = await getProducts()
-      setProducts(data)
+      const [productsData, categoriesData] = await Promise.all([
+        getProducts(),
+        getCategories(),
+      ])
+      setProducts(productsData)
+      setCategories(categoriesData)
     } catch {
-      setError('Could not load products. Make sure the API is running.')
+      setError('Could not load data. Make sure the API is running.')
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    loadProducts()
+    loadData()
   }, [])
 
   function handleChange(event) {
@@ -46,6 +53,7 @@ function Products() {
     setEditingId(product.id)
     setFormError('')
     setForm({
+      category_id: product.category_id ?? '',
       name: product.name,
       sku: product.sku,
       description: product.description ?? '',
@@ -65,6 +73,7 @@ function Products() {
     setFormError('')
 
     const payload = {
+      category_id: Number(form.category_id),
       name: form.name,
       sku: form.sku,
       description: form.description || null,
@@ -80,7 +89,7 @@ function Products() {
       }
 
       cancelEdit()
-      await loadProducts()
+      await loadData()
     } catch (err) {
       if (err.errors) {
         const messages = Object.values(err.errors).flat().join(' ')
@@ -97,7 +106,7 @@ function Products() {
       if (editingId === id) {
         cancelEdit()
       }
-      await loadProducts()
+      await loadData()
     } catch {
       setError('Could not delete product.')
     }
@@ -108,6 +117,18 @@ function Products() {
       <section className="card">
         <h2>{editingId ? 'Edit product' : 'Add product'}</h2>
         <form className="product-form" onSubmit={handleSubmit}>
+          <label>
+            Category
+            <select name="category_id" value={form.category_id} onChange={handleChange} required>
+              <option value="">Select a category</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <label>
             Name
             <input name="name" value={form.name} onChange={handleChange} required />
@@ -183,6 +204,7 @@ function Products() {
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Category</th>
                 <th>SKU</th>
                 <th>Qty</th>
                 <th>Price</th>
@@ -193,6 +215,7 @@ function Products() {
               {products.map((product) => (
                 <tr key={product.id} className={editingId === product.id ? 'editing' : ''}>
                   <td>{product.name}</td>
+                  <td>{product.category?.name ?? '—'}</td>
                   <td>{product.sku}</td>
                   <td>{product.quantity}</td>
                   <td>${Number(product.price).toFixed(2)}</td>
