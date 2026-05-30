@@ -1,3 +1,6 @@
+import Products from './pages/Products'
+import './App.css'
+
 function App() {
   return (
     <div className="app">
@@ -5,6 +8,8 @@ function App() {
         <h1>Inventory System</h1>
         <p>Stock and product management</p>
       </header>
+
+      <Products />
     </div>
   )
 }

@@ -1,0 +1,183 @@
+import { useEffect, useState } from 'react'
+import { createProduct, deleteProduct, getProducts } from '../api/products'
+
+const emptyForm = {
+  name: '',
+  sku: '',
+  description: '',
+  quantity: 0,
+  price: '',
+}
+
+function Products() {
+  const [products, setProducts] = useState([])
+  const [form, setForm] = useState(emptyForm)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [formError, setFormError] = useState('')
+
+  async function loadProducts() {
+    try {
+      setLoading(true)
+      setError('')
+      const data = await getProducts()
+      setProducts(data)
+    } catch {
+      setError('Could not load products. Make sure the API is running.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadProducts()
+  }, [])
+
+  function handleChange(event) {
+    const { name, value } = event.target
+    setForm((current) => ({
+      ...current,
+      [name]: value,
+    }))
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault()
+    setFormError('')
+
+    try {
+      await createProduct({
+        name: form.name,
+        sku: form.sku,
+        description: form.description || null,
+        quantity: Number(form.quantity),
+        price: Number(form.price),
+      })
+
+      setForm(emptyForm)
+      await loadProducts()
+    } catch (err) {
+      if (err.errors) {
+        const messages = Object.values(err.errors).flat().join(' ')
+        setFormError(messages)
+      } else {
+        setFormError('Could not save product.')
+      }
+    }
+  }
+
+  async function handleDelete(id) {
+    try {
+      await deleteProduct(id)
+      await loadProducts()
+    } catch {
+      setError('Could not delete product.')
+    }
+  }
+
+  return (
+    <main className="products-page">
+      <section className="card">
+        <h2>Add product</h2>
+        <form className="product-form" onSubmit={handleSubmit}>
+          <label>
+            Name
+            <input name="name" value={form.name} onChange={handleChange} required />
+          </label>
+
+          <label>
+            SKU
+            <input name="sku" value={form.sku} onChange={handleChange} required />
+          </label>
+
+          <label>
+            Description
+            <textarea
+              name="description"
+              value={form.description}
+              onChange={handleChange}
+              rows={3}
+            />
+          </label>
+
+          <div className="form-row">
+            <label>
+              Quantity
+              <input
+                name="quantity"
+                type="number"
+                min="0"
+                value={form.quantity}
+                onChange={handleChange}
+                required
+              />
+            </label>
+
+            <label>
+              Price
+              <input
+                name="price"
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.price}
+                onChange={handleChange}
+                required
+              />
+            </label>
+          </div>
+
+          {formError && <p className="error">{formError}</p>}
+
+          <button type="submit">Save product</button>
+        </form>
+      </section>
+
+      <section className="card">
+        <h2>Product list</h2>
+
+        {loading && <p>Loading products...</p>}
+        {error && <p className="error">{error}</p>}
+
+        {!loading && !error && products.length === 0 && (
+          <p>No products yet. Add your first item above.</p>
+        )}
+
+        {!loading && products.length > 0 && (
+          <table className="product-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>SKU</th>
+                <th>Qty</th>
+                <th>Price</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {products.map((product) => (
+                <tr key={product.id}>
+                  <td>{product.name}</td>
+                  <td>{product.sku}</td>
+                  <td>{product.quantity}</td>
+                  <td>${Number(product.price).toFixed(2)}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={() => handleDelete(product.id)}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </main>
+  )
+}
+
+export default Products
