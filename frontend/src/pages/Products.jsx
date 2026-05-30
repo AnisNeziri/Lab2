@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { createProduct, deleteProduct, getProducts } from '../api/products'
+import { createProduct, deleteProduct, getProducts, updateProduct } from '../api/products'
 
 const emptyForm = {
   name: '',
@@ -12,6 +12,7 @@ const emptyForm = {
 function Products() {
   const [products, setProducts] = useState([])
   const [form, setForm] = useState(emptyForm)
+  const [editingId, setEditingId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
@@ -41,27 +42,51 @@ function Products() {
     }))
   }
 
+  function startEdit(product) {
+    setEditingId(product.id)
+    setFormError('')
+    setForm({
+      name: product.name,
+      sku: product.sku,
+      description: product.description ?? '',
+      quantity: product.quantity,
+      price: product.price,
+    })
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setForm(emptyForm)
+    setFormError('')
+  }
+
   async function handleSubmit(event) {
     event.preventDefault()
     setFormError('')
 
-    try {
-      await createProduct({
-        name: form.name,
-        sku: form.sku,
-        description: form.description || null,
-        quantity: Number(form.quantity),
-        price: Number(form.price),
-      })
+    const payload = {
+      name: form.name,
+      sku: form.sku,
+      description: form.description || null,
+      quantity: Number(form.quantity),
+      price: Number(form.price),
+    }
 
-      setForm(emptyForm)
+    try {
+      if (editingId) {
+        await updateProduct(editingId, payload)
+      } else {
+        await createProduct(payload)
+      }
+
+      cancelEdit()
       await loadProducts()
     } catch (err) {
       if (err.errors) {
         const messages = Object.values(err.errors).flat().join(' ')
         setFormError(messages)
       } else {
-        setFormError('Could not save product.')
+        setFormError(editingId ? 'Could not update product.' : 'Could not save product.')
       }
     }
   }
@@ -69,6 +94,9 @@ function Products() {
   async function handleDelete(id) {
     try {
       await deleteProduct(id)
+      if (editingId === id) {
+        cancelEdit()
+      }
       await loadProducts()
     } catch {
       setError('Could not delete product.')
@@ -78,7 +106,7 @@ function Products() {
   return (
     <main className="products-page">
       <section className="card">
-        <h2>Add product</h2>
+        <h2>{editingId ? 'Edit product' : 'Add product'}</h2>
         <form className="product-form" onSubmit={handleSubmit}>
           <label>
             Name
@@ -129,7 +157,14 @@ function Products() {
 
           {formError && <p className="error">{formError}</p>}
 
-          <button type="submit">Save product</button>
+          <div className="form-actions">
+            <button type="submit">{editingId ? 'Update product' : 'Save product'}</button>
+            {editingId && (
+              <button type="button" className="secondary" onClick={cancelEdit}>
+                Cancel
+              </button>
+            )}
+          </div>
         </form>
       </section>
 
@@ -156,12 +191,15 @@ function Products() {
             </thead>
             <tbody>
               {products.map((product) => (
-                <tr key={product.id}>
+                <tr key={product.id} className={editingId === product.id ? 'editing' : ''}>
                   <td>{product.name}</td>
                   <td>{product.sku}</td>
                   <td>{product.quantity}</td>
                   <td>${Number(product.price).toFixed(2)}</td>
-                  <td>
+                  <td className="actions">
+                    <button type="button" className="secondary" onClick={() => startEdit(product)}>
+                      Edit
+                    </button>
                     <button
                       type="button"
                       className="danger"

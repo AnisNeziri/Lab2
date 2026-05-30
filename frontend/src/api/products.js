@@ -28,6 +28,24 @@ export async function createProduct(product) {
   return response.json()
 }
 
+export async function updateProduct(id, product) {
+  const response = await fetch(`${API_BASE}/products/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(product),
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw error
+  }
+
+  return response.json()
+}
+
 export async function deleteProduct(id) {
   const response = await fetch(`${API_BASE}/products/${id}`, {
     method: 'DELETE',

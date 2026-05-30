@@ -71,8 +71,27 @@ button {
   cursor: pointer;
 }
 
+button.secondary {
+  background: #e5e7eb;
+  color: #1a1a1a;
+}
+
 button.danger {
   background: #dc2626;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.product-table tr.editing {
+  background: #eff6ff;
+}
+
+.product-table .actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .product-table {
