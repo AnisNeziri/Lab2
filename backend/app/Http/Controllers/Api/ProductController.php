@@ -9,11 +9,28 @@ use Illuminate\Http\Request;
 
 class ProductController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $products = Product::with('category')->orderBy('name')->get();
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'category_id' => ['nullable', 'integer', 'exists:categories,id'],
+        ]);
 
-        return response()->json($products);
+        $query = Product::with('category')->orderBy('name');
+
+        if (! empty($validated['search'])) {
+            $search = $validated['search'];
+            $query->where(function ($builder) use ($search) {
+                $builder->where('name', 'like', "%{$search}%")
+                    ->orWhere('sku', 'like', "%{$search}%");
+            });
+        }
+
+        if (! empty($validated['category_id'])) {
+            $query->where('category_id', $validated['category_id']);
+        }
+
+        return response()->json($query->get());
     }
 
     public function store(Request $request): JsonResponse

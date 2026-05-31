@@ -15,31 +15,49 @@ function Products() {
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
   const [form, setForm] = useState(emptyForm)
+  const [search, setSearch] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
 
-  async function loadData() {
+  async function loadCategories() {
+    const categoriesData = await getCategories()
+    setCategories(categoriesData)
+  }
+
+  async function loadProducts(filters = {}) {
     try {
       setLoading(true)
       setError('')
-      const [productsData, categoriesData] = await Promise.all([
-        getProducts(),
-        getCategories(),
-      ])
+      const productsData = await getProducts(filters)
       setProducts(productsData)
-      setCategories(categoriesData)
     } catch {
-      setError('Could not load data. Make sure the API is running.')
+      setError('Could not load products. Make sure the API is running.')
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    loadData()
+    loadCategories().catch(() => {
+      setError('Could not load categories. Make sure the API is running.')
+    })
   }, [])
+
+  useEffect(() => {
+    const filters = {
+      search: search.trim(),
+      category_id: categoryFilter,
+    }
+
+    const timer = setTimeout(() => {
+      loadProducts(filters)
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [search, categoryFilter])
 
   function handleChange(event) {
     const { name, value } = event.target
@@ -68,6 +86,11 @@ function Products() {
     setFormError('')
   }
 
+  function clearFilters() {
+    setSearch('')
+    setCategoryFilter('')
+  }
+
   async function handleSubmit(event) {
     event.preventDefault()
     setFormError('')
@@ -89,7 +112,10 @@ function Products() {
       }
 
       cancelEdit()
-      await loadData()
+      await loadProducts({
+        search: search.trim(),
+        category_id: categoryFilter,
+      })
     } catch (err) {
       if (err.errors) {
         const messages = Object.values(err.errors).flat().join(' ')
@@ -106,11 +132,16 @@ function Products() {
       if (editingId === id) {
         cancelEdit()
       }
-      await loadData()
+      await loadProducts({
+        search: search.trim(),
+        category_id: categoryFilter,
+      })
     } catch {
       setError('Could not delete product.')
     }
   }
+
+  const hasFilters = search.trim() !== '' || categoryFilter !== ''
 
   return (
     <main className="products-page">
@@ -190,13 +221,53 @@ function Products() {
       </section>
 
       <section className="card">
-        <h2>Product list</h2>
+        <div className="section-header">
+          <h2>Product list</h2>
+          {!loading && <p className="result-count">{products.length} product(s)</p>}
+        </div>
+
+        <div className="filters">
+          <label>
+            Search
+            <input
+              type="search"
+              placeholder="Search by name or SKU"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
+
+          <label>
+            Category
+            <select
+              value={categoryFilter}
+              onChange={(event) => setCategoryFilter(event.target.value)}
+            >
+              <option value="">All categories</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {hasFilters && (
+            <button type="button" className="secondary" onClick={clearFilters}>
+              Clear filters
+            </button>
+          )}
+        </div>
 
         {loading && <p>Loading products...</p>}
         {error && <p className="error">{error}</p>}
 
-        {!loading && !error && products.length === 0 && (
+        {!loading && !error && products.length === 0 && !hasFilters && (
           <p>No products yet. Add your first item above.</p>
+        )}
+
+        {!loading && !error && products.length === 0 && hasFilters && (
+          <p>No products match your search or filter.</p>
         )}
 
         {!loading && products.length > 0 && (
@@ -217,7 +288,7 @@ function Products() {
                   <td>{product.name}</td>
                   <td>{product.category?.name ?? '—'}</td>
                   <td>{product.sku}</td>
-                  <td>{product.quantity}</td>
+                  <td className={product.quantity <= 5 ? 'low-stock' : ''}>{product.quantity}</td>
                   <td>${Number(product.price).toFixed(2)}</td>
                   <td className="actions">
                     <button type="button" className="secondary" onClick={() => startEdit(product)}>

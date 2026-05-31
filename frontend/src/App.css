@@ -90,8 +90,43 @@ header p {
 }
 
 .card h2 {
-  margin-bottom: 1rem;
+  margin-bottom: 0;
   font-size: 1.25rem;
+}
+
+.section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.result-count {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: 1fr 220px auto;
+  gap: 1rem;
+  align-items: end;
+  margin-bottom: 1.25rem;
+}
+
+.filters label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.filters input,
+.filters select {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font: inherit;
 }
 
 .product-form {
@@ -176,5 +211,9 @@ button.danger {
 
   .stats-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .filters {
+    grid-template-columns: 1fr;
   }
 }
