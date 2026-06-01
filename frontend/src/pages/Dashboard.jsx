@@ -52,7 +52,7 @@ function Dashboard() {
         <article className="stat-card warning">
           <p className="stat-label">Low stock items</p>
           <p className="stat-value">{data.low_stock_count}</p>
-          <p className="stat-note">Threshold: {data.low_stock_threshold} units or less</p>
+          <p className="stat-note">At or below each product&apos;s minimum quantity</p>
         </article>
       </section>
 
@@ -69,6 +69,7 @@ function Dashboard() {
                 <th>Category</th>
                 <th>SKU</th>
                 <th>Qty</th>
+                <th>Min</th>
               </tr>
             </thead>
             <tbody>
@@ -78,6 +79,7 @@ function Dashboard() {
                   <td>{product.category?.name ?? '—'}</td>
                   <td>{product.sku}</td>
                   <td className="low-stock">{product.quantity}</td>
+                  <td>{product.min_quantity}</td>
                 </tr>
               ))}
             </tbody>

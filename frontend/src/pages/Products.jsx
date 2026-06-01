@@ -8,6 +8,7 @@ const emptyForm = {
   sku: '',
   description: '',
   quantity: 0,
+  min_quantity: 5,
   price: '',
 }
 
@@ -76,6 +77,7 @@ function Products() {
       sku: product.sku,
       description: product.description ?? '',
       quantity: product.quantity,
+      min_quantity: product.min_quantity ?? 5,
       price: product.price,
     })
   }
@@ -101,6 +103,7 @@ function Products() {
       sku: form.sku,
       description: form.description || null,
       quantity: Number(form.quantity),
+      min_quantity: Number(form.min_quantity),
       price: Number(form.price),
     }
 
@@ -194,18 +197,30 @@ function Products() {
             </label>
 
             <label>
-              Price
+              Min quantity
               <input
-                name="price"
+                name="min_quantity"
                 type="number"
                 min="0"
-                step="0.01"
-                value={form.price}
+                value={form.min_quantity}
                 onChange={handleChange}
                 required
               />
             </label>
           </div>
+
+          <label>
+            Price
+            <input
+              name="price"
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.price}
+              onChange={handleChange}
+              required
+            />
+          </label>
 
           {formError && <p className="error">{formError}</p>}
 
@@ -278,6 +293,7 @@ function Products() {
                 <th>Category</th>
                 <th>SKU</th>
                 <th>Qty</th>
+                <th>Min</th>
                 <th>Price</th>
                 <th></th>
               </tr>
@@ -288,7 +304,10 @@ function Products() {
                   <td>{product.name}</td>
                   <td>{product.category?.name ?? '—'}</td>
                   <td>{product.sku}</td>
-                  <td className={product.quantity <= 5 ? 'low-stock' : ''}>{product.quantity}</td>
+                  <td className={product.quantity <= product.min_quantity ? 'low-stock' : ''}>
+                    {product.quantity}
+                  </td>
+                  <td>{product.min_quantity}</td>
                   <td>${Number(product.price).toFixed(2)}</td>
                   <td className="actions">
                     <button type="button" className="secondary" onClick={() => startEdit(product)}>

@@ -14,6 +14,7 @@ class Product extends Model
         'sku',
         'description',
         'quantity',
+        'min_quantity',
         'price',
     ];
 
@@ -22,6 +23,7 @@ class Product extends Model
         return [
             'category_id' => 'integer',
             'quantity' => 'integer',
+            'min_quantity' => 'integer',
             'price' => 'decimal:2',
         ];
     }

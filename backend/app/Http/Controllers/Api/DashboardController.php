@@ -8,8 +8,6 @@ use Illuminate\Http\JsonResponse;
 
 class DashboardController extends Controller
 {
-    private const LOW_STOCK_THRESHOLD = 5;
-
     public function index(): JsonResponse
     {
         $products = Product::with('category')->get();
@@ -18,7 +16,7 @@ class DashboardController extends Controller
         $totalValue = $products->sum(fn (Product $product) => $product->quantity * $product->price);
 
         $lowStockProducts = $products
-            ->filter(fn (Product $product) => $product->quantity <= self::LOW_STOCK_THRESHOLD)
+            ->filter(fn (Product $product) => $product->quantity <= $product->min_quantity)
             ->sortBy('quantity')
             ->values();
 
@@ -26,7 +24,6 @@ class DashboardController extends Controller
             'total_products' => $products->count(),
             'total_units' => $totalUnits,
             'total_value' => round($totalValue, 2),
-            'low_stock_threshold' => self::LOW_STOCK_THRESHOLD,
             'low_stock_count' => $lowStockProducts->count(),
             'low_stock_products' => $lowStockProducts,
         ]);

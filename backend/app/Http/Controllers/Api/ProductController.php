@@ -41,6 +41,7 @@ class ProductController extends Controller
             'sku' => ['required', 'string', 'max:100', 'unique:products,sku'],
             'description' => ['nullable', 'string'],
             'quantity' => ['required', 'integer', 'min:0'],
+            'min_quantity' => ['required', 'integer', 'min:0'],
             'price' => ['required', 'numeric', 'min:0'],
         ]);
 
@@ -64,6 +65,7 @@ class ProductController extends Controller
             'sku' => ['sometimes', 'required', 'string', 'max:100', 'unique:products,sku,' . $product->id],
             'description' => ['nullable', 'string'],
             'quantity' => ['sometimes', 'required', 'integer', 'min:0'],
+            'min_quantity' => ['sometimes', 'required', 'integer', 'min:0'],
             'price' => ['sometimes', 'required', 'numeric', 'min:0'],
         ]);
 
