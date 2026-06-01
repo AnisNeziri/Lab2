@@ -36,7 +36,8 @@ header p {
 
 .dashboard-page,
 .products-page,
-.categories-page {
+.categories-page,
+.stock-page {
   max-width: 960px;
   margin: 0 auto;
   display: grid;
@@ -93,6 +94,49 @@ header p {
 .card h2 {
   margin-bottom: 0;
   font-size: 1.25rem;
+}
+
+.card-description {
+  color: #666;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.stock-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.stock-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.stock-form input,
+.stock-form select {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.badge-in {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badge-out {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .section-header {

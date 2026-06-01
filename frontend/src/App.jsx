@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Categories from './pages/Categories'
 import Dashboard from './pages/Dashboard'
 import Products from './pages/Products'
+import Stock from './pages/Stock'
 import './App.css'
 
 function App() {
@@ -23,6 +24,13 @@ function App() {
           </button>
           <button
             type="button"
+            className={page === 'stock' ? 'active' : 'secondary'}
+            onClick={() => setPage('stock')}
+          >
+            Stock
+          </button>
+          <button
+            type="button"
             className={page === 'categories' ? 'active' : 'secondary'}
             onClick={() => setPage('categories')}
           >
@@ -39,6 +47,7 @@ function App() {
       </header>
 
       {page === 'products' && <Products />}
+      {page === 'stock' && <Stock />}
       {page === 'categories' && <Categories />}
       {page === 'dashboard' && <Dashboard />}
     </div>
