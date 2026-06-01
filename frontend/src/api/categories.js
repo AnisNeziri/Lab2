@@ -27,3 +27,35 @@ export async function createCategory(name) {
 
   return response.json()
 }
+
+export async function updateCategory(id, name) {
+  const response = await fetch(`${API_BASE}/categories/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({ name }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw error
+  }
+
+  return response.json()
+}
+
+export async function deleteCategory(id) {
+  const response = await fetch(`${API_BASE}/categories/${id}`, {
+    method: 'DELETE',
+    headers: {
+      Accept: 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw error
+  }
+}

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import Categories from './pages/Categories'
 import Dashboard from './pages/Dashboard'
 import Products from './pages/Products'
 import './App.css'
@@ -22,6 +23,13 @@ function App() {
           </button>
           <button
             type="button"
+            className={page === 'categories' ? 'active' : 'secondary'}
+            onClick={() => setPage('categories')}
+          >
+            Categories
+          </button>
+          <button
+            type="button"
             className={page === 'dashboard' ? 'active' : 'secondary'}
             onClick={() => setPage('dashboard')}
           >
@@ -30,7 +38,9 @@ function App() {
         </nav>
       </header>
 
-      {page === 'products' ? <Products /> : <Dashboard />}
+      {page === 'products' && <Products />}
+      {page === 'categories' && <Categories />}
+      {page === 'dashboard' && <Dashboard />}
     </div>
   )
 }

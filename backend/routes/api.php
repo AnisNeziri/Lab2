@@ -14,5 +14,5 @@ Route::get('/status', function () {
 
 Route::get('/dashboard', [DashboardController::class, 'index']);
 
-Route::apiResource('categories', CategoryController::class)->only(['index', 'store']);
+Route::apiResource('categories', CategoryController::class)->only(['index', 'store', 'update', 'destroy']);
 Route::apiResource('products', ProductController::class);

@@ -35,7 +35,8 @@ header p {
 }
 
 .dashboard-page,
-.products-page {
+.products-page,
+.categories-page {
   max-width: 960px;
   margin: 0 auto;
   display: grid;
@@ -132,6 +133,30 @@ header p {
 .product-form {
   display: grid;
   gap: 1rem;
+}
+
+.category-form {
+  display: grid;
+  gap: 1rem;
+  max-width: 420px;
+}
+
+.category-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.category-form input {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font: inherit;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .product-form label {
