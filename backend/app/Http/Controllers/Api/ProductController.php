@@ -30,6 +30,10 @@ class ProductController extends Controller
             $query->where('category_id', $validated['category_id']);
         }
 
+        if ($request->boolean('low_stock')) {
+            $query->whereColumn('quantity', '<=', 'min_quantity');
+        }
+
         return response()->json($query->get());
     }
 

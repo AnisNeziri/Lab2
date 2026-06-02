@@ -11,6 +11,10 @@ export async function getProducts(filters = {}) {
     params.set('category_id', filters.category_id)
   }
 
+  if (filters.low_stock) {
+    params.set('low_stock', '1')
+  }
+
   const query = params.toString()
   const url = query ? `${API_BASE}/products?${query}` : `${API_BASE}/products`
   const response = await fetch(url)

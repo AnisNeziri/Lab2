@@ -18,6 +18,7 @@ function Products() {
   const [form, setForm] = useState(emptyForm)
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
+  const [lowStockOnly, setLowStockOnly] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -51,6 +52,7 @@ function Products() {
     const filters = {
       search: search.trim(),
       category_id: categoryFilter,
+      low_stock: lowStockOnly,
     }
 
     const timer = setTimeout(() => {
@@ -58,7 +60,7 @@ function Products() {
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [search, categoryFilter])
+  }, [search, categoryFilter, lowStockOnly])
 
   function handleChange(event) {
     const { name, value } = event.target
@@ -91,6 +93,7 @@ function Products() {
   function clearFilters() {
     setSearch('')
     setCategoryFilter('')
+    setLowStockOnly(false)
   }
 
   async function handleExport() {
@@ -126,6 +129,7 @@ function Products() {
       await loadProducts({
         search: search.trim(),
         category_id: categoryFilter,
+        low_stock: lowStockOnly,
       })
     } catch (err) {
       if (err.errors) {
@@ -146,13 +150,14 @@ function Products() {
       await loadProducts({
         search: search.trim(),
         category_id: categoryFilter,
+        low_stock: lowStockOnly,
       })
     } catch {
       setError('Could not delete product.')
     }
   }
 
-  const hasFilters = search.trim() !== '' || categoryFilter !== ''
+  const hasFilters = search.trim() !== '' || categoryFilter !== '' || lowStockOnly
 
   return (
     <main className="products-page">
@@ -278,6 +283,15 @@ function Products() {
                 </option>
               ))}
             </select>
+          </label>
+
+          <label className="filter-checkbox">
+            <input
+              type="checkbox"
+              checked={lowStockOnly}
+              onChange={(event) => setLowStockOnly(event.target.checked)}
+            />
+            Low stock only
           </label>
 
           {hasFilters && (
