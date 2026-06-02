@@ -86,6 +86,41 @@ function Dashboard() {
           </table>
         )}
       </section>
+
+      <section className="card">
+        <h2>Recent stock activity</h2>
+
+        {data.recent_movements.length === 0 ? (
+          <p>No stock movements yet.</p>
+        ) : (
+          <table className="product-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Product</th>
+                <th>Type</th>
+                <th>Qty</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.recent_movements.map((movement) => (
+                <tr key={movement.id}>
+                  <td>{new Date(movement.created_at).toLocaleString()}</td>
+                  <td>{movement.product?.name ?? '—'}</td>
+                  <td>
+                    <span className={`badge badge-${movement.type}`}>
+                      {movement.type === 'in' ? 'Stock in' : 'Stock out'}
+                    </span>
+                  </td>
+                  <td>{movement.quantity}</td>
+                  <td>{movement.reason ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
     </main>
   )
 }
