@@ -160,7 +160,7 @@ header p {
 
 .filters {
   display: grid;
-  grid-template-columns: 1fr 220px auto auto;
+  grid-template-columns: 1fr 180px auto 140px 140px auto;
   gap: 1rem;
   align-items: end;
   margin-bottom: 1.25rem;

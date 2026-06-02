@@ -14,9 +14,14 @@ class ProductController extends Controller
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:255'],
             'category_id' => ['nullable', 'integer', 'exists:categories,id'],
+            'sort' => ['nullable', 'in:name,sku,quantity,min_quantity,price'],
+            'direction' => ['nullable', 'in:asc,desc'],
         ]);
 
-        $query = Product::with('category')->orderBy('name');
+        $sort = $validated['sort'] ?? 'name';
+        $direction = $validated['direction'] ?? 'asc';
+
+        $query = Product::with('category')->orderBy($sort, $direction);
 
         if (! empty($validated['search'])) {
             $search = $validated['search'];

@@ -19,6 +19,8 @@ function Products() {
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [lowStockOnly, setLowStockOnly] = useState(false)
+  const [sortBy, setSortBy] = useState('name')
+  const [sortDirection, setSortDirection] = useState('asc')
   const [editingId, setEditingId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -48,19 +50,23 @@ function Products() {
     })
   }, [])
 
-  useEffect(() => {
-    const filters = {
+  function getActiveFilters() {
+    return {
       search: search.trim(),
       category_id: categoryFilter,
       low_stock: lowStockOnly,
+      sort: sortBy,
+      direction: sortDirection,
     }
+  }
 
+  useEffect(() => {
     const timer = setTimeout(() => {
-      loadProducts(filters)
+      loadProducts(getActiveFilters())
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [search, categoryFilter, lowStockOnly])
+  }, [search, categoryFilter, lowStockOnly, sortBy, sortDirection])
 
   function handleChange(event) {
     const { name, value } = event.target
@@ -94,6 +100,8 @@ function Products() {
     setSearch('')
     setCategoryFilter('')
     setLowStockOnly(false)
+    setSortBy('name')
+    setSortDirection('asc')
   }
 
   async function handleExport() {
@@ -126,11 +134,7 @@ function Products() {
       }
 
       cancelEdit()
-      await loadProducts({
-        search: search.trim(),
-        category_id: categoryFilter,
-        low_stock: lowStockOnly,
-      })
+      await loadProducts(getActiveFilters())
     } catch (err) {
       if (err.errors) {
         const messages = Object.values(err.errors).flat().join(' ')
@@ -147,17 +151,18 @@ function Products() {
       if (editingId === id) {
         cancelEdit()
       }
-      await loadProducts({
-        search: search.trim(),
-        category_id: categoryFilter,
-        low_stock: lowStockOnly,
-      })
+      await loadProducts(getActiveFilters())
     } catch {
       setError('Could not delete product.')
     }
   }
 
-  const hasFilters = search.trim() !== '' || categoryFilter !== '' || lowStockOnly
+  const hasFilters =
+    search.trim() !== '' ||
+    categoryFilter !== '' ||
+    lowStockOnly ||
+    sortBy !== 'name' ||
+    sortDirection !== 'asc'
 
   return (
     <main className="products-page">
@@ -292,6 +297,28 @@ function Products() {
               onChange={(event) => setLowStockOnly(event.target.checked)}
             />
             Low stock only
+          </label>
+
+          <label>
+            Sort by
+            <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+              <option value="name">Name</option>
+              <option value="sku">SKU</option>
+              <option value="quantity">Quantity</option>
+              <option value="min_quantity">Min quantity</option>
+              <option value="price">Price</option>
+            </select>
+          </label>
+
+          <label>
+            Order
+            <select
+              value={sortDirection}
+              onChange={(event) => setSortDirection(event.target.value)}
+            >
+              <option value="asc">Ascending</option>
+              <option value="desc">Descending</option>
+            </select>
           </label>
 
           {hasFilters && (
