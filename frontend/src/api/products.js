@@ -70,3 +70,19 @@ export async function deleteProduct(id) {
     throw new Error('Failed to delete product')
   }
 }
+
+export async function exportProducts() {
+  const response = await fetch(`${API_BASE}/products/export`)
+
+  if (!response.ok) {
+    throw new Error('Failed to export products')
+  }
+
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'products.csv'
+  link.click()
+  URL.revokeObjectURL(url)
+}

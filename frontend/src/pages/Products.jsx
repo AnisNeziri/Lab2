@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getCategories } from '../api/categories'
-import { createProduct, deleteProduct, getProducts, updateProduct } from '../api/products'
+import { createProduct, deleteProduct, exportProducts, getProducts, updateProduct } from '../api/products'
 
 const emptyForm = {
   category_id: '',
@@ -91,6 +91,14 @@ function Products() {
   function clearFilters() {
     setSearch('')
     setCategoryFilter('')
+  }
+
+  async function handleExport() {
+    try {
+      await exportProducts()
+    } catch {
+      setError('Could not export products.')
+    }
   }
 
   async function handleSubmit(event) {
@@ -238,7 +246,12 @@ function Products() {
       <section className="card">
         <div className="section-header">
           <h2>Product list</h2>
-          {!loading && <p className="result-count">{products.length} product(s)</p>}
+          <div className="section-header-actions">
+            {!loading && <p className="result-count">{products.length} product(s)</p>}
+            <button type="button" className="secondary" onClick={handleExport}>
+              Export CSV
+            </button>
+          </div>
         </div>
 
         <div className="filters">

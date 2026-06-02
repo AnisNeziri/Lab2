@@ -147,6 +147,12 @@ header p {
   margin-bottom: 1rem;
 }
 
+.section-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .result-count {
   color: #666;
   font-size: 0.9rem;

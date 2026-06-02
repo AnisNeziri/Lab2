@@ -33,6 +33,37 @@ class ProductController extends Controller
         return response()->json($query->get());
     }
 
+    public function export()
+    {
+        $products = Product::with('category')->orderBy('name')->get();
+
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="products.csv"',
+        ];
+
+        $callback = function () use ($products) {
+            $handle = fopen('php://output', 'w');
+            fputcsv($handle, ['Name', 'SKU', 'Category', 'Quantity', 'Min Quantity', 'Price', 'Description']);
+
+            foreach ($products as $product) {
+                fputcsv($handle, [
+                    $product->name,
+                    $product->sku,
+                    $product->category?->name ?? '',
+                    $product->quantity,
+                    $product->min_quantity,
+                    $product->price,
+                    $product->description ?? '',
+                ]);
+            }
+
+            fclose($handle);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([

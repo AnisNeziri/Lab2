@@ -18,5 +18,6 @@ Route::get('/dashboard', [DashboardController::class, 'index']);
 Route::get('/stock-movements', [StockMovementController::class, 'index']);
 Route::post('/stock-movements', [StockMovementController::class, 'store']);
 
+Route::get('/products/export', [ProductController::class, 'export']);
 Route::apiResource('categories', CategoryController::class)->only(['index', 'store', 'update', 'destroy']);
 Route::apiResource('products', ProductController::class);
