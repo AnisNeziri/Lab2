@@ -54,6 +54,7 @@ header p {
 .products-page,
 .categories-page,
 .stock-page,
+.suppliers-page,
 .reports-page {
   max-width: 1180px;
   margin: 0 auto;
@@ -68,7 +69,7 @@ header p {
 }
 
 .stats-grid {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .stats-grid-3 {
@@ -162,18 +163,21 @@ header p {
 
 .product-form,
 .stock-form,
-.category-form {
+.category-form,
+.supplier-form {
   display: grid;
   gap: 1rem;
 }
 
-.category-form {
+.category-form,
+.supplier-form {
   max-width: 420px;
 }
 
 .product-form label,
 .stock-form label,
 .category-form label,
+.supplier-form label,
 .filters label {
   display: grid;
   gap: 0.35rem;
@@ -186,6 +190,7 @@ header p {
 .stock-form input,
 .stock-form select,
 .category-form input,
+.supplier-form input,
 .filters input,
 .filters select {
   width: 100%;
@@ -202,6 +207,7 @@ header p {
 .stock-form input:focus,
 .stock-form select:focus,
 .category-form input:focus,
+.supplier-form input:focus,
 .filters input:focus,
 .filters select:focus {
   border-color: #0f766e;

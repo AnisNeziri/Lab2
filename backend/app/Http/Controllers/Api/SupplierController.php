@@ -11,7 +11,9 @@ class SupplierController extends Controller
 {
     public function index(): JsonResponse
     {
-        $suppliers = Supplier::orderBy('name')->get();
+        $suppliers = Supplier::withCount('products')
+            ->orderBy('name')
+            ->get();
 
         return response()->json($suppliers);
     }
@@ -46,6 +48,12 @@ class SupplierController extends Controller
 
     public function destroy(Supplier $supplier): JsonResponse
     {
+        if ($supplier->products()->exists()) {
+            return response()->json([
+                'message' => 'Cannot delete a supplier that still has products assigned.',
+            ], 422);
+        }
+
         $supplier->delete();
 
         return response()->json(null, 204);

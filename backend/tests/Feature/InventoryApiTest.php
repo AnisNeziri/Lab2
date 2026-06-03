@@ -91,4 +91,66 @@ class InventoryApiTest extends TestCase
 
         $this->assertEquals(447.0, $response->json('total_value'));
     }
+
+    public function test_supplier_cannot_be_deleted_when_products_exist(): void
+    {
+        $category = Category::create(['name' => 'Electronics']);
+        $supplier = \App\Models\Supplier::create([
+            'name' => 'TechSupply Co.',
+            'email' => 'orders@techsupply.test',
+        ]);
+
+        Product::create([
+            'category_id' => $category->id,
+            'supplier_id' => $supplier->id,
+            'name' => 'Keyboard',
+            'sku' => 'ELEC-010',
+            'quantity' => 5,
+            'min_quantity' => 2,
+            'price' => 45.00,
+        ]);
+
+        $response = $this->deleteJson('/api/suppliers/' . $supplier->id);
+
+        $response
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Cannot delete a supplier that still has products assigned.');
+
+        $this->assertDatabaseHas('suppliers', ['id' => $supplier->id]);
+    }
+
+    public function test_products_can_be_filtered_by_supplier(): void
+    {
+        $category = Category::create(['name' => 'Office Supplies']);
+        $supplierA = \App\Models\Supplier::create(['name' => 'Office Depot KS']);
+        $supplierB = \App\Models\Supplier::create(['name' => 'Global Furniture']);
+
+        Product::create([
+            'category_id' => $category->id,
+            'supplier_id' => $supplierA->id,
+            'name' => 'Stapler',
+            'sku' => 'OFF-010',
+            'quantity' => 10,
+            'min_quantity' => 3,
+            'price' => 8.50,
+        ]);
+
+        Product::create([
+            'category_id' => $category->id,
+            'supplier_id' => $supplierB->id,
+            'name' => 'Desk Lamp',
+            'sku' => 'OFF-011',
+            'quantity' => 6,
+            'min_quantity' => 2,
+            'price' => 22.00,
+        ]);
+
+        $response = $this->getJson('/api/products?supplier_id=' . $supplierA->id);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('total', 1)
+            ->assertJsonPath('data.0.sku', 'OFF-010')
+            ->assertJsonPath('data.0.supplier.name', 'Office Depot KS');
+    }
 }

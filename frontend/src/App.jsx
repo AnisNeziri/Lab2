@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard'
 import Products from './pages/Products'
 import Reports from './pages/Reports'
 import Stock from './pages/Stock'
+import Suppliers from './pages/Suppliers'
 import './App.css'
 
 function App() {
@@ -15,7 +16,7 @@ function App() {
         <div>
           <p className="eyebrow">Operations dashboard</p>
           <h1>Inventory System</h1>
-          <p>Manage products, categories, stock movements, and reporting in one workspace.</p>
+          <p>Manage products, suppliers, categories, stock movements, and reporting in one workspace.</p>
         </div>
 
         <nav className="main-nav">
@@ -25,6 +26,13 @@ function App() {
             onClick={() => setPage('products')}
           >
             Products
+          </button>
+          <button
+            type="button"
+            className={page === 'suppliers' ? 'active' : 'secondary'}
+            onClick={() => setPage('suppliers')}
+          >
+            Suppliers
           </button>
           <button
             type="button"
@@ -58,6 +66,7 @@ function App() {
       </header>
 
       {page === 'products' && <Products />}
+      {page === 'suppliers' && <Suppliers />}
       {page === 'stock' && <Stock />}
       {page === 'categories' && <Categories />}
       {page === 'dashboard' && <Dashboard />}

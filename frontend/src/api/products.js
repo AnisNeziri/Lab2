@@ -5,6 +5,7 @@ export async function getProducts(filters = {}) {
     buildApiUrl('/products', {
       search: filters.search,
       category_id: filters.category_id,
+      supplier_id: filters.supplier_id,
       low_stock: filters.low_stock ? '1' : '',
       sort: filters.sort,
       direction: filters.direction,

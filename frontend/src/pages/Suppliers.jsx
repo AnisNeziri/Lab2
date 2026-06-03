@@ -93,15 +93,27 @@ function Suppliers() {
     }
   }
 
-  async function handleDelete(id) {
+  async function handleDelete(supplier) {
+    const confirmed = window.confirm(
+      `Delete "${supplier.name}"? Suppliers with linked products cannot be removed.`
+    )
+
+    if (!confirmed) {
+      return
+    }
+
     try {
-      await deleteSupplier(id)
-      if (editingId === id) {
+      await deleteSupplier(supplier.id)
+      if (editingId === supplier.id) {
         cancelEdit()
       }
       await loadSuppliers()
-    } catch {
-      setError('Could not delete supplier.')
+    } catch (err) {
+      if (err.message) {
+        setFormError(err.message)
+      } else {
+        setError('Could not delete supplier.')
+      }
     }
   }
 
@@ -166,6 +178,7 @@ function Suppliers() {
                 <th>Phone</th>
                 <th>Email</th>
                 <th>Address</th>
+                <th>Products</th>
                 <th></th>
               </tr>
             </thead>
@@ -176,11 +189,17 @@ function Suppliers() {
                   <td>{supplier.phone ?? '—'}</td>
                   <td>{supplier.email ?? '—'}</td>
                   <td>{supplier.address ?? '—'}</td>
+                  <td>{supplier.products_count ?? 0}</td>
                   <td className="actions">
                     <button type="button" className="secondary" onClick={() => startEdit(supplier)}>
                       Edit
                     </button>
-                    <button type="button" className="danger" onClick={() => handleDelete(supplier.id)}>
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={() => handleDelete(supplier)}
+                      disabled={(supplier.products_count ?? 0) > 0}
+                    >
                       Delete
                     </button>
                   </td>

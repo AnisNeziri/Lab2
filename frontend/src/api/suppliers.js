@@ -1,61 +1,37 @@
-const API_BASE = '/api'
+import { apiRequest, buildApiUrl } from './client'
 
 export async function getSuppliers() {
-  const response = await fetch(`${API_BASE}/suppliers`)
-
-  if (!response.ok) {
-    throw new Error('Failed to load suppliers')
-  }
-
-  return response.json()
+  return apiRequest(buildApiUrl('/suppliers'), {}, 'Failed to load suppliers')
 }
 
 export async function createSupplier(payload) {
-  const response = await fetch(`${API_BASE}/suppliers`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
+  return apiRequest(
+    buildApiUrl('/suppliers'),
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  })
-
-  if (!response.ok) {
-    const error = await response.json()
-    throw error
-  }
-
-  return response.json()
+    'Failed to save supplier'
+  )
 }
 
 export async function updateSupplier(id, payload) {
-  const response = await fetch(`${API_BASE}/suppliers/${id}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
+  return apiRequest(
+    buildApiUrl(`/suppliers/${id}`),
+    {
+      method: 'PUT',
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  })
-
-  if (!response.ok) {
-    const error = await response.json()
-    throw error
-  }
-
-  return response.json()
+    'Failed to update supplier'
+  )
 }
 
 export async function deleteSupplier(id) {
-  const response = await fetch(`${API_BASE}/suppliers/${id}`, {
-    method: 'DELETE',
-    headers: {
-      Accept: 'application/json',
+  await apiRequest(
+    buildApiUrl(`/suppliers/${id}`),
+    {
+      method: 'DELETE',
     },
-  })
-
-  if (!response.ok) {
-    const error = await response.json()
-    throw error
-  }
+    'Failed to delete supplier'
+  )
 }

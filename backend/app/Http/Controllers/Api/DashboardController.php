@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\StockMovement;
+use App\Models\Supplier;
 use Illuminate\Http\JsonResponse;
 
 class DashboardController extends Controller
@@ -28,6 +29,7 @@ class DashboardController extends Controller
 
         return response()->json([
             'total_products' => $products->count(),
+            'total_suppliers' => Supplier::count(),
             'total_units' => $totalUnits,
             'total_value' => round($totalValue, 2),
             'low_stock_count' => $lowStockProducts->count(),

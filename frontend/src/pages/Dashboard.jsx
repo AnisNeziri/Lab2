@@ -49,6 +49,11 @@ function Dashboard() {
           <p className="stat-value">${Number(data.total_value).toFixed(2)}</p>
         </article>
 
+        <article className="stat-card">
+          <p className="stat-label">Total suppliers</p>
+          <p className="stat-value">{data.total_suppliers}</p>
+        </article>
+
         <article className="stat-card warning">
           <p className="stat-label">Low stock items</p>
           <p className="stat-value">{data.low_stock_count}</p>

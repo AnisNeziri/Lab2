@@ -73,6 +73,30 @@ function Reports() {
       </section>
 
       <section className="card">
+        <h2>Inventory by supplier</h2>
+        <table className="product-table">
+          <thead>
+            <tr>
+              <th>Supplier</th>
+              <th>Products</th>
+              <th>Units</th>
+              <th>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.suppliers.map((supplier) => (
+              <tr key={supplier.id}>
+                <td>{supplier.name}</td>
+                <td>{supplier.product_count}</td>
+                <td>{supplier.total_units}</td>
+                <td>${Number(supplier.total_value).toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="card">
         <h2>Top products by stock value</h2>
         {data.top_products.length === 0 ? (
           <p>No products available.</p>
