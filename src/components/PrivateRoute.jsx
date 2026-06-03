@@ -3,7 +3,7 @@ import { Navigate } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import { CircularProgress, Box } from "@mui/material";
 
-const PrivateRoute = ({ children, role }) => {
+const PrivateRoute = ({ children, role, roles }) => {
   const { user, loading } = useContext(AuthContext);
 
   if (loading) {
@@ -18,7 +18,13 @@ const PrivateRoute = ({ children, role }) => {
     return <Navigate to="/login" replace />;
   }
 
-  if (role && user.role !== role) {
+  const allowed = roles?.length
+    ? roles.includes(user.role)
+    : role
+      ? user.role === role
+      : true;
+
+  if (!allowed) {
     return <Navigate to="/products" replace />;
   }
 

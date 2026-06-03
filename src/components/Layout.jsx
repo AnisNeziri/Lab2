@@ -10,6 +10,7 @@ const Layout = ({ children }) => {
 
   // Hide navbar on landing page
   const isLandingPage = location.pathname === "/";
+  const homePath = user?.role === "ceo" ? "/dashboard" : "/products";
 
   return (
     <>
@@ -19,18 +20,22 @@ const Layout = ({ children }) => {
             <Typography
               variant="h6"
               sx={{ cursor: "pointer" }}
-              onClick={() => navigate("/dashboard")}
+              onClick={() => navigate(homePath)}
             >
               AIMS
             </Typography>
             {user ? (
-              <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
                 {user.role === "ceo" && (
                   <Button color="inherit" onClick={() => navigate("/dashboard")}>Dashboard</Button>
                 )}
                 <Button color="inherit" onClick={() => navigate("/products")}>Products</Button>
+                <Button color="inherit" onClick={() => navigate("/suppliers")}>Suppliers</Button>
                 <Button color="inherit" onClick={() => navigate("/transactions")}>Transactions</Button>
-                {user.role === "ceo" && (
+                <Button color="inherit" onClick={() => navigate("/inventory")}>Inventory</Button>
+                <Button color="inherit" onClick={() => navigate("/reports")}>Reports</Button>
+                <Button color="inherit" onClick={() => navigate("/invoices")}>Invoices</Button>
+                {(user.role === "ceo" || user.role === "admin") && (
                   <Button color="inherit" onClick={() => navigate("/users")}>Staff</Button>
                 )}
                 <Typography>{user.name}</Typography>

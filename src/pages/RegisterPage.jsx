@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "../services/api";
+import { AuthContext } from "../context/AuthContext";
 import "./RegisterPage.css";
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const { setUser } = useContext(AuthContext);
   const [form, setForm] = useState({
     name: "", // ✅ company name
     manager_name: "",
@@ -45,13 +47,33 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       const res = await api.post("/register", form);
+      const token = res?.data?.token || res?.data?.access_token;
+      if (token) {
+        localStorage.setItem("auth_token", token);
+        api.defaults.headers.common.Authorization = `Bearer ${token}`;
+        const me = await api.get("/me");
+        setUser(me.data);
+        setBanner({
+          type: "success",
+          text: res?.data?.message || "Company registered successfully!",
+        });
+        navigate(me.data?.role === "ceo" ? "/dashboard" : "/products");
+        return;
+      }
       setBanner({
         type: "success",
         text: res?.data?.message || "Company registered successfully!",
       });
       setTimeout(() => navigate("/login"), 2000);
     } catch (err) {
-      const message = err?.response?.data?.message || "Registration failed.";
+      const data = err?.response?.data;
+      let message = data?.message || "Registration failed.";
+      if (data?.errors && typeof data.errors === "object") {
+        const parts = Object.entries(data.errors).flatMap(([, msgs]) =>
+          Array.isArray(msgs) ? msgs : [String(msgs)]
+        );
+        if (parts.length) message = parts.join(" ");
+      }
       setBanner({ type: "error", text: message });
     } finally {
       setLoading(false);

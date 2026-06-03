@@ -16,4 +16,19 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem("auth_token");
+      delete api.defaults.headers.common.Authorization;
+      const path = window.location.pathname || "";
+      if (!path.startsWith("/login") && !path.startsWith("/register")) {
+        window.location.assign("/login");
+      }
+    }
+    return Promise.reject(err);
+  }
+);
+
 export default api;

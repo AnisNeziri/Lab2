@@ -14,6 +14,7 @@ import TransactionsPage from "./pages/TransactionsPage";
 import InventoryPage from "./pages/InventoryPage";
 import ReportsPage from "./pages/ReportsPage";
 import UsersPage from "./pages/UsersPage";
+import InvoicesPage from "./pages/InvoicesPage";
 
 function App() {
   return (
@@ -74,9 +75,17 @@ function App() {
               }
             />
             <Route
+              path="/invoices"
+              element={
+                <PrivateRoute>
+                  <InvoicesPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
               path="/users"
               element={
-                <PrivateRoute role="ceo">
+                <PrivateRoute roles={["ceo", "admin"]}>
                   <UsersPage />
                 </PrivateRoute>
               }

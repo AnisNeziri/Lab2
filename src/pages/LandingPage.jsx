@@ -18,7 +18,9 @@ export default function LandingPage() {
 
   useEffect(() => {
     // Only redirect if user is fully loaded and logged in
-    if (user && user.email) navigate("/dashboard", { replace: true });
+    if (user && user.email) {
+      navigate(user.role === "ceo" ? "/dashboard" : "/products", { replace: true });
+    }
     setLoaded(true);
   }, [user, navigate]);
 

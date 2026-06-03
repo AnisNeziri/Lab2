@@ -45,7 +45,7 @@ export const AuthProvider = ({ children }) => {
     const userRes = await api.get("/me");
     setUser(userRes.data);
 
-    navigate("/dashboard");
+    navigate(userRes.data?.role === "ceo" ? "/dashboard" : "/products");
     return true;
   };
 
