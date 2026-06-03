@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react'
 import { getCategories } from '../api/categories'
-import { createProduct, deleteProduct, exportProducts, getProducts, updateProduct } from '../api/products'
+import {
+  createProduct,
+  deleteProduct,
+  exportProducts,
+  getProducts,
+  updateProduct,
+} from '../api/products'
+import ProductDetail from '../components/ProductDetail'
 
 const emptyForm = {
   category_id: '',
@@ -14,6 +21,7 @@ const emptyForm = {
 
 function Products() {
   const [products, setProducts] = useState([])
+  const [pagination, setPagination] = useState(null)
   const [categories, setCategories] = useState([])
   const [form, setForm] = useState(emptyForm)
   const [search, setSearch] = useState('')
@@ -21,7 +29,9 @@ function Products() {
   const [lowStockOnly, setLowStockOnly] = useState(false)
   const [sortBy, setSortBy] = useState('name')
   const [sortDirection, setSortDirection] = useState('asc')
+  const [page, setPage] = useState(1)
   const [editingId, setEditingId] = useState(null)
+  const [viewProductId, setViewProductId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
@@ -35,8 +45,14 @@ function Products() {
     try {
       setLoading(true)
       setError('')
-      const productsData = await getProducts(filters)
-      setProducts(productsData)
+      const response = await getProducts(filters)
+      setProducts(response.data)
+      setPagination({
+        current_page: response.current_page,
+        last_page: response.last_page,
+        per_page: response.per_page,
+        total: response.total,
+      })
     } catch {
       setError('Could not load products. Make sure the API is running.')
     } finally {
@@ -50,23 +66,29 @@ function Products() {
     })
   }, [])
 
-  function getActiveFilters() {
+  function getActiveFilters(targetPage = page) {
     return {
       search: search.trim(),
       category_id: categoryFilter,
       low_stock: lowStockOnly,
       sort: sortBy,
       direction: sortDirection,
+      page: targetPage,
+      per_page: 10,
     }
   }
 
   useEffect(() => {
+    setPage(1)
+  }, [search, categoryFilter, lowStockOnly, sortBy, sortDirection])
+
+  useEffect(() => {
     const timer = setTimeout(() => {
-      loadProducts(getActiveFilters())
+      loadProducts(getActiveFilters(page))
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [search, categoryFilter, lowStockOnly, sortBy, sortDirection])
+  }, [search, categoryFilter, lowStockOnly, sortBy, sortDirection, page])
 
   function handleChange(event) {
     const { name, value } = event.target
@@ -102,6 +124,7 @@ function Products() {
     setLowStockOnly(false)
     setSortBy('name')
     setSortDirection('asc')
+    setPage(1)
   }
 
   async function handleExport() {
@@ -145,11 +168,20 @@ function Products() {
     }
   }
 
-  async function handleDelete(id) {
+  async function handleDelete(product) {
+    const confirmed = window.confirm(`Delete "${product.name}"? This cannot be undone.`)
+
+    if (!confirmed) {
+      return
+    }
+
     try {
-      await deleteProduct(id)
-      if (editingId === id) {
+      await deleteProduct(product.id)
+      if (editingId === product.id) {
         cancelEdit()
+      }
+      if (viewProductId === product.id) {
+        setViewProductId(null)
       }
       await loadProducts(getActiveFilters())
     } catch {
@@ -166,6 +198,10 @@ function Products() {
 
   return (
     <main className="products-page">
+      {viewProductId && (
+        <ProductDetail productId={viewProductId} onClose={() => setViewProductId(null)} />
+      )}
+
       <section className="card">
         <h2>{editingId ? 'Edit product' : 'Add product'}</h2>
         <form className="product-form" onSubmit={handleSubmit}>
@@ -257,7 +293,12 @@ function Products() {
         <div className="section-header">
           <h2>Product list</h2>
           <div className="section-header-actions">
-            {!loading && <p className="result-count">{products.length} product(s)</p>}
+            {!loading && pagination && (
+              <p className="result-count">
+                {pagination.total} product(s) — page {pagination.current_page} of{' '}
+                {pagination.last_page}
+              </p>
+            )}
             <button type="button" className="secondary" onClick={handleExport}>
               Export CSV
             </button>
@@ -340,45 +381,78 @@ function Products() {
         )}
 
         {!loading && products.length > 0 && (
-          <table className="product-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Category</th>
-                <th>SKU</th>
-                <th>Qty</th>
-                <th>Min</th>
-                <th>Price</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.map((product) => (
-                <tr key={product.id} className={editingId === product.id ? 'editing' : ''}>
-                  <td>{product.name}</td>
-                  <td>{product.category?.name ?? '—'}</td>
-                  <td>{product.sku}</td>
-                  <td className={product.quantity <= product.min_quantity ? 'low-stock' : ''}>
-                    {product.quantity}
-                  </td>
-                  <td>{product.min_quantity}</td>
-                  <td>${Number(product.price).toFixed(2)}</td>
-                  <td className="actions">
-                    <button type="button" className="secondary" onClick={() => startEdit(product)}>
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="danger"
-                      onClick={() => handleDelete(product.id)}
-                    >
-                      Delete
-                    </button>
-                  </td>
+          <>
+            <table className="product-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Category</th>
+                  <th>SKU</th>
+                  <th>Qty</th>
+                  <th>Min</th>
+                  <th>Price</th>
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {products.map((product) => (
+                  <tr key={product.id} className={editingId === product.id ? 'editing' : ''}>
+                    <td>{product.name}</td>
+                    <td>{product.category?.name ?? '—'}</td>
+                    <td>{product.sku}</td>
+                    <td className={product.quantity <= product.min_quantity ? 'low-stock' : ''}>
+                      {product.quantity}
+                    </td>
+                    <td>{product.min_quantity}</td>
+                    <td>${Number(product.price).toFixed(2)}</td>
+                    <td className="actions">
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => setViewProductId(product.id)}
+                      >
+                        View
+                      </button>
+                      <button type="button" className="secondary" onClick={() => startEdit(product)}>
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() => handleDelete(product)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {pagination && pagination.last_page > 1 && (
+              <div className="pagination">
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={page <= 1}
+                  onClick={() => setPage((current) => current - 1)}
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {pagination.current_page} of {pagination.last_page}
+                </span>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={page >= pagination.last_page}
+                  onClick={() => setPage((current) => current + 1)}
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </>
         )}
       </section>
     </main>

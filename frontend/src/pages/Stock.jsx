@@ -21,11 +21,11 @@ function Stock() {
     try {
       setLoading(true)
       setError('')
-      const [productsData, movementsData] = await Promise.all([
-        getProducts(),
+      const [productsResponse, movementsData] = await Promise.all([
+        getProducts({ per_page: 100 }),
         getStockMovements(),
       ])
-      setProducts(productsData)
+      setProducts(productsResponse.data)
       setMovements(movementsData)
     } catch {
       setError('Could not load stock data.')

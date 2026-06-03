@@ -39,7 +39,9 @@ class ProductController extends Controller
             $query->whereColumn('quantity', '<=', 'min_quantity');
         }
 
-        return response()->json($query->get());
+        $perPage = min($request->integer('per_page', 10), 50);
+
+        return response()->json($query->paginate($perPage));
     }
 
     public function export()
@@ -94,7 +96,15 @@ class ProductController extends Controller
     {
         $product->load('category');
 
-        return response()->json($product);
+        $movements = $product->stockMovements()
+            ->latest()
+            ->limit(20)
+            ->get();
+
+        return response()->json([
+            'product' => $product,
+            'movements' => $movements,
+        ]);
     }
 
     public function update(Request $request, Product $product): JsonResponse

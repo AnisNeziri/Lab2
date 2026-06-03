@@ -12,12 +12,19 @@ use Illuminate\Validation\ValidationException;
 
 class StockMovementController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $movements = StockMovement::with('product.category')
-            ->latest()
-            ->limit(50)
-            ->get();
+        $validated = $request->validate([
+            'product_id' => ['nullable', 'integer', 'exists:products,id'],
+        ]);
+
+        $query = StockMovement::with('product.category')->latest();
+
+        if (! empty($validated['product_id'])) {
+            $query->where('product_id', $validated['product_id']);
+        }
+
+        $movements = $query->limit(50)->get();
 
         return response()->json($movements);
     }

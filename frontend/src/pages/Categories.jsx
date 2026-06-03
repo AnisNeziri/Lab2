@@ -68,12 +68,20 @@ function Categories() {
     }
   }
 
-  async function handleDelete(id) {
+  async function handleDelete(category) {
     setFormError('')
 
+    const confirmed = window.confirm(
+      `Delete "${category.name}"? Categories with products cannot be removed.`
+    )
+
+    if (!confirmed) {
+      return
+    }
+
     try {
-      await deleteCategory(id)
-      if (editingId === id) {
+      await deleteCategory(category.id)
+      if (editingId === category.id) {
         cancelEdit()
       }
       await loadCategories()
@@ -148,7 +156,7 @@ function Categories() {
                     <button
                       type="button"
                       className="danger"
-                      onClick={() => handleDelete(category.id)}
+                      onClick={() => handleDelete(category)}
                       disabled={category.products_count > 0}
                       title={
                         category.products_count > 0

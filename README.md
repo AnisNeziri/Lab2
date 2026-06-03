@@ -39,6 +39,7 @@ Update `.env` with your MySQL credentials, then:
 
 ```bash
 php artisan migrate
+php artisan db:seed
 php artisan serve
 ```
 
@@ -53,6 +54,15 @@ npm run dev
 ```
 
 UI runs at `http://localhost:5173`.
+
+## Features
+
+- Product and category management
+- Stock in/out with movement history
+- Dashboard with low stock alerts
+- Reports by category and top products by value
+- Product search, filters, sorting, and pagination
+- CSV export
 
 ## Team
 

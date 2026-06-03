@@ -23,12 +23,30 @@ export async function getProducts(filters = {}) {
     params.set('direction', filters.direction)
   }
 
+  if (filters.page) {
+    params.set('page', filters.page)
+  }
+
+  if (filters.per_page) {
+    params.set('per_page', filters.per_page)
+  }
+
   const query = params.toString()
   const url = query ? `${API_BASE}/products?${query}` : `${API_BASE}/products`
   const response = await fetch(url)
 
   if (!response.ok) {
     throw new Error('Failed to load products')
+  }
+
+  return response.json()
+}
+
+export async function getProductDetail(id) {
+  const response = await fetch(`${API_BASE}/products/${id}`)
+
+  if (!response.ok) {
+    throw new Error('Failed to load product')
   }
 
   return response.json()
