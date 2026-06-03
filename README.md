@@ -1,12 +1,19 @@
 # Inventory System
 
-Web application for managing inventory, built with Laravel (API), React (frontend), and MySQL.
+Inventory System is a full-stack web application for managing products, categories, stock adjustments, low-stock alerts, and inventory reporting.
 
-## Project structure
+## Tech Stack
 
-```
-backend/    Laravel REST API
-frontend/   React + Vite UI
+- Backend: Laravel 12 REST API
+- Frontend: React 19 with Vite
+- Database: MySQL
+- Testing: PHPUnit feature tests
+
+## Project Structure
+
+```text
+backend/    Laravel API, migrations, seeders, tests
+frontend/   React + Vite user interface
 ```
 
 ## Requirements
@@ -14,38 +21,30 @@ frontend/   React + Vite UI
 - PHP 8.2+
 - Composer
 - Node.js 18+
-- MySQL 8+ (XAMPP or standalone)
+- MySQL 8+ or XAMPP with MySQL enabled
 
 ## Setup
 
-### 1. Database
-
-Create a MySQL database:
+Create the database first:
 
 ```sql
 CREATE DATABASE inventory_system;
 ```
 
-### 2. Backend
+Install and start the backend:
 
 ```bash
 cd backend
-cp .env.example .env   # Windows: copy .env.example .env
+copy .env.example .env
 composer install
 php artisan key:generate
-```
-
-Update `.env` with your MySQL credentials, then:
-
-```bash
-php artisan migrate
-php artisan db:seed
+php artisan migrate --seed
 php artisan serve
 ```
 
-API runs at `http://localhost:8000`.
+The API runs on `http://localhost:8000`.
 
-### 3. Frontend
+Install and start the frontend in a second terminal:
 
 ```bash
 cd frontend
@@ -53,17 +52,38 @@ npm install
 npm run dev
 ```
 
-UI runs at `http://localhost:5173`.
+The UI runs on `http://localhost:5173`.
+
+## Environment
+
+For a default XAMPP setup, keep these database values in `backend/.env`:
+
+```env
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=inventory_system
+DB_USERNAME=root
+DB_PASSWORD=
+```
 
 ## Features
 
-- Product and category management
-- Stock in/out with movement history
-- Dashboard with low stock alerts
-- Reports by category and top products by value
-- Product search, filters, sorting, and pagination
-- CSV export
+- Product CRUD with category assignment
+- Category CRUD with delete protection when products exist
+- Stock in/out movements with quantity validation
+- Dashboard totals and low-stock alerts
+- Category and stock value reports
+- Product search, filtering, sorting, pagination, and CSV export
 
-## Team
+## Useful Commands
 
-Collaborative university project.
+```bash
+# Backend tests
+cd backend
+php artisan test
+
+# Frontend production build
+cd frontend
+npm run build
+```
