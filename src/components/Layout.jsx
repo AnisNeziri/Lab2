@@ -31,12 +31,17 @@ const Layout = ({ children }) => {
                 )}
                 <Button color="inherit" onClick={() => navigate("/products")}>Products</Button>
                 <Button color="inherit" onClick={() => navigate("/suppliers")}>Suppliers</Button>
+                <Button color="inherit" onClick={() => navigate("/purchases")}>Purchases</Button>
+                <Button color="inherit" onClick={() => navigate("/sales")}>Sales</Button>
                 <Button color="inherit" onClick={() => navigate("/transactions")}>Transactions</Button>
                 <Button color="inherit" onClick={() => navigate("/inventory")}>Inventory</Button>
                 <Button color="inherit" onClick={() => navigate("/reports")}>Reports</Button>
                 <Button color="inherit" onClick={() => navigate("/invoices")}>Invoices</Button>
                 {(user.role === "ceo" || user.role === "admin") && (
-                  <Button color="inherit" onClick={() => navigate("/users")}>Staff</Button>
+                  <>
+                    <Button color="inherit" onClick={() => navigate("/automations")}>Automations</Button>
+                    <Button color="inherit" onClick={() => navigate("/users")}>Staff</Button>
+                  </>
                 )}
                 <Typography>{user.name}</Typography>
                 <Button variant="outlined" onClick={logout}>

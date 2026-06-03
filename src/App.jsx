@@ -15,6 +15,9 @@ import InventoryPage from "./pages/InventoryPage";
 import ReportsPage from "./pages/ReportsPage";
 import UsersPage from "./pages/UsersPage";
 import InvoicesPage from "./pages/InvoicesPage";
+import PurchaseOrdersPage from "./pages/PurchaseOrdersPage";
+import SalesPage from "./pages/SalesPage";
+import AutomationsPage from "./pages/AutomationsPage";
 
 function App() {
   return (
@@ -51,6 +54,22 @@ function App() {
               }
             />
             <Route
+              path="/purchases"
+              element={
+                <PrivateRoute>
+                  <PurchaseOrdersPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/sales"
+              element={
+                <PrivateRoute>
+                  <SalesPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
               path="/transactions"
               element={
                 <PrivateRoute>
@@ -79,6 +98,14 @@ function App() {
               element={
                 <PrivateRoute>
                   <InvoicesPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/automations"
+              element={
+                <PrivateRoute roles={["ceo", "admin"]}>
+                  <AutomationsPage />
                 </PrivateRoute>
               }
             />
