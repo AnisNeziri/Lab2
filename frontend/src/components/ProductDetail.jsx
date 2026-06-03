@@ -44,7 +44,7 @@ function ProductDetail({ productId, onClose }) {
               <dt>SKU</dt>
               <dd>{data.product.sku}</dd>
               <dt>Category</dt>
-              <dd>{data.product.category?.name ?? '—'}</dd>
+              <dd>{data.product.category?.name ?? '-'}</dd>
               <dt>Quantity</dt>
               <dd
                 className={
@@ -62,7 +62,7 @@ function ProductDetail({ productId, onClose }) {
                 ${(data.product.quantity * Number(data.product.price)).toFixed(2)}
               </dd>
               <dt>Description</dt>
-              <dd>{data.product.description || '—'}</dd>
+              <dd>{data.product.description || '-'}</dd>
             </dl>
 
             <h3>Stock history</h3>
@@ -92,7 +92,7 @@ function ProductDetail({ productId, onClose }) {
                       <td>{movement.quantity}</td>
                       <td>{movement.quantity_before}</td>
                       <td>{movement.quantity_after}</td>
-                      <td>{movement.reason ?? '—'}</td>
+                      <td>{movement.reason ?? '-'}</td>
                     </tr>
                   ))}
                 </tbody>

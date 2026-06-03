@@ -1,61 +1,37 @@
-const API_BASE = '/api'
+import { apiRequest, buildApiUrl } from './client'
 
 export async function getCategories() {
-  const response = await fetch(`${API_BASE}/categories`)
-
-  if (!response.ok) {
-    throw new Error('Failed to load categories')
-  }
-
-  return response.json()
+  return apiRequest(buildApiUrl('/categories'), {}, 'Failed to load categories')
 }
 
 export async function createCategory(name) {
-  const response = await fetch(`${API_BASE}/categories`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
+  return apiRequest(
+    buildApiUrl('/categories'),
+    {
+      method: 'POST',
+      body: JSON.stringify({ name }),
     },
-    body: JSON.stringify({ name }),
-  })
-
-  if (!response.ok) {
-    const error = await response.json()
-    throw error
-  }
-
-  return response.json()
+    'Failed to save category'
+  )
 }
 
 export async function updateCategory(id, name) {
-  const response = await fetch(`${API_BASE}/categories/${id}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
+  return apiRequest(
+    buildApiUrl(`/categories/${id}`),
+    {
+      method: 'PUT',
+      body: JSON.stringify({ name }),
     },
-    body: JSON.stringify({ name }),
-  })
-
-  if (!response.ok) {
-    const error = await response.json()
-    throw error
-  }
-
-  return response.json()
+    'Failed to update category'
+  )
 }
 
 export async function deleteCategory(id) {
-  const response = await fetch(`${API_BASE}/categories/${id}`, {
-    method: 'DELETE',
-    headers: {
-      Accept: 'application/json',
+  await apiRequest(
+    buildApiUrl(`/categories/${id}`),
+    {
+      method: 'DELETE',
     },
-  })
-
-  if (!response.ok) {
-    const error = await response.json()
-    throw error
-  }
+    'Failed to delete category'
+  )
 }

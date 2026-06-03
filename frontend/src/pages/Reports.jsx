@@ -93,7 +93,7 @@ function Reports() {
                 <tr key={product.id}>
                   <td>{product.name}</td>
                   <td>{product.sku}</td>
-                  <td>{product.category ?? '—'}</td>
+                  <td>{product.category ?? '-'}</td>
                   <td>{product.quantity}</td>
                   <td>${Number(product.price).toFixed(2)}</td>
                   <td>${Number(product.value).toFixed(2)}</td>

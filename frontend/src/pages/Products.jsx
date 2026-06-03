@@ -295,7 +295,7 @@ function Products() {
           <div className="section-header-actions">
             {!loading && pagination && (
               <p className="result-count">
-                {pagination.total} product(s) — page {pagination.current_page} of{' '}
+                {pagination.total} product(s) - page {pagination.current_page} of{' '}
                 {pagination.last_page}
               </p>
             )}
@@ -398,7 +398,7 @@ function Products() {
                 {products.map((product) => (
                   <tr key={product.id} className={editingId === product.id ? 'editing' : ''}>
                     <td>{product.name}</td>
-                    <td>{product.category?.name ?? '—'}</td>
+                    <td>{product.category?.name ?? '-'}</td>
                     <td>{product.sku}</td>
                     <td className={product.quantity <= product.min_quantity ? 'low-stock' : ''}>
                       {product.quantity}

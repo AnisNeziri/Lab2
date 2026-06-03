@@ -87,7 +87,7 @@ function Stock() {
               <option value="">Select a product</option>
               {products.map((product) => (
                 <option key={product.id} value={product.id}>
-                  {product.name} ({product.sku}) — {product.quantity} in stock
+                  {product.name} ({product.sku}) - {product.quantity} in stock
                 </option>
               ))}
             </select>
@@ -170,7 +170,7 @@ function Stock() {
                   <td>{movement.quantity}</td>
                   <td>{movement.quantity_before}</td>
                   <td>{movement.quantity_after}</td>
-                  <td>{movement.reason ?? '—'}</td>
+                  <td>{movement.reason ?? '-'}</td>
                 </tr>
               ))}
             </tbody>

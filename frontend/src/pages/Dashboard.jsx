@@ -76,7 +76,7 @@ function Dashboard() {
               {data.low_stock_products.map((product) => (
                 <tr key={product.id}>
                   <td>{product.name}</td>
-                  <td>{product.category?.name ?? '—'}</td>
+                  <td>{product.category?.name ?? '-'}</td>
                   <td>{product.sku}</td>
                   <td className="low-stock">{product.quantity}</td>
                   <td>{product.min_quantity}</td>
@@ -107,14 +107,14 @@ function Dashboard() {
               {data.recent_movements.map((movement) => (
                 <tr key={movement.id}>
                   <td>{new Date(movement.created_at).toLocaleString()}</td>
-                  <td>{movement.product?.name ?? '—'}</td>
+                  <td>{movement.product?.name ?? '-'}</td>
                   <td>
                     <span className={`badge badge-${movement.type}`}>
                       {movement.type === 'in' ? 'Stock in' : 'Stock out'}
                     </span>
                   </td>
                   <td>{movement.quantity}</td>
-                  <td>{movement.reason ?? '—'}</td>
+                  <td>{movement.reason ?? '-'}</td>
                 </tr>
               ))}
             </tbody>

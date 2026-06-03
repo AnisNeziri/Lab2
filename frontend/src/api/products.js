@@ -1,111 +1,66 @@
-const API_BASE = '/api'
+import { apiRequest, buildApiUrl, parseApiResponse } from './client'
 
 export async function getProducts(filters = {}) {
-  const params = new URLSearchParams()
-
-  if (filters.search) {
-    params.set('search', filters.search)
-  }
-
-  if (filters.category_id) {
-    params.set('category_id', filters.category_id)
-  }
-
-  if (filters.low_stock) {
-    params.set('low_stock', '1')
-  }
-
-  if (filters.sort) {
-    params.set('sort', filters.sort)
-  }
-
-  if (filters.direction) {
-    params.set('direction', filters.direction)
-  }
-
-  if (filters.page) {
-    params.set('page', filters.page)
-  }
-
-  if (filters.per_page) {
-    params.set('per_page', filters.per_page)
-  }
-
-  const query = params.toString()
-  const url = query ? `${API_BASE}/products?${query}` : `${API_BASE}/products`
-  const response = await fetch(url)
-
-  if (!response.ok) {
-    throw new Error('Failed to load products')
-  }
-
-  return response.json()
+  return apiRequest(
+    buildApiUrl('/products', {
+      search: filters.search,
+      category_id: filters.category_id,
+      low_stock: filters.low_stock ? '1' : '',
+      sort: filters.sort,
+      direction: filters.direction,
+      page: filters.page,
+      per_page: filters.per_page,
+    }),
+    {},
+    'Failed to load products'
+  )
 }
 
 export async function getProductDetail(id) {
-  const response = await fetch(`${API_BASE}/products/${id}`)
-
-  if (!response.ok) {
-    throw new Error('Failed to load product')
-  }
-
-  return response.json()
+  return apiRequest(buildApiUrl(`/products/${id}`), {}, 'Failed to load product')
 }
 
 export async function createProduct(product) {
-  const response = await fetch(`${API_BASE}/products`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
+  return apiRequest(
+    buildApiUrl('/products'),
+    {
+      method: 'POST',
+      body: JSON.stringify(product),
     },
-    body: JSON.stringify(product),
-  })
-
-  if (!response.ok) {
-    const error = await response.json()
-    throw error
-  }
-
-  return response.json()
+    'Failed to save product'
+  )
 }
 
 export async function updateProduct(id, product) {
-  const response = await fetch(`${API_BASE}/products/${id}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
+  return apiRequest(
+    buildApiUrl(`/products/${id}`),
+    {
+      method: 'PUT',
+      body: JSON.stringify(product),
     },
-    body: JSON.stringify(product),
-  })
-
-  if (!response.ok) {
-    const error = await response.json()
-    throw error
-  }
-
-  return response.json()
+    'Failed to update product'
+  )
 }
 
 export async function deleteProduct(id) {
-  const response = await fetch(`${API_BASE}/products/${id}`, {
-    method: 'DELETE',
+  await apiRequest(
+    buildApiUrl(`/products/${id}`),
+    {
+      method: 'DELETE',
+    },
+    'Failed to delete product'
+  )
+}
+
+export async function exportProducts() {
+  const response = await fetch(buildApiUrl('/products/export'), {
     headers: {
-      Accept: 'application/json',
+      Accept: 'text/csv',
     },
   })
 
   if (!response.ok) {
-    throw new Error('Failed to delete product')
-  }
-}
-
-export async function exportProducts() {
-  const response = await fetch(`${API_BASE}/products/export`)
-
-  if (!response.ok) {
-    throw new Error('Failed to export products')
+    await parseApiResponse(response, 'Failed to export products')
   }
 
   const blob = await response.blob()

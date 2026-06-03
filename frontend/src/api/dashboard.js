@@ -1,11 +1,5 @@
-const API_BASE = '/api'
+import { apiRequest, buildApiUrl } from './client'
 
 export async function getDashboard() {
-  const response = await fetch(`${API_BASE}/dashboard`)
-
-  if (!response.ok) {
-    throw new Error('Failed to load dashboard')
-  }
-
-  return response.json()
+  return apiRequest(buildApiUrl('/dashboard'), {}, 'Failed to load dashboard')
 }

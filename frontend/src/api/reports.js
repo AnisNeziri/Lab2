@@ -1,11 +1,5 @@
-const API_BASE = '/api'
+import { apiRequest, buildApiUrl } from './client'
 
 export async function getReports() {
-  const response = await fetch(`${API_BASE}/reports`)
-
-  if (!response.ok) {
-    throw new Error('Failed to load reports')
-  }
-
-  return response.json()
+  return apiRequest(buildApiUrl('/reports'), {}, 'Failed to load reports')
 }

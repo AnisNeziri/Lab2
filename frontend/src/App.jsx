@@ -12,8 +12,11 @@ function App() {
   return (
     <div className="app">
       <header>
-        <h1>Inventory System</h1>
-        <p>Stock and product management</p>
+        <div>
+          <p className="eyebrow">Operations dashboard</p>
+          <h1>Inventory System</h1>
+          <p>Manage products, categories, stock movements, and reporting in one workspace.</p>
+        </div>
 
         <nav className="main-nav">
           <button

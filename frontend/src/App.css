@@ -1,36 +1,51 @@
 .app {
   min-height: 100vh;
-  padding: 2rem 1rem 3rem;
+  padding: 1.5rem 1rem 3rem;
 }
 
 header {
-  text-align: center;
-  margin-bottom: 2rem;
+  max-width: 1180px;
+  margin: 0 auto 1.5rem;
+  padding: 1.5rem;
+  background: #ffffff;
+  border: 1px solid #dce3ea;
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgba(21, 34, 50, 0.06);
 }
 
 header h1 {
-  font-size: 2rem;
-  margin-bottom: 0.5rem;
+  font-size: 2.1rem;
+  font-weight: 700;
+  margin-bottom: 0.35rem;
 }
 
 header p {
-  color: #666;
+  color: #5c6b7a;
+}
+
+.eyebrow {
+  margin-bottom: 0.35rem;
+  color: #0f766e;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .main-nav {
   display: flex;
-  justify-content: center;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 1.25rem;
+  gap: 0.5rem;
+  margin-top: 1.35rem;
 }
 
 .main-nav button.active {
-  background: #1d4ed8;
+  background: #14532d;
+  box-shadow: 0 8px 18px rgba(20, 83, 45, 0.18);
 }
 
 .page-message {
-  max-width: 960px;
+  max-width: 1180px;
   margin: 0 auto;
   text-align: center;
 }
@@ -40,26 +55,35 @@ header p {
 .categories-page,
 .stock-page,
 .reports-page {
-  max-width: 960px;
+  max-width: 1180px;
   margin: 0 auto;
   display: grid;
   gap: 1.5rem;
+}
+
+.stats-grid,
+.stats-grid-3 {
+  display: grid;
+  gap: 1rem;
+}
+
+.stats-grid {
+  grid-template-columns: repeat(4, 1fr);
 }
 
 .stats-grid-3 {
   grid-template-columns: repeat(3, 1fr);
 }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
+.stat-card,
+.card {
+  background: #fff;
+  border: 1px solid #dce3ea;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(21, 34, 50, 0.05);
 }
 
 .stat-card {
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 8px;
   padding: 1.25rem;
 }
 
@@ -70,13 +94,13 @@ header p {
 
 .stat-label {
   font-size: 0.85rem;
-  color: #666;
+  color: #5c6b7a;
   margin-bottom: 0.35rem;
 }
 
 .stat-value {
   font-size: 1.75rem;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .stat-note {
@@ -86,14 +110,11 @@ header p {
 }
 
 .low-stock {
-  color: #dc2626;
-  font-weight: 600;
+  color: #b91c1c;
+  font-weight: 700;
 }
 
 .card {
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 8px;
   padding: 1.5rem;
 }
 
@@ -103,46 +124,9 @@ header p {
 }
 
 .card-description {
-  color: #666;
+  color: #5c6b7a;
   font-size: 0.9rem;
   margin-bottom: 1rem;
-}
-
-.stock-form {
-  display: grid;
-  gap: 1rem;
-}
-
-.stock-form label {
-  display: grid;
-  gap: 0.35rem;
-  font-size: 0.9rem;
-}
-
-.stock-form input,
-.stock-form select {
-  padding: 0.6rem 0.75rem;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  font: inherit;
-}
-
-.badge {
-  display: inline-block;
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
-.badge-in {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.badge-out {
-  background: #fee2e2;
-  color: #991b1b;
 }
 
 .section-header {
@@ -160,30 +144,68 @@ header p {
 }
 
 .result-count {
-  color: #666;
+  color: #5c6b7a;
   font-size: 0.9rem;
 }
 
 .filters {
   display: grid;
-  grid-template-columns: 1fr 180px auto 140px 140px auto;
+  grid-template-columns: minmax(220px, 1fr) 180px auto 150px 150px auto;
   gap: 1rem;
   align-items: end;
   margin-bottom: 1.25rem;
+  padding: 1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
 }
 
+.product-form,
+.stock-form,
+.category-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.category-form {
+  max-width: 420px;
+}
+
+.product-form label,
+.stock-form label,
+.category-form label,
 .filters label {
   display: grid;
   gap: 0.35rem;
   font-size: 0.9rem;
 }
 
+.product-form input,
+.product-form textarea,
+.product-form select,
+.stock-form input,
+.stock-form select,
+.category-form input,
 .filters input,
 .filters select {
+  width: 100%;
   padding: 0.6rem 0.75rem;
-  border: 1px solid #ccc;
+  border: 1px solid #c8d2dc;
   border-radius: 6px;
   font: inherit;
+  background: #fff;
+}
+
+.product-form input:focus,
+.product-form textarea:focus,
+.product-form select:focus,
+.stock-form input:focus,
+.stock-form select:focus,
+.category-form input:focus,
+.filters input:focus,
+.filters select:focus {
+  border-color: #0f766e;
+  outline: 3px solid rgba(15, 118, 110, 0.14);
 }
 
 .filter-checkbox {
@@ -198,28 +220,36 @@ header p {
   width: auto;
 }
 
-.product-form {
+.form-row {
   display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 1rem;
 }
 
-.category-form {
-  display: grid;
-  gap: 1rem;
-  max-width: 420px;
+.form-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
-.category-form label {
-  display: grid;
-  gap: 0.35rem;
-  font-size: 0.9rem;
-}
-
-.category-form input {
-  padding: 0.6rem 0.75rem;
-  border: 1px solid #ccc;
+button {
+  padding: 0.65rem 1rem;
+  border: none;
   border-radius: 6px;
+  background: #0f766e;
+  color: #fff;
   font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.18);
 }
 
 button:disabled {
@@ -227,49 +257,58 @@ button:disabled {
   cursor: not-allowed;
 }
 
-.product-form label {
-  display: grid;
-  gap: 0.35rem;
-  font-size: 0.9rem;
-}
-
-.product-form input,
-.product-form textarea,
-.product-form select {
-  padding: 0.6rem 0.75rem;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  font: inherit;
-}
-
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-}
-
-button {
-  padding: 0.65rem 1rem;
-  border: none;
-  border-radius: 6px;
-  background: #2563eb;
-  color: #fff;
-  font: inherit;
-  cursor: pointer;
-}
-
 button.secondary {
-  background: #e5e7eb;
-  color: #1a1a1a;
+  background: #e8eef3;
+  color: #172033;
 }
 
 button.danger {
-  background: #dc2626;
+  background: #b91c1c;
 }
 
-.form-actions {
-  display: flex;
-  gap: 0.75rem;
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.badge-in {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badge-out {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.product-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.product-table th,
+.product-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e8edf2;
+  text-align: left;
+  vertical-align: top;
+}
+
+.product-table th {
+  color: #5c6b7a;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: #f8fafc;
+}
+
+.product-table tr:hover td {
+  background: #fbfdff;
 }
 
 .product-table tr.editing {
@@ -279,28 +318,17 @@ button.danger {
 .product-table .actions {
   display: flex;
   gap: 0.5rem;
-}
-
-.product-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.product-table th,
-.product-table td {
-  padding: 0.75rem;
-  border-bottom: 1px solid #eee;
-  text-align: left;
+  flex-wrap: wrap;
 }
 
 .error {
-  color: #dc2626;
+  color: #b91c1c;
 }
 
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(15, 23, 42, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -342,8 +370,8 @@ button.danger {
 }
 
 .detail-list dt {
-  font-weight: 600;
-  color: #666;
+  font-weight: 700;
+  color: #5c6b7a;
 }
 
 .detail-list dd {
@@ -358,30 +386,47 @@ button.danger {
   margin-top: 1.25rem;
 }
 
-.pagination button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-@media (max-width: 640px) {
-  .form-row {
-    grid-template-columns: 1fr;
-  }
-
-  .stats-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-
+@media (max-width: 860px) {
+  .stats-grid,
   .stats-grid-3 {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
   }
 
   .filters {
     grid-template-columns: 1fr;
   }
 
+  .product-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .app {
+    padding: 1rem 0.75rem 2rem;
+  }
+
+  header {
+    padding: 1rem;
+  }
+
+  header h1 {
+    font-size: 1.7rem;
+  }
+
+  .form-row,
+  .stats-grid,
+  .stats-grid-3,
   .detail-list {
     grid-template-columns: 1fr;
+  }
+
+  .section-header,
+  .section-header-actions {
+    display: grid;
+    align-items: start;
   }
 
   .product-table .actions {

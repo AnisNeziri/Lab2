@@ -1,29 +1,16 @@
-const API_BASE = '/api'
+import { apiRequest, buildApiUrl } from './client'
 
 export async function getStockMovements() {
-  const response = await fetch(`${API_BASE}/stock-movements`)
-
-  if (!response.ok) {
-    throw new Error('Failed to load stock movements')
-  }
-
-  return response.json()
+  return apiRequest(buildApiUrl('/stock-movements'), {}, 'Failed to load stock movements')
 }
 
 export async function createStockMovement(movement) {
-  const response = await fetch(`${API_BASE}/stock-movements`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
+  return apiRequest(
+    buildApiUrl('/stock-movements'),
+    {
+      method: 'POST',
+      body: JSON.stringify(movement),
     },
-    body: JSON.stringify(movement),
-  })
-
-  if (!response.ok) {
-    const error = await response.json()
-    throw error
-  }
-
-  return response.json()
+    'Failed to record stock movement'
+  )
 }
