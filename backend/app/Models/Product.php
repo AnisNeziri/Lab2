@@ -44,4 +44,21 @@ class Product extends Model
     {
         return $this->hasMany(StockMovement::class);
     }
+
+    public function getStockStatusAttribute(): string
+    {
+        if ($this->quantity <= $this->min_quantity) {
+            return 'low';
+        }
+
+        $highThreshold = max($this->min_quantity * 2, $this->min_quantity + 1);
+
+        if ($this->quantity >= $highThreshold) {
+            return 'high';
+        }
+
+        return 'normal';
+    }
+
+    protected $appends = ['stock_status'];
 }
