@@ -20,6 +20,7 @@ class Product extends Model
         'barcode',
         'description',
         'quantity',
+        'unit',
         'min_quantity',
         'price',
         'purchase_price',

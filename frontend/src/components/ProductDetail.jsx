@@ -65,7 +65,7 @@ function ProductDetail({ productId, onClose }) {
                   data.product.quantity <= data.product.min_quantity ? 'low-stock' : ''
                 }
               >
-                {data.product.quantity}
+                {data.product.quantity} {data.product.unit ?? 'pcs'}
               </dd>
               <dt>Min quantity</dt>
               <dd>{data.product.min_quantity}</dd>

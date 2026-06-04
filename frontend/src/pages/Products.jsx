@@ -21,6 +21,7 @@ const emptyForm = {
   barcode: '',
   description: '',
   quantity: 0,
+  unit: 'pcs',
   min_quantity: 5,
   price: '',
   purchase_price: '',
@@ -126,6 +127,7 @@ function Products({ userRole = 'staff' }) {
       barcode: product.barcode ?? '',
       description: product.description ?? '',
       quantity: product.quantity,
+      unit: product.unit ?? 'pcs',
       min_quantity: product.min_quantity ?? 5,
       price: product.price,
       purchase_price: product.purchase_price ?? '',
@@ -177,6 +179,7 @@ function Products({ userRole = 'staff' }) {
       barcode: form.barcode || null,
       description: form.description || null,
       quantity: Number(form.quantity),
+      unit: form.unit || 'pcs',
       min_quantity: Number(form.min_quantity),
       price: Number(form.price),
       purchase_price: form.purchase_price ? Number(form.purchase_price) : null,
@@ -324,6 +327,17 @@ function Products({ userRole = 'staff' }) {
                 min="0"
                 value={form.min_quantity}
                 onChange={handleChange}
+                required
+              />
+            </label>
+
+            <label>
+              Unit
+              <input
+                name="unit"
+                value={form.unit}
+                onChange={handleChange}
+                placeholder="e.g. pcs, pack, kg"
                 required
               />
             </label>
@@ -499,6 +513,7 @@ function Products({ userRole = 'staff' }) {
                   <th>Supplier</th>
                   <th>SKU</th>
                   <th>Qty</th>
+                  <th>Unit</th>
                   <th>Min</th>
                   <th>Price</th>
                   <th></th>
@@ -514,6 +529,7 @@ function Products({ userRole = 'staff' }) {
                     <td>
                       <StockBadge quantity={product.quantity} minQuantity={product.min_quantity} />
                     </td>
+                    <td>{product.unit ?? 'pcs'}</td>
                     <td>{product.min_quantity}</td>
                     <td>${Number(product.price).toFixed(2)}</td>
                     <td className="actions">
