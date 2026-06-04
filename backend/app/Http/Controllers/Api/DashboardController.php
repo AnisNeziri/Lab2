@@ -22,6 +22,11 @@ class DashboardController extends Controller
             ->sortBy('quantity')
             ->values();
 
+        $outOfStockProducts = $products
+            ->filter(fn (Product $product) => $product->quantity === 0)
+            ->sortBy('name')
+            ->values();
+
         $recentMovements = StockMovement::with('product')
             ->latest()
             ->limit(5)
@@ -34,6 +39,8 @@ class DashboardController extends Controller
             'total_value' => round($totalValue, 2),
             'low_stock_count' => $lowStockProducts->count(),
             'low_stock_products' => $lowStockProducts,
+            'out_of_stock_count' => $outOfStockProducts->count(),
+            'out_of_stock_products' => $outOfStockProducts,
             'recent_movements' => $recentMovements,
         ]);
     }

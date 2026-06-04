@@ -93,6 +93,15 @@ header p {
   background: #fffbeb;
 }
 
+.stat-card.danger {
+  border-color: #f87171;
+  background: #fef2f2;
+}
+
+.stat-note.danger-note {
+  color: #991b1b;
+}
+
 .stat-label {
   font-size: 0.85rem;
   color: #5c6b7a;
