@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Categories from './pages/Categories'
 import Dashboard from './pages/Dashboard'
 import Products from './pages/Products'
@@ -12,9 +12,22 @@ import './App.css'
 
 function App() {
   const [page, setPage] = useState('dashboard')
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+
+  useEffect(() => {
+    const token = localStorage.getItem('api_token')
+    setIsAuthenticated(!!token)
+    if (!token) {
+      setPage('login')
+    }
+  }, [])
 
   if (page === 'login') {
     return <Login onLoginSuccess={() => setPage('dashboard')} />
+  }
+
+  if (!isAuthenticated) {
+    return null
   }
 
   return (
