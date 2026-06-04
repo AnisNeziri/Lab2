@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import Categories from './pages/Categories'
 import Dashboard from './pages/Dashboard'
 import Products from './pages/Products'
+import Suppliers from './pages/Suppliers'
 import Reports from './pages/Reports'
 import Stock from './pages/Stock'
 import Invoices from './pages/Invoices'
@@ -48,6 +49,7 @@ function App() {
         {page === 'products' && <Products userRole={userRole} />}
         {page === 'stock' && <Stock />}
         {page === 'categories' && <Categories userRole={userRole} />}
+        {page === 'suppliers' && <Suppliers userRole={userRole} />}
         {page === 'dashboard' && <Dashboard />}
         {page === 'reports' && <Reports />}
         {page === 'invoices' && <Invoices />}

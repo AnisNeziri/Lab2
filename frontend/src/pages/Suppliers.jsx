@@ -13,7 +13,7 @@ const emptyForm = {
   address: '',
 }
 
-function Suppliers() {
+function Suppliers({ userRole = 'staff' }) {
   const [suppliers, setSuppliers] = useState([])
   const [form, setForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState(null)
@@ -194,14 +194,21 @@ function Suppliers() {
                     <button type="button" className="secondary" onClick={() => startEdit(supplier)}>
                       Edit
                     </button>
-                    <button
-                      type="button"
-                      className="danger"
-                      onClick={() => handleDelete(supplier)}
-                      disabled={(supplier.products_count ?? 0) > 0}
-                    >
-                      Delete
-                    </button>
+                    {(userRole === 'admin' || userRole === 'manager') && (
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() => handleDelete(supplier)}
+                        disabled={(supplier.products_count ?? 0) > 0}
+                        title={
+                          (supplier.products_count ?? 0) > 0
+                            ? 'Remove or reassign products before deleting'
+                            : ''
+                        }
+                      >
+                        Delete
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
