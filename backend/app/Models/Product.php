@@ -17,6 +17,7 @@ class Product extends Model
         'supplier_id',
         'name',
         'sku',
+        'barcode',
         'description',
         'quantity',
         'min_quantity',

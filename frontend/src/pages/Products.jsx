@@ -10,12 +10,15 @@ import {
 } from '../api/products'
 import ProductDetail from '../components/ProductDetail'
 import StockBadge from '../components/StockBadge'
+import BarcodeScanner from '../components/BarcodeScanner'
+import { Scan } from 'lucide-react'
 
 const emptyForm = {
   category_id: '',
   supplier_id: '',
   name: '',
   sku: '',
+  barcode: '',
   description: '',
   quantity: 0,
   min_quantity: 5,
@@ -42,6 +45,7 @@ function Products() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
+  const [showScanner, setShowScanner] = useState(false)
 
   async function loadCategories() {
     const categoriesData = await getCategories()
@@ -119,6 +123,7 @@ function Products() {
       supplier_id: product.supplier_id ?? '',
       name: product.name,
       sku: product.sku,
+      barcode: product.barcode ?? '',
       description: product.description ?? '',
       quantity: product.quantity,
       min_quantity: product.min_quantity ?? 5,
@@ -144,6 +149,14 @@ function Products() {
     setPage(1)
   }
 
+  function handleScanSuccess(scannedBarcode) {
+    setForm((current) => ({
+      ...current,
+      barcode: scannedBarcode,
+    }))
+    setShowScanner(false)
+  }
+
   async function handleExport() {
     try {
       await exportProducts()
@@ -161,6 +174,7 @@ function Products() {
       supplier_id: form.supplier_id ? Number(form.supplier_id) : null,
       name: form.name,
       sku: form.sku,
+      barcode: form.barcode || null,
       description: form.description || null,
       quantity: Number(form.quantity),
       min_quantity: Number(form.min_quantity),
@@ -258,6 +272,25 @@ function Products() {
           <label>
             SKU
             <input name="sku" value={form.sku} onChange={handleChange} required />
+          </label>
+
+          <label>
+            Barcode
+            <div className="input-with-button">
+              <input
+                name="barcode"
+                value={form.barcode}
+                onChange={handleChange}
+                placeholder="Scan or enter barcode"
+              />
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setShowScanner(true)}
+              >
+                <Scan size={16} />
+              </button>
+            </div>
           </label>
 
           <label>
@@ -533,6 +566,13 @@ function Products() {
           </>
         )}
       </section>
+
+      {showScanner && (
+        <BarcodeScanner
+          onScanSuccess={handleScanSuccess}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
     </main>
   )
 }

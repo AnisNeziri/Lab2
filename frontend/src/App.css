@@ -307,6 +307,143 @@
   color: #94a3b8;
 }
 
+/* Barcode Scanner Styles */
+.barcode-scanner-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.barcode-scanner-modal {
+  background: #fff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.scanner-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.scanner-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.scanner-header .close-btn {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scanner-header .close-btn:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+.scanner-content {
+  flex: 1;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+}
+
+.scanner-container {
+  width: 100%;
+  min-height: 300px;
+}
+
+.scanner-container video {
+  border-radius: 8px;
+}
+
+.scanner-error {
+  text-align: center;
+  color: #ef4444;
+}
+
+.scanner-error p {
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+}
+
+.scan-success {
+  text-align: center;
+  color: #166534;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.scan-success svg {
+  color: #166534;
+}
+
+.scan-success p {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.scanner-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  text-align: center;
+}
+
+.scanner-footer p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.input-with-button {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.input-with-button input {
+  flex: 1;
+}
+
+.input-with-button button {
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 header {
   max-width: 1180px;
   margin: 0 auto 1.5rem;
