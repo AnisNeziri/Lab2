@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -13,6 +14,8 @@ class InventoryApiTest extends TestCase
 
     public function test_products_can_be_filtered_and_paginated(): void
     {
+        $this->actingAsApiUser();
+
         $electronics = Category::create(['name' => 'Electronics']);
         $office = Category::create(['name' => 'Office Supplies']);
 
@@ -45,6 +48,8 @@ class InventoryApiTest extends TestCase
 
     public function test_stock_out_cannot_exceed_available_quantity(): void
     {
+        $this->actingAsApiUser();
+
         $category = Category::create(['name' => 'Electronics']);
 
         $product = Product::create([
@@ -71,6 +76,8 @@ class InventoryApiTest extends TestCase
 
     public function test_dashboard_returns_inventory_summary(): void
     {
+        $this->actingAsApiUser();
+
         $category = Category::create(['name' => 'Furniture']);
 
         Product::create([
@@ -94,6 +101,8 @@ class InventoryApiTest extends TestCase
 
     public function test_supplier_cannot_be_deleted_when_products_exist(): void
     {
+        $this->actingAsApiUser('manager');
+
         $category = Category::create(['name' => 'Electronics']);
         $supplier = \App\Models\Supplier::create([
             'name' => 'TechSupply Co.',
@@ -121,6 +130,8 @@ class InventoryApiTest extends TestCase
 
     public function test_products_can_be_filtered_by_supplier(): void
     {
+        $this->actingAsApiUser();
+
         $category = Category::create(['name' => 'Office Supplies']);
         $supplierA = \App\Models\Supplier::create(['name' => 'Office Depot KS']);
         $supplierB = \App\Models\Supplier::create(['name' => 'Global Furniture']);
@@ -152,5 +163,22 @@ class InventoryApiTest extends TestCase
             ->assertJsonPath('total', 1)
             ->assertJsonPath('data.0.sku', 'OFF-010')
             ->assertJsonPath('data.0.supplier.name', 'Office Depot KS');
+    }
+
+    public function test_staff_cannot_delete_products(): void
+    {
+        $this->actingAsApiUser('staff');
+
+        $category = Category::create(['name' => 'Electronics']);
+        $product = Product::create([
+            'category_id' => $category->id,
+            'name' => 'Mouse',
+            'sku' => 'ELEC-099',
+            'quantity' => 5,
+            'min_quantity' => 2,
+            'price' => 10.00,
+        ]);
+
+        $this->deleteJson('/api/products/' . $product->id)->assertForbidden();
     }
 }
