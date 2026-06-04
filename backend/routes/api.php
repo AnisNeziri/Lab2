@@ -1,12 +1,16 @@
 <?php
 
+use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\StockMovementController;
+use App\Http\Controllers\Api\InvoiceController;
+use App\Http\Controllers\Api\ActivityLogController;
 use Illuminate\Support\Facades\Route;
 
+// Public routes
 Route::get('/status', function () {
     return response()->json([
         'status' => 'ok',
@@ -14,12 +18,27 @@ Route::get('/status', function () {
     ]);
 });
 
-Route::get('/dashboard', [DashboardController::class, 'index']);
-Route::get('/reports', [ReportController::class, 'index']);
+Route::post('/login', [AuthController::class, 'login']);
 
-Route::get('/stock-movements', [StockMovementController::class, 'index']);
-Route::post('/stock-movements', [StockMovementController::class, 'store']);
+// Protected routes
+Route::middleware('auth.token')->group(function () {
+    Route::post('/logout', [AuthController::class, 'logout']);
 
-Route::get('/products/export', [ProductController::class, 'export']);
-Route::apiResource('categories', CategoryController::class)->only(['index', 'store', 'update', 'destroy']);
-Route::apiResource('products', ProductController::class);
+    Route::get('/dashboard', [DashboardController::class, 'index']);
+    Route::get('/reports', [ReportController::class, 'index']);
+
+    Route::get('/stock-movements', [StockMovementController::class, 'index']);
+    Route::post('/stock-movements', [StockMovementController::class, 'store']);
+
+    Route::get('/products/export', [ProductController::class, 'export']);
+    Route::apiResource('categories', CategoryController::class)->only(['index', 'store', 'update', 'destroy']);
+    Route::apiResource('products', ProductController::class);
+
+    // Invoices API
+    Route::get('/invoices', [InvoiceController::class, 'index']);
+    Route::get('/invoices/{id}', [InvoiceController::class, 'show']);
+    Route::get('/invoices/{id}/pdf', [InvoiceController::class, 'downloadPdf']);
+
+    // Activity Logs API
+    Route::get('/activity-logs', [ActivityLogController::class, 'index']);
+});

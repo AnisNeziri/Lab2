@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getDashboard } from '../api/dashboard'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 
 function Dashboard() {
   const [data, setData] = useState(null)
@@ -31,6 +32,36 @@ function Dashboard() {
     return <p className="error page-message">{error}</p>
   }
 
+  // Prepare chart data
+  const stockMovementData = data.recent_movements
+    .filter(m => m.type === 'in' || m.type === 'out')
+    .reduce((acc, movement) => {
+      const date = new Date(movement.created_at).toLocaleDateString()
+      const existing = acc.find(item => item.date === date)
+      
+      if (existing) {
+        if (movement.type === 'in') {
+          existing.stockIn += movement.quantity
+        } else {
+          existing.stockOut += movement.quantity
+        }
+      } else {
+        acc.push({
+          date,
+          stockIn: movement.type === 'in' ? movement.quantity : 0,
+          stockOut: movement.type === 'out' ? movement.quantity : 0,
+        })
+      }
+      
+      return acc
+    }, [])
+    .slice(-7) // Last 7 days
+
+  // Prepare category data for pie chart
+  const categoryData = data.category_stats || []
+
+  const COLORS = ['#0f766e', '#0891b2', '#0284c7', '#0369a1', '#075985', '#0c4a6e']
+
   return (
     <main className="dashboard-page">
       <section className="stats-grid">
@@ -53,6 +84,58 @@ function Dashboard() {
           <p className="stat-label">Low stock items</p>
           <p className="stat-value">{data.low_stock_count}</p>
           <p className="stat-note">At or below each product&apos;s minimum quantity</p>
+        </article>
+      </section>
+
+      <section className="stats-grid-3">
+        <article className="card">
+          <h2>Stock Movements (Last 7 Days)</h2>
+          <ResponsiveContainer width="100%" height={250}>
+            <AreaChart data={stockMovementData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" />
+              <YAxis />
+              <Tooltip />
+              <Area type="monotone" dataKey="stockIn" stackId="1" stroke="#0f766e" fill="#0f766e" name="Stock In" />
+              <Area type="monotone" dataKey="stockOut" stackId="2" stroke="#ef4444" fill="#ef4444" name="Stock Out" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </article>
+
+        <article className="card">
+          <h2>Inventory by Category</h2>
+          <ResponsiveContainer width="100%" height={250}>
+            <PieChart>
+              <Pie
+                data={categoryData}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                outerRadius={80}
+                fill="#8884d8"
+                dataKey="value"
+              >
+                {categoryData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip />
+              <Legend />
+            </PieChart>
+          </ResponsiveContainer>
+        </article>
+
+        <article className="card">
+          <h2>Quick Stats</h2>
+          <div className="detail-list">
+            <dt>Total Categories</dt>
+            <dd>{data.total_categories || 0}</dd>
+            <dt>Avg Product Price</dt>
+            <dd>${data.total_products > 0 ? (data.total_value / data.total_products).toFixed(2) : '0.00'}</dd>
+            <dt>Stock Turnover</dt>
+            <dd>{data.stock_turnover || 'N/A'}</dd>
+          </div>
         </article>
       </section>
 

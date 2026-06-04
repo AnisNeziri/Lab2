@@ -26,6 +26,39 @@ class DashboardController extends Controller
             ->limit(5)
             ->get();
 
+        // Calculate value per category
+        $categoryValues = $products->groupBy(fn (Product $p) => $p->category->name ?? 'Uncategorized')
+            ->map(function ($group, $name) {
+                return [
+                    'name' => $name,
+                    'value' => round($group->sum(fn ($product) => $product->quantity * $product->price), 2),
+                ];
+            })->values();
+
+        // Calculate movements over time
+        $movementsOverTime = StockMovement::selectRaw("DATE(created_at) as date, type, SUM(quantity) as total_qty")
+            ->groupBy('date', 'type')
+            ->orderBy('date', 'asc')
+            ->get()
+            ->groupBy('date')
+            ->map(function ($items, $date) {
+                $in = 0;
+                $out = 0;
+                foreach ($items as $item) {
+                    if ($item->type === 'in') {
+                        $in += $item->total_qty;
+                    } elseif ($item->type === 'out') {
+                        $out += $item->total_qty;
+                    }
+                }
+                return [
+                    'date' => date('d M', strtotime($date)),
+                    'in' => (int) $in,
+                    'out' => (int) $out,
+                ];
+            })
+            ->values();
+
         return response()->json([
             'total_products' => $products->count(),
             'total_units' => $totalUnits,
@@ -33,6 +66,8 @@ class DashboardController extends Controller
             'low_stock_count' => $lowStockProducts->count(),
             'low_stock_products' => $lowStockProducts,
             'recent_movements' => $recentMovements,
+            'category_values' => $categoryValues,
+            'movements_over_time' => $movementsOverTime,
         ]);
     }
 }

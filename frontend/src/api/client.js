@@ -32,14 +32,25 @@ export async function parseApiResponse(response, fallbackMessage) {
 }
 
 export async function apiRequest(path, options = {}, fallbackMessage = 'API request failed') {
+  const token = localStorage.getItem('api_token')
+  
+  const headers = {
+    Accept: 'application/json',
+    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...options.headers,
+  }
+
   const response = await fetch(path, {
     ...options,
-    headers: {
-      Accept: 'application/json',
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...options.headers,
-    },
+    headers,
   })
+
+  if (response.status === 401) {
+    localStorage.removeItem('api_token')
+    localStorage.removeItem('user')
+    window.dispatchEvent(new Event('auth-unauthorized'))
+  }
 
   return parseApiResponse(response, fallbackMessage)
 }

@@ -14,6 +14,14 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        \App\Models\User::create([
+            'name' => 'Enterprise Admin',
+            'email' => 'admin@enterprise.com',
+            'password' => bcrypt('password'),
+        ]);
+
         $this->call(CategorySeeder::class);
+        $this->call(ProductSeeder::class);
+        $this->call(InvoiceSeeder::class);
     }
 }

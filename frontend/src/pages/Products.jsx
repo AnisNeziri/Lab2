@@ -8,6 +8,7 @@ import {
   updateProduct,
 } from '../api/products'
 import ProductDetail from '../components/ProductDetail'
+import StockBadge from '../components/StockBadge'
 
 const emptyForm = {
   category_id: '',
@@ -400,8 +401,8 @@ function Products() {
                     <td>{product.name}</td>
                     <td>{product.category?.name ?? '-'}</td>
                     <td>{product.sku}</td>
-                    <td className={product.quantity <= product.min_quantity ? 'low-stock' : ''}>
-                      {product.quantity}
+                    <td>
+                      <StockBadge quantity={product.quantity} minQuantity={product.min_quantity} />
                     </td>
                     <td>{product.min_quantity}</td>
                     <td>${Number(product.price).toFixed(2)}</td>
