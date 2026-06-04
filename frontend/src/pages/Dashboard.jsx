@@ -80,10 +80,21 @@ function Dashboard() {
           <p className="stat-value">${Number(data.total_value).toFixed(2)}</p>
         </article>
 
+        <article className="stat-card">
+          <p className="stat-label">Total suppliers</p>
+          <p className="stat-value">{data.total_suppliers}</p>
+        </article>
+
         <article className="stat-card warning">
           <p className="stat-label">Low stock items</p>
           <p className="stat-value">{data.low_stock_count}</p>
           <p className="stat-note">At or below each product&apos;s minimum quantity</p>
+        </article>
+
+        <article className="stat-card danger">
+          <p className="stat-label">Out of stock</p>
+          <p className="stat-value">{data.out_of_stock_count}</p>
+          <p className="stat-note danger-note">Products with zero units left</p>
         </article>
       </section>
 
@@ -138,6 +149,32 @@ function Dashboard() {
           </div>
         </article>
       </section>
+
+      {data.out_of_stock_products && data.out_of_stock_products.length > 0 && (
+        <section className="card">
+          <h2>Out of stock</h2>
+          <table className="product-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Category</th>
+                <th>SKU</th>
+                <th>Min</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.out_of_stock_products.map((product) => (
+                <tr key={product.id}>
+                  <td>{product.name}</td>
+                  <td>{product.category?.name ?? '-'}</td>
+                  <td>{product.sku}</td>
+                  <td>{product.min_quantity}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       <section className="card">
         <h2>Low stock alerts</h2>

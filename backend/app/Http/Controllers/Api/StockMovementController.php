@@ -16,12 +16,17 @@ class StockMovementController extends Controller
     {
         $validated = $request->validate([
             'product_id' => ['nullable', 'integer', 'exists:products,id'],
+            'type' => ['nullable', 'in:in,out'],
         ]);
 
         $query = StockMovement::with('product.category')->latest();
 
         if (! empty($validated['product_id'])) {
             $query->where('product_id', $validated['product_id']);
+        }
+
+        if (! empty($validated['type'])) {
+            $query->where('type', $validated['type']);
         }
 
         $movements = $query->limit(50)->get();

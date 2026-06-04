@@ -14,6 +14,7 @@ class Product extends Model
 
     protected $fillable = [
         'category_id',
+        'supplier_id',
         'name',
         'sku',
         'description',
@@ -26,6 +27,7 @@ class Product extends Model
     {
         return [
             'category_id' => 'integer',
+            'supplier_id' => 'integer',
             'quantity' => 'integer',
             'min_quantity' => 'integer',
             'price' => 'decimal:2',
@@ -37,6 +39,11 @@ class Product extends Model
         return $this->belongsTo(Category::class);
     }
 
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
     public function stockMovements(): HasMany
     {
         return $this->hasMany(StockMovement::class);
@@ -46,4 +53,21 @@ class Product extends Model
     {
         return $this->hasMany(InvoiceItem::class);
     }
+
+    public function getStockStatusAttribute(): string
+    {
+        if ($this->quantity <= $this->min_quantity) {
+            return 'low';
+        }
+
+        $highThreshold = max($this->min_quantity * 2, $this->min_quantity + 1);
+
+        if ($this->quantity >= $highThreshold) {
+            return 'high';
+        }
+
+        return 'normal';
+    }
+
+    protected $appends = ['stock_status'];
 }

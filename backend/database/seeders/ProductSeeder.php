@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\Supplier;
 use Illuminate\Database\Seeder;
 
 class ProductSeeder extends Seeder
@@ -13,6 +14,7 @@ class ProductSeeder extends Seeder
         $products = [
             [
                 'category' => 'Electronics',
+                'supplier' => 'TechSupply Co.',
                 'name' => 'Wireless Mouse',
                 'sku' => 'ELEC-001',
                 'description' => 'Basic wireless mouse for office use',
@@ -22,6 +24,7 @@ class ProductSeeder extends Seeder
             ],
             [
                 'category' => 'Electronics',
+                'supplier' => 'TechSupply Co.',
                 'name' => 'USB-C Hub',
                 'sku' => 'ELEC-002',
                 'description' => '4-port USB hub',
@@ -31,6 +34,7 @@ class ProductSeeder extends Seeder
             ],
             [
                 'category' => 'Office Supplies',
+                'supplier' => 'Office Depot KS',
                 'name' => 'A4 Paper Pack',
                 'sku' => 'OFF-001',
                 'description' => '500 sheets, 80gsm',
@@ -40,6 +44,7 @@ class ProductSeeder extends Seeder
             ],
             [
                 'category' => 'Furniture',
+                'supplier' => 'Global Furniture',
                 'name' => 'Office Chair',
                 'sku' => 'FUR-001',
                 'description' => 'Adjustable desk chair',
@@ -49,6 +54,7 @@ class ProductSeeder extends Seeder
             ],
             [
                 'category' => 'Clothing',
+                'supplier' => 'Office Depot KS',
                 'name' => 'Staff Polo Shirt',
                 'sku' => 'CLT-001',
                 'description' => 'Medium size, navy blue',
@@ -60,6 +66,7 @@ class ProductSeeder extends Seeder
 
         foreach ($products as $item) {
             $category = Category::where('name', $item['category'])->first();
+            $supplier = Supplier::where('name', $item['supplier'])->first();
 
             if (! $category) {
                 continue;
@@ -69,6 +76,7 @@ class ProductSeeder extends Seeder
                 ['sku' => $item['sku']],
                 [
                     'category_id' => $category->id,
+                    'supplier_id' => $supplier?->id,
                     'name' => $item['name'],
                     'description' => $item['description'],
                     'quantity' => $item['quantity'],

@@ -14,6 +14,7 @@ class ProductController extends Controller
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:255'],
             'category_id' => ['nullable', 'integer', 'exists:categories,id'],
+            'supplier_id' => ['nullable', 'integer', 'exists:suppliers,id'],
             'sort' => ['nullable', 'in:name,sku,quantity,min_quantity,price'],
             'direction' => ['nullable', 'in:asc,desc'],
         ]);
@@ -21,7 +22,7 @@ class ProductController extends Controller
         $sort = $validated['sort'] ?? 'name';
         $direction = $validated['direction'] ?? 'asc';
 
-        $query = Product::with('category')->orderBy($sort, $direction);
+        $query = Product::with(['category', 'supplier'])->orderBy($sort, $direction);
 
         if (! empty($validated['search'])) {
             $search = $validated['search'];
@@ -35,6 +36,10 @@ class ProductController extends Controller
             $query->where('category_id', $validated['category_id']);
         }
 
+        if (! empty($validated['supplier_id'])) {
+            $query->where('supplier_id', $validated['supplier_id']);
+        }
+
         if ($request->boolean('low_stock')) {
             $query->whereColumn('quantity', '<=', 'min_quantity');
         }
@@ -46,7 +51,7 @@ class ProductController extends Controller
 
     public function export()
     {
-        $products = Product::with('category')->orderBy('name')->get();
+        $products = Product::with(['category', 'supplier'])->orderBy('name')->get();
 
         $headers = [
             'Content-Type' => 'text/csv',
@@ -55,13 +60,14 @@ class ProductController extends Controller
 
         $callback = function () use ($products) {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['Name', 'SKU', 'Category', 'Quantity', 'Min Quantity', 'Price', 'Description']);
+            fputcsv($handle, ['Name', 'SKU', 'Category', 'Supplier', 'Quantity', 'Min Quantity', 'Price', 'Description']);
 
             foreach ($products as $product) {
                 fputcsv($handle, [
                     $product->name,
                     $product->sku,
                     $product->category?->name ?? '',
+                    $product->supplier?->name ?? '',
                     $product->quantity,
                     $product->min_quantity,
                     $product->price,
@@ -79,6 +85,7 @@ class ProductController extends Controller
     {
         $validated = $request->validate([
             'category_id' => ['required', 'exists:categories,id'],
+            'supplier_id' => ['nullable', 'exists:suppliers,id'],
             'name' => ['required', 'string', 'max:255'],
             'sku' => ['required', 'string', 'max:100', 'unique:products,sku'],
             'description' => ['nullable', 'string'],
@@ -88,13 +95,14 @@ class ProductController extends Controller
         ]);
 
         $product = Product::create($validated);
+        $product->load(['category', 'supplier']);
 
         return response()->json($product, 201);
     }
 
     public function show(Product $product): JsonResponse
     {
-        $product->load('category');
+        $product->load(['category', 'supplier']);
 
         $movements = $product->stockMovements()
             ->latest()
@@ -111,6 +119,7 @@ class ProductController extends Controller
     {
         $validated = $request->validate([
             'category_id' => ['sometimes', 'required', 'exists:categories,id'],
+            'supplier_id' => ['nullable', 'exists:suppliers,id'],
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'sku' => ['sometimes', 'required', 'string', 'max:100', 'unique:products,sku,' . $product->id],
             'description' => ['nullable', 'string'],
@@ -120,6 +129,7 @@ class ProductController extends Controller
         ]);
 
         $product->update($validated);
+        $product->load(['category', 'supplier']);
 
         return response()->json($product);
     }

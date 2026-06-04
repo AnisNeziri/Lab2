@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\Supplier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 
@@ -50,8 +51,26 @@ class ReportController extends Controller
             'movement_count' => (int) DB::table('stock_movements')->count(),
         ];
 
+        $supplierReports = Supplier::query()
+            ->leftJoin('products', 'suppliers.id', '=', 'products.supplier_id')
+            ->select('suppliers.id', 'suppliers.name')
+            ->selectRaw('COUNT(products.id) as product_count')
+            ->selectRaw('COALESCE(SUM(products.quantity), 0) as total_units')
+            ->selectRaw('COALESCE(SUM(products.quantity * products.price), 0) as total_value')
+            ->groupBy('suppliers.id', 'suppliers.name')
+            ->orderBy('suppliers.name')
+            ->get()
+            ->map(fn ($row) => [
+                'id' => $row->id,
+                'name' => $row->name,
+                'product_count' => (int) $row->product_count,
+                'total_units' => (int) $row->total_units,
+                'total_value' => round((float) $row->total_value, 2),
+            ]);
+
         return response()->json([
             'categories' => $categoryReports,
+            'suppliers' => $supplierReports,
             'top_products' => $topProducts,
             'stock_summary' => $stockSummary,
         ]);

@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\StockMovementController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\ActivityLogController;
+use App\Http\Controllers\Api\SupplierController;
 use Illuminate\Support\Facades\Route;
 
 // Public routes
@@ -32,6 +33,7 @@ Route::middleware('auth.token')->group(function () {
 
     Route::get('/products/export', [ProductController::class, 'export']);
     Route::apiResource('categories', CategoryController::class)->only(['index', 'store', 'update', 'destroy']);
+    Route::apiResource('suppliers', SupplierController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::apiResource('products', ProductController::class);
 
     // Invoices API

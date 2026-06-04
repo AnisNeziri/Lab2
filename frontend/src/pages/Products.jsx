@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getCategories } from '../api/categories'
+import { getSuppliers } from '../api/suppliers'
 import {
   createProduct,
   deleteProduct,
@@ -12,6 +13,7 @@ import StockBadge from '../components/StockBadge'
 
 const emptyForm = {
   category_id: '',
+  supplier_id: '',
   name: '',
   sku: '',
   description: '',
@@ -24,9 +26,11 @@ function Products() {
   const [products, setProducts] = useState([])
   const [pagination, setPagination] = useState(null)
   const [categories, setCategories] = useState([])
+  const [suppliers, setSuppliers] = useState([])
   const [form, setForm] = useState(emptyForm)
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
+  const [supplierFilter, setSupplierFilter] = useState('')
   const [lowStockOnly, setLowStockOnly] = useState(false)
   const [sortBy, setSortBy] = useState('name')
   const [sortDirection, setSortDirection] = useState('asc')
@@ -40,6 +44,11 @@ function Products() {
   async function loadCategories() {
     const categoriesData = await getCategories()
     setCategories(categoriesData)
+  }
+
+  async function loadSuppliers() {
+    const suppliersData = await getSuppliers()
+    setSuppliers(suppliersData)
   }
 
   async function loadProducts(filters = {}) {
@@ -62,8 +71,8 @@ function Products() {
   }
 
   useEffect(() => {
-    loadCategories().catch(() => {
-      setError('Could not load categories. Make sure the API is running.')
+    Promise.all([loadCategories(), loadSuppliers()]).catch(() => {
+      setError('Could not load categories or suppliers. Make sure the API is running.')
     })
   }, [])
 
@@ -71,6 +80,7 @@ function Products() {
     return {
       search: search.trim(),
       category_id: categoryFilter,
+      supplier_id: supplierFilter,
       low_stock: lowStockOnly,
       sort: sortBy,
       direction: sortDirection,
@@ -81,7 +91,7 @@ function Products() {
 
   useEffect(() => {
     setPage(1)
-  }, [search, categoryFilter, lowStockOnly, sortBy, sortDirection])
+  }, [search, categoryFilter, supplierFilter, lowStockOnly, sortBy, sortDirection])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -89,7 +99,7 @@ function Products() {
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [search, categoryFilter, lowStockOnly, sortBy, sortDirection, page])
+  }, [search, categoryFilter, supplierFilter, lowStockOnly, sortBy, sortDirection, page])
 
   function handleChange(event) {
     const { name, value } = event.target
@@ -104,6 +114,7 @@ function Products() {
     setFormError('')
     setForm({
       category_id: product.category_id ?? '',
+      supplier_id: product.supplier_id ?? '',
       name: product.name,
       sku: product.sku,
       description: product.description ?? '',
@@ -122,6 +133,7 @@ function Products() {
   function clearFilters() {
     setSearch('')
     setCategoryFilter('')
+    setSupplierFilter('')
     setLowStockOnly(false)
     setSortBy('name')
     setSortDirection('asc')
@@ -142,6 +154,7 @@ function Products() {
 
     const payload = {
       category_id: Number(form.category_id),
+      supplier_id: form.supplier_id ? Number(form.supplier_id) : null,
       name: form.name,
       sku: form.sku,
       description: form.description || null,
@@ -193,6 +206,7 @@ function Products() {
   const hasFilters =
     search.trim() !== '' ||
     categoryFilter !== '' ||
+    supplierFilter !== '' ||
     lowStockOnly ||
     sortBy !== 'name' ||
     sortDirection !== 'asc'
@@ -213,6 +227,18 @@ function Products() {
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Supplier
+            <select name="supplier_id" value={form.supplier_id} onChange={handleChange}>
+              <option value="">No supplier</option>
+              {suppliers.map((supplier) => (
+                <option key={supplier.id} value={supplier.id}>
+                  {supplier.name}
                 </option>
               ))}
             </select>
@@ -332,6 +358,21 @@ function Products() {
             </select>
           </label>
 
+          <label>
+            Supplier
+            <select
+              value={supplierFilter}
+              onChange={(event) => setSupplierFilter(event.target.value)}
+            >
+              <option value="">All suppliers</option>
+              {suppliers.map((supplier) => (
+                <option key={supplier.id} value={supplier.id}>
+                  {supplier.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <label className="filter-checkbox">
             <input
               type="checkbox"
@@ -388,6 +429,7 @@ function Products() {
                 <tr>
                   <th>Name</th>
                   <th>Category</th>
+                  <th>Supplier</th>
                   <th>SKU</th>
                   <th>Qty</th>
                   <th>Min</th>
@@ -400,6 +442,7 @@ function Products() {
                   <tr key={product.id} className={editingId === product.id ? 'editing' : ''}>
                     <td>{product.name}</td>
                     <td>{product.category?.name ?? '-'}</td>
+                    <td>{product.supplier?.name ?? '-'}</td>
                     <td>{product.sku}</td>
                     <td>
                       <StockBadge quantity={product.quantity} minQuantity={product.min_quantity} />

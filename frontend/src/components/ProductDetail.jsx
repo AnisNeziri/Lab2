@@ -45,6 +45,20 @@ function ProductDetail({ productId, onClose }) {
               <dd>{data.product.sku}</dd>
               <dt>Category</dt>
               <dd>{data.product.category?.name ?? '-'}</dd>
+              <dt>Supplier</dt>
+              <dd>{data.product.supplier?.name ?? '-'}</dd>
+              {data.product.supplier?.email && (
+                <>
+                  <dt>Supplier email</dt>
+                  <dd>{data.product.supplier.email}</dd>
+                </>
+              )}
+              {data.product.supplier?.phone && (
+                <>
+                  <dt>Supplier phone</dt>
+                  <dd>{data.product.supplier.phone}</dd>
+                </>
+              )}
               <dt>Quantity</dt>
               <dd
                 className={

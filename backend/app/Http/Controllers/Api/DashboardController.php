@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\StockMovement;
+use App\Models\Supplier;
 use Illuminate\Http\JsonResponse;
 
 class DashboardController extends Controller
@@ -19,6 +20,11 @@ class DashboardController extends Controller
         $lowStockProducts = $products
             ->filter(fn (Product $product) => $product->quantity <= $product->min_quantity)
             ->sortBy('quantity')
+            ->values();
+
+        $outOfStockProducts = $products
+            ->filter(fn (Product $product) => $product->quantity === 0)
+            ->sortBy('name')
             ->values();
 
         $recentMovements = StockMovement::with('product')
@@ -61,10 +67,13 @@ class DashboardController extends Controller
 
         return response()->json([
             'total_products' => $products->count(),
+            'total_suppliers' => Supplier::count(),
             'total_units' => $totalUnits,
             'total_value' => round($totalValue, 2),
             'low_stock_count' => $lowStockProducts->count(),
             'low_stock_products' => $lowStockProducts,
+            'out_of_stock_count' => $outOfStockProducts->count(),
+            'out_of_stock_products' => $outOfStockProducts,
             'recent_movements' => $recentMovements,
             'category_values' => $categoryValues,
             'movements_over_time' => $movementsOverTime,

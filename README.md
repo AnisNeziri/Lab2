@@ -69,11 +69,12 @@ DB_PASSWORD=
 
 ## Features
 
-- Product CRUD with category assignment
+- Product CRUD with category and supplier assignment
+- Supplier CRUD with delete protection when products exist
 - Category CRUD with delete protection when products exist
 - Stock in/out movements with quantity validation
-- Dashboard totals and low-stock alerts
-- Category and stock value reports
+- Dashboard totals, supplier count, and low-stock alerts
+- Category, supplier, and stock value reports
 - Product search, filtering, sorting, pagination, and CSV export
 
 ## Useful Commands
