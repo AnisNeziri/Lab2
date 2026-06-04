@@ -34,6 +34,53 @@ class StockMovementController extends Controller
         return response()->json($movements);
     }
 
+    public function export(Request $request)
+    {
+        $validated = $request->validate([
+            'product_id' => ['nullable', 'integer', 'exists:products,id'],
+            'type' => ['nullable', 'in:in,out'],
+        ]);
+
+        $query = StockMovement::with('product')->latest();
+
+        if (! empty($validated['product_id'])) {
+            $query->where('product_id', $validated['product_id']);
+        }
+
+        if (! empty($validated['type'])) {
+            $query->where('type', $validated['type']);
+        }
+
+        $movements = $query->get();
+
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="stock-movements.csv"',
+        ];
+
+        $callback = function () use ($movements) {
+            $handle = fopen('php://output', 'w');
+            fputcsv($handle, ['Date', 'Product', 'SKU', 'Type', 'Quantity', 'Before', 'After', 'Reason']);
+
+            foreach ($movements as $movement) {
+                fputcsv($handle, [
+                    $movement->created_at->toDateTimeString(),
+                    $movement->product?->name ?? '',
+                    $movement->product?->sku ?? '',
+                    $movement->type,
+                    $movement->quantity,
+                    $movement->quantity_before,
+                    $movement->quantity_after,
+                    $movement->reason ?? '',
+                ]);
+            }
+
+            fclose($handle);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([

@@ -1,7 +1,50 @@
-import { apiRequest, buildApiUrl } from './client'
+import { apiRequest, buildApiUrl, parseApiResponse } from './client'
 
-export async function getStockMovements() {
-  return apiRequest(buildApiUrl('/stock-movements'), {}, 'Failed to load stock movements')
+export async function getStockMovements(filters = {}) {
+  return apiRequest(
+    buildApiUrl('/stock-movements', {
+      product_id: filters.product_id,
+      type: filters.type,
+    }),
+    {},
+    'Failed to load stock movements'
+  )
+}
+
+export async function lookupProductBySku(sku) {
+  return apiRequest(
+    buildApiUrl('/products/lookup', { sku }),
+    {},
+    'Product not found'
+  )
+}
+
+export async function exportStockMovements(filters = {}) {
+  const token = localStorage.getItem('api_token')
+  const response = await fetch(
+    buildApiUrl('/stock-movements/export', {
+      product_id: filters.product_id,
+      type: filters.type,
+    }),
+    {
+      headers: {
+        Accept: 'text/csv',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    }
+  )
+
+  if (!response.ok) {
+    await parseApiResponse(response, 'Failed to export stock movements')
+  }
+
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'stock-movements.csv'
+  link.click()
+  URL.revokeObjectURL(url)
 }
 
 export async function createStockMovement(movement) {

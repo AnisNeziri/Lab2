@@ -81,6 +81,23 @@ class ProductController extends Controller
         return response()->stream($callback, 200, $headers);
     }
 
+    public function lookup(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'sku' => ['required', 'string', 'max:100'],
+        ]);
+
+        $product = Product::with(['category', 'supplier'])
+            ->where('sku', $validated['sku'])
+            ->first();
+
+        if (! $product) {
+            return response()->json(['message' => 'Product not found.'], 404);
+        }
+
+        return response()->json($product);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([

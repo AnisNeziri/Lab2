@@ -28,9 +28,11 @@ Route::middleware('auth.token')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index']);
     Route::get('/reports', [ReportController::class, 'index']);
 
+    Route::get('/stock-movements/export', [StockMovementController::class, 'export']);
     Route::get('/stock-movements', [StockMovementController::class, 'index']);
     Route::post('/stock-movements', [StockMovementController::class, 'store']);
 
+    Route::get('/products/lookup', [ProductController::class, 'lookup']);
     Route::get('/products/export', [ProductController::class, 'export']);
     Route::apiResource('categories', CategoryController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::apiResource('suppliers', SupplierController::class)->only(['index', 'store', 'update', 'destroy']);

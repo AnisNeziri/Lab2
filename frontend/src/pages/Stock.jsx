@@ -1,6 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { getProducts } from '../api/products'
-import { createStockMovement, getStockMovements } from '../api/stock'
+import {
+  createStockMovement,
+  exportStockMovements,
+  getStockMovements,
+  lookupProductBySku,
+} from '../api/stock'
 
 const emptyForm = {
   product_id: '',
@@ -13,9 +18,24 @@ function Stock() {
   const [products, setProducts] = useState([])
   const [movements, setMovements] = useState([])
   const [form, setForm] = useState(emptyForm)
+  const [filters, setFilters] = useState({ product_id: '', type: '' })
+  const [skuLookup, setSkuLookup] = useState('')
+  const [lookupMessage, setLookupMessage] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
+  const [exporting, setExporting] = useState(false)
+
+  const loadMovements = useCallback(async (activeFilters = filters) => {
+    const movementFilters = {}
+    if (activeFilters.product_id) {
+      movementFilters.product_id = Number(activeFilters.product_id)
+    }
+    if (activeFilters.type) {
+      movementFilters.type = activeFilters.type
+    }
+    return getStockMovements(movementFilters)
+  }, [filters])
 
   async function loadData() {
     try {
@@ -23,7 +43,7 @@ function Stock() {
       setError('')
       const [productsResponse, movementsData] = await Promise.all([
         getProducts({ per_page: 100 }),
-        getStockMovements(),
+        loadMovements(),
       ])
       setProducts(productsResponse.data)
       setMovements(movementsData)
@@ -38,12 +58,83 @@ function Stock() {
     loadData()
   }, [])
 
+  async function applyFilters(event) {
+    event.preventDefault()
+    try {
+      setLoading(true)
+      setError('')
+      const movementsData = await loadMovements(filters)
+      setMovements(movementsData)
+    } catch {
+      setError('Could not filter stock movements.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function clearFilters() {
+    const cleared = { product_id: '', type: '' }
+    setFilters(cleared)
+    setLoading(true)
+    loadMovements(cleared)
+      .then((movementsData) => setMovements(movementsData))
+      .catch(() => setError('Could not load stock movements.'))
+      .finally(() => setLoading(false))
+  }
+
   function handleChange(event) {
     const { name, value } = event.target
     setForm((current) => ({
       ...current,
       [name]: value,
     }))
+  }
+
+  function handleFilterChange(event) {
+    const { name, value } = event.target
+    setFilters((current) => ({
+      ...current,
+      [name]: value,
+    }))
+  }
+
+  async function handleSkuLookup(event) {
+    event.preventDefault()
+    setLookupMessage('')
+    setFormError('')
+
+    if (!skuLookup.trim()) {
+      return
+    }
+
+    try {
+      const product = await lookupProductBySku(skuLookup.trim())
+      setForm((current) => ({
+        ...current,
+        product_id: String(product.id),
+      }))
+      setLookupMessage(`Selected: ${product.name} (${product.quantity} in stock)`)
+    } catch {
+      setLookupMessage('No product found for that SKU.')
+    }
+  }
+
+  async function handleExport() {
+    try {
+      setExporting(true)
+      const exportFilters = {}
+      if (filters.product_id) {
+        exportFilters.product_id = Number(filters.product_id)
+      }
+      if (filters.type) {
+        exportFilters.type = filters.type
+      }
+      await exportStockMovements(exportFilters)
+    } catch {
+      setError('Could not export stock movements.')
+    } finally {
+      setExporting(false)
+    }
   }
 
   async function handleSubmit(event) {
@@ -59,6 +150,8 @@ function Stock() {
       })
 
       setForm(emptyForm)
+      setSkuLookup('')
+      setLookupMessage('')
       await loadData()
     } catch (err) {
       if (err.errors) {
@@ -79,6 +172,23 @@ function Stock() {
         <p className="card-description">
           Record stock coming in or going out. Product quantity updates automatically.
         </p>
+
+        <form className="sku-lookup-form" onSubmit={handleSkuLookup}>
+          <label>
+            Find by SKU
+            <div className="form-row">
+              <input
+                value={skuLookup}
+                onChange={(event) => setSkuLookup(event.target.value)}
+                placeholder="e.g. ELEC-001"
+              />
+              <button type="submit" className="secondary">
+                Find product
+              </button>
+            </div>
+          </label>
+          {lookupMessage && <p className="lookup-message">{lookupMessage}</p>}
+        </form>
 
         <form className="stock-form" onSubmit={handleSubmit}>
           <label>
@@ -134,8 +244,48 @@ function Stock() {
       <section className="card">
         <div className="section-header">
           <h2>Recent movements</h2>
-          {!loading && <p className="result-count">{movements.length} record(s)</p>}
+          <div className="section-header-actions">
+            {!loading && <p className="result-count">{movements.length} record(s)</p>}
+            <button
+              type="button"
+              className="secondary"
+              onClick={handleExport}
+              disabled={exporting || loading}
+            >
+              {exporting ? 'Exporting...' : 'Export CSV'}
+            </button>
+          </div>
         </div>
+
+        <form className="filter-form" onSubmit={applyFilters}>
+          <label>
+            Product
+            <select name="product_id" value={filters.product_id} onChange={handleFilterChange}>
+              <option value="">All products</option>
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Type
+            <select name="type" value={filters.type} onChange={handleFilterChange}>
+              <option value="">All types</option>
+              <option value="in">Stock in</option>
+              <option value="out">Stock out</option>
+            </select>
+          </label>
+
+          <div className="form-actions">
+            <button type="submit">Apply filters</button>
+            <button type="button" className="secondary" onClick={clearFilters}>
+              Clear
+            </button>
+          </div>
+        </form>
 
         {loading && <p>Loading stock history...</p>}
         {error && <p className="error">{error}</p>}

@@ -181,4 +181,61 @@ class InventoryApiTest extends TestCase
 
         $this->deleteJson('/api/products/' . $product->id)->assertForbidden();
     }
+
+    public function test_product_lookup_by_sku(): void
+    {
+        $this->actingAsApiUser();
+
+        $category = Category::create(['name' => 'Electronics']);
+        Product::create([
+            'category_id' => $category->id,
+            'name' => 'HDMI Cable',
+            'sku' => 'ELEC-050',
+            'quantity' => 12,
+            'min_quantity' => 4,
+            'price' => 9.99,
+        ]);
+
+        $this->getJson('/api/products/lookup?sku=ELEC-050')
+            ->assertOk()
+            ->assertJsonPath('sku', 'ELEC-050')
+            ->assertJsonPath('name', 'HDMI Cable');
+
+        $this->getJson('/api/products/lookup?sku=MISSING')
+            ->assertNotFound();
+    }
+
+    public function test_stock_movements_can_be_filtered_by_type(): void
+    {
+        $this->actingAsApiUser();
+
+        $category = Category::create(['name' => 'Office']);
+        $product = Product::create([
+            'category_id' => $category->id,
+            'name' => 'Notebook',
+            'sku' => 'OFF-020',
+            'quantity' => 10,
+            'min_quantity' => 2,
+            'price' => 3.50,
+        ]);
+
+        $this->postJson('/api/stock-movements', [
+            'product_id' => $product->id,
+            'type' => 'in',
+            'quantity' => 2,
+        ])->assertCreated();
+
+        $this->postJson('/api/stock-movements', [
+            'product_id' => $product->id,
+            'type' => 'out',
+            'quantity' => 1,
+        ])->assertCreated();
+
+        $response = $this->getJson('/api/stock-movements?type=out');
+
+        $response
+            ->assertOk()
+            ->assertJsonCount(1)
+            ->assertJsonPath('0.type', 'out');
+    }
 }
