@@ -27,7 +27,7 @@ const emptyForm = {
   selling_price: '',
 }
 
-function Products() {
+function Products({ userRole = 'staff' }) {
   const [products, setProducts] = useState([])
   const [pagination, setPagination] = useState(null)
   const [categories, setCategories] = useState([])
@@ -527,13 +527,15 @@ function Products() {
                       <button type="button" className="secondary" onClick={() => startEdit(product)}>
                         Edit
                       </button>
-                      <button
-                        type="button"
-                        className="danger"
-                        onClick={() => handleDelete(product)}
-                      >
-                        Delete
-                      </button>
+                      {(userRole === 'admin' || userRole === 'manager') && (
+                        <button
+                          type="button"
+                          className="danger"
+                          onClick={() => handleDelete(product)}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

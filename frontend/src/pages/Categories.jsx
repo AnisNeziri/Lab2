@@ -6,7 +6,7 @@ import {
   updateCategory,
 } from '../api/categories'
 
-function Categories() {
+function Categories({ userRole = 'staff' }) {
   const [categories, setCategories] = useState([])
   const [name, setName] = useState('')
   const [editingId, setEditingId] = useState(null)
@@ -153,19 +153,21 @@ function Categories() {
                     <button type="button" className="secondary" onClick={() => startEdit(category)}>
                       Edit
                     </button>
-                    <button
-                      type="button"
-                      className="danger"
-                      onClick={() => handleDelete(category)}
-                      disabled={category.products_count > 0}
-                      title={
-                        category.products_count > 0
-                          ? 'Remove or reassign products before deleting'
-                          : ''
-                      }
-                    >
-                      Delete
-                    </button>
+                    {(userRole === 'admin' || userRole === 'manager') && (
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() => handleDelete(category)}
+                        disabled={category.products_count > 0}
+                        title={
+                          category.products_count > 0
+                            ? 'Remove or reassign products before deleting'
+                            : ''
+                        }
+                      >
+                        Delete
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import NotificationCenter from './NotificationCenter'
 
-export default function Sidebar({ currentPage, onPageChange }) {
+export default function Sidebar({ currentPage, onPageChange, userRole }) {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'products', label: 'Products', icon: Package },
@@ -18,7 +18,7 @@ export default function Sidebar({ currentPage, onPageChange }) {
     { id: 'categories', label: 'Categories', icon: FolderTree },
     { id: 'reports', label: 'Reports', icon: FileText },
     { id: 'invoices', label: 'Invoices', icon: Receipt },
-    { id: 'activity-logs', label: 'Activity Logs', icon: Activity },
+    ...(userRole === 'admin' ? [{ id: 'activity-logs', label: 'Activity Logs', icon: Activity }] : []),
   ]
 
   return (

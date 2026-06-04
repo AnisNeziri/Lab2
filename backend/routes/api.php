@@ -41,6 +41,15 @@ Route::middleware('auth.token')->group(function () {
     Route::get('/invoices/{id}', [InvoiceController::class, 'show']);
     Route::get('/invoices/{id}/pdf', [InvoiceController::class, 'downloadPdf']);
 
-    // Activity Logs API
-    Route::get('/activity-logs', [ActivityLogController::class, 'index']);
+    // Activity Logs API - Admin only
+    Route::middleware('role:admin')->group(function () {
+        Route::get('/activity-logs', [ActivityLogController::class, 'index']);
+    });
+
+    // Sensitive operations - Admin or Manager only
+    Route::middleware('role:admin,manager')->group(function () {
+        Route::delete('/products/{product}', [ProductController::class, 'destroy']);
+        Route::delete('/categories/{category}', [CategoryController::class, 'destroy']);
+        Route::delete('/suppliers/{supplier}', [SupplierController::class, 'destroy']);
+    });
 });
