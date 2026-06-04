@@ -8,6 +8,7 @@ import {
   Activity,
   LogOut
 } from 'lucide-react'
+import NotificationCenter from './NotificationCenter'
 
 export default function Sidebar({ currentPage, onPageChange }) {
   const menuItems = [
@@ -27,7 +28,10 @@ export default function Sidebar({ currentPage, onPageChange }) {
           <Package className="logo-icon" size={28} />
           <h1>Inventory</h1>
         </div>
-        <p className="sidebar-subtitle">Enterprise Management</p>
+        <div className="sidebar-header-actions">
+          <p className="sidebar-subtitle">Enterprise Management</p>
+          <NotificationCenter />
+        </div>
       </div>
 
       <nav className="sidebar-nav">
