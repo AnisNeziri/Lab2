@@ -14,10 +14,13 @@ function Login({ onLoginSuccess }) {
 
     try {
       const data = await login(email, password)
+      console.log('Login response:', data)
       localStorage.setItem('api_token', data.token)
       localStorage.setItem('user', JSON.stringify(data.user))
+      localStorage.setItem('user_role', data.user.role)
       onLoginSuccess(data)
     } catch (err) {
+      console.error('Login error:', err)
       setError(err.message || 'Invalid email or password.')
     } finally {
       setLoading(false)

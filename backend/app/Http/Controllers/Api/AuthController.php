@@ -21,9 +21,18 @@ class AuthController extends Controller
 
         $user = User::where('email', $validated['email'])->first();
 
-        if (! $user || ! Hash::check($validated['password'], $user->password)) {
+        if (! $user) {
             return response()->json([
-                'message' => 'Credentials do not match our records.',
+                'message' => 'User not found.',
+                'errors' => [
+                    'email' => ['The provided credentials are incorrect.'],
+                ],
+            ], 422);
+        }
+
+        if (! Hash::check($validated['password'], $user->password)) {
+            return response()->json([
+                'message' => 'Password incorrect.',
                 'errors' => [
                     'email' => ['The provided credentials are incorrect.'],
                 ],
@@ -32,9 +41,8 @@ class AuthController extends Controller
 
         // Generate token
         $token = Str::random(80);
-        $user->forceFill([
-            'api_token' => $token,
-        ])->save();
+        $user->api_token = $token;
+        $user->save();
 
         return response()->json([
             'token' => $token,

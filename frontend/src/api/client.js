@@ -11,7 +11,10 @@ export function buildApiUrl(path, params = {}) {
 
   const query = searchParams.toString()
 
-  return query ? `${API_BASE}${path}?${query}` : `${API_BASE}${path}`
+  // Remove /api prefix from path if it exists to avoid double /api
+  const cleanPath = path.startsWith('/api') ? path.replace('/api', '') : path
+
+  return query ? `${API_BASE}${cleanPath}?${query}` : `${API_BASE}${cleanPath}`
 }
 
 export async function parseApiResponse(response, fallbackMessage) {
@@ -41,7 +44,9 @@ export async function apiRequest(path, options = {}, fallbackMessage = 'API requ
     ...options.headers,
   }
 
-  const response = await fetch(path, {
+  const url = buildApiUrl(path)
+
+  const response = await fetch(url, {
     ...options,
     headers,
   })
@@ -49,6 +54,7 @@ export async function apiRequest(path, options = {}, fallbackMessage = 'API requ
   if (response.status === 401) {
     localStorage.removeItem('api_token')
     localStorage.removeItem('user')
+    localStorage.removeItem('user_role')
     window.dispatchEvent(new Event('auth-unauthorized'))
   }
 

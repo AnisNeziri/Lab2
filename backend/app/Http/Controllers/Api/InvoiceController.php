@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
-use Barryvdh\DomPDF\Facade\Pdf;
+use Barryvdh\DomPDF\PDF as DomPDF;
 use Illuminate\Http\JsonResponse;
 
 class InvoiceController extends Controller
@@ -26,7 +26,8 @@ class InvoiceController extends Controller
         $invoice = Invoice::with('items.product')->findOrFail($id);
 
         // Load HTML template and bind data
-        $pdf = Pdf::loadView('invoices.pdf', compact('invoice'));
+        $pdf = new DomPDF();
+        $pdf->loadView('invoices.pdf', compact('invoice'));
 
         // Return PDF stream or attachment download
         return $pdf->download("invoice-{$invoice->invoice_number}.pdf");
