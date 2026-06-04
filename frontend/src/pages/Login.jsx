@@ -32,10 +32,10 @@ function Login({ onLoginSuccess }) {
             I
           </div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-white tracking-tight">
-            Enterprise Portal
+            Inventory Management System
           </h2>
           <p className="mt-2 text-center text-sm text-slate-400">
-            Sign in to manage your inventory
+            Login to access your dashboard
           </p>
         </div>
         
