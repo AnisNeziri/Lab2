@@ -20,6 +20,8 @@ const emptyForm = {
   quantity: 0,
   min_quantity: 5,
   price: '',
+  purchase_price: '',
+  selling_price: '',
 }
 
 function Products() {
@@ -121,6 +123,8 @@ function Products() {
       quantity: product.quantity,
       min_quantity: product.min_quantity ?? 5,
       price: product.price,
+      purchase_price: product.purchase_price ?? '',
+      selling_price: product.selling_price ?? '',
     })
   }
 
@@ -161,6 +165,8 @@ function Products() {
       quantity: Number(form.quantity),
       min_quantity: Number(form.min_quantity),
       price: Number(form.price),
+      purchase_price: form.purchase_price ? Number(form.purchase_price) : null,
+      selling_price: form.selling_price ? Number(form.selling_price) : null,
     }
 
     try {
@@ -302,6 +308,34 @@ function Products() {
               required
             />
           </label>
+
+          <div className="form-row">
+            <label>
+              Purchase Price
+              <input
+                name="purchase_price"
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.purchase_price}
+                onChange={handleChange}
+                placeholder="Cost price"
+              />
+            </label>
+
+            <label>
+              Selling Price
+              <input
+                name="selling_price"
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.selling_price}
+                onChange={handleChange}
+                placeholder="Retail price"
+              />
+            </label>
+          </div>
 
           {formError && <p className="error">{formError}</p>}
 

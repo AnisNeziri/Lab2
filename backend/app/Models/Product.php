@@ -21,6 +21,8 @@ class Product extends Model
         'quantity',
         'min_quantity',
         'price',
+        'purchase_price',
+        'selling_price',
     ];
 
     protected function casts(): array
@@ -31,6 +33,8 @@ class Product extends Model
             'quantity' => 'integer',
             'min_quantity' => 'integer',
             'price' => 'decimal:2',
+            'purchase_price' => 'decimal:2',
+            'selling_price' => 'decimal:2',
         ];
     }
 

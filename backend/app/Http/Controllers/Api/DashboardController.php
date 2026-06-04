@@ -16,6 +16,16 @@ class DashboardController extends Controller
 
         $totalUnits = $products->sum('quantity');
         $totalValue = $products->sum(fn (Product $product) => $product->quantity * $product->price);
+        
+        // Calculate inventory value using purchase_price
+        $inventoryValue = $products->sum(fn (Product $product) => 
+            $product->quantity * ($product->purchase_price ?? $product->price)
+        );
+        
+        // Calculate expected net profit (selling_price - purchase_price) * quantity
+        $expectedNetProfit = $products->sum(fn (Product $product) => 
+            $product->quantity * (($product->selling_price ?? $product->price) - ($product->purchase_price ?? $product->price))
+        );
 
         $lowStockProducts = $products
             ->filter(fn (Product $product) => $product->quantity <= $product->min_quantity)
@@ -70,6 +80,8 @@ class DashboardController extends Controller
             'total_suppliers' => Supplier::count(),
             'total_units' => $totalUnits,
             'total_value' => round($totalValue, 2),
+            'inventory_value' => round($inventoryValue, 2),
+            'expected_net_profit' => round($expectedNetProfit, 2),
             'low_stock_count' => $lowStockProducts->count(),
             'low_stock_products' => $lowStockProducts,
             'out_of_stock_count' => $outOfStockProducts->count(),

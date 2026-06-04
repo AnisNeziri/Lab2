@@ -100,6 +100,34 @@ function Dashboard() {
 
       <section className="stats-grid-3">
         <article className="card">
+          <h2>Cost Value (Purchase Price)</h2>
+          <p className="stat-value" style={{ fontSize: '2rem', color: '#0f766e' }}>
+            ${Number(data.inventory_value || 0).toFixed(2)}
+          </p>
+          <p className="stat-note">Total inventory cost at purchase price</p>
+        </article>
+
+        <article className="card">
+          <h2>Expected Net Profit</h2>
+          <p className="stat-value" style={{ fontSize: '2rem', color: '#166534' }}>
+            ${Number(data.expected_net_profit || 0).toFixed(2)}
+          </p>
+          <p className="stat-note">Potential profit if all inventory sold</p>
+        </article>
+
+        <article className="card">
+          <h2>Profit Margin</h2>
+          <p className="stat-value" style={{ fontSize: '2rem', color: '#0891b2' }}>
+            {data.inventory_value > 0 
+              ? ((data.expected_net_profit / data.inventory_value) * 100).toFixed(1) + '%'
+              : '0%'}
+          </p>
+          <p className="stat-note">Expected profit margin on inventory</p>
+        </article>
+      </section>
+
+      <section className="stats-grid-3">
+        <article className="card">
           <h2>Stock Movements (Last 7 Days)</h2>
           <ResponsiveContainer width="100%" height={250}>
             <AreaChart data={stockMovementData}>

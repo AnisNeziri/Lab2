@@ -92,6 +92,8 @@ class ProductController extends Controller
             'quantity' => ['required', 'integer', 'min:0'],
             'min_quantity' => ['required', 'integer', 'min:0'],
             'price' => ['required', 'numeric', 'min:0'],
+            'purchase_price' => ['nullable', 'numeric', 'min:0'],
+            'selling_price' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $product = Product::create($validated);
@@ -126,6 +128,8 @@ class ProductController extends Controller
             'quantity' => ['sometimes', 'required', 'integer', 'min:0'],
             'min_quantity' => ['sometimes', 'required', 'integer', 'min:0'],
             'price' => ['sometimes', 'required', 'numeric', 'min:0'],
+            'purchase_price' => ['nullable', 'numeric', 'min:0'],
+            'selling_price' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $product->update($validated);
