@@ -69,6 +69,8 @@ function ProductDetail({ productId, onClose }) {
               </dd>
               <dt>Min quantity</dt>
               <dd>{data.product.min_quantity}</dd>
+              <dt>High stock at</dt>
+              <dd>{data.product.high_stock_threshold || 'Auto'}</dd>
               <dt>Price</dt>
               <dd>${Number(data.product.price).toFixed(2)}</dd>
               <dt>Stock value</dt>

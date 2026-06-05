@@ -22,6 +22,7 @@ class Product extends Model
         'quantity',
         'unit',
         'min_quantity',
+        'high_stock_threshold',
         'price',
         'purchase_price',
         'selling_price',
@@ -34,6 +35,7 @@ class Product extends Model
             'supplier_id' => 'integer',
             'quantity' => 'integer',
             'min_quantity' => 'integer',
+            'high_stock_threshold' => 'integer',
             'price' => 'decimal:2',
             'purchase_price' => 'decimal:2',
             'selling_price' => 'decimal:2',
@@ -66,7 +68,9 @@ class Product extends Model
             return 'low';
         }
 
-        $highThreshold = max($this->min_quantity * 2, $this->min_quantity + 1);
+        $highThreshold = $this->high_stock_threshold > 0
+            ? $this->high_stock_threshold
+            : max($this->min_quantity * 2, $this->min_quantity + 1);
 
         if ($this->quantity >= $highThreshold) {
             return 'high';

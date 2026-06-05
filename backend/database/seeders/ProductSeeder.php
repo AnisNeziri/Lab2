@@ -21,6 +21,7 @@ class ProductSeeder extends Seeder
                 'quantity' => 25,
                 'unit' => 'pcs',
                 'min_quantity' => 10,
+                'high_stock_threshold' => 30,
                 'price' => 19.99,
             ],
             [
@@ -32,6 +33,7 @@ class ProductSeeder extends Seeder
                 'quantity' => 8,
                 'unit' => 'pcs',
                 'min_quantity' => 5,
+                'high_stock_threshold' => 15,
                 'price' => 34.50,
             ],
             [
@@ -43,6 +45,7 @@ class ProductSeeder extends Seeder
                 'quantity' => 40,
                 'unit' => 'pack',
                 'min_quantity' => 15,
+                'high_stock_threshold' => 60,
                 'price' => 6.99,
             ],
             [
@@ -54,6 +57,7 @@ class ProductSeeder extends Seeder
                 'quantity' => 3,
                 'unit' => 'pcs',
                 'min_quantity' => 2,
+                'high_stock_threshold' => 6,
                 'price' => 149.00,
             ],
             [
@@ -65,6 +69,7 @@ class ProductSeeder extends Seeder
                 'quantity' => 12,
                 'unit' => 'pcs',
                 'min_quantity' => 5,
+                'high_stock_threshold' => 20,
                 'price' => 24.00,
             ],
         ];
@@ -87,6 +92,7 @@ class ProductSeeder extends Seeder
                     'quantity' => $item['quantity'],
                     'unit' => $item['unit'] ?? 'pcs',
                     'min_quantity' => $item['min_quantity'],
+                    'high_stock_threshold' => $item['high_stock_threshold'] ?? 0,
                     'price' => $item['price'],
                 ]
             );
