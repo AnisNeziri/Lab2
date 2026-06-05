@@ -54,9 +54,11 @@ export async function deleteProduct(id) {
 }
 
 export async function exportProducts() {
+  const token = localStorage.getItem('api_token')
   const response = await fetch(buildApiUrl('/products/export'), {
     headers: {
       Accept: 'text/csv',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   })
 

@@ -8,19 +8,11 @@ use Illuminate\Support\Facades\Auth;
 
 class CheckRole
 {
-    /**
-     * Handle an incoming request.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  \Closure  $next
-     * @param  string  $role
-     * @return mixed
-     */
-    public function handle(Request $request, Closure $next, string $role)
+    public function handle(Request $request, Closure $next, string ...$roles)
     {
         $user = Auth::user();
 
-        if (!$user || $user->role !== $role) {
+        if (! $user || ! in_array($user->role, $roles, true)) {
             return response()->json([
                 'message' => 'Unauthorized. Insufficient permissions.',
             ], 403);

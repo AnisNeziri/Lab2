@@ -155,6 +155,18 @@ function Products({ userRole = 'staff' }) {
       barcode: scannedBarcode,
     }))
     setShowScanner(false)
+
+    // Search for product by barcode
+    const existingProduct = products.find(p => p.barcode === scannedBarcode)
+    if (existingProduct) {
+      setForm({
+        ...emptyForm,
+        ...existingProduct,
+        category_id: existingProduct.category_id || '',
+        supplier_id: existingProduct.supplier_id || '',
+      })
+      setEditingId(existingProduct.id)
+    }
   }
 
   async function handleExport() {

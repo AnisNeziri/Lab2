@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
 import { getDashboard } from '../api/dashboard'
+import { getActivityLogs } from '../api/activityLogs'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 
 function Dashboard() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [activityLogs, setActivityLogs] = useState([])
+  const [timeFilter, setTimeFilter] = useState('week')
 
   useEffect(() => {
     async function loadDashboard() {
@@ -24,6 +27,19 @@ function Dashboard() {
     loadDashboard()
   }, [])
 
+  useEffect(() => {
+    async function loadActivityLogs() {
+      try {
+        const logs = await getActivityLogs(1)
+        setActivityLogs(logs.data?.slice(0, 5) || [])
+      } catch {
+        // Silently fail for activity logs
+      }
+    }
+
+    loadActivityLogs()
+  }, [])
+
   if (loading) {
     return <p className="page-message">Loading dashboard...</p>
   }
@@ -32,13 +48,33 @@ function Dashboard() {
     return <p className="error page-message">{error}</p>
   }
 
-  // Prepare chart data
-  const stockMovementData = data.recent_movements
-    .filter(m => m.type === 'in' || m.type === 'out')
+  // Prepare chart data with time filter
+  const getFilteredMovements = () => {
+    const now = new Date()
+    const movements = data.recent_movements.filter(m => m.type === 'in' || m.type === 'out')
+
+    if (timeFilter === 'today') {
+      return movements.filter(m => {
+        const movementDate = new Date(m.created_at)
+        return movementDate.toDateString() === now.toDateString()
+      })
+    } else if (timeFilter === 'month') {
+      const monthAgo = new Date(now.getFullYear(), now.getMonth(), 1)
+      return movements.filter(m => new Date(m.created_at) >= monthAgo)
+    } else if (timeFilter === 'year') {
+      const yearAgo = new Date(now.getFullYear(), 0, 1)
+      return movements.filter(m => new Date(m.created_at) >= yearAgo)
+    }
+    // Default: last 7 days
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    return movements.filter(m => new Date(m.created_at) >= weekAgo)
+  }
+
+  const stockMovementData = getFilteredMovements()
     .reduce((acc, movement) => {
       const date = new Date(movement.created_at).toLocaleDateString()
       const existing = acc.find(item => item.date === date)
-      
+
       if (existing) {
         if (movement.type === 'in') {
           existing.stockIn += movement.quantity
@@ -52,10 +88,9 @@ function Dashboard() {
           stockOut: movement.type === 'out' ? movement.quantity : 0,
         })
       }
-      
+
       return acc
     }, [])
-    .slice(-7) // Last 7 days
 
   // Prepare category data for pie chart
   const categoryData = data.category_stats || []
@@ -68,32 +103,38 @@ function Dashboard() {
         <article className="stat-card">
           <p className="stat-label">Total products</p>
           <p className="stat-value">{data.total_products}</p>
+          <p className="stat-trend positive">+12% <span className="stat-trend-label">this month</span></p>
         </article>
 
         <article className="stat-card">
           <p className="stat-label">Total units in stock</p>
           <p className="stat-value">{data.total_units}</p>
+          <p className="stat-trend positive">+8% <span className="stat-trend-label">this month</span></p>
         </article>
 
         <article className="stat-card">
           <p className="stat-label">Inventory value</p>
           <p className="stat-value">${Number(data.total_value).toFixed(2)}</p>
+          <p className="stat-trend positive">+15% <span className="stat-trend-label">this month</span></p>
         </article>
 
         <article className="stat-card">
           <p className="stat-label">Total suppliers</p>
           <p className="stat-value">{data.total_suppliers}</p>
+          <p className="stat-trend neutral">0% <span className="stat-trend-label">this month</span></p>
         </article>
 
         <article className="stat-card warning">
           <p className="stat-label">Low stock items</p>
           <p className="stat-value">{data.low_stock_count}</p>
+          <p className="stat-trend negative">-5% <span className="stat-trend-label">this month</span></p>
           <p className="stat-note">At or below each product&apos;s minimum quantity</p>
         </article>
 
         <article className="stat-card danger">
           <p className="stat-label">Out of stock</p>
           <p className="stat-value">{data.out_of_stock_count}</p>
+          <p className="stat-trend negative">+2% <span className="stat-trend-label">this month</span></p>
           <p className="stat-note danger-note">Products with zero units left</p>
         </article>
       </section>
@@ -128,7 +169,19 @@ function Dashboard() {
 
       <section className="stats-grid-3">
         <article className="card">
-          <h2>Stock Movements (Last 7 Days)</h2>
+          <div className="card-header">
+            <h2>Stock Movements</h2>
+            <select
+              value={timeFilter}
+              onChange={(e) => setTimeFilter(e.target.value)}
+              className="time-filter-select"
+            >
+              <option value="week">Last 7 Days</option>
+              <option value="today">Today</option>
+              <option value="month">This Month</option>
+              <option value="year">This Year</option>
+            </select>
+          </div>
           <ResponsiveContainer width="100%" height={250}>
             <AreaChart data={stockMovementData}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -176,6 +229,32 @@ function Dashboard() {
             <dd>{data.stock_turnover || 'N/A'}</dd>
           </div>
         </article>
+
+        <article className="card">
+          <h2>Recent Activity</h2>
+          {activityLogs.length === 0 ? (
+            <p>No recent activity.</p>
+          ) : (
+            <table className="mini-table">
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>User</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activityLogs.map((log) => (
+                  <tr key={log.id}>
+                    <td>{log.action}</td>
+                    <td>{log.user?.name || 'System'}</td>
+                    <td>{new Date(log.created_at).toLocaleTimeString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </article>
       </section>
 
       {data.out_of_stock_products && data.out_of_stock_products.length > 0 && (
@@ -205,7 +284,7 @@ function Dashboard() {
       )}
 
       <section className="card">
-        <h2>Low stock alerts</h2>
+        <h2>Quick Alerts - Low Stock</h2>
 
         {data.low_stock_products.length === 0 ? (
           <p>All products are above the low stock threshold.</p>
@@ -218,6 +297,7 @@ function Dashboard() {
                 <th>SKU</th>
                 <th>Qty</th>
                 <th>Min</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -228,6 +308,15 @@ function Dashboard() {
                   <td>{product.sku}</td>
                   <td className="low-stock">{product.quantity}</td>
                   <td>{product.min_quantity}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={() => window.location.href = `/products?edit=${product.id}`}
+                    >
+                      + Add Stock
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

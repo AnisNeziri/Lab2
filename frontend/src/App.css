@@ -543,6 +543,30 @@ header p {
   color: #991b1b;
 }
 
+.stat-trend {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+
+.stat-trend.positive {
+  color: #16a34a;
+}
+
+.stat-trend.negative {
+  color: #dc2626;
+}
+
+.stat-trend.neutral {
+  color: #64748b;
+}
+
+.stat-trend-label {
+  font-weight: 400;
+  color: #64748b;
+  margin-left: 0.25rem;
+}
+
 .stat-label {
   font-size: 0.85rem;
   color: #5c6b7a;
@@ -572,6 +596,22 @@ header p {
 .card h2 {
   margin-bottom: 0;
   font-size: 1.25rem;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.time-filter-select {
+  padding: 0.5rem;
+  border: 1px solid #dce3ea;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: #fff;
+  cursor: pointer;
 }
 
 .card-description {
@@ -804,6 +844,32 @@ button.danger {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.mini-table th,
+.mini-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid #e8edf2;
+  text-align: left;
+}
+
+.mini-table th {
+  color: #5c6b7a;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  background: #f8fafc;
+}
+
+.mini-table tr:hover td {
+  background: #fbfdff;
 }
 
 .error {
