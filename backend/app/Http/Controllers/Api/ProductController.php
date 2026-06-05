@@ -60,7 +60,7 @@ class ProductController extends Controller
 
         $callback = function () use ($products) {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['Name', 'SKU', 'Category', 'Supplier', 'Quantity', 'Min Quantity', 'Price', 'Description']);
+            fputcsv($handle, ['Name', 'SKU', 'Category', 'Supplier', 'Quantity', 'Unit', 'Min Quantity', 'Price', 'Description']);
 
             foreach ($products as $product) {
                 fputcsv($handle, [
@@ -69,6 +69,7 @@ class ProductController extends Controller
                     $product->category?->name ?? '',
                     $product->supplier?->name ?? '',
                     $product->quantity,
+                    $product->unit,
                     $product->min_quantity,
                     $product->price,
                     $product->description ?? '',
@@ -108,11 +109,17 @@ class ProductController extends Controller
             'barcode' => ['nullable', 'string', 'max:50', 'unique:products,barcode'],
             'description' => ['nullable', 'string'],
             'quantity' => ['required', 'integer', 'min:0'],
+            'unit' => ['nullable', 'string', 'max:20'],
             'min_quantity' => ['required', 'integer', 'min:0'],
+            'high_stock_threshold' => ['nullable', 'integer', 'min:0'],
             'price' => ['required', 'numeric', 'min:0'],
             'purchase_price' => ['nullable', 'numeric', 'min:0'],
             'selling_price' => ['nullable', 'numeric', 'min:0'],
         ]);
+
+        if (empty($validated['unit'])) {
+            $validated['unit'] = 'pcs';
+        }
 
         $product = Product::create($validated);
         $product->load(['category', 'supplier']);
@@ -145,11 +152,17 @@ class ProductController extends Controller
             'barcode' => ['nullable', 'string', 'max:50', 'unique:products,barcode,' . $product->id],
             'description' => ['nullable', 'string'],
             'quantity' => ['sometimes', 'required', 'integer', 'min:0'],
+            'unit' => ['nullable', 'string', 'max:20'],
             'min_quantity' => ['sometimes', 'required', 'integer', 'min:0'],
+            'high_stock_threshold' => ['nullable', 'integer', 'min:0'],
             'price' => ['sometimes', 'required', 'numeric', 'min:0'],
             'purchase_price' => ['nullable', 'numeric', 'min:0'],
             'selling_price' => ['nullable', 'numeric', 'min:0'],
         ]);
+
+        if (array_key_exists('unit', $validated) && empty($validated['unit'])) {
+            $validated['unit'] = 'pcs';
+        }
 
         $product->update($validated);
         $product->load(['category', 'supplier']);

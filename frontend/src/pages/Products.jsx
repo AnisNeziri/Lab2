@@ -21,7 +21,9 @@ const emptyForm = {
   barcode: '',
   description: '',
   quantity: 0,
+  unit: 'pcs',
   min_quantity: 5,
+  high_stock_threshold: 0,
   price: '',
   purchase_price: '',
   selling_price: '',
@@ -126,7 +128,9 @@ function Products({ userRole = 'staff' }) {
       barcode: product.barcode ?? '',
       description: product.description ?? '',
       quantity: product.quantity,
+      unit: product.unit ?? 'pcs',
       min_quantity: product.min_quantity ?? 5,
+      high_stock_threshold: product.high_stock_threshold ?? 0,
       price: product.price,
       purchase_price: product.purchase_price ?? '',
       selling_price: product.selling_price ?? '',
@@ -189,7 +193,9 @@ function Products({ userRole = 'staff' }) {
       barcode: form.barcode || null,
       description: form.description || null,
       quantity: Number(form.quantity),
+      unit: form.unit || 'pcs',
       min_quantity: Number(form.min_quantity),
+      high_stock_threshold: Number(form.high_stock_threshold),
       price: Number(form.price),
       purchase_price: form.purchase_price ? Number(form.purchase_price) : null,
       selling_price: form.selling_price ? Number(form.selling_price) : null,
@@ -337,6 +343,29 @@ function Products({ userRole = 'staff' }) {
                 value={form.min_quantity}
                 onChange={handleChange}
                 required
+              />
+            </label>
+
+            <label>
+              Unit
+              <input
+                name="unit"
+                value={form.unit}
+                onChange={handleChange}
+                placeholder="e.g. pcs, pack, kg"
+                required
+              />
+            </label>
+
+            <label>
+              High stock at
+              <input
+                name="high_stock_threshold"
+                type="number"
+                min="0"
+                value={form.high_stock_threshold}
+                onChange={handleChange}
+                placeholder="0 = auto"
               />
             </label>
           </div>
@@ -511,6 +540,7 @@ function Products({ userRole = 'staff' }) {
                   <th>Supplier</th>
                   <th>SKU</th>
                   <th>Qty</th>
+                  <th>Unit</th>
                   <th>Min</th>
                   <th>Price</th>
                   <th></th>
@@ -526,6 +556,7 @@ function Products({ userRole = 'staff' }) {
                     <td>
                       <StockBadge quantity={product.quantity} minQuantity={product.min_quantity} />
                     </td>
+                    <td>{product.unit ?? 'pcs'}</td>
                     <td>{product.min_quantity}</td>
                     <td>${Number(product.price).toFixed(2)}</td>
                     <td className="actions">
