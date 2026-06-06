@@ -25,6 +25,15 @@ function App() {
     if (!token) {
       setPage('login')
     }
+
+    const handleUnauthorized = () => {
+      setIsAuthenticated(false)
+      setUserRole('staff')
+      setPage('login')
+    }
+
+    window.addEventListener('auth-unauthorized', handleUnauthorized)
+    return () => window.removeEventListener('auth-unauthorized', handleUnauthorized)
   }, [])
 
   const handleLoginSuccess = (userData) => {
