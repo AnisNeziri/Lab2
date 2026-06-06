@@ -310,7 +310,7 @@ function Dashboard({ onNavigate }) {
                     <button
                       type="button"
                       className="primary"
-                      onClick={() => onNavigate?.('products')}
+                      onClick={() => onNavigate?.('stock')}
                     >
                       + Add Stock
                     </button>

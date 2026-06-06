@@ -14,9 +14,6 @@ function Login({ onLoginSuccess }) {
 
     try {
       const data = await login(email, password)
-      localStorage.setItem('api_token', data.token)
-      localStorage.setItem('user', JSON.stringify(data.user))
-      localStorage.setItem('user_role', data.user.role)
       onLoginSuccess(data)
     } catch (err) {
       setError(err.message || 'Invalid email or password.')

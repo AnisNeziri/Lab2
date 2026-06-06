@@ -1,4 +1,4 @@
-import { apiRequest, buildApiUrl, parseApiResponse } from './client'
+import { apiRequest, buildApiUrl, authenticatedFetch, parseApiResponse } from './client'
 
 export async function getStockMovements(filters = {}) {
   return apiRequest(
@@ -20,17 +20,13 @@ export async function lookupProductBySku(sku) {
 }
 
 export async function exportStockMovements(filters = {}) {
-  const token = localStorage.getItem('api_token')
-  const response = await fetch(
+  const response = await authenticatedFetch(
     buildApiUrl('/stock-movements/export', {
       product_id: filters.product_id,
       type: filters.type,
     }),
     {
-      headers: {
-        Accept: 'text/csv',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers: { Accept: 'text/csv' },
     }
   )
 

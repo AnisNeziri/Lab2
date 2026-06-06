@@ -1,19 +1,25 @@
-import { useState, useEffect } from 'react'
-import Categories from './pages/Categories'
-import Dashboard from './pages/Dashboard'
-import Products from './pages/Products'
-import Suppliers from './pages/Suppliers'
-import Reports from './pages/Reports'
-import Stock from './pages/Stock'
-import Invoices from './pages/Invoices'
-import ActivityLogs from './pages/ActivityLogs'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import Login from './pages/Login'
 import Sidebar from './components/Sidebar'
 import { logout } from './api/login'
 import './App.css'
 
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Products = lazy(() => import('./pages/Products'))
+const Stock = lazy(() => import('./pages/Stock'))
+const Categories = lazy(() => import('./pages/Categories'))
+const Suppliers = lazy(() => import('./pages/Suppliers'))
+const Reports = lazy(() => import('./pages/Reports'))
+const Invoices = lazy(() => import('./pages/Invoices'))
+const ActivityLogs = lazy(() => import('./pages/ActivityLogs'))
+
+function PageLoader() {
+  return <p className="page-message">Loading page...</p>
+}
+
 function App() {
   const [page, setPage] = useState('dashboard')
+  const [authChecked, setAuthChecked] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [userRole, setUserRole] = useState('staff')
 
@@ -25,6 +31,7 @@ function App() {
     if (!token) {
       setPage('login')
     }
+    setAuthChecked(true)
 
     const handleUnauthorized = () => {
       setIsAuthenticated(false)
@@ -39,6 +46,7 @@ function App() {
   const handleLoginSuccess = (userData) => {
     localStorage.setItem('api_token', userData.token)
     localStorage.setItem('user_role', userData.user.role)
+    localStorage.setItem('user', JSON.stringify(userData.user))
     setUserRole(userData.user.role)
     setIsAuthenticated(true)
     setPage('dashboard')
@@ -48,8 +56,6 @@ function App() {
     try {
       await logout()
     } catch {
-      // Best-effort: still clear local session even if the API call fails
-      // (e.g. token already expired or the server is unreachable).
     } finally {
       localStorage.removeItem('api_token')
       localStorage.removeItem('user')
@@ -58,6 +64,10 @@ function App() {
       setUserRole('staff')
       setPage('login')
     }
+  }
+
+  if (!authChecked) {
+    return null
   }
 
   if (page === 'login') {
@@ -72,14 +82,16 @@ function App() {
     <div className="app">
       <Sidebar currentPage={page} onPageChange={setPage} userRole={userRole} onLogout={handleLogout} />
       <div className="main-content">
-        {page === 'products' && <Products userRole={userRole} />}
-        {page === 'stock' && <Stock />}
-        {page === 'categories' && <Categories userRole={userRole} />}
-        {page === 'suppliers' && <Suppliers userRole={userRole} />}
-        {page === 'dashboard' && <Dashboard onNavigate={setPage} />}
-        {page === 'reports' && <Reports />}
-        {page === 'invoices' && <Invoices />}
-        {page === 'activity-logs' && <ActivityLogs />}
+        <Suspense fallback={<PageLoader />}>
+          {page === 'products' && <Products userRole={userRole} />}
+          {page === 'stock' && <Stock />}
+          {page === 'categories' && <Categories userRole={userRole} />}
+          {page === 'suppliers' && <Suppliers userRole={userRole} />}
+          {page === 'dashboard' && <Dashboard onNavigate={setPage} />}
+          {page === 'reports' && <Reports />}
+          {page === 'invoices' && <Invoices />}
+          {page === 'activity-logs' && userRole === 'admin' && <ActivityLogs />}
+        </Suspense>
       </div>
     </div>
   )

@@ -1,60 +1,56 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Bell, X, AlertTriangle, Package } from 'lucide-react'
+import { getProducts } from '../api/products'
 
 export default function NotificationCenter() {
   const [notifications, setNotifications] = useState([])
   const [isOpen, setIsOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
 
-  useEffect(() => {
-    // Fetch low stock products to create notifications
-    async function fetchNotifications() {
-      try {
-        const response = await fetch('/api/products?low_stock=1', {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('api_token')}`
-          }
-        })
-        if (response.ok) {
-          const data = await response.json()
-          const products = data.data || data
-          
-          const lowStockNotifications = products.map(product => ({
-            id: product.id,
-            type: 'low_stock',
-            title: 'Low Stock Alert',
-            message: `${product.name} is running low (${product.quantity} units left)`,
-            productId: product.id,
-            timestamp: new Date(),
-            read: false
-          }))
-          
-          setNotifications(lowStockNotifications)
-          setUnreadCount(lowStockNotifications.length)
-        }
-      } catch (err) {
-        console.error('Failed to fetch notifications:', err)
-      }
-    }
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const data = await getProducts({ low_stock: true, per_page: 50 })
+      const products = data.data || []
 
-    fetchNotifications()
-    
-    // Refresh notifications every 5 minutes
-    const interval = setInterval(fetchNotifications, 300000)
-    return () => clearInterval(interval)
+      setNotifications((previous) => {
+        const readIds = new Set(previous.filter((item) => item.read).map((item) => item.id))
+
+        const next = products.map((product) => ({
+          id: product.id,
+          type: 'low_stock',
+          title: 'Low Stock Alert',
+          message: `${product.name} is running low (${product.quantity} units left)`,
+          productId: product.id,
+          timestamp: new Date(),
+          read: readIds.has(product.id),
+        }))
+
+        setUnreadCount(next.filter((item) => !item.read).length)
+        return next
+      })
+    } catch {
+      setNotifications([])
+      setUnreadCount(0)
+    }
   }, [])
 
+  useEffect(() => {
+    fetchNotifications()
+    const interval = setInterval(fetchNotifications, 300000)
+    return () => clearInterval(interval)
+  }, [fetchNotifications])
+
   const markAsRead = (id) => {
-    setNotifications(prev => 
-      prev.map(notif => 
+    setNotifications((previous) =>
+      previous.map((notif) =>
         notif.id === id ? { ...notif, read: true } : notif
       )
     )
-    setUnreadCount(prev => Math.max(0, prev - 1))
+    setUnreadCount((previous) => Math.max(0, previous - 1))
   }
 
   const markAllAsRead = () => {
-    setNotifications(prev => prev.map(notif => ({ ...notif, read: true })))
+    setNotifications((previous) => previous.map((notif) => ({ ...notif, read: true })))
     setUnreadCount(0)
   }
 
@@ -102,7 +98,7 @@ export default function NotificationCenter() {
                 <p>No notifications</p>
               </div>
             ) : (
-              notifications.map(notification => (
+              notifications.map((notification) => (
                 <div
                   key={notification.id}
                   className={`notification-item ${notification.read ? 'read' : 'unread'}`}

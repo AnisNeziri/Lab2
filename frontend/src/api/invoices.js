@@ -1,34 +1,24 @@
-import { apiRequest, buildApiUrl } from './client'
+import { apiRequest, buildApiUrl, authenticatedFetch, parseApiResponse } from './client'
 
 export async function getInvoices() {
-  return apiRequest('/invoices', {}, 'Failed to load invoices')
+  return apiRequest(buildApiUrl('/invoices'), {}, 'Failed to load invoices')
 }
 
 export async function getInvoice(id) {
-  return apiRequest(`/invoices/${id}`, {}, 'Failed to load invoice details')
+  return apiRequest(buildApiUrl(`/invoices/${id}`), {}, 'Failed to load invoice details')
 }
 
 export async function downloadInvoicePdf(id, invoiceNumber) {
-  const token = localStorage.getItem('api_token')
-  const response = await fetch(buildApiUrl(`/invoices/${id}/pdf`), {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    }
-  })
+  const response = await authenticatedFetch(buildApiUrl(`/invoices/${id}/pdf`))
 
-  const data = await response.json()
-
-  if (!response.ok) {
-    throw new Error(data.message || data.error || 'Failed to download PDF')
-  }
+  const data = await parseApiResponse(response, 'Failed to download PDF')
 
   if (data.error) {
-    throw new Error(data.error || data.message)
+    throw new Error(data.error)
   }
 
   const { pdf, filename } = data
 
-  // Krijo link nga base64
   const link = document.createElement('a')
   link.href = `data:application/pdf;base64,${pdf}`
   link.download = filename || `invoice-${invoiceNumber}.pdf`

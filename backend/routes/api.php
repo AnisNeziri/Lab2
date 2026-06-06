@@ -34,9 +34,9 @@ Route::middleware('auth.token')->group(function () {
 
     Route::get('/products/lookup', [ProductController::class, 'lookup']);
     Route::get('/products/export', [ProductController::class, 'export']);
-    Route::apiResource('categories', CategoryController::class)->only(['index', 'store', 'update', 'destroy']);
-    Route::apiResource('suppliers', SupplierController::class)->only(['index', 'store', 'update', 'destroy']);
-    Route::apiResource('products', ProductController::class);
+    Route::apiResource('categories', CategoryController::class)->except(['destroy']);
+    Route::apiResource('suppliers', SupplierController::class)->except(['destroy']);
+    Route::apiResource('products', ProductController::class)->except(['destroy']);
 
     // Invoices API
     Route::get('/invoices', [InvoiceController::class, 'index']);

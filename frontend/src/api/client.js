@@ -34,6 +34,32 @@ export async function parseApiResponse(response, fallbackMessage) {
   return payload
 }
 
+export async function authenticatedFetch(pathOrUrl, options = {}) {
+  const token = localStorage.getItem('api_token')
+  const url = pathOrUrl.startsWith('/api') || pathOrUrl.startsWith('http')
+    ? pathOrUrl
+    : buildApiUrl(pathOrUrl)
+
+  const headers = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...options.headers,
+  }
+
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  })
+
+  if (response.status === 401) {
+    localStorage.removeItem('api_token')
+    localStorage.removeItem('user')
+    localStorage.removeItem('user_role')
+    window.dispatchEvent(new Event('auth-unauthorized'))
+  }
+
+  return response
+}
+
 export async function apiRequest(path, options = {}, fallbackMessage = 'API request failed') {
   const token = localStorage.getItem('api_token')
   

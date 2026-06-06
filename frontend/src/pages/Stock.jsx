@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { getProducts } from '../api/products'
+import { getAllProducts } from '../api/products'
 import {
   createStockMovement,
   exportStockMovements,
@@ -41,11 +41,11 @@ function Stock() {
     try {
       setLoading(true)
       setError('')
-      const [productsResponse, movementsData] = await Promise.all([
-        getProducts({ per_page: 100 }),
+      const [productsList, movementsData] = await Promise.all([
+        getAllProducts(),
         loadMovements(),
       ])
-      setProducts(productsResponse.data)
+      setProducts(productsList)
       setMovements(movementsData)
     } catch {
       setError('Could not load stock data.')

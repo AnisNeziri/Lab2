@@ -30,12 +30,10 @@ class InvoiceController extends Controller
 
             if (!view()->exists('invoices.pdf')) {
                 return response()->json([
-                    'error' => 'View mungon',
-                    'path' => 'resources/views/invoices/pdf.blade.php'
+                    'error' => 'Invoice PDF template is not available.',
                 ], 500);
             }
 
-            // Gjenero PDF
             $pdf = Pdf::loadView('invoices.pdf', compact('invoice'));
             $pdf->setPaper('A4', 'portrait');
             $pdf->setOptions([
@@ -57,10 +55,7 @@ class InvoiceController extends Controller
                 'line' => $e->getLine(),
             ]);
             return response()->json([
-                'error' => 'Gabim gjatë gjenerimit të PDF',
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine()
+                'error' => 'Could not generate invoice PDF.',
             ], 500);
         }
     }

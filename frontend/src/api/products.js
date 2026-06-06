@@ -1,4 +1,4 @@
-import { apiRequest, buildApiUrl, parseApiResponse } from './client'
+import { apiRequest, buildApiUrl, authenticatedFetch, parseApiResponse } from './client'
 
 export async function getProducts(filters = {}) {
   return apiRequest(
@@ -53,13 +53,24 @@ export async function deleteProduct(id) {
   )
 }
 
+export async function getAllProducts(filters = {}) {
+  const items = []
+  let page = 1
+  let lastPage = 1
+
+  do {
+    const response = await getProducts({ ...filters, page, per_page: 50 })
+    items.push(...response.data)
+    lastPage = response.last_page
+    page += 1
+  } while (page <= lastPage)
+
+  return items
+}
+
 export async function exportProducts() {
-  const token = localStorage.getItem('api_token')
-  const response = await fetch(buildApiUrl('/products/export'), {
-    headers: {
-      Accept: 'text/csv',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+  const response = await authenticatedFetch('/products/export', {
+    headers: { Accept: 'text/csv' },
   })
 
   if (!response.ok) {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getReports } from '../api/reports'
 import { Download } from 'lucide-react'
-import { getProducts } from '../api/products'
+import { exportProducts } from '../api/products'
 
 function Reports() {
   const [data, setData] = useState(null)
@@ -29,35 +29,8 @@ function Reports() {
   const handleExportCSV = async () => {
     try {
       setExporting(true)
-      const response = await getProducts({ per_page: 1000 })
-      const products = response.data || response
-
-      // Create CSV content
-      const headers = ['Name', 'SKU', 'Category', 'Quantity', 'Min Quantity', 'Price', 'Total Value']
-      const csvContent = [
-        headers.join(','),
-        ...products.map(product => [
-          `"${product.name}"`,
-          `"${product.sku}"`,
-          `"${product.category?.name || ''}"`,
-          product.quantity,
-          product.min_quantity,
-          product.price,
-          (product.quantity * product.price).toFixed(2)
-        ].join(','))
-      ].join('\n')
-
-      // Create and download CSV file
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      const link = document.createElement('a')
-      const url = URL.createObjectURL(blob)
-      link.setAttribute('href', url)
-      link.setAttribute('download', `products-export-${new Date().toISOString().split('T')[0]}.csv`)
-      link.style.visibility = 'hidden'
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-    } catch (err) {
+      await exportProducts()
+    } catch {
       setError('Failed to export products to CSV.')
     } finally {
       setExporting(false)
