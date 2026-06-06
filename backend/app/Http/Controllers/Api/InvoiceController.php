@@ -24,6 +24,8 @@ class InvoiceController extends Controller
     public function downloadPdf($id): JsonResponse
     {
         try {
+            set_time_limit(120);
+
             $invoice = Invoice::with('items.product')->findOrFail($id);
 
             if (!view()->exists('invoices.pdf')) {
@@ -36,6 +38,11 @@ class InvoiceController extends Controller
             // Gjenero PDF
             $pdf = Pdf::loadView('invoices.pdf', compact('invoice'));
             $pdf->setPaper('A4', 'portrait');
+            $pdf->setOptions([
+                'isRemoteEnabled' => false,
+                'isHtml5ParserEnabled' => true,
+                'defaultFont' => 'sans-serif',
+            ]);
 
             $base64 = base64_encode($pdf->output());
 
