@@ -34,7 +34,7 @@ class DashboardController extends Controller
             ->values();
 
         $outOfStockProducts = $products
-            ->filter(fn (Product $product) => $product->quantity === 0)
+            ->filter(fn (Product $product) => $product->quantity <= 0)
             ->sortBy('name')
             ->values();
 
