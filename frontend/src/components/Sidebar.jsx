@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import NotificationCenter from './NotificationCenter'
 
-export default function Sidebar({ currentPage, onPageChange, userRole }) {
+export default function Sidebar({ currentPage, onPageChange, userRole, onLogout }) {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'products', label: 'Products', icon: Package },
@@ -59,7 +59,7 @@ export default function Sidebar({ currentPage, onPageChange, userRole }) {
         <button 
           type="button" 
           className="sidebar-item logout"
-          onClick={() => onPageChange('login')}
+          onClick={() => onLogout?.()}
         >
           <LogOut size={20} />
           <span>Logout</span>

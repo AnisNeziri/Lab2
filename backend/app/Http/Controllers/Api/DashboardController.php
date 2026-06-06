@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Category;
 use App\Models\Product;
 use App\Models\StockMovement;
 use App\Models\Supplier;
@@ -75,13 +76,23 @@ class DashboardController extends Controller
             })
             ->values();
 
+        // Stock turnover ratio: how much stock has moved out relative to
+        // the units currently held (a simple, dependency-free approximation
+        // since we don't keep historical average-inventory snapshots).
+        $totalStockOut = (int) StockMovement::where('type', 'out')->sum('quantity');
+        $stockTurnover = $totalUnits > 0
+            ? round($totalStockOut / $totalUnits, 2)
+            : 0;
+
         return response()->json([
             'total_products' => $products->count(),
+            'total_categories' => Category::count(),
             'total_suppliers' => Supplier::count(),
             'total_units' => $totalUnits,
             'total_value' => round($totalValue, 2),
             'inventory_value' => round($inventoryValue, 2),
             'expected_net_profit' => round($expectedNetProfit, 2),
+            'stock_turnover' => $stockTurnover,
             'low_stock_count' => $lowStockProducts->count(),
             'low_stock_products' => $lowStockProducts,
             'out_of_stock_count' => $outOfStockProducts->count(),

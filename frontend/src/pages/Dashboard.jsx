@@ -3,7 +3,7 @@ import { getDashboard } from '../api/dashboard'
 import { getActivityLogs } from '../api/activityLogs'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 
-function Dashboard() {
+function Dashboard({ onNavigate }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -93,7 +93,7 @@ function Dashboard() {
     }, [])
 
   // Prepare category data for pie chart
-  const categoryData = data.category_stats || []
+  const categoryData = data.category_values || []
 
   const COLORS = ['#0f766e', '#0891b2', '#0284c7', '#0369a1', '#075985', '#0c4a6e']
 
@@ -103,38 +103,36 @@ function Dashboard() {
         <article className="stat-card">
           <p className="stat-label">Total products</p>
           <p className="stat-value">{data.total_products}</p>
-          <p className="stat-trend positive">+12% <span className="stat-trend-label">this month</span></p>
+          <p className="stat-note">Across {data.total_categories ?? 0} categor{(data.total_categories ?? 0) === 1 ? 'y' : 'ies'}</p>
         </article>
 
         <article className="stat-card">
           <p className="stat-label">Total units in stock</p>
           <p className="stat-value">{data.total_units}</p>
-          <p className="stat-trend positive">+8% <span className="stat-trend-label">this month</span></p>
+          <p className="stat-note">Sum of quantity across all products</p>
         </article>
 
         <article className="stat-card">
           <p className="stat-label">Inventory value</p>
           <p className="stat-value">${Number(data.total_value).toFixed(2)}</p>
-          <p className="stat-trend positive">+15% <span className="stat-trend-label">this month</span></p>
+          <p className="stat-note">Quantity &times; selling price</p>
         </article>
 
         <article className="stat-card">
           <p className="stat-label">Total suppliers</p>
           <p className="stat-value">{data.total_suppliers}</p>
-          <p className="stat-trend neutral">0% <span className="stat-trend-label">this month</span></p>
+          <p className="stat-note">Active supplier records</p>
         </article>
 
         <article className="stat-card warning">
           <p className="stat-label">Low stock items</p>
           <p className="stat-value">{data.low_stock_count}</p>
-          <p className="stat-trend negative">-5% <span className="stat-trend-label">this month</span></p>
           <p className="stat-note">At or below each product&apos;s minimum quantity</p>
         </article>
 
         <article className="stat-card danger">
           <p className="stat-label">Out of stock</p>
           <p className="stat-value">{data.out_of_stock_count}</p>
-          <p className="stat-trend negative">+2% <span className="stat-trend-label">this month</span></p>
           <p className="stat-note danger-note">Products with zero units left</p>
         </article>
       </section>
@@ -222,11 +220,11 @@ function Dashboard() {
           <h2>Quick Stats</h2>
           <div className="detail-list">
             <dt>Total Categories</dt>
-            <dd>{data.total_categories || 0}</dd>
+            <dd>{data.total_categories ?? 0}</dd>
             <dt>Avg Product Price</dt>
             <dd>${data.total_products > 0 ? (data.total_value / data.total_products).toFixed(2) : '0.00'}</dd>
             <dt>Stock Turnover</dt>
-            <dd>{data.stock_turnover || 'N/A'}</dd>
+            <dd>{typeof data.stock_turnover === 'number' ? `${data.stock_turnover}x` : 'N/A'}</dd>
           </div>
         </article>
 
@@ -312,7 +310,7 @@ function Dashboard() {
                     <button
                       type="button"
                       className="primary"
-                      onClick={() => window.location.href = `/products?edit=${product.id}`}
+                      onClick={() => onNavigate?.('products')}
                     >
                       + Add Stock
                     </button>

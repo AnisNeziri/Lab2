@@ -9,6 +9,7 @@ import Invoices from './pages/Invoices'
 import ActivityLogs from './pages/ActivityLogs'
 import Login from './pages/Login'
 import Sidebar from './components/Sidebar'
+import { logout } from './api/login'
 import './App.css'
 
 function App() {
@@ -34,6 +35,22 @@ function App() {
     setPage('dashboard')
   }
 
+  const handleLogout = async () => {
+    try {
+      await logout()
+    } catch {
+      // Best-effort: still clear local session even if the API call fails
+      // (e.g. token already expired or the server is unreachable).
+    } finally {
+      localStorage.removeItem('api_token')
+      localStorage.removeItem('user')
+      localStorage.removeItem('user_role')
+      setIsAuthenticated(false)
+      setUserRole('staff')
+      setPage('login')
+    }
+  }
+
   if (page === 'login') {
     return <Login onLoginSuccess={handleLoginSuccess} />
   }
@@ -44,13 +61,13 @@ function App() {
 
   return (
     <div className="app">
-      <Sidebar currentPage={page} onPageChange={setPage} userRole={userRole} />
+      <Sidebar currentPage={page} onPageChange={setPage} userRole={userRole} onLogout={handleLogout} />
       <div className="main-content">
         {page === 'products' && <Products userRole={userRole} />}
         {page === 'stock' && <Stock />}
         {page === 'categories' && <Categories userRole={userRole} />}
         {page === 'suppliers' && <Suppliers userRole={userRole} />}
-        {page === 'dashboard' && <Dashboard />}
+        {page === 'dashboard' && <Dashboard onNavigate={setPage} />}
         {page === 'reports' && <Reports />}
         {page === 'invoices' && <Invoices />}
         {page === 'activity-logs' && <ActivityLogs />}

@@ -110,6 +110,14 @@
             background-color: #f3f4f6;
             color: #374151;
         }
+        .status-sent {
+            background-color: #dbeafe;
+            color: #1e40af;
+        }
+        .status-overdue {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
         .footer {
             margin-top: 80px;
             text-align: center;
