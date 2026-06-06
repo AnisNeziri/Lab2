@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Response;
 
 class InvoiceController extends Controller
 {
@@ -34,10 +34,8 @@ class InvoiceController extends Controller
             }
 
             // Gjenero PDF
-            $pdf = app()->make('dompdf');
-            $pdf->loadHtml(view('invoices.pdf', compact('invoice'))->render());
+            $pdf = Pdf::loadView('invoices.pdf', compact('invoice'));
             $pdf->setPaper('A4', 'portrait');
-            $pdf->render();
 
             $base64 = base64_encode($pdf->output());
 
