@@ -45,6 +45,10 @@ class InvoiceController extends Controller
             ]);
 
         } catch (\Throwable $e) {
+            \Log::error('PDF generation failed: ' . $e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
             return response()->json([
                 'error' => 'Gabim gjatë gjenerimit të PDF',
                 'message' => $e->getMessage(),
