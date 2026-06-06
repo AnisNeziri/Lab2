@@ -16,11 +16,11 @@ export async function downloadInvoicePdf(id, invoiceNumber) {
     }
   })
 
-  if (!response.ok) {
-    throw new Error('Failed to download PDF')
-  }
-
   const data = await response.json()
+
+  if (!response.ok) {
+    throw new Error(data.message || data.error || 'Failed to download PDF')
+  }
 
   if (data.error) {
     throw new Error(data.error || data.message)
