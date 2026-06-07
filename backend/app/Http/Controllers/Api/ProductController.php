@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Repositories\Contracts\ProductRepositoryInterface;
 use App\Services\ProductService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,7 +13,8 @@ use Illuminate\Validation\Rule;
 class ProductController extends Controller
 {
     public function __construct(
-        private ProductService $productService
+        private ProductService $productService,
+        private ProductRepositoryInterface $productRepository,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -24,6 +26,7 @@ class ProductController extends Controller
             'sort' => ['nullable', 'in:name,sku,quantity,min_quantity,price'],
             'direction' => ['nullable', 'in:asc,desc'],
             'low_stock' => ['nullable', 'boolean'],
+            'location_code' => ['nullable', 'string', 'max:10'],
         ]);
 
         $perPage = min($request->integer('per_page', 10), 50);
@@ -50,6 +53,16 @@ class ProductController extends Controller
         }
 
         return response()->json($product);
+    }
+
+    public function byShelf(Request $request, string $locationCode): JsonResponse
+    {
+        $products = $this->productRepository->byLocationCode(
+            strtoupper($locationCode),
+            $request->user()->company_id,
+        );
+
+        return response()->json($products);
     }
 
     public function store(Request $request): JsonResponse

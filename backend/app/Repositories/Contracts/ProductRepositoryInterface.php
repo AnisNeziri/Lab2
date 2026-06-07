@@ -23,4 +23,6 @@ interface ProductRepositoryInterface
     public function delete(Product $product): void;
 
     public function searchGlobal(string $term, int $limit = 20): Collection;
+
+    public function byLocationCode(string $locationCode, int $companyId): Collection;
 }

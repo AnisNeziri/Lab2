@@ -37,6 +37,10 @@ class ProductRepository implements ProductRepositoryInterface
             $query->whereColumn('quantity', '<=', 'min_quantity');
         }
 
+        if (! empty($filters['location_code'])) {
+            $query->where('location_code', $filters['location_code']);
+        }
+
         return $query->paginate($perPage);
     }
 
@@ -70,6 +74,15 @@ class ProductRepository implements ProductRepositoryInterface
     public function delete(Product $product): void
     {
         $product->delete();
+    }
+
+    public function byLocationCode(string $locationCode, int $companyId): Collection
+    {
+        return Product::with(['category', 'supplier'])
+            ->where('company_id', $companyId)
+            ->where('location_code', $locationCode)
+            ->orderBy('name')
+            ->get();
     }
 
     public function searchGlobal(string $term, int $limit = 20): Collection
