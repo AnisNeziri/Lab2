@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  Area,
+  CartesianGrid,
+  ComposedChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import { getAllProducts } from '../api/products'
 import {
   createStockMovement,
@@ -6,6 +15,46 @@ import {
   getStockMovements,
   lookupProductBySku,
 } from '../api/stock'
+
+function buildChartData(movements) {
+  const byDay = {}
+  movements.forEach((m) => {
+    const day = m.created_at ? m.created_at.slice(0, 10) : 'unknown'
+    if (!byDay[day]) byDay[day] = { date: day, in: 0, out: 0 }
+    if (m.type === 'in') byDay[day].in += Number(m.quantity)
+    else byDay[day].out += Number(m.quantity)
+  })
+  return Object.values(byDay)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-30)
+}
+
+function MovementTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  const fmt = (d) => {
+    if (!d || d === 'unknown') return d
+    const [y, m, day] = d.split('-')
+    return new Date(y, m - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
+  return (
+    <div style={{
+      background: '#0f172a',
+      border: '1px solid #1e293b',
+      borderRadius: 10,
+      padding: '10px 16px',
+      fontSize: 13,
+      color: '#e2e8f0',
+      boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+    }}>
+      <p style={{ color: '#94a3b8', marginBottom: 6, fontWeight: 600 }}>{fmt(label)}</p>
+      {payload.map((entry) => (
+        <p key={entry.dataKey} style={{ color: entry.color, margin: '2px 0' }}>
+          {entry.dataKey === 'in' ? '▲ Inbound' : '▼ Outbound'}: {entry.dataKey === 'out' ? '-' : '+'}{entry.value}
+        </p>
+      ))}
+    </div>
+  )
+}
 
 const emptyForm = {
   product_id: '',
@@ -25,6 +74,8 @@ function Stock() {
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
   const [exporting, setExporting] = useState(false)
+
+  const chartData = useMemo(() => buildChartData(movements), [movements])
 
   const loadMovements = useCallback(async (activeFilters = filters) => {
     const movementFilters = {}
@@ -286,6 +337,81 @@ function Stock() {
             </button>
           </div>
         </form>
+
+        {chartData.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 12 }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+                Movement Trends
+              </p>
+              <div style={{ display: 'flex', gap: 16 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />
+                  Stock In
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#d97706', display: 'inline-block' }} />
+                  Stock Out
+                </span>
+              </div>
+            </div>
+            <ResponsiveContainer width="100%" height={250}>
+              <ComposedChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="gIn" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#16a34a" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="gOut" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#d97706" stopOpacity={0.22} />
+                    <stop offset="95%" stopColor="#d97706" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 11, fill: '#94a3b8' }}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(d) => {
+                    if (!d || d === 'unknown') return ''
+                    const [y, m, day] = d.split('-')
+                    return new Date(y, m - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                  }}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: '#94a3b8' }}
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                />
+                <Tooltip content={<MovementTooltip />} />
+                <Area
+                  type="monotone"
+                  dataKey="in"
+                  stroke="#16a34a"
+                  strokeWidth={2}
+                  fill="url(#gIn)"
+                  dot={false}
+                  activeDot={{ r: 5, fill: '#16a34a', strokeWidth: 0 }}
+                  isAnimationActive={true}
+                  animationDuration={600}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="out"
+                  stroke="#d97706"
+                  strokeWidth={2}
+                  fill="url(#gOut)"
+                  dot={false}
+                  activeDot={{ r: 5, fill: '#d97706', strokeWidth: 0 }}
+                  isAnimationActive={true}
+                  animationDuration={600}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        )}
 
         {loading && <p>Loading stock history...</p>}
         {error && <p className="error">{error}</p>}
