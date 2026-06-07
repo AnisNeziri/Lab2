@@ -1,13 +1,14 @@
-import { 
-  LayoutDashboard, 
-  Package, 
-  TrendingUp, 
+import {
+  LayoutDashboard,
+  Package,
+  TrendingUp,
   FolderTree,
   Truck,
-  FileText, 
+  FileText,
   Receipt,
   Activity,
-  LogOut
+  Users,
+  LogOut,
 } from 'lucide-react'
 import NotificationCenter from './NotificationCenter'
 import AimsLogo from './AimsLogo'
@@ -21,7 +22,10 @@ export default function Sidebar({ currentPage, onPageChange, userRole, onLogout,
     { id: 'suppliers', label: 'Suppliers', icon: Truck },
     { id: 'reports', label: 'Reports', icon: FileText },
     { id: 'invoices', label: 'Invoices', icon: Receipt },
-    ...(userRole === 'admin' ? [{ id: 'activity-logs', label: 'Activity Logs', icon: Activity }] : []),
+    ...(userRole === 'admin' ? [
+      { id: 'users', label: 'Users', icon: Users },
+      { id: 'activity-logs', label: 'Activity Logs', icon: Activity },
+    ] : []),
   ]
 
   return (

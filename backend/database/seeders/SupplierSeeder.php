@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Company;
 use App\Models\Supplier;
 use Illuminate\Database\Seeder;
 
@@ -9,6 +10,8 @@ class SupplierSeeder extends Seeder
 {
     public function run(): void
     {
+        $companyId = Company::firstOrFail()->id;
+
         $suppliers = [
             [
                 'name' => 'TechSupply Co.',
@@ -32,8 +35,8 @@ class SupplierSeeder extends Seeder
 
         foreach ($suppliers as $supplier) {
             Supplier::firstOrCreate(
-                ['email' => $supplier['email']],
-                $supplier
+                ['company_id' => $companyId, 'email' => $supplier['email']],
+                array_merge($supplier, ['company_id' => $companyId])
             );
         }
     }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,9 +11,10 @@ use App\Traits\LogsActivity;
 
 class Product extends Model
 {
-    use LogsActivity;
+    use BelongsToCompany, LogsActivity;
 
     protected $fillable = [
+        'company_id',
         'category_id',
         'supplier_id',
         'name',

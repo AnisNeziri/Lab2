@@ -15,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'auth.token' => \App\Http\Middleware\AuthenticateApiToken::class,
             'role' => \App\Http\Middleware\CheckRole::class,
+            'password.changed' => \App\Http\Middleware\EnsurePasswordChanged::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

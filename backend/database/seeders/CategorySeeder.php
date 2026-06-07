@@ -3,12 +3,15 @@
 namespace Database\Seeders;
 
 use App\Models\Category;
+use App\Models\Company;
 use Illuminate\Database\Seeder;
 
 class CategorySeeder extends Seeder
 {
     public function run(): void
     {
+        $companyId = Company::firstOrFail()->id;
+
         $categories = [
             'Electronics',
             'Office Supplies',
@@ -18,7 +21,10 @@ class CategorySeeder extends Seeder
         ];
 
         foreach ($categories as $name) {
-            Category::firstOrCreate(['name' => $name]);
+            Category::firstOrCreate([
+                'company_id' => $companyId,
+                'name' => $name,
+            ]);
         }
     }
 }

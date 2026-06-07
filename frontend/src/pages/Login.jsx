@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { login } from '../api/login'
 import AimsLogo from '../components/AimsLogo'
+import '../styles/AuthPages.css'
 
 function Login({ onLoginSuccess, onBackHome, onRegister }) {
   const [email, setEmail] = useState('')
@@ -8,8 +9,8 @@ function Login({ onLoginSuccess, onBackHome, onRegister }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const handleSubmit = async (event) => {
+    event.preventDefault()
     setLoading(true)
     setError('')
 
@@ -17,39 +18,42 @@ function Login({ onLoginSuccess, onBackHome, onRegister }) {
       const data = await login(email, password)
       onLoginSuccess(data)
     } catch (err) {
-      setError(err.message || 'Invalid email or password.')
+      if (err.errors) {
+        setError(Object.values(err.errors).flat().join(' '))
+      } else {
+        setError(err.message || 'Invalid email or password.')
+      }
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="login-page">
-      <div className="login-card">
-        <button type="button" className="login-back" onClick={onBackHome}>
+    <div className="auth-page">
+      <div className="auth-shell">
+        <button type="button" className="auth-back" onClick={onBackHome}>
           Back to home
         </button>
 
-        <div className="login-brand">
-          <div className="login-logo-wrap">
-            <AimsLogo size="lg" showText={false} />
-          </div>
-          <h2>Login to AIMS</h2>
-          <p>Sign in to access your inventory dashboard</p>
+        <div className="auth-brand">
+          <AimsLogo size="lg" showText={false} />
+          <h1>Welcome back</h1>
+          <p>Sign in to your company inventory dashboard</p>
         </div>
 
-        {error && <div className="login-error">{error}</div>}
+        {error && <div className="auth-error">{error}</div>}
 
-        <form className="login-form" onSubmit={handleSubmit}>
+        <form className="auth-form" onSubmit={handleSubmit}>
           <label htmlFor="email-address">Email Address</label>
           <input
             id="email-address"
             name="email"
             type="email"
             required
-            placeholder="admin@enterprise.com"
+            autoComplete="email"
+            placeholder="you@company.com"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(event) => setEmail(event.target.value)}
           />
 
           <label htmlFor="password">Password</label>
@@ -58,20 +62,21 @@ function Login({ onLoginSuccess, onBackHome, onRegister }) {
             name="password"
             type="password"
             required
-            placeholder="••••••••"
+            autoComplete="current-password"
+            placeholder="Enter your password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(event) => setPassword(event.target.value)}
           />
 
-          <button type="submit" disabled={loading}>
+          <button type="submit" className="auth-submit" disabled={loading}>
             {loading ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
 
         <p className="auth-switch">
-          Don&apos;t have an account?{' '}
+          Register a new company?{' '}
           <button type="button" className="auth-switch-link" onClick={onRegister}>
-            Register
+            Create company account
           </button>
         </p>
       </div>

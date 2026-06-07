@@ -10,11 +10,16 @@ export function buildApiUrl(path, params = {}) {
   })
 
   const query = searchParams.toString()
-
-  // Remove /api prefix from path if it exists to avoid double /api
   const cleanPath = path.startsWith('/api') ? path.replace('/api', '') : path
 
   return query ? `${API_BASE}${cleanPath}?${query}` : `${API_BASE}${cleanPath}`
+}
+
+function clearAuthStorage() {
+  localStorage.removeItem('api_token')
+  localStorage.removeItem('user')
+  localStorage.removeItem('user_role')
+  localStorage.removeItem('must_change_password')
 }
 
 export async function parseApiResponse(response, fallbackMessage) {
@@ -25,9 +30,18 @@ export async function parseApiResponse(response, fallbackMessage) {
   const contentType = response.headers.get('content-type') ?? ''
   const payload = contentType.includes('application/json') ? await response.json() : null
 
+  if (response.status === 403 && payload?.code === 'PASSWORD_CHANGE_REQUIRED') {
+    localStorage.setItem('must_change_password', 'true')
+    window.dispatchEvent(new Event('password-change-required'))
+    const error = new Error(payload.message ?? fallbackMessage)
+    error.code = payload.code
+    throw error
+  }
+
   if (!response.ok) {
     const error = new Error(payload?.message ?? fallbackMessage)
     error.errors = payload?.errors
+    error.code = payload?.code
     throw error
   }
 
@@ -51,9 +65,7 @@ export async function authenticatedFetch(pathOrUrl, options = {}) {
   })
 
   if (response.status === 401) {
-    localStorage.removeItem('api_token')
-    localStorage.removeItem('user')
-    localStorage.removeItem('user_role')
+    clearAuthStorage()
     window.dispatchEvent(new Event('auth-unauthorized'))
   }
 
@@ -62,25 +74,21 @@ export async function authenticatedFetch(pathOrUrl, options = {}) {
 
 export async function apiRequest(path, options = {}, fallbackMessage = 'API request failed') {
   const token = localStorage.getItem('api_token')
-  
+
   const headers = {
     Accept: 'application/json',
     ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers,
   }
 
-  const url = buildApiUrl(path)
-
-  const response = await fetch(url, {
+  const response = await fetch(buildApiUrl(path), {
     ...options,
     headers,
   })
 
   if (response.status === 401) {
-    localStorage.removeItem('api_token')
-    localStorage.removeItem('user')
-    localStorage.removeItem('user_role')
+    clearAuthStorage()
     window.dispatchEvent(new Event('auth-unauthorized'))
   }
 

@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Category;
 use App\Models\Product;
-use App\Models\User;
+use App\Models\Supplier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -16,26 +16,26 @@ class InventoryApiTest extends TestCase
     {
         $this->actingAsApiUser();
 
-        $electronics = Category::create(['name' => 'Electronics']);
-        $office = Category::create(['name' => 'Office Supplies']);
+        $electronics = Category::create($this->tenantAttributes(['name' => 'Electronics']));
+        $office = Category::create($this->tenantAttributes(['name' => 'Office Supplies']));
 
-        Product::create([
+        Product::create($this->tenantAttributes([
             'category_id' => $electronics->id,
             'name' => 'Wireless Mouse',
             'sku' => 'ELEC-001',
             'quantity' => 4,
             'min_quantity' => 5,
             'price' => 19.99,
-        ]);
+        ]));
 
-        Product::create([
+        Product::create($this->tenantAttributes([
             'category_id' => $office->id,
             'name' => 'A4 Paper Pack',
             'sku' => 'OFF-001',
             'quantity' => 30,
             'min_quantity' => 10,
             'price' => 6.99,
-        ]);
+        ]));
 
         $response = $this->getJson('/api/products?low_stock=1&sort=quantity&direction=asc');
 
@@ -50,16 +50,16 @@ class InventoryApiTest extends TestCase
     {
         $this->actingAsApiUser();
 
-        $category = Category::create(['name' => 'Electronics']);
+        $category = Category::create($this->tenantAttributes(['name' => 'Electronics']));
 
-        $product = Product::create([
+        $product = Product::create($this->tenantAttributes([
             'category_id' => $category->id,
             'name' => 'USB-C Hub',
             'sku' => 'ELEC-002',
             'quantity' => 2,
             'min_quantity' => 1,
             'price' => 34.50,
-        ]);
+        ]));
 
         $response = $this->postJson('/api/stock-movements', [
             'product_id' => $product->id,
@@ -78,16 +78,16 @@ class InventoryApiTest extends TestCase
     {
         $this->actingAsApiUser();
 
-        $category = Category::create(['name' => 'Furniture']);
+        $category = Category::create($this->tenantAttributes(['name' => 'Furniture']));
 
-        Product::create([
+        Product::create($this->tenantAttributes([
             'category_id' => $category->id,
             'name' => 'Office Chair',
             'sku' => 'FUR-001',
             'quantity' => 3,
             'min_quantity' => 2,
             'price' => 149.00,
-        ]);
+        ]));
 
         $response = $this->getJson('/api/dashboard');
 
@@ -103,13 +103,13 @@ class InventoryApiTest extends TestCase
     {
         $this->actingAsApiUser('manager');
 
-        $category = Category::create(['name' => 'Electronics']);
-        $supplier = \App\Models\Supplier::create([
+        $category = Category::create($this->tenantAttributes(['name' => 'Electronics']));
+        $supplier = Supplier::create($this->tenantAttributes([
             'name' => 'TechSupply Co.',
             'email' => 'orders@techsupply.test',
-        ]);
+        ]));
 
-        Product::create([
+        Product::create($this->tenantAttributes([
             'category_id' => $category->id,
             'supplier_id' => $supplier->id,
             'name' => 'Keyboard',
@@ -117,9 +117,9 @@ class InventoryApiTest extends TestCase
             'quantity' => 5,
             'min_quantity' => 2,
             'price' => 45.00,
-        ]);
+        ]));
 
-        $response = $this->deleteJson('/api/suppliers/' . $supplier->id);
+        $response = $this->deleteJson('/api/suppliers/'.$supplier->id);
 
         $response
             ->assertUnprocessable()
@@ -132,11 +132,11 @@ class InventoryApiTest extends TestCase
     {
         $this->actingAsApiUser();
 
-        $category = Category::create(['name' => 'Office Supplies']);
-        $supplierA = \App\Models\Supplier::create(['name' => 'Office Depot KS']);
-        $supplierB = \App\Models\Supplier::create(['name' => 'Global Furniture']);
+        $category = Category::create($this->tenantAttributes(['name' => 'Office Supplies']));
+        $supplierA = Supplier::create($this->tenantAttributes(['name' => 'Office Depot KS']));
+        $supplierB = Supplier::create($this->tenantAttributes(['name' => 'Global Furniture']));
 
-        Product::create([
+        Product::create($this->tenantAttributes([
             'category_id' => $category->id,
             'supplier_id' => $supplierA->id,
             'name' => 'Stapler',
@@ -144,9 +144,9 @@ class InventoryApiTest extends TestCase
             'quantity' => 10,
             'min_quantity' => 3,
             'price' => 8.50,
-        ]);
+        ]));
 
-        Product::create([
+        Product::create($this->tenantAttributes([
             'category_id' => $category->id,
             'supplier_id' => $supplierB->id,
             'name' => 'Desk Lamp',
@@ -154,9 +154,9 @@ class InventoryApiTest extends TestCase
             'quantity' => 6,
             'min_quantity' => 2,
             'price' => 22.00,
-        ]);
+        ]));
 
-        $response = $this->getJson('/api/products?supplier_id=' . $supplierA->id);
+        $response = $this->getJson('/api/products?supplier_id='.$supplierA->id);
 
         $response
             ->assertOk()
@@ -169,32 +169,32 @@ class InventoryApiTest extends TestCase
     {
         $this->actingAsApiUser('staff');
 
-        $category = Category::create(['name' => 'Electronics']);
-        $product = Product::create([
+        $category = Category::create($this->tenantAttributes(['name' => 'Electronics']));
+        $product = Product::create($this->tenantAttributes([
             'category_id' => $category->id,
             'name' => 'Mouse',
             'sku' => 'ELEC-099',
             'quantity' => 5,
             'min_quantity' => 2,
             'price' => 10.00,
-        ]);
+        ]));
 
-        $this->deleteJson('/api/products/' . $product->id)->assertForbidden();
+        $this->deleteJson('/api/products/'.$product->id)->assertForbidden();
     }
 
     public function test_product_lookup_by_sku(): void
     {
         $this->actingAsApiUser();
 
-        $category = Category::create(['name' => 'Electronics']);
-        Product::create([
+        $category = Category::create($this->tenantAttributes(['name' => 'Electronics']));
+        Product::create($this->tenantAttributes([
             'category_id' => $category->id,
             'name' => 'HDMI Cable',
             'sku' => 'ELEC-050',
             'quantity' => 12,
             'min_quantity' => 4,
             'price' => 9.99,
-        ]);
+        ]));
 
         $this->getJson('/api/products/lookup?sku=ELEC-050')
             ->assertOk()
@@ -209,15 +209,15 @@ class InventoryApiTest extends TestCase
     {
         $this->actingAsApiUser();
 
-        $category = Category::create(['name' => 'Office']);
-        $product = Product::create([
+        $category = Category::create($this->tenantAttributes(['name' => 'Office']));
+        $product = Product::create($this->tenantAttributes([
             'category_id' => $category->id,
             'name' => 'Notebook',
             'sku' => 'OFF-020',
             'quantity' => 10,
             'min_quantity' => 2,
             'price' => 3.50,
-        ]);
+        ]));
 
         $this->postJson('/api/stock-movements', [
             'product_id' => $product->id,

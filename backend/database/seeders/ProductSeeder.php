@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Category;
+use App\Models\Company;
 use App\Models\Product;
 use App\Models\Supplier;
 use Illuminate\Database\Seeder;
@@ -11,6 +12,8 @@ class ProductSeeder extends Seeder
 {
     public function run(): void
     {
+        $companyId = Company::firstOrFail()->id;
+
         $products = [
             [
                 'category' => 'Electronics',
@@ -83,8 +86,9 @@ class ProductSeeder extends Seeder
             }
 
             Product::firstOrCreate(
-                ['sku' => $item['sku']],
+                ['company_id' => $companyId, 'sku' => $item['sku']],
                 [
+                    'company_id' => $companyId,
                     'category_id' => $category->id,
                     'supplier_id' => $supplier?->id,
                     'name' => $item['name'],

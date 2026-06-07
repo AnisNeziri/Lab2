@@ -38,6 +38,7 @@ trait LogsActivity
         }
 
         ActivityLog::create([
+            'company_id' => Auth::user()?->company_id,
             'user_id' => $userId,
             'action' => "Product {$action}",
             'description' => $description,

@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\Product;
 use Illuminate\Database\Seeder;
@@ -11,6 +12,7 @@ class InvoiceSeeder extends Seeder
 {
     public function run(): void
     {
+        $companyId = Company::firstOrFail()->id;
         $products = Product::orderBy('name')->get()->keyBy('sku');
 
         if ($products->isEmpty()) {
@@ -60,9 +62,10 @@ class InvoiceSeeder extends Seeder
             unset($invoiceData['items']);
 
             $invoice = Invoice::firstOrCreate(
-                ['invoice_number' => $invoiceData['invoice_number']],
+                ['company_id' => $companyId, 'invoice_number' => $invoiceData['invoice_number']],
                 [
                     ...$invoiceData,
+                    'company_id' => $companyId,
                     'total_amount' => 0,
                 ]
             );
