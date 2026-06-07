@@ -32,7 +32,6 @@ export default function BarcodeScanner({ onScanSuccess, onClose }) {
             }
           },
           (errorMessage) => {
-            // Ignore scan errors as they happen frequently
             console.debug('Scan error:', errorMessage)
           }
         )
@@ -54,7 +53,6 @@ export default function BarcodeScanner({ onScanSuccess, onClose }) {
   const handleRescan = () => {
     setIsScanning(true)
     setError('')
-    // Scanner will restart automatically when component remounts
   }
 
   return (

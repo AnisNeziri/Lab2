@@ -1,45 +1,29 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Bell, X, AlertTriangle, Package } from 'lucide-react'
-import { getProducts } from '../api/products'
+import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../api/notifications'
+import { useNotificationStore } from '../store/notificationStore'
 
 export default function NotificationCenter({ onViewStock }) {
-  const [notifications, setNotifications] = useState([])
+  const notifications = useNotificationStore((state) => state.notifications)
+  const unreadCount = useNotificationStore((state) => state.unreadCount)
+  const setNotifications = useNotificationStore((state) => state.setNotifications)
+  const markAsRead = useNotificationStore((state) => state.markAsRead)
+  const markAllAsRead = useNotificationStore((state) => state.markAllAsRead)
   const [isOpen, setIsOpen] = useState(false)
-  const [unreadCount, setUnreadCount] = useState(0)
   const panelRef = useRef(null)
 
   const fetchNotifications = useCallback(async () => {
     try {
-      const data = await getProducts({ low_stock: true, per_page: 50 })
-      const products = data.data || []
-
-      setNotifications((previous) => {
-        const readIds = new Set(previous.filter((item) => item.read).map((item) => item.id))
-
-        const next = products.map((product) => ({
-          id: product.id,
-          type: 'low_stock',
-          title: 'Low Stock Alert',
-          message: `${product.name} is running low (${product.quantity} units left)`,
-          productId: product.id,
-          timestamp: new Date(),
-          read: readIds.has(product.id),
-        }))
-
-        setUnreadCount(next.filter((item) => !item.read).length)
-        return next
-      })
+      const data = await getNotifications()
+      setNotifications(data.notifications || [])
     } catch {
       setNotifications([])
-      setUnreadCount(0)
     }
-  }, [])
+  }, [setNotifications])
 
   useEffect(() => {
     fetchNotifications()
-    const interval = setInterval(fetchNotifications, 300000)
-    return () => clearInterval(interval)
   }, [fetchNotifications])
 
   useEffect(() => {
@@ -67,22 +51,24 @@ export default function NotificationCenter({ onViewStock }) {
     }
   }, [isOpen])
 
-  const markAsRead = (id) => {
-    setNotifications((previous) =>
-      previous.map((notif) =>
-        notif.id === id ? { ...notif, read: true } : notif
-      )
-    )
-    setUnreadCount((previous) => Math.max(0, previous - 1))
+  const handleMarkAsRead = async (id) => {
+    markAsRead(id)
+    try {
+      await markNotificationRead(id)
+    } catch {
+    }
   }
 
-  const markAllAsRead = () => {
-    setNotifications((previous) => previous.map((notif) => ({ ...notif, read: true })))
-    setUnreadCount(0)
+  const handleMarkAllAsRead = async () => {
+    markAllAsRead()
+    try {
+      await markAllNotificationsRead()
+    } catch {
+    }
   }
 
   const handleNotificationClick = (notification) => {
-    markAsRead(notification.id)
+    handleMarkAsRead(notification.id)
     if (onViewStock) {
       onViewStock()
       setIsOpen(false)
@@ -98,7 +84,7 @@ export default function NotificationCenter({ onViewStock }) {
               <h3>Notifications</h3>
               <div className="notification-header-actions">
                 {unreadCount > 0 && (
-                  <button type="button" className="mark-read-btn" onClick={markAllAsRead}>
+                  <button type="button" className="mark-read-btn" onClick={handleMarkAllAsRead}>
                     Mark all read
                   </button>
                 )}
@@ -112,14 +98,14 @@ export default function NotificationCenter({ onViewStock }) {
               {notifications.length === 0 ? (
                 <div className="notification-empty">
                   <Package size={32} />
-                  <p>No low-stock alerts</p>
+                  <p>No notifications yet</p>
                 </div>
               ) : (
                 notifications.map((notification) => (
                   <button
                     key={notification.id}
                     type="button"
-                    className={`notification-item ${notification.read ? 'read' : 'unread'}`}
+                    className={`notification-item ${notification.read_at ? 'read' : 'unread'}`}
                     onClick={() => handleNotificationClick(notification)}
                   >
                     <div className="notification-icon">
@@ -129,7 +115,7 @@ export default function NotificationCenter({ onViewStock }) {
                       <p className="notification-title">{notification.title}</p>
                       <p className="notification-message">{notification.message}</p>
                       <p className="notification-time">
-                        {notification.timestamp.toLocaleTimeString()}
+                        {new Date(notification.created_at).toLocaleTimeString()}
                       </p>
                     </div>
                   </button>

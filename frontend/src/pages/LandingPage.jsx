@@ -1,4 +1,6 @@
+import { useEffect, useMemo, useState } from 'react'
 import { Package, BarChart3, Link2, Mail } from 'lucide-react'
+import { getPublishedPages } from '../api/cms'
 import AimsLogo from '../components/AimsLogo'
 import LandingNavbar from '../components/LandingNavbar'
 import banner from '../assets/banner.jpg'
@@ -8,27 +10,61 @@ import slider2 from '../assets/slider2.jpg'
 import slider3 from '../assets/slider3.jpg'
 import './LandingPage.css'
 
-const features = [
-  {
-    icon: Package,
-    title: 'Real-Time Tracking',
-    desc: 'Always know your inventory levels instantly with live updates.',
-  },
-  {
-    icon: BarChart3,
-    title: 'Powerful Analytics',
-    desc: 'Gain insights into sales, stock, and operations with smart reports.',
-  },
-  {
-    icon: Link2,
-    title: 'Easy Integration',
-    desc: 'Connect seamlessly with your existing tools and workflows.',
-  },
+const defaultContent = {
+  'landing-hero-title': 'Simplify Your Inventory with AIMS',
+  'landing-hero-subtitle': 'Empower your company with real-time insights and effortless control.',
+  'feature-realtime': 'Always know your inventory levels instantly with live updates.',
+  'feature-analytics': 'Gain insights into sales, stock, and operations with smart reports.',
+  'feature-integration': 'Connect seamlessly with your existing tools and workflows.',
+  'about-section':
+    'AIMS is built by passionate engineers and business experts who understand how critical inventory control is for a company\'s success. Our mission is to make inventory management smarter, faster, and more reliable for businesses of all sizes.',
+}
+
+const featureMeta = [
+  { slug: 'feature-realtime', icon: Package, fallbackTitle: 'Real-Time Tracking' },
+  { slug: 'feature-analytics', icon: BarChart3, fallbackTitle: 'Powerful Analytics' },
+  { slug: 'feature-integration', icon: Link2, fallbackTitle: 'Easy Integration' },
 ]
 
 const sliderImages = [slider1, slider2, slider3]
 
 export default function LandingPage({ onLogin, onRegister, onOpenDashboard, isAuthenticated }) {
+  const [content, setContent] = useState(defaultContent)
+  const [featureTitles, setFeatureTitles] = useState({
+    'feature-realtime': 'Real-Time Tracking',
+    'feature-analytics': 'Powerful Analytics',
+    'feature-integration': 'Easy Integration',
+  })
+
+  useEffect(() => {
+    getPublishedPages()
+      .then((pages) => {
+        const nextContent = { ...defaultContent }
+        const nextTitles = { ...featureTitles }
+
+        pages.forEach((page) => {
+          nextContent[page.slug] = page.content
+          if (featureMeta.some((item) => item.slug === page.slug)) {
+            nextTitles[page.slug] = page.title
+          }
+        })
+
+        setContent(nextContent)
+        setFeatureTitles(nextTitles)
+      })
+      .catch(() => {})
+  }, [])
+
+  const features = useMemo(
+    () =>
+      featureMeta.map((item) => ({
+        icon: item.icon,
+        title: featureTitles[item.slug] || item.fallbackTitle,
+        desc: content[item.slug] || defaultContent[item.slug],
+      })),
+    [content, featureTitles]
+  )
+
   return (
     <div className="landing-page">
       <LandingNavbar
@@ -40,8 +76,8 @@ export default function LandingPage({ onLogin, onRegister, onOpenDashboard, isAu
 
       <section className="landing-hero" style={{ backgroundImage: `url(${banner})` }}>
         <div className="landing-hero-overlay">
-          <h1>Simplify Your Inventory with AIMS</h1>
-          <p>Empower your company with real-time insights and effortless control.</p>
+          <h1>{content['landing-hero-title']}</h1>
+          <p>{content['landing-hero-subtitle']}</p>
           <div className="landing-hero-actions">
             {isAuthenticated ? (
               <button type="button" className="landing-btn primary large" onClick={onOpenDashboard}>
@@ -84,15 +120,7 @@ export default function LandingPage({ onLogin, onRegister, onOpenDashboard, isAu
           <div className="landing-about-copy">
             <span className="landing-section-label">About us</span>
             <h2>About AIMS Inventory</h2>
-            <p>
-              AIMS is built by passionate engineers and business experts who understand how critical inventory control is for a company&apos;s success.
-            </p>
-            <p>
-              Our mission is to make inventory management smarter, faster, and more reliable for businesses of all sizes — from local warehouses to growing enterprise teams.
-            </p>
-            <p>
-              Whether you are managing daily stock movements or planning long-term procurement, AIMS Inventory gives your team the visibility and control needed to reduce waste, prevent stockouts, and make confident decisions.
-            </p>
+            <p>{content['about-section']}</p>
             <ul className="landing-about-list">
               <li>Track products, categories, suppliers, and stock in one place</li>
               <li>Role-based access for admins, managers, and staff</li>

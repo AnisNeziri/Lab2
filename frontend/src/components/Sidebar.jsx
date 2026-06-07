@@ -9,11 +9,13 @@ import {
   Activity,
   Users,
   LogOut,
+  FileEdit,
 } from 'lucide-react'
 import NotificationCenter from './NotificationCenter'
+import GlobalSearch from './GlobalSearch'
 import AimsLogo from './AimsLogo'
 
-export default function Sidebar({ currentPage, onPageChange, userRole, onLogout, onHome }) {
+export default function Sidebar({ currentPage, onPageChange, userRole, onLogout, onHome, isOpen = false }) {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'products', label: 'Products', icon: Package },
@@ -25,11 +27,12 @@ export default function Sidebar({ currentPage, onPageChange, userRole, onLogout,
     ...(userRole === 'admin' ? [
       { id: 'users', label: 'Users', icon: Users },
       { id: 'activity-logs', label: 'Activity Logs', icon: Activity },
+      { id: 'cms', label: 'Site Content', icon: FileEdit },
     ] : []),
   ]
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${isOpen ? 'sidebar-open' : ''}`}>
       <div className="sidebar-header">
         <button type="button" className="sidebar-logo sidebar-logo-btn" onClick={onHome}>
           <AimsLogo showText={false} size="sm" />
@@ -41,13 +44,14 @@ export default function Sidebar({ currentPage, onPageChange, userRole, onLogout,
         <div className="sidebar-header-actions">
           <NotificationCenter onViewStock={() => onPageChange('stock')} />
         </div>
+        <GlobalSearch onNavigate={(type) => onPageChange(type)} />
       </div>
 
       <nav className="sidebar-nav">
         {menuItems.map((item) => {
           const Icon = item.icon
           const isActive = currentPage === item.id
-          
+
           return (
             <button
               key={item.id}
@@ -63,8 +67,8 @@ export default function Sidebar({ currentPage, onPageChange, userRole, onLogout,
       </nav>
 
       <div className="sidebar-footer">
-        <button 
-          type="button" 
+        <button
+          type="button"
           className="sidebar-item logout"
           onClick={() => onLogout?.()}
         >

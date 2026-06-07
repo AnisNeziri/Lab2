@@ -28,18 +28,18 @@ function ActivityLogs() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-slate-500 font-medium">Loading activity logs...</p>
-      </div>
+      <main className="activity-logs-page page-stack">
+        <p className="page-intro">Loading activity logs...</p>
+      </main>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Activity Logs</h1>
-        <p className="text-slate-500 text-sm">System audit trail of modifications on products and resources.</p>
-      </div>
+    <main className="activity-logs-page page-stack">
+      <section className="card">
+        <h2>Activity logs</h2>
+        <p className="page-intro">System audit trail of modifications on products and resources.</p>
+      </section>
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl">
@@ -118,7 +118,7 @@ function ActivityLogs() {
           </div>
         )}
       </div>
-    </div>
+    </main>
   )
 }
 

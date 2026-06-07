@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAuthStore } from '../store/authStore'
 import {
   createSupplier,
   deleteSupplier,
@@ -13,7 +14,8 @@ const emptyForm = {
   address: '',
 }
 
-function Suppliers({ userRole = 'staff' }) {
+function Suppliers() {
+  const userRole = useAuthStore((state) => state.role)
   const [suppliers, setSuppliers] = useState([])
   const [form, setForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState(null)

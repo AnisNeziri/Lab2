@@ -8,6 +8,17 @@ export async function getInvoice(id) {
   return apiRequest(buildApiUrl(`/invoices/${id}`), {}, 'Failed to load invoice details')
 }
 
+export async function createInvoice(payload) {
+  return apiRequest(
+    buildApiUrl('/invoices'),
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+    'Failed to create invoice'
+  )
+}
+
 export async function downloadInvoicePdf(id, invoiceNumber) {
   const response = await authenticatedFetch(buildApiUrl(`/invoices/${id}/pdf`))
 

@@ -1,30 +1,68 @@
-import { useEffect, useState } from 'react'
-import { getInvoices, getInvoice, downloadInvoicePdf } from '../api/invoices'
-import { FileText, Download, X, Eye } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { createInvoice, getInvoices, getInvoice, downloadInvoicePdf } from '../api/invoices'
+import { getProducts } from '../api/products'
+import { processPayment } from '../api/payments'
+import { Download, X, Eye, CreditCard, Plus, Trash2, FileText } from 'lucide-react'
+
+const emptyLineItem = () => ({
+  product_id: '',
+  quantity: 1,
+  unit_price: '',
+})
 
 function Invoices() {
   const [invoices, setInvoices] = useState([])
+  const [products, setProducts] = useState([])
   const [selectedInvoice, setSelectedInvoice] = useState(null)
   const [loading, setLoading] = useState(true)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [downloadingId, setDownloadingId] = useState(null)
+  const [payingId, setPayingId] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [formError, setFormError] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [form, setForm] = useState({
+    customer_name: '',
+    issued_at: new Date().toISOString().slice(0, 10),
+    due_at: '',
+    items: [emptyLineItem()],
+  })
+
+  const loadInvoices = async () => {
+    try {
+      setLoading(true)
+      setError('')
+      const data = await getInvoices()
+      setInvoices(data)
+    } catch (err) {
+      setError(err.message || 'Failed to load invoices.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    async function loadInvoices() {
-      try {
-        setLoading(true)
-        setError('')
-        const data = await getInvoices()
-        setInvoices(data)
-      } catch (err) {
-        setError('Failed to load invoices.')
-      } finally {
-        setLoading(false)
-      }
-    }
     loadInvoices()
+    getProducts({ per_page: 200 })
+      .then((data) => setProducts(data.data || data))
+      .catch(() => setProducts([]))
   }, [])
+
+  const productMap = useMemo(
+    () => Object.fromEntries(products.map((product) => [String(product.id), product])),
+    [products]
+  )
+
+  const estimatedTotal = useMemo(() => {
+    return form.items.reduce((sum, item) => {
+      const product = productMap[item.product_id]
+      const unitPrice = item.unit_price !== '' ? Number(item.unit_price) : Number(product?.price || 0)
+      const quantity = Number(item.quantity || 0)
+      return sum + unitPrice * quantity
+    }, 0)
+  }, [form.items, productMap])
 
   const handleViewDetails = async (id) => {
     setLoadingDetail(true)
@@ -35,6 +73,24 @@ function Invoices() {
       alert('Could not load invoice details.')
     } finally {
       setLoadingDetail(false)
+    }
+  }
+
+  const handlePayment = async (invoice) => {
+    if (invoice.status === 'paid') return
+
+    setPayingId(invoice.id)
+    try {
+      await processPayment(invoice.id, { payment_method: 'card' })
+      await loadInvoices()
+      if (selectedInvoice?.id === invoice.id) {
+        const detail = await getInvoice(invoice.id)
+        setSelectedInvoice(detail)
+      }
+    } catch (err) {
+      alert(err.message || 'Payment failed.')
+    } finally {
+      setPayingId(null)
     }
   }
 
@@ -49,176 +105,373 @@ function Invoices() {
     }
   }
 
+  const updateFormField = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }))
+  }
+
+  const updateLineItem = (index, field, value) => {
+    setForm((current) => ({
+      ...current,
+      items: current.items.map((item, itemIndex) => {
+        if (itemIndex !== index) return item
+
+        const nextItem = { ...item, [field]: value }
+
+        if (field === 'product_id') {
+          const product = productMap[value]
+          nextItem.unit_price = product ? String(product.price) : ''
+        }
+
+        return nextItem
+      }),
+    }))
+  }
+
+  const addLineItem = () => {
+    setForm((current) => ({
+      ...current,
+      items: [...current.items, emptyLineItem()],
+    }))
+  }
+
+  const removeLineItem = (index) => {
+    setForm((current) => ({
+      ...current,
+      items: current.items.length === 1 ? current.items : current.items.filter((_, itemIndex) => itemIndex !== index),
+    }))
+  }
+
+  const resetCreateForm = () => {
+    setForm({
+      customer_name: '',
+      issued_at: new Date().toISOString().slice(0, 10),
+      due_at: '',
+      items: [emptyLineItem()],
+    })
+    setFormError('')
+    setSuccessMessage('')
+  }
+
+  const handleCreateInvoice = async (event) => {
+    event.preventDefault()
+    setSubmitting(true)
+    setFormError('')
+    setSuccessMessage('')
+
+    const items = form.items
+      .filter((item) => item.product_id)
+      .map((item) => ({
+        product_id: Number(item.product_id),
+        quantity: Number(item.quantity),
+        ...(item.unit_price !== '' ? { unit_price: Number(item.unit_price) } : {}),
+      }))
+
+    if (!form.customer_name.trim()) {
+      setFormError('Customer name is required.')
+      setSubmitting(false)
+      return
+    }
+
+    if (items.length === 0) {
+      setFormError('Add at least one product line to the invoice.')
+      setSubmitting(false)
+      return
+    }
+
+    try {
+      const created = await createInvoice({
+        customer_name: form.customer_name.trim(),
+        issued_at: form.issued_at || undefined,
+        due_at: form.due_at || undefined,
+        status: 'unpaid',
+        items,
+      })
+
+      setSuccessMessage(`Invoice ${created.invoice_number} created successfully.`)
+      resetCreateForm()
+      setShowCreateForm(false)
+      await loadInvoices()
+      setSelectedInvoice(created)
+    } catch (err) {
+      if (err.errors) {
+        setFormError(Object.values(err.errors).flat().join(' '))
+      } else {
+        setFormError(err.message || 'Could not create invoice.')
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-slate-500 font-medium">Loading invoices...</p>
-      </div>
+      <main className="invoices-page page-stack">
+        <p className="page-intro">Loading invoices...</p>
+      </main>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Invoices</h1>
-          <p className="text-slate-500 text-sm">View, inspect, and generate PDF versions of customer invoices.</p>
-        </div>
-      </div>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl">
-          {error}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Invoices List */}
-        <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ${selectedInvoice ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Invoice Number</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Customer</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Issued Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Amount</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-slate-100">
-                {invoices.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" className="px-6 py-10 text-center text-slate-400">
-                      No invoices found.
-                    </td>
-                  </tr>
-                ) : (
-                  invoices.map((invoice) => (
-                    <tr key={invoice.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-900">
-                        {invoice.invoice_number}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
-                        {invoice.customer_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                        {new Date(invoice.issued_at).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${
-                          invoice.status === 'paid' ? 'bg-emerald-50 text-emerald-700' :
-                          invoice.status === 'unpaid' ? 'bg-amber-50 text-amber-700' :
-                          'bg-slate-100 text-slate-700'
-                        }`}>
-                          {invoice.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-slate-900">
-                        ${Number(invoice.total_amount).toFixed(2)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                        <button
-                          onClick={() => handleViewDetails(invoice.id)}
-                          className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors"
-                        >
-                          <Eye className="w-4 h-4" />
-                          Details
-                        </button>
-                        <button
-                          onClick={() => handleDownloadPdf(invoice.id, invoice.invoice_number)}
-                          disabled={downloadingId === invoice.id}
-                          className="inline-flex items-center gap-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-                        >
-                          <Download className="w-4 h-4" />
-                          {downloadingId === invoice.id ? 'Generating...' : 'PDF'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+    <main className="invoices-page page-stack">
+      <section className="card">
+        <div className="section-header">
+          <h2>
+            <FileText size={20} />
+            Invoices
+          </h2>
+          <div className="section-header-actions">
+            <button type="button" onClick={() => setShowCreateForm((current) => !current)}>
+              <Plus size={16} />
+              {showCreateForm ? 'Hide form' : 'Create invoice'}
+            </button>
           </div>
         </div>
+        <p className="page-intro">
+          Create customer invoices from your product catalog, then view details, collect payment, or download PDFs.
+        </p>
+        {error && <div className="form-error-banner">{error}</div>}
+      </section>
 
-        {/* Invoice Details Panel */}
+      {showCreateForm && (
+        <section className="card">
+          <h3>New invoice</h3>
+          {formError && <div className="form-error-banner">{formError}</div>}
+          {successMessage && <div className="success-banner">{successMessage}</div>}
+
+          <form className="form-grid invoice-form" onSubmit={handleCreateInvoice}>
+            <label>
+              Customer name
+              <input
+                type="text"
+                required
+                value={form.customer_name}
+                onChange={(event) => updateFormField('customer_name', event.target.value)}
+                placeholder="Customer or company name"
+              />
+            </label>
+
+            <div className="form-row">
+              <label>
+                Issue date
+                <input
+                  type="date"
+                  value={form.issued_at}
+                  onChange={(event) => updateFormField('issued_at', event.target.value)}
+                />
+              </label>
+
+              <label>
+                Due date
+                <input
+                  type="date"
+                  value={form.due_at}
+                  onChange={(event) => updateFormField('due_at', event.target.value)}
+                />
+              </label>
+            </div>
+
+            <div className="invoice-lines">
+              <div className="section-header">
+                <h4>Line items</h4>
+                <button type="button" className="secondary" onClick={addLineItem}>
+                  <Plus size={16} />
+                  Add line
+                </button>
+              </div>
+
+              {form.items.map((item, index) => (
+                <div key={index} className="invoice-line-row">
+                  <label>
+                    Product
+                    <select
+                      required
+                      value={item.product_id}
+                      onChange={(event) => updateLineItem(index, 'product_id', event.target.value)}
+                    >
+                      <option value="">Select product</option>
+                      {products.map((product) => (
+                        <option key={product.id} value={product.id}>
+                          {product.name} ({product.sku})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    Quantity
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      value={item.quantity}
+                      onChange={(event) => updateLineItem(index, 'quantity', event.target.value)}
+                    />
+                  </label>
+
+                  <label>
+                    Unit price
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={item.unit_price}
+                      onChange={(event) => updateLineItem(index, 'unit_price', event.target.value)}
+                      placeholder="Auto from product"
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    className="danger icon-button"
+                    onClick={() => removeLineItem(index)}
+                    disabled={form.items.length === 1}
+                    aria-label="Remove line item"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <p className="invoice-total-preview">
+              Estimated total: <strong>${estimatedTotal.toFixed(2)}</strong>
+            </p>
+
+            <div className="form-actions">
+              <button type="submit" disabled={submitting}>
+                {submitting ? 'Creating...' : 'Create invoice'}
+              </button>
+              <button type="button" className="secondary" onClick={resetCreateForm}>
+                Reset
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
+
+      <div className={`invoice-layout ${selectedInvoice ? 'with-detail' : ''}`}>
+        <section className="card table-wrap">
+          <table className="product-table">
+            <thead>
+              <tr>
+                <th>Invoice number</th>
+                <th>Customer</th>
+                <th>Issued date</th>
+                <th>Status</th>
+                <th>Total</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoices.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="empty-cell">
+                    No invoices yet. Create your first invoice above.
+                  </td>
+                </tr>
+              ) : (
+                invoices.map((invoice) => (
+                  <tr key={invoice.id}>
+                    <td>{invoice.invoice_number}</td>
+                    <td>{invoice.customer_name}</td>
+                    <td>{new Date(invoice.issued_at).toLocaleDateString()}</td>
+                    <td>
+                      <span className={`status-pill status-${invoice.status}`}>{invoice.status}</span>
+                    </td>
+                    <td>${Number(invoice.total_amount).toFixed(2)}</td>
+                    <td className="table-actions">
+                      <button type="button" className="secondary" onClick={() => handleViewDetails(invoice.id)}>
+                        <Eye size={16} />
+                        Details
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => handleDownloadPdf(invoice.id, invoice.invoice_number)}
+                        disabled={downloadingId === invoice.id}
+                      >
+                        <Download size={16} />
+                        {downloadingId === invoice.id ? 'Generating...' : 'PDF'}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </section>
+
         {selectedInvoice && (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6 self-start lg:col-span-1">
-            <div className="flex justify-between items-center pb-4 border-b border-slate-100">
-              <h2 className="text-lg font-bold text-slate-900">Invoice Details</h2>
-              <button
-                onClick={() => setSelectedInvoice(null)}
-                className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
+          <section className="card invoice-detail-panel">
+            <div className="section-header">
+              <h3>Invoice details</h3>
+              <button type="button" className="secondary icon-button" onClick={() => setSelectedInvoice(null)}>
+                <X size={16} />
               </button>
             </div>
 
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-slate-500 text-sm">Number:</span>
-                <span className="font-semibold text-slate-900 text-sm">{selectedInvoice.invoice_number}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500 text-sm">Customer:</span>
-                <span className="font-semibold text-slate-900 text-sm">{selectedInvoice.customer_name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500 text-sm">Issued Date:</span>
-                <span className="text-slate-700 text-sm">{new Date(selectedInvoice.issued_at).toLocaleDateString()}</span>
-              </div>
-              {selectedInvoice.due_at && (
-                <div className="flex justify-between">
-                  <span className="text-slate-500 text-sm">Due Date:</span>
-                  <span className="text-slate-700 text-sm">{new Date(selectedInvoice.due_at).toLocaleDateString()}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-slate-500 text-sm">Status:</span>
-                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${
-                  selectedInvoice.status === 'paid' ? 'bg-emerald-50 text-emerald-700' :
-                  selectedInvoice.status === 'unpaid' ? 'bg-amber-50 text-amber-700' :
-                  'bg-slate-100 text-slate-700'
-                }`}>
-                  {selectedInvoice.status}
-                </span>
-              </div>
-            </div>
-
-            <div className="border-t border-slate-100 pt-4">
-              <h3 className="text-sm font-semibold text-slate-900 mb-3">Items</h3>
-              <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-                {selectedInvoice.items?.map((item) => (
-                  <div key={item.id} className="flex justify-between items-start text-sm">
-                    <div>
-                      <p className="font-medium text-slate-800">{item.product?.name || 'Deleted Product'}</p>
-                      <p className="text-xs text-slate-400">Qty: {item.quantity} × ${Number(item.unit_price).toFixed(2)}</p>
-                    </div>
-                    <span className="font-semibold text-slate-900">${Number(item.line_total).toFixed(2)}</span>
+            {loadingDetail ? (
+              <p className="page-intro">Loading details...</p>
+            ) : (
+              <>
+                <div className="invoice-detail-grid">
+                  <div><span>Number</span><strong>{selectedInvoice.invoice_number}</strong></div>
+                  <div><span>Customer</span><strong>{selectedInvoice.customer_name}</strong></div>
+                  <div><span>Issued</span><strong>{new Date(selectedInvoice.issued_at).toLocaleDateString()}</strong></div>
+                  {selectedInvoice.due_at && (
+                    <div><span>Due</span><strong>{new Date(selectedInvoice.due_at).toLocaleDateString()}</strong></div>
+                  )}
+                  <div>
+                    <span>Status</span>
+                    <strong className={`status-pill status-${selectedInvoice.status}`}>{selectedInvoice.status}</strong>
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
 
-            <div className="border-t border-slate-100 pt-4 flex justify-between items-center">
-              <span className="font-bold text-slate-900 text-base">Total Amount:</span>
-              <span className="font-extrabold text-slate-900 text-lg">${Number(selectedInvoice.total_amount).toFixed(2)}</span>
-            </div>
+                <div className="invoice-items-list">
+                  <h4>Items</h4>
+                  {selectedInvoice.items?.map((item) => (
+                    <div key={item.id} className="invoice-item-row">
+                      <div>
+                        <strong>{item.product?.name || item.description || 'Product'}</strong>
+                        <p>
+                          {item.quantity} x ${Number(item.unit_price).toFixed(2)}
+                        </p>
+                      </div>
+                      <strong>${Number(item.line_total).toFixed(2)}</strong>
+                    </div>
+                  ))}
+                </div>
 
-            <button
-              onClick={() => handleDownloadPdf(selectedInvoice.id, selectedInvoice.invoice_number)}
-              disabled={downloadingId === selectedInvoice.id}
-              className="w-full inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 px-4 rounded-xl transition-colors shadow-lg shadow-indigo-600/20 disabled:opacity-50"
-            >
-              <Download className="w-4 h-4" />
-              {downloadingId === selectedInvoice.id ? 'Generating PDF...' : 'Download Invoice PDF'}
-            </button>
-          </div>
+                <p className="invoice-total-preview">
+                  Total amount: <strong>${Number(selectedInvoice.total_amount).toFixed(2)}</strong>
+                </p>
+
+                {selectedInvoice.status !== 'paid' && (
+                  <button
+                    type="button"
+                    onClick={() => handlePayment(selectedInvoice)}
+                    disabled={payingId === selectedInvoice.id}
+                  >
+                    <CreditCard size={16} />
+                    {payingId === selectedInvoice.id ? 'Processing...' : 'Pay invoice'}
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => handleDownloadPdf(selectedInvoice.id, selectedInvoice.invoice_number)}
+                  disabled={downloadingId === selectedInvoice.id}
+                >
+                  <Download size={16} />
+                  {downloadingId === selectedInvoice.id ? 'Generating PDF...' : 'Download PDF'}
+                </button>
+              </>
+            )}
+          </section>
         )}
       </div>
-    </div>
+    </main>
   )
 }
 

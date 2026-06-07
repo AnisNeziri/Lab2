@@ -1,0 +1,143 @@
+.main-content input:not([type='checkbox']):not([type='file']):not([type='radio']):not([type='hidden']):not([type='submit']):not([type='button']),
+.main-content textarea,
+.main-content select,
+.form-grid input:not([type='checkbox']):not([type='file']),
+.form-grid textarea,
+.form-grid select,
+.product-form input:not([type='checkbox']):not([type='file']),
+.product-form textarea,
+.product-form select,
+.stock-form input:not([type='checkbox']):not([type='file']),
+.stock-form select,
+.category-form input,
+.supplier-form input,
+.filters input,
+.filters select,
+.users-page input:not([type='checkbox']):not([type='file']),
+.users-page textarea,
+.users-page select,
+.cms-page input:not([type='checkbox']):not([type='file']),
+.cms-page textarea,
+.cms-page select,
+.invoices-page input:not([type='checkbox']):not([type='file']),
+.invoices-page textarea,
+.invoices-page select,
+.activity-logs-page input:not([type='checkbox']):not([type='file']),
+.activity-logs-page textarea,
+.activity-logs-page select {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid #64748b;
+  border-radius: 8px;
+  font: inherit;
+  color: #0f172a;
+  background: #fff;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.06);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.main-content input::placeholder,
+.main-content textarea::placeholder,
+.form-grid input::placeholder,
+.form-grid textarea::placeholder {
+  color: #94a3b8;
+}
+
+.main-content input:focus,
+.main-content textarea:focus,
+.main-content select:focus,
+.form-grid input:focus,
+.form-grid textarea:focus,
+.form-grid select:focus,
+.product-form input:focus,
+.product-form textarea:focus,
+.product-form select:focus,
+.stock-form input:focus,
+.stock-form select:focus,
+.category-form input:focus,
+.supplier-form input:focus,
+.filters input:focus,
+.filters select:focus,
+.users-page input:focus,
+.users-page textarea:focus,
+.users-page select:focus,
+.cms-page input:focus,
+.cms-page textarea:focus,
+.cms-page select:focus {
+  outline: none;
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.18);
+}
+
+.form-grid,
+.page-form {
+  display: grid;
+  gap: 1rem;
+  max-width: 760px;
+}
+
+.form-grid label,
+.page-form label {
+  display: grid;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.page-stack,
+.users-page,
+.cms-page,
+.dashboard-page,
+.products-page,
+.categories-page,
+.stock-page,
+.suppliers-page,
+.reports-page,
+.invoices-page,
+.activity-logs-page {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: grid;
+  gap: 1.5rem;
+}
+
+.page-intro {
+  margin: 0 0 1rem;
+  color: #64748b;
+  line-height: 1.6;
+  max-width: 72ch;
+}
+
+.table-wrap select {
+  min-width: 120px;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #64748b;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.login-error,
+.form-error-banner {
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.success-banner {
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e3a8a;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.cms-block + .cms-block {
+  margin-top: 0;
+}

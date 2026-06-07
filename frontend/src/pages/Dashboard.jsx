@@ -1,31 +1,39 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getDashboard } from '../api/dashboard'
 import { getActivityLogs } from '../api/activityLogs'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 
-function Dashboard({ onNavigate }) {
+function Dashboard() {
+  const navigate = useNavigate()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [activityLogs, setActivityLogs] = useState([])
   const [timeFilter, setTimeFilter] = useState('week')
 
-  useEffect(() => {
-    async function loadDashboard() {
-      try {
-        setLoading(true)
-        setError('')
-        const summary = await getDashboard()
-        setData(summary)
-      } catch {
-        setError('Could not load dashboard data.')
-      } finally {
-        setLoading(false)
-      }
+  const loadDashboard = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError('')
+      const summary = await getDashboard()
+      setData(summary)
+    } catch {
+      setError('Could not load dashboard data.')
+    } finally {
+      setLoading(false)
     }
-
-    loadDashboard()
   }, [])
+
+  useEffect(() => {
+    loadDashboard()
+  }, [loadDashboard])
+
+  useEffect(() => {
+    const handleRefresh = () => loadDashboard()
+    window.addEventListener('dashboard-refresh', handleRefresh)
+    return () => window.removeEventListener('dashboard-refresh', handleRefresh)
+  }, [loadDashboard])
 
   useEffect(() => {
     async function loadActivityLogs() {
@@ -33,7 +41,6 @@ function Dashboard({ onNavigate }) {
         const logs = await getActivityLogs(1)
         setActivityLogs(logs.data?.slice(0, 5) || [])
       } catch {
-        // Silently fail for activity logs
       }
     }
 
@@ -48,7 +55,6 @@ function Dashboard({ onNavigate }) {
     return <p className="error page-message">{error}</p>
   }
 
-  // Prepare chart data with time filter
   const getFilteredMovements = () => {
     const now = new Date()
     const movements = data.recent_movements.filter(m => m.type === 'in' || m.type === 'out')
@@ -65,7 +71,6 @@ function Dashboard({ onNavigate }) {
       const yearAgo = new Date(now.getFullYear(), 0, 1)
       return movements.filter(m => new Date(m.created_at) >= yearAgo)
     }
-    // Default: last 7 days
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
     return movements.filter(m => new Date(m.created_at) >= weekAgo)
   }
@@ -92,7 +97,6 @@ function Dashboard({ onNavigate }) {
       return acc
     }, [])
 
-  // Prepare category data for pie chart
   const categoryData = data.category_values || []
 
   const COLORS = ['#0f766e', '#0891b2', '#0284c7', '#0369a1', '#075985', '#0c4a6e']
@@ -310,7 +314,7 @@ function Dashboard({ onNavigate }) {
                     <button
                       type="button"
                       className="primary"
-                      onClick={() => onNavigate?.('stock')}
+                      onClick={() => navigate('/stock')}
                     >
                       + Add Stock
                     </button>

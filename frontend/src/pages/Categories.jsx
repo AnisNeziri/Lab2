@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAuthStore } from '../store/authStore'
 import {
   createCategory,
   deleteCategory,
@@ -6,7 +7,8 @@ import {
   updateCategory,
 } from '../api/categories'
 
-function Categories({ userRole = 'staff' }) {
+function Categories() {
+  const userRole = useAuthStore((state) => state.role)
   const [categories, setCategories] = useState([])
   const [name, setName] = useState('')
   const [editingId, setEditingId] = useState(null)

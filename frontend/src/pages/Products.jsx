@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { getCategories } from '../api/categories'
 import { getSuppliers } from '../api/suppliers'
 import {
@@ -8,10 +8,13 @@ import {
   getProducts,
   updateProduct,
 } from '../api/products'
-import ProductDetail from '../components/ProductDetail'
+import { importProducts } from '../api/import'
 import StockBadge from '../components/StockBadge'
-import BarcodeScanner from '../components/BarcodeScanner'
-import { Scan } from 'lucide-react'
+import { useAuthStore } from '../store/authStore'
+import { Scan, Upload } from 'lucide-react'
+
+const ProductDetail = lazy(() => import('../components/ProductDetail'))
+const BarcodeScanner = lazy(() => import('../components/BarcodeScanner'))
 
 const emptyForm = {
   category_id: '',
@@ -29,7 +32,8 @@ const emptyForm = {
   selling_price: '',
 }
 
-function Products({ userRole = 'staff' }) {
+function Products() {
+  const userRole = useAuthStore((state) => state.role)
   const [products, setProducts] = useState([])
   const [pagination, setPagination] = useState(null)
   const [categories, setCategories] = useState([])
@@ -160,7 +164,6 @@ function Products({ userRole = 'staff' }) {
     }))
     setShowScanner(false)
 
-    // Search for product by barcode
     const existingProduct = products.find(p => p.barcode === scannedBarcode)
     if (existingProduct) {
       setForm({
@@ -178,6 +181,21 @@ function Products({ userRole = 'staff' }) {
       await exportProducts()
     } catch {
       setError('Could not export products.')
+    }
+  }
+
+  async function handleImport(event) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    try {
+      const result = await importProducts(file)
+      alert(`Imported ${result.records_imported} of ${result.records_total} products.`)
+      await loadProducts(getActiveFilters())
+    } catch (err) {
+      setError(err.message || 'Could not import products.')
+    } finally {
+      event.target.value = ''
     }
   }
 
@@ -252,7 +270,9 @@ function Products({ userRole = 'staff' }) {
   return (
     <main className="products-page">
       {viewProductId && (
-        <ProductDetail productId={viewProductId} onClose={() => setViewProductId(null)} />
+        <Suspense fallback={<p className="page-message">Loading details...</p>}>
+          <ProductDetail productId={viewProductId} onClose={() => setViewProductId(null)} />
+        </Suspense>
       )}
 
       <section className="card">
@@ -437,6 +457,11 @@ function Products({ userRole = 'staff' }) {
             <button type="button" className="secondary" onClick={handleExport}>
               Export CSV
             </button>
+            <label className="secondary import-label">
+              <Upload size={16} />
+              Import CSV
+              <input type="file" accept=".csv,text/csv" onChange={handleImport} hidden />
+            </label>
           </div>
         </div>
 
@@ -613,10 +638,12 @@ function Products({ userRole = 'staff' }) {
       </section>
 
       {showScanner && (
-        <BarcodeScanner
-          onScanSuccess={handleScanSuccess}
-          onClose={() => setShowScanner(false)}
-        />
+        <Suspense fallback={<p className="page-message">Loading scanner...</p>}>
+          <BarcodeScanner
+            onScanSuccess={handleScanSuccess}
+            onClose={() => setShowScanner(false)}
+          />
+        </Suspense>
       )}
     </main>
   )
