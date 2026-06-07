@@ -42,6 +42,8 @@ Route::middleware('auth.token')->group(function () {
 
     Route::middleware('password.changed')->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'index']);
+        Route::get('/dashboard/activity-feed', [DashboardController::class, 'activityFeed']);
+        Route::get('/dashboard/low-stock-alerts', [DashboardController::class, 'lowStockAlerts']);
         Route::get('/reports', [ReportController::class, 'index']);
         Route::get('/search', [SearchController::class, 'index']);
 

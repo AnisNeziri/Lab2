@@ -3,58 +3,68 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Supplier;
+use App\Repositories\Contracts\SupplierRepositoryInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class SupplierController extends Controller
 {
+    public function __construct(
+        private SupplierRepositoryInterface $suppliers
+    ) {}
+
     public function index(): JsonResponse
     {
-        $suppliers = Supplier::withCount('products')
-            ->orderBy('name')
-            ->get();
-
-        return response()->json($suppliers);
+        return response()->json($this->suppliers->allWithProductCount());
     }
 
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:50'],
-            'email' => ['nullable', 'email', 'max:255'],
+            'name'    => ['required', 'string', 'max:255'],
+            'phone'   => ['nullable', 'string', 'max:50'],
+            'email'   => ['nullable', 'email', 'max:255'],
             'address' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $supplier = Supplier::create($validated);
+        $supplier = $this->suppliers->create($validated);
 
         return response()->json($supplier, 201);
     }
 
-    public function update(Request $request, Supplier $supplier): JsonResponse
+    public function update(Request $request, int $id): JsonResponse
     {
+        $supplier = $this->suppliers->findById($id);
+
+        if (! $supplier) {
+            return response()->json(['message' => 'Supplier not found.'], 404);
+        }
+
         $validated = $request->validate([
-            'name' => ['sometimes', 'required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:50'],
-            'email' => ['nullable', 'email', 'max:255'],
+            'name'    => ['sometimes', 'required', 'string', 'max:255'],
+            'phone'   => ['nullable', 'string', 'max:50'],
+            'email'   => ['nullable', 'email', 'max:255'],
             'address' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $supplier->update($validated);
-
-        return response()->json($supplier);
+        return response()->json($this->suppliers->update($supplier, $validated));
     }
 
-    public function destroy(Supplier $supplier): JsonResponse
+    public function destroy(int $id): JsonResponse
     {
-        if ($supplier->products()->exists()) {
+        $supplier = $this->suppliers->findById($id);
+
+        if (! $supplier) {
+            return response()->json(['message' => 'Supplier not found.'], 404);
+        }
+
+        if ($this->suppliers->hasProducts($supplier)) {
             return response()->json([
                 'message' => 'Cannot delete a supplier that still has products assigned.',
             ], 422);
         }
 
-        $supplier->delete();
+        $this->suppliers->delete($supplier);
 
         return response()->json(null, 204);
     }

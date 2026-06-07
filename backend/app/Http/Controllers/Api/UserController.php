@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Repositories\Contracts\UserRepositoryInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -12,43 +13,39 @@ use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
 {
+    public function __construct(
+        private UserRepositoryInterface $users
+    ) {}
+
     public function index(): JsonResponse
     {
-        $users = User::query()
-            ->where('company_id', Auth::user()->company_id)
-            ->orderBy('name')
-            ->get(['id', 'name', 'email', 'role', 'must_change_password', 'created_at']);
-
-        return response()->json($users);
+        return response()->json(
+            $this->users->allByCompany(Auth::user()->company_id)
+        );
     }
 
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => [
-                'required',
-                'email',
-                'max:255',
-                Rule::unique('users', 'email'),
-            ],
-            'role' => ['required', Rule::in(['manager', 'staff'])],
-            'temporary_password' => ['required', 'string', 'min:8', 'confirmed'],
+            'name'                           => ['required', 'string', 'max:255'],
+            'email'                          => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
+            'role'                           => ['required', Rule::in(['manager', 'staff'])],
+            'temporary_password'             => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
-        $user = User::create([
-            'company_id' => Auth::user()->company_id,
-            'name' => $validated['name'],
-            'email' => $validated['email'],
-            'password' => $validated['temporary_password'],
-            'role' => $validated['role'],
-            'must_change_password' => true,
+        $user = $this->users->create([
+            'company_id'                  => Auth::user()->company_id,
+            'name'                        => $validated['name'],
+            'email'                       => $validated['email'],
+            'password'                    => $validated['temporary_password'],
+            'role'                        => $validated['role'],
+            'must_change_password'        => true,
             'temporary_password_consumed' => false,
         ]);
 
         return response()->json([
             'message' => 'User created. They must set a personal password on first login.',
-            'user' => $this->formatUser($user),
+            'user'    => $this->formatUser($user),
         ], 201);
     }
 
@@ -60,11 +57,9 @@ class UserController extends Controller
             'role' => ['required', Rule::in(['manager', 'staff'])],
         ]);
 
-        $user->update(['role' => $validated['role']]);
-
         return response()->json([
             'message' => 'User role updated.',
-            'user' => $this->formatUser($user->fresh()),
+            'user'    => $this->formatUser($this->users->update($user, $validated)),
         ]);
     }
 
@@ -72,7 +67,7 @@ class UserController extends Controller
     {
         $this->ensureManageableUser($user);
 
-        $user->delete();
+        $this->users->delete($user);
 
         return response()->json(null, 204);
     }
@@ -82,33 +77,27 @@ class UserController extends Controller
         $admin = Auth::user();
 
         if ($user->company_id !== $admin->company_id) {
-            throw ValidationException::withMessages([
-                'user' => ['This user does not belong to your company.'],
-            ]);
+            throw ValidationException::withMessages(['user' => ['This user does not belong to your company.']]);
         }
 
         if ($user->id === $admin->id) {
-            throw ValidationException::withMessages([
-                'user' => ['You cannot modify your own account here.'],
-            ]);
+            throw ValidationException::withMessages(['user' => ['You cannot modify your own account here.']]);
         }
 
         if ($user->role === 'admin') {
-            throw ValidationException::withMessages([
-                'user' => ['Admin accounts cannot be modified from this screen.'],
-            ]);
+            throw ValidationException::withMessages(['user' => ['Admin accounts cannot be modified from this screen.']]);
         }
     }
 
     private function formatUser(User $user): array
     {
         return [
-            'id' => $user->id,
-            'name' => $user->name,
-            'email' => $user->email,
-            'role' => $user->role,
+            'id'                   => $user->id,
+            'name'                 => $user->name,
+            'email'                => $user->email,
+            'role'                 => $user->role,
             'must_change_password' => $user->must_change_password,
-            'created_at' => $user->created_at,
+            'created_at'           => $user->created_at,
         ];
     }
 }
