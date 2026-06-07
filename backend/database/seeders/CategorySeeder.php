@@ -17,6 +17,7 @@ class CategorySeeder extends Seeder
             'Office Supplies',
             'Furniture',
             'Clothing',
+            'Hardware',
             'Other',
         ];
 
