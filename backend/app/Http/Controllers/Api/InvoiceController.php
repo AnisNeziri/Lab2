@@ -27,7 +27,7 @@ class InvoiceController extends Controller
             'customer_name'            => ['required', 'string', 'max:255'],
             'issued_at'                => ['nullable', 'date'],
             'due_at'                   => ['nullable', 'date'],
-            'status'                   => ['nullable', 'in:draft,unpaid,sent,paid,overdue'],
+            'status'                   => ['nullable', 'in:draft,unpaid,sent,partially_paid,paid,overdue'],
             'items'                    => ['required', 'array', 'min:1'],
             'items.*.product_id'       => ['required', 'integer', 'exists:products,id'],
             'items.*.quantity'         => ['required', 'integer', 'min:1'],
