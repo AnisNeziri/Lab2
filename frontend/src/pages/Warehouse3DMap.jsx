@@ -2,6 +2,7 @@ import { useRef, useState, useEffect, useMemo } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls, Html, Float } from '@react-three/drei'
 import { useAuthStore } from '../store/authStore'
+import { useNavigate } from 'react-router-dom'
 import { getEcho } from '../lib/echo'
 import { apiRequest } from '../api/client'
 import * as THREE from 'three'
@@ -545,6 +546,7 @@ function ShelfModal({ shelf, products, loading, onClose }) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function Warehouse3DMap() {
   const { token, user } = useAuthStore()
+  const navigate = useNavigate()
 
   // stockData maps shelfId → 0-100 visual level derived from real DB quantities
   const [stockData, setStockData] = useState({})
@@ -665,6 +667,19 @@ export default function Warehouse3DMap() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, pointerEvents: 'auto' }}>
+          <button
+            onClick={() => navigate(-1)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 8,
+              background: 'rgba(6,12,24,0.88)', backdropFilter: 'blur(8px)',
+              border: '1px solid #1e293b', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+              color: '#94a3b8',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(30,48,80,0.95)'; e.currentTarget.style.color = '#e2e8f0' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(6,12,24,0.88)'; e.currentTarget.style.color = '#94a3b8' }}
+          >
+            ← Back
+          </button>
           {!heatmapActive && (
             <div style={{ display: 'flex', gap: 12, background: 'rgba(6,12,24,0.88)', backdropFilter: 'blur(8px)', border: '1px solid #1e293b', borderRadius: 8, padding: '8px 14px', fontSize: 12, color: '#94a3b8', alignItems: 'center' }}>
               {[['#22c55e','Healthy'],['#fb923c','Low Stock'],['#ef4444','Out of Stock']].map(([c, l]) => (
