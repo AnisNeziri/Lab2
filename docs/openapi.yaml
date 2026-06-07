@@ -1,0 +1,181 @@
+openapi: 3.0.3
+info:
+  title: AIMS Inventory API
+  description: REST API for the Automated Inventory Management System
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000/api
+    description: Local development
+tags:
+  - name: Auth
+  - name: Inventory
+  - name: Reports
+  - name: Advanced
+paths:
+  /status:
+    get:
+      tags: [Auth]
+      summary: API health check
+      responses:
+        '200':
+          description: API is running
+  /login:
+    post:
+      tags: [Auth]
+      summary: Authenticate user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: Login successful
+  /register:
+    post:
+      tags: [Auth]
+      summary: Register company and admin user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, password_confirmation, company_name, company_address]
+              properties:
+                name: { type: string }
+                email: { type: string }
+                password: { type: string }
+                password_confirmation: { type: string }
+                company_name: { type: string }
+                company_address: { type: string }
+      responses:
+        '201':
+          description: Registration successful
+  /products:
+    get:
+      tags: [Inventory]
+      summary: List products with search and filters
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: category_id, in: query, schema: { type: integer } }
+        - { name: low_stock, in: query, schema: { type: boolean } }
+        - { name: page, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: Paginated product list
+    post:
+      tags: [Inventory]
+      summary: Create product
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201':
+          description: Product created
+  /products/import:
+    post:
+      tags: [Advanced]
+      summary: Import products from CSV
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Import completed
+  /products/export:
+    get:
+      tags: [Advanced]
+      summary: Export products as CSV
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: CSV file
+  /search:
+    get:
+      tags: [Advanced]
+      summary: Global search across entities
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2 } }
+      responses:
+        '200':
+          description: Search results
+  /dashboard:
+    get:
+      tags: [Reports]
+      summary: Dashboard metrics
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Dashboard data
+  /reports:
+    get:
+      tags: [Reports]
+      summary: Dynamic inventory reports
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Report data
+  /stock-movements:
+    get:
+      tags: [Inventory]
+      summary: List stock movements
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Movement list
+    post:
+      tags: [Inventory]
+      summary: Record stock movement
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201':
+          description: Movement created
+  /notifications:
+    get:
+      tags: [Advanced]
+      summary: List notifications
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Notification list
+  /payments:
+    post:
+      tags: [Advanced]
+      summary: Process invoice payment
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201':
+          description: Payment processed
+  /cms:
+    get:
+      tags: [Advanced]
+      summary: List CMS pages (admin)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: CMS pages
+  /cms/published:
+    get:
+      tags: [Advanced]
+      summary: Public published CMS pages
+      responses:
+        '200':
+          description: Published pages
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
