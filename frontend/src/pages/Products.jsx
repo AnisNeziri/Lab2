@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, useEffect, useState } from 'react'
 import { getCategories } from '../api/categories'
 import { getSuppliers } from '../api/suppliers'
 import {
@@ -11,10 +11,9 @@ import {
 import { importProducts } from '../api/import'
 import StockBadge from '../components/StockBadge'
 import { useAuthStore } from '../store/authStore'
-import { Scan, Upload } from 'lucide-react'
+import { Upload } from 'lucide-react'
 
 const ProductDetail = lazy(() => import('../components/ProductDetail'))
-const BarcodeScanner = lazy(() => import('../components/BarcodeScanner'))
 
 const emptyForm = {
   category_id: '',
@@ -51,8 +50,6 @@ function Products() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
-  const [showScanner, setShowScanner] = useState(false)
-
   async function loadCategories() {
     const categoriesData = await getCategories()
     setCategories(categoriesData)
@@ -157,24 +154,6 @@ function Products() {
     setPage(1)
   }
 
-  function handleScanSuccess(scannedBarcode) {
-    setForm((current) => ({
-      ...current,
-      barcode: scannedBarcode,
-    }))
-    setShowScanner(false)
-
-    const existingProduct = products.find(p => p.barcode === scannedBarcode)
-    if (existingProduct) {
-      setForm({
-        ...emptyForm,
-        ...existingProduct,
-        category_id: existingProduct.category_id || '',
-        supplier_id: existingProduct.supplier_id || '',
-      })
-      setEditingId(existingProduct.id)
-    }
-  }
 
   async function handleExport() {
     try {
@@ -310,25 +289,6 @@ function Products() {
           <label>
             SKU
             <input name="sku" value={form.sku} onChange={handleChange} required />
-          </label>
-
-          <label>
-            Barcode
-            <div className="input-with-button">
-              <input
-                name="barcode"
-                value={form.barcode}
-                onChange={handleChange}
-                placeholder="Scan or enter barcode"
-              />
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => setShowScanner(true)}
-              >
-                <Scan size={16} />
-              </button>
-            </div>
           </label>
 
           <label>
@@ -637,14 +597,6 @@ function Products() {
         )}
       </section>
 
-      {showScanner && (
-        <Suspense fallback={<p className="page-message">Loading scanner...</p>}>
-          <BarcodeScanner
-            onScanSuccess={handleScanSuccess}
-            onClose={() => setShowScanner(false)}
-          />
-        </Suspense>
-      )}
     </main>
   )
 }
