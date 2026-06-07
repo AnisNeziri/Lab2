@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { login } from '../api/login'
+import AimsLogo from '../components/AimsLogo'
 import '../styles/AuthPages.css'
 
 function Login({ onLoginSuccess, onBackHome, onRegister }) {
@@ -35,6 +36,7 @@ function Login({ onLoginSuccess, onBackHome, onRegister }) {
         </button>
 
         <div className="auth-brand">
+          <AimsLogo size="lg" showText={false} />
           <h1>Welcome back</h1>
           <p>Sign in to your company inventory dashboard</p>
         </div>
