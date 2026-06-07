@@ -10,13 +10,20 @@ class ActivityLog extends Model
 {
     use BelongsToCompany;
 
+    protected $table = 'audit_logs';
+
     public $timestamps = false;
 
     protected $fillable = [
         'company_id',
         'user_id',
         'action',
+        'entity',
+        'entity_id',
         'description',
+        'old_value',
+        'new_value',
+        'ip_address',
         'created_at',
     ];
 

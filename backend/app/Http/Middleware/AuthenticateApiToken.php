@@ -2,31 +2,44 @@
 
 namespace App\Http\Middleware;
 
-use Closure;
 use App\Models\User;
+use App\Services\JwtService;
+use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
 class AuthenticateApiToken
 {
-    /**
-     * Handle an incoming request.
-     *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
-     */
+    public function __construct(
+        private JwtService $jwt
+    ) {}
+
     public function handle(Request $request, Closure $next): Response
     {
         $header = $request->header('Authorization', '');
-        
+
         if (str_starts_with($header, 'Bearer ')) {
             $token = substr($header, 7);
-            
+
             if ($token) {
-                $user = User::where('api_token', $token)->first();
-                
-                if ($user) {
+                $payload = $this->jwt->validateAccessToken($token);
+
+                if ($payload) {
+                    $user = User::find($payload->sub ?? null);
+
+                    if ($user && $user->is_active !== false) {
+                        Auth::login($user);
+
+                        return $next($request);
+                    }
+                }
+
+                $user = User::where('api_token', hash('sha256', $token))->first();
+
+                if ($user && $user->is_active !== false) {
                     Auth::login($user);
+
                     return $next($request);
                 }
             }

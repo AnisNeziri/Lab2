@@ -238,4 +238,44 @@ class InventoryApiTest extends TestCase
             ->assertJsonCount(1)
             ->assertJsonPath('0.type', 'out');
     }
+
+    public function test_invoice_can_be_created_with_line_items(): void
+    {
+        $this->actingAsApiUser();
+
+        $category = Category::create($this->tenantAttributes(['name' => 'Electronics']));
+
+        $product = Product::create($this->tenantAttributes([
+            'category_id' => $category->id,
+            'name' => 'Wireless Mouse',
+            'sku' => 'ELEC-001',
+            'quantity' => 10,
+            'min_quantity' => 2,
+            'price' => 19.99,
+        ]));
+
+        $response = $this->postJson('/api/invoices', [
+            'customer_name' => 'Alpha Market',
+            'due_at' => now()->addDays(14)->toDateString(),
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'quantity' => 3,
+                ],
+            ],
+        ]);
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath('customer_name', 'Alpha Market')
+            ->assertJsonPath('status', 'unpaid')
+            ->assertJsonPath('total_amount', '59.97')
+            ->assertJsonPath('items.0.product_id', $product->id)
+            ->assertJsonPath('items.0.quantity', 3);
+
+        $this->assertDatabaseHas('invoices', [
+            'customer_name' => 'Alpha Market',
+            'total_amount' => 59.97,
+        ]);
+    }
 }

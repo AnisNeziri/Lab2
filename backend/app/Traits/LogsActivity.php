@@ -27,7 +27,7 @@ trait LogsActivity
         $userId = Auth::id();
         $className = class_basename($model);
         $identifier = $model->name ?? $model->sku ?? $model->id;
-        $description = "Product '{$identifier}' was {$action}.";
+        $description = "{$className} '{$identifier}' was {$action}.";
 
         if ($action === 'updated') {
             $changes = $model->getChanges();
@@ -40,7 +40,7 @@ trait LogsActivity
         ActivityLog::create([
             'company_id' => Auth::user()?->company_id,
             'user_id' => $userId,
-            'action' => "Product {$action}",
+            'action' => "{$className} {$action}",
             'description' => $description,
         ]);
     }

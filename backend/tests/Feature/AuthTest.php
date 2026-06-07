@@ -43,12 +43,13 @@ class AuthTest extends TestCase
             'name' => 'New Staff',
             'email' => 'staff@acme.test',
             'role' => 'staff',
+            'temporary_password' => 'TempPass123!',
+            'temporary_password_confirmation' => 'TempPass123!',
         ]);
 
         $response
             ->assertCreated()
-            ->assertJsonPath('user.email', 'staff@acme.test')
-            ->assertJsonStructure(['temporary_password']);
+            ->assertJsonPath('user.email', 'staff@acme.test');
 
         $user = User::where('email', 'staff@acme.test')->first();
         $this->assertTrue($user->must_change_password);
@@ -59,13 +60,15 @@ class AuthTest extends TestCase
     {
         $this->actingAsApiUser('admin');
 
-        $createResponse = $this->postJson('/api/users', [
+        $tempPassword = 'TempPass123!';
+
+        $this->postJson('/api/users', [
             'name' => 'Temp User',
             'email' => 'temp@acme.test',
             'role' => 'staff',
-        ]);
-
-        $tempPassword = $createResponse->json('temporary_password');
+            'temporary_password' => $tempPassword,
+            'temporary_password_confirmation' => $tempPassword,
+        ])->assertCreated();
 
         $firstLogin = $this->postJson('/api/login', [
             'email' => 'temp@acme.test',
@@ -94,7 +97,7 @@ class AuthTest extends TestCase
             'email' => 'forced@acme.test',
             'password' => $tempPassword,
             'role' => 'staff',
-            'api_token' => 'forced-change-token',
+            'api_token' => hash('sha256', 'forced-change-token'),
             'must_change_password' => true,
             'temporary_password_consumed' => true,
         ]);
@@ -117,6 +120,50 @@ class AuthTest extends TestCase
         $this->withHeader('Authorization', 'Bearer forced-change-token')
             ->getJson('/api/dashboard')
             ->assertOk();
+    }
+
+    public function test_admin_can_update_user_role(): void
+    {
+        $this->actingAsApiUser('admin');
+
+        $user = User::factory()->create([
+            'company_id' => $this->apiCompany->id,
+            'email' => 'promote@test.com',
+            'role' => 'staff',
+        ]);
+
+        $this->putJson("/api/users/{$user->id}", ['role' => 'manager'])
+            ->assertOk()
+            ->assertJsonPath('user.role', 'manager');
+
+        $this->assertSame('manager', $user->fresh()->role);
+    }
+
+    public function test_admin_can_remove_staff_user(): void
+    {
+        $this->actingAsApiUser('admin');
+
+        $user = User::factory()->create([
+            'company_id' => $this->apiCompany->id,
+            'email' => 'remove@test.com',
+            'role' => 'staff',
+        ]);
+
+        $this->deleteJson("/api/users/{$user->id}")
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('users', ['id' => $user->id]);
+    }
+
+    public function test_admin_cannot_remove_self(): void
+    {
+        $this->actingAsApiUser('admin');
+
+        $admin = User::where('company_id', $this->apiCompany->id)->first();
+
+        $this->deleteJson("/api/users/{$admin->id}")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('user');
     }
 
     public function test_users_are_scoped_to_company(): void

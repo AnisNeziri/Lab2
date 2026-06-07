@@ -13,14 +13,15 @@ abstract class TestCase extends BaseTestCase
     protected function actingAsApiUser(string $role = 'admin'): self
     {
         $this->apiCompany = Company::factory()->create();
+        $plainToken = 'test-token-'.$role;
 
-        $user = User::factory()->create([
+        User::factory()->create([
             'company_id' => $this->apiCompany->id,
             'role' => $role,
-            'api_token' => 'test-token-'.$role,
+            'api_token' => hash('sha256', $plainToken),
         ]);
 
-        return $this->withHeader('Authorization', 'Bearer '.$user->api_token);
+        return $this->withHeader('Authorization', 'Bearer '.$plainToken);
     }
 
     protected function tenantAttributes(array $attributes = []): array

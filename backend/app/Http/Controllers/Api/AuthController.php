@@ -3,17 +3,18 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Company;
-use App\Models\User;
+use App\Services\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
+    public function __construct(
+        private AuthService $authService
+    ) {}
+
     public function login(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -21,47 +22,47 @@ class AuthController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        $user = User::where('email', $validated['email'])->first();
+        $result = $this->authService->attemptLogin($validated['email'], $validated['password']);
 
-        if (! $user) {
+        if (($result['error'] ?? null) === 'not_found') {
             return response()->json([
                 'message' => 'User not found.',
-                'errors' => [
-                    'email' => ['The provided credentials are incorrect.'],
-                ],
+                'errors' => ['email' => ['The provided credentials are incorrect.']],
             ], 422);
         }
 
-        if ($user->must_change_password && $user->temporary_password_consumed) {
+        if (($result['error'] ?? null) === 'temp_expired') {
             return response()->json([
                 'message' => 'Your temporary password has already been used. Contact your company administrator for assistance.',
-                'errors' => [
-                    'email' => ['Temporary password expired.'],
-                ],
+                'errors' => ['email' => ['Temporary password expired.']],
             ], 422);
         }
 
-        if (! Hash::check($validated['password'], $user->password)) {
+        if (($result['error'] ?? null) === 'invalid_password') {
             return response()->json([
                 'message' => 'Password incorrect.',
-                'errors' => [
-                    'email' => ['The provided credentials are incorrect.'],
-                ],
+                'errors' => ['email' => ['The provided credentials are incorrect.']],
             ], 422);
         }
 
-        if ($user->must_change_password && ! $user->temporary_password_consumed) {
-            $user->temporary_password_consumed = true;
+        return response()->json($result);
+    }
+
+    public function refresh(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'refresh_token' => ['required', 'string'],
+        ]);
+
+        $result = $this->authService->refresh($validated['refresh_token']);
+
+        if (! $result) {
+            return response()->json([
+                'message' => 'Refresh token is invalid or expired.',
+            ], 401);
         }
 
-        $token = Str::random(80);
-        $user->api_token = $token;
-        $user->save();
-
-        return response()->json([
-            'token' => $token,
-            'user' => $this->formatUser($user),
-        ]);
+        return response()->json($result);
     }
 
     public function logout(Request $request): JsonResponse
@@ -69,14 +70,10 @@ class AuthController extends Controller
         $user = Auth::user();
 
         if ($user) {
-            $user->forceFill([
-                'api_token' => null,
-            ])->save();
+            $this->authService->logout($user);
         }
 
-        return response()->json([
-            'message' => 'Successfully logged out.',
-        ]);
+        return response()->json(['message' => 'Successfully logged out.']);
     }
 
     public function register(Request $request): JsonResponse
@@ -89,37 +86,13 @@ class AuthController extends Controller
             'company_address' => ['required', 'string', 'max:1000'],
         ]);
 
-        $token = Str::random(80);
+        $result = $this->authService->register($validated);
 
-        $user = DB::transaction(function () use ($validated, $token) {
-            $company = Company::create([
-                'name' => $validated['company_name'],
-                'address' => $validated['company_address'],
-            ]);
-
-            return User::create([
-                'company_id' => $company->id,
-                'name' => $validated['name'],
-                'email' => $validated['email'],
-                'password' => $validated['password'],
-                'role' => 'admin',
-                'api_token' => $token,
-                'must_change_password' => false,
-                'temporary_password_consumed' => false,
-            ]);
-        });
-
-        $user->load('company');
-
-        return response()->json([
-            'token' => $token,
-            'user' => $this->formatUser($user),
-        ], 201);
+        return response()->json($result, 201);
     }
 
     public function changePassword(Request $request): JsonResponse
     {
-        /** @var User $user */
         $user = Auth::user();
 
         if ($user->must_change_password) {
@@ -135,36 +108,16 @@ class AuthController extends Controller
             if (! Hash::check($validated['current_password'], $user->password)) {
                 return response()->json([
                     'message' => 'Current password is incorrect.',
-                    'errors' => [
-                        'current_password' => ['The current password is incorrect.'],
-                    ],
+                    'errors' => ['current_password' => ['The current password is incorrect.']],
                 ], 422);
             }
         }
 
-        $user->password = $validated['password'];
-        $user->must_change_password = false;
-        $user->temporary_password_consumed = false;
-        $user->save();
+        $user = $this->authService->changePassword($user, $validated);
 
         return response()->json([
             'message' => 'Password updated successfully.',
-            'user' => $this->formatUser($user),
+            'user' => $this->authService->formatUser($user),
         ]);
-    }
-
-    private function formatUser(User $user): array
-    {
-        $user->loadMissing('company');
-
-        return [
-            'id' => $user->id,
-            'name' => $user->name,
-            'email' => $user->email,
-            'role' => $user->role,
-            'company_id' => $user->company_id,
-            'company_name' => $user->company?->name,
-            'must_change_password' => $user->must_change_password,
-        ];
     }
 }

@@ -16,9 +16,12 @@ class User extends Authenticatable
     protected $fillable = [
         'company_id',
         'name',
+        'first_name',
+        'last_name',
         'email',
         'password',
         'role',
+        'is_active',
         'api_token',
         'must_change_password',
         'temporary_password_consumed',
@@ -35,6 +38,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_active' => 'boolean',
             'must_change_password' => 'boolean',
             'temporary_password_consumed' => 'boolean',
         ];
