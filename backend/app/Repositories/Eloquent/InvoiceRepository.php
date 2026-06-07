@@ -10,12 +10,12 @@ class InvoiceRepository implements InvoiceRepositoryInterface
 {
     public function allLatest(): Collection
     {
-        return Invoice::latest('issued_at')->get();
+        return Invoice::with('payments')->latest('issued_at')->get();
     }
 
     public function findWithItems(int $id): Invoice
     {
-        return Invoice::with('items.product')->findOrFail($id);
+        return Invoice::with(['items.product', 'payments'])->findOrFail($id);
     }
 
     public function create(array $data): Invoice

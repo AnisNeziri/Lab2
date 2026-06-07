@@ -22,9 +22,10 @@ class PaymentController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'invoice_id' => ['required', 'exists:invoices,id'],
-            'amount' => ['nullable', 'numeric', 'min:0.01'],
+            'invoice_id'     => ['required', 'exists:invoices,id'],
+            'amount'         => ['nullable', 'numeric', 'min:0.01'],
             'payment_method' => ['nullable', 'in:card,bank_transfer,cash'],
+            'note'           => ['nullable', 'string', 'max:500'],
         ]);
 
         $invoice = Invoice::findOrFail($validated['invoice_id']);
