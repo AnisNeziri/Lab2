@@ -22,6 +22,7 @@ const Invoices = lazy(() => import('./pages/Invoices'))
 const ActivityLogs = lazy(() => import('./pages/ActivityLogs'))
 const Users = lazy(() => import('./pages/Users'))
 const Cms = lazy(() => import('./pages/Cms'))
+const Warehouse3DMap = lazy(() => import('./pages/Warehouse3DMap'))
 
 function PageLoader() {
   return <p className="page-message">Loading page...</p>
@@ -221,6 +222,11 @@ function AppRoutes() {
           <Route path="/activity-logs" element={<ProtectedRoute adminOnly><Suspense fallback={<PageLoader />}><ActivityLogs /></Suspense></ProtectedRoute>} />
           <Route path="/cms" element={<ProtectedRoute adminOnly><Suspense fallback={<PageLoader />}><Cms /></Suspense></ProtectedRoute>} />
         </Route>
+        <Route path="/warehouse-3d" element={
+          <ProtectedRoute>
+            <Suspense fallback={<PageLoader />}><Warehouse3DMap /></Suspense>
+          </ProtectedRoute>
+        } />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

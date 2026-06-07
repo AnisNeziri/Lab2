@@ -10,6 +10,7 @@ import {
   Users,
   LogOut,
   FileEdit,
+  Box,
 } from 'lucide-react'
 import NotificationCenter from './NotificationCenter'
 import GlobalSearch from './GlobalSearch'
@@ -24,6 +25,7 @@ export default function Sidebar({ currentPage, onPageChange, userRole, onLogout,
     { id: 'suppliers', label: 'Suppliers', icon: Truck },
     { id: 'reports', label: 'Reports', icon: FileText },
     { id: 'invoices', label: 'Invoices', icon: Receipt },
+    { id: 'warehouse-3d', label: '3D Warehouse Map', icon: Box },
     ...(userRole === 'admin' ? [
       { id: 'users', label: 'Users', icon: Users },
       { id: 'activity-logs', label: 'Activity Logs', icon: Activity },
