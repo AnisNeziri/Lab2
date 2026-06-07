@@ -15,7 +15,6 @@ class DashboardService
 
     public function getMetrics(int $companyId): array
     {
-        // Try Redis first (NoSQL store)
         $cached = $this->redisStore->getDashboardStats($companyId);
         if ($cached) {
             return $cached;
@@ -23,7 +22,6 @@ class DashboardService
 
         $metrics = $this->buildMetrics();
 
-        // Persist KPI counters to Redis as a Hash (NoSQL write)
         $this->redisStore->setDashboardStats($companyId, [
             'total_products'     => $metrics['total_products'],
             'total_categories'   => $metrics['total_categories'],
@@ -36,7 +34,6 @@ class DashboardService
             'stock_turnover'     => $metrics['stock_turnover'],
         ]);
 
-        // Sync low-stock product IDs into Redis Set
         $lowStockIds = collect($metrics['low_stock_products'])->pluck('id')->toArray();
         $this->redisStore->setLowStockAlerts($companyId, $lowStockIds);
 

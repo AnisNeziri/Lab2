@@ -54,7 +54,8 @@ export default function GlobalSearch({ onNavigate }) {
     results.products?.length > 0 ||
     results.categories?.length > 0 ||
     results.suppliers?.length > 0 ||
-    results.invoices?.length > 0
+    results.invoices?.length > 0 ||
+    results.stock_movements?.length > 0
   )
 
   return (
@@ -62,7 +63,7 @@ export default function GlobalSearch({ onNavigate }) {
       <Search size={18} className="global-search-icon" />
       <input
         type="search"
-        placeholder="Search products, suppliers, invoices..."
+        placeholder="Search inventory..."
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onFocus={() => results && setIsOpen(true)}
@@ -107,6 +108,16 @@ export default function GlobalSearch({ onNavigate }) {
               {results.invoices.map((item) => (
                 <button key={`i-${item.id}`} type="button" onClick={() => handleSelect('invoices', item)}>
                   {item.invoice_number} - {item.customer_name}
+                </button>
+              ))}
+            </section>
+          )}
+          {results.stock_movements?.length > 0 && (
+            <section>
+              <h4>Stock movements</h4>
+              {results.stock_movements.map((item) => (
+                <button key={`m-${item.id}`} type="button" onClick={() => handleSelect('stock', item)}>
+                  {item.product?.name || 'Product'} ({item.type} {item.quantity})
                 </button>
               ))}
             </section>

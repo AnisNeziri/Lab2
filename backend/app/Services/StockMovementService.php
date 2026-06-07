@@ -62,10 +62,8 @@ class StockMovementService
             broadcast(new StockUpdated($user->company_id, $movement));
             broadcast(new DashboardUpdated($user->company_id));
 
-            // Invalidate Redis dashboard stats so next request rebuilds from MySQL
             $this->redisStore->invalidateDashboardStats($user->company_id);
 
-            // Push event into Redis activity feed (NoSQL sorted set)
             $this->redisStore->pushActivityEvent(
                 $user->company_id,
                 $validated['type'] === 'in' ? 'stock_in' : 'stock_out',
@@ -78,10 +76,8 @@ class StockMovementService
                 $notification = $this->notifications->createLowStockAlert($movement->product);
                 broadcast(new LowStockDetected($user->company_id, $notification));
 
-                // Add to Redis low-stock set
                 $this->redisStore->addLowStockAlert($user->company_id, $movement->product_id);
             } else {
-                // Remove from Redis low-stock set if stock recovered
                 $this->redisStore->removeLowStockAlert($user->company_id, $movement->product_id);
             }
         }

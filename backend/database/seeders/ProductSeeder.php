@@ -15,7 +15,6 @@ class ProductSeeder extends Seeder
         $companyId = Company::firstOrFail()->id;
 
         $products = [
-            // ── Zone A — Electronics ──────────────────────────────────────
             ['category' => 'Electronics', 'supplier' => 'TechSupply Co.',  'name' => 'Wireless Mouse',      'sku' => 'ELEC-001', 'location_code' => 'A1', 'quantity' => 45, 'min_quantity' => 10, 'high_stock_threshold' => 60,  'price' => 19.99, 'unit' => 'pcs'],
             ['category' => 'Electronics', 'supplier' => 'TechSupply Co.',  'name' => 'USB-C Hub 4-Port',    'sku' => 'ELEC-002', 'location_code' => 'A1', 'quantity' => 8,  'min_quantity' => 5,  'high_stock_threshold' => 15,  'price' => 34.50, 'unit' => 'pcs'],
             ['category' => 'Electronics', 'supplier' => 'TechSupply Co.',  'name' => 'Mechanical Keyboard', 'sku' => 'ELEC-003', 'location_code' => 'A2', 'quantity' => 30, 'min_quantity' => 8,  'high_stock_threshold' => 40,  'price' => 79.00, 'unit' => 'pcs'],
@@ -25,7 +24,6 @@ class ProductSeeder extends Seeder
             ['category' => 'Electronics', 'supplier' => 'TechSupply Co.',  'name' => 'Laptop Stand',        'sku' => 'ELEC-007', 'location_code' => 'A4', 'quantity' => 22, 'min_quantity' => 5,  'high_stock_threshold' => 30,  'price' => 29.99, 'unit' => 'pcs'],
             ['category' => 'Electronics', 'supplier' => 'TechSupply Co.',  'name' => 'Monitor 24"',         'sku' => 'ELEC-008', 'location_code' => 'A4', 'quantity' =>  0, 'min_quantity' => 2,  'high_stock_threshold' => 8,   'price' =>189.00, 'unit' => 'pcs'],
 
-            // ── Zone B — Hardware ─────────────────────────────────────────
             ['category' => 'Hardware',    'supplier' => 'Global Furniture', 'name' => 'Steel Bolt Set M6',  'sku' => 'HW-001',   'location_code' => 'B1', 'quantity' => 200,'min_quantity' => 50, 'high_stock_threshold' => 300, 'price' =>  4.50, 'unit' => 'box'],
             ['category' => 'Hardware',    'supplier' => 'Global Furniture', 'name' => 'Drill Bit Set',      'sku' => 'HW-002',   'location_code' => 'B1', 'quantity' => 15, 'min_quantity' => 5,  'high_stock_threshold' => 25,  'price' => 18.00, 'unit' => 'set'],
             ['category' => 'Hardware',    'supplier' => 'Global Furniture', 'name' => 'Hex Wrench Set',     'sku' => 'HW-003',   'location_code' => 'B2', 'quantity' => 35, 'min_quantity' => 10, 'high_stock_threshold' => 50,  'price' => 11.99, 'unit' => 'set'],
@@ -35,7 +33,6 @@ class ProductSeeder extends Seeder
             ['category' => 'Hardware',    'supplier' => 'Global Furniture', 'name' => 'Tool Box Medium',    'sku' => 'HW-007',   'location_code' => 'B4', 'quantity' =>  7, 'min_quantity' => 3,  'high_stock_threshold' => 12,  'price' => 45.00, 'unit' => 'pcs'],
             ['category' => 'Hardware',    'supplier' => 'Global Furniture', 'name' => 'Measuring Tape 5m',  'sku' => 'HW-008',   'location_code' => 'B4', 'quantity' => 28, 'min_quantity' => 8,  'high_stock_threshold' => 40,  'price' =>  7.99, 'unit' => 'pcs'],
 
-            // ── Zone C — Consumables ──────────────────────────────────────
             ['category' => 'Office Supplies','supplier' => 'Office Depot KS','name' => 'A4 Paper Pack',     'sku' => 'OFF-001',  'location_code' => 'C1', 'quantity' => 90, 'min_quantity' => 20, 'high_stock_threshold' => 100, 'price' =>  6.99, 'unit' => 'pack'],
             ['category' => 'Office Supplies','supplier' => 'Office Depot KS','name' => 'Ballpoint Pen Box', 'sku' => 'OFF-002',  'location_code' => 'C1', 'quantity' => 60, 'min_quantity' => 15, 'high_stock_threshold' => 80,  'price' =>  8.50, 'unit' => 'box'],
             ['category' => 'Office Supplies','supplier' => 'Office Depot KS','name' => 'Sticky Notes 5pk',  'sku' => 'OFF-003',  'location_code' => 'C2', 'quantity' => 40, 'min_quantity' => 10, 'high_stock_threshold' => 60,  'price' =>  4.25, 'unit' => 'pack'],
@@ -45,7 +42,6 @@ class ProductSeeder extends Seeder
             ['category' => 'Office Supplies','supplier' => 'Office Depot KS','name' => 'Scissors Office',   'sku' => 'OFF-007',  'location_code' => 'C4', 'quantity' => 25, 'min_quantity' => 5,  'high_stock_threshold' => 35,  'price' =>  5.50, 'unit' => 'pcs'],
             ['category' => 'Office Supplies','supplier' => 'Office Depot KS','name' => 'Tape Dispenser',    'sku' => 'OFF-008',  'location_code' => 'C4', 'quantity' => 18, 'min_quantity' => 5,  'high_stock_threshold' => 25,  'price' =>  7.75, 'unit' => 'pcs'],
 
-            // ── Zone D — Overflow ─────────────────────────────────────────
             ['category' => 'Clothing',    'supplier' => 'Office Depot KS', 'name' => 'Staff Polo Shirt M',  'sku' => 'CLT-001',  'location_code' => 'D1', 'quantity' => 12, 'min_quantity' => 5,  'high_stock_threshold' => 20,  'price' => 24.00, 'unit' => 'pcs'],
             ['category' => 'Clothing',    'supplier' => 'Office Depot KS', 'name' => 'Staff Polo Shirt L',  'sku' => 'CLT-002',  'location_code' => 'D1', 'quantity' =>  6, 'min_quantity' => 5,  'high_stock_threshold' => 20,  'price' => 24.00, 'unit' => 'pcs'],
             ['category' => 'Furniture',   'supplier' => 'Global Furniture','name' => 'Office Chair',        'sku' => 'FUR-001',  'location_code' => 'D2', 'quantity' =>  3, 'min_quantity' => 2,  'high_stock_threshold' => 6,   'price' =>149.00, 'unit' => 'pcs'],

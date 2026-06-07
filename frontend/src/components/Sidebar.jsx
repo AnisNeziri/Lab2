@@ -38,10 +38,7 @@ export default function Sidebar({ currentPage, onPageChange, userRole, onLogout,
       <div className="sidebar-header">
         <button type="button" className="sidebar-logo sidebar-logo-btn" onClick={onHome}>
           <AimsLogo showText={false} size="sm" />
-          <div className="sidebar-logo-text">
-            <h1>AIMS</h1>
-            <p className="sidebar-subtitle">Enterprise Management</p>
-          </div>
+          <p className="sidebar-subtitle">Enterprise Management</p>
         </button>
         <div className="sidebar-header-actions">
           <NotificationCenter onViewStock={() => onPageChange('stock')} />

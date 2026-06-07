@@ -58,12 +58,6 @@ class SupplierController extends Controller
             return response()->json(['message' => 'Supplier not found.'], 404);
         }
 
-        if ($this->suppliers->hasProducts($supplier)) {
-            return response()->json([
-                'message' => 'Cannot delete a supplier that still has products assigned.',
-            ], 422);
-        }
-
         $this->suppliers->delete($supplier);
 
         return response()->json(null, 204);

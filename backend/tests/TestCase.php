@@ -12,6 +12,8 @@ abstract class TestCase extends BaseTestCase
 
     protected function actingAsApiUser(string $role = 'admin'): self
     {
+        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
+
         $this->apiCompany = Company::factory()->create();
         $plainToken = 'test-token-'.$role;
 

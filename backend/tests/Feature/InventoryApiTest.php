@@ -99,7 +99,28 @@ class InventoryApiTest extends TestCase
         $this->assertEquals(447.0, $response->json('total_value'));
     }
 
-    public function test_supplier_cannot_be_deleted_when_products_exist(): void
+    public function test_category_can_be_deleted_when_products_exist(): void
+    {
+        $this->actingAsApiUser('manager');
+
+        $category = Category::create($this->tenantAttributes(['name' => 'Office']));
+
+        $product = Product::create($this->tenantAttributes([
+            'category_id' => $category->id,
+            'name' => 'Stapler',
+            'sku' => 'OFF-010',
+            'quantity' => 4,
+            'min_quantity' => 1,
+            'price' => 8.00,
+        ]));
+
+        $this->deleteJson('/api/categories/'.$category->id)->assertNoContent();
+
+        $this->assertDatabaseMissing('categories', ['id' => $category->id]);
+        $this->assertNull($product->fresh()->category_id);
+    }
+
+    public function test_supplier_can_be_deleted_when_products_exist(): void
     {
         $this->actingAsApiUser('manager');
 
@@ -109,7 +130,7 @@ class InventoryApiTest extends TestCase
             'email' => 'orders@techsupply.test',
         ]));
 
-        Product::create($this->tenantAttributes([
+        $product = Product::create($this->tenantAttributes([
             'category_id' => $category->id,
             'supplier_id' => $supplier->id,
             'name' => 'Keyboard',
@@ -119,13 +140,10 @@ class InventoryApiTest extends TestCase
             'price' => 45.00,
         ]));
 
-        $response = $this->deleteJson('/api/suppliers/'.$supplier->id);
+        $this->deleteJson('/api/suppliers/'.$supplier->id)->assertNoContent();
 
-        $response
-            ->assertUnprocessable()
-            ->assertJsonPath('message', 'Cannot delete a supplier that still has products assigned.');
-
-        $this->assertDatabaseHas('suppliers', ['id' => $supplier->id]);
+        $this->assertDatabaseMissing('suppliers', ['id' => $supplier->id]);
+        $this->assertNull($product->fresh()->supplier_id);
     }
 
     public function test_products_can_be_filtered_by_supplier(): void

@@ -97,7 +97,7 @@ function Suppliers() {
 
   async function handleDelete(supplier) {
     const confirmed = window.confirm(
-      `Delete "${supplier.name}"? Suppliers with linked products cannot be removed.`
+      `Delete "${supplier.name}"? Linked products will be left without a supplier.`
     )
 
     if (!confirmed) {
@@ -201,12 +201,6 @@ function Suppliers() {
                         type="button"
                         className="danger"
                         onClick={() => handleDelete(supplier)}
-                        disabled={(supplier.products_count ?? 0) > 0}
-                        title={
-                          (supplier.products_count ?? 0) > 0
-                            ? 'Remove or reassign products before deleting'
-                            : ''
-                        }
                       >
                         Delete
                       </button>

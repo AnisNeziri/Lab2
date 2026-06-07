@@ -14,7 +14,6 @@ import {
   Boxes, BarChart3, ShieldCheck, Clock, ChevronRight, Flame,
 } from 'lucide-react'
 
-// ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
   bg:      '#f1f5f9',
   surface: '#ffffff',
@@ -33,7 +32,6 @@ const C = {
 
 const ZONE_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#8b5cf6']
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmtMoney = (n) =>
   n == null ? '—' : `€${Number(n).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -49,7 +47,6 @@ function timeAgo(ts) {
   return new Date(ts).toLocaleDateString()
 }
 
-// ─── KPI card ─────────────────────────────────────────────────────────────────
 function KpiCard({ icon: Icon, label, value, sub, color, glow, trend }) {
   return (
     <div style={{
@@ -79,7 +76,6 @@ function KpiCard({ icon: Icon, label, value, sub, color, glow, trend }) {
   )
 }
 
-// ─── Section header ────────────────────────────────────────────────────────────
 function SectionTitle({ children, icon: Icon, color = C.cyan, badge }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 16 }}>
@@ -96,7 +92,6 @@ function SectionTitle({ children, icon: Icon, color = C.cyan, badge }) {
   )
 }
 
-// ─── Chart wrapper ─────────────────────────────────────────────────────────────
 function ChartCard({ title, icon, color, children, style }) {
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: '20px 22px', ...style }}>
@@ -106,7 +101,6 @@ function ChartCard({ title, icon, color, children, style }) {
   )
 }
 
-// ─── Custom recharts tooltip ───────────────────────────────────────────────────
 function ChartTip({ active, payload, label }) {
   if (!active || !payload?.length) return null
   return (
@@ -119,7 +113,6 @@ function ChartTip({ active, payload, label }) {
   )
 }
 
-// ─── Activity feed item ────────────────────────────────────────────────────────
 function FeedItem({ item, isNew }) {
   const actionColor = {
     create: C.green, update: C.cyan, delete: C.red,
@@ -149,7 +142,6 @@ function FeedItem({ item, isNew }) {
   )
 }
 
-// ─── Low stock alert ───────────────────────────────────────────────────────────
 function AlertCard({ product }) {
   const navigate = useNavigate()
   const pct = product.min_quantity > 0
@@ -195,7 +187,6 @@ function AlertCard({ product }) {
   )
 }
 
-// ─── Quick actions panel ───────────────────────────────────────────────────────
 function QuickActions() {
   const navigate  = useNavigate()
   const [query,   setQuery]    = useState('')
@@ -286,7 +277,6 @@ function QuickActions() {
   )
 }
 
-// ─── Main dashboard ────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const navigate = useNavigate()
   const { user }  = useAuthStore()
@@ -378,7 +368,6 @@ export default function Dashboard() {
     return () => ch.stopListening('.StockUpdated').stopListening('.LowStockDetected')
   }, [user?.company_id, loadDashboard, loadAlerts])
 
-  // ── Derived chart data ─────────────────────────────────────────────────
   const movementChart = (() => {
     if (!data?.recent_movements?.length) return []
     const map = {}
@@ -431,7 +420,7 @@ export default function Dashboard() {
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: C.bg, color: C.muted, gap: 12, fontSize: 14 }}>
       <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
-      Loading Command Center…
+      Loading dashboard...
     </div>
   )
 
@@ -450,7 +439,6 @@ export default function Dashboard() {
         ::-webkit-scrollbar-thumb{background:${C.border};border-radius:4px}
       `}</style>
 
-      {/* ── Top bar ── */}
       <div style={{
         position: 'sticky', top: 0, zIndex: 50,
         background: `${C.surface}ee`, backdropFilter: 'blur(12px)',
@@ -458,7 +446,7 @@ export default function Dashboard() {
         padding: '12px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.02em' }}>Inventory Command Center</div>
+          <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.02em' }}>Dashboard</div>
           <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>
             Welcome back, <span style={{ color: C.cyan }}>{user?.name}</span>
             {lastRefresh && <span> · Updated {timeAgo(lastRefresh)}</span>}
@@ -480,7 +468,6 @@ export default function Dashboard() {
 
       <div style={{ padding: '24px 28px', maxWidth: 1600, margin: '0 auto' }}>
 
-        {/* ── KPI row ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
           <KpiCard icon={DollarSign}  label="Total Stock Value"        value={fmtMoney(totalValue)}             color={C.green}  glow trend={4}                          sub={`${fmt(totalProds)} SKUs tracked`} />
           <KpiCard icon={TrendingUp}  label="Inventory Turnover Rate"  value={turnover ? `${turnover}×` : '—'} color={C.cyan}       trend={turnover > 2 ? 8 : -3}        sub="Inventory cycles / period" />
@@ -488,7 +475,6 @@ export default function Dashboard() {
           <KpiCard icon={ShieldCheck} label="Fulfillment Accuracy Rate" value={`${accuracy}%`}                 color={C.indigo}     glow={accuracy < 85} trend={accuracy >= 90 ? 2 : -5} sub={lowCnt > 0 ? `${lowCnt} item${lowCnt !== 1 ? 's' : ''} need attention` : 'All stock healthy'} />
         </div>
 
-        {/* ── Charts row ── */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 320px', gap: 16, marginBottom: 24 }}>
 
           {/* Inbound vs Outbound */}
@@ -552,7 +538,6 @@ export default function Dashboard() {
           </ChartCard>
         </div>
 
-        {/* ── Bottom row ── */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 300px', gap: 16 }}>
 
           {/* Activity feed */}

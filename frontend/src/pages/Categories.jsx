@@ -74,7 +74,7 @@ function Categories() {
     setFormError('')
 
     const confirmed = window.confirm(
-      `Delete "${category.name}"? Categories with products cannot be removed.`
+      `Delete "${category.name}"? Products in this category will be left without a category.`
     )
 
     if (!confirmed) {
@@ -160,12 +160,6 @@ function Categories() {
                         type="button"
                         className="danger"
                         onClick={() => handleDelete(category)}
-                        disabled={category.products_count > 0}
-                        title={
-                          category.products_count > 0
-                            ? 'Remove or reassign products before deleting'
-                            : ''
-                        }
                       >
                         Delete
                       </button>

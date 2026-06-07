@@ -4,10 +4,6 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Redis;
 
-/**
- * Redis NoSQL store — dashboard stats, activity feed, low-stock alerts.
- * Falls back quietly when Redis is not running (local dev / CI without Redis).
- */
 class RedisStoreService
 {
     private const STATS_TTL = 300;

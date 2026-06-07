@@ -7,7 +7,6 @@ import { getEcho } from '../lib/echo'
 import { apiRequest } from '../api/client'
 import * as THREE from 'three'
 
-// ─── Layout ───────────────────────────────────────────────────────────────────
 const ZONES = [
   { id: 'A', label: 'Zone A — Electronics', color: '#6366f1', lightColor: '#818cf8',
     shelves: [
@@ -53,7 +52,6 @@ function stockColor(level, heatmap, score) {
   return new THREE.Color('#16a34a')
 }
 
-// ─── Rack frame ───────────────────────────────────────────────────────────────
 function RackFrame() {
   const metal = <meshStandardMaterial color="#2d3748" roughness={0.3} metalness={0.9} />
   const dark  = <meshStandardMaterial color="#1a202c" roughness={0.4} metalness={0.7} />
@@ -84,12 +82,6 @@ function RackFrame() {
   )
 }
 
-// ─── Dense box grid per shelf level — data-driven ────────────────────────────
-// stockLevel: 0-100 mapped from real DB quantity (capped at 100 for visual purposes)
-// > 60  → full grid (10/10 slots)
-// 20-60 → half grid (proportional)
-// 1-19  → scattered (1-3 boxes, red tint = warning)
-// 0     → empty shelf (out of stock)
 function ShelfBoxGrid({ y, stockLevel }) {
   // Pre-generate stable random offsets keyed by slot index so they don't
   // jitter every frame — only recalc when stockLevel bucket changes
@@ -138,7 +130,6 @@ function ShelfBoxGrid({ y, stockLevel }) {
   )
 }
 
-// ─── LED strip + ground glow ──────────────────────────────────────────────────
 function LedStrip({ stockLevel, heatmap, activityScore }) {
   const meshRef = useRef()
   const color   = useMemo(() => stockColor(stockLevel, heatmap, activityScore), [stockLevel, heatmap, activityScore])
@@ -161,7 +152,6 @@ function LedStrip({ stockLevel, heatmap, activityScore }) {
   )
 }
 
-// ─── Shelf unit ───────────────────────────────────────────────────────────────
 function ShelfUnit({ shelf, stockLevel, heatmap, activityScore, onClick }) {
   const [hovered, setHovered] = useState(false)
   const groupRef  = useRef()
@@ -241,7 +231,6 @@ function ShelfUnit({ shelf, stockLevel, heatmap, activityScore, onClick }) {
   )
 }
 
-// ─── Zone label ───────────────────────────────────────────────────────────────
 function ZoneLabel({ zone }) {
   const cx = zone.shelves.reduce((s, sh) => s + sh.x, 0) / zone.shelves.length
   const cz = zone.shelves.reduce((s, sh) => s + sh.z, 0) / zone.shelves.length
@@ -256,7 +245,6 @@ function ZoneLabel({ zone }) {
   )
 }
 
-// ─── Zone lights ──────────────────────────────────────────────────────────────
 function ZoneLights() {
   return ZONES.map(zone => {
     const cx = zone.shelves.reduce((s, sh) => s + sh.x, 0) / zone.shelves.length
@@ -265,7 +253,6 @@ function ZoneLights() {
   })
 }
 
-// ─── FORKLIFT ─────────────────────────────────────────────────────────────────
 function Forklift({ position = [0, 0, 0], rotation = [0, 0, 0] }) {
   const yellow  = <meshStandardMaterial color="#f59e0b" roughness={0.4} metalness={0.6} />
   const black   = <meshStandardMaterial color="#111827" roughness={0.8} metalness={0.3} />
@@ -308,7 +295,6 @@ function Forklift({ position = [0, 0, 0], rotation = [0, 0, 0] }) {
   )
 }
 
-// ─── DELIVERY TRUCK ───────────────────────────────────────────────────────────
 function DeliveryTruck({ position = [0, 0, 0], rotation = [0, 0, 0] }) {
   const white  = <meshStandardMaterial color="#e2e8f0" roughness={0.5} metalness={0.3} />
   const gray   = <meshStandardMaterial color="#475569" roughness={0.55} metalness={0.4} />
@@ -349,7 +335,6 @@ function DeliveryTruck({ position = [0, 0, 0], rotation = [0, 0, 0] }) {
   )
 }
 
-// ─── AGV (Automated Guided Vehicle) ──────────────────────────────────────────
 function AGV({ position = [0, 0, 0], rotation = [0, 0, 0], withBox = false, label = 'AGV' }) {
   const bodyRef  = useRef()
   const glowRef  = useRef()
@@ -406,7 +391,6 @@ function AGV({ position = [0, 0, 0], rotation = [0, 0, 0], withBox = false, labe
   )
 }
 
-// ─── Floor skid marks ─────────────────────────────────────────────────────────
 function SkidMarks() {
   const marks = useMemo(() => [
     // large loop near zone centre (forklift turning)
@@ -443,7 +427,6 @@ function SkidMarks() {
   )
 }
 
-// ─── Pallet stack (static decoration) ────────────────────────────────────────
 function PalletStack({ position }) {
   return (
     <group position={position}>
@@ -455,7 +438,6 @@ function PalletStack({ position }) {
   )
 }
 
-// ─── Modal ────────────────────────────────────────────────────────────────────
 function ShelfModal({ shelf, products, loading, onClose }) {
   const totalQty   = products.reduce((s, p) => s + (p.quantity ?? 0), 0)
   const totalValue = products.reduce((s, p) => s + (p.quantity ?? 0) * parseFloat(p.price ?? 0), 0)
@@ -543,7 +525,6 @@ function ShelfModal({ shelf, products, loading, onClose }) {
   )
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function Warehouse3DMap() {
   const { token, user } = useAuthStore()
   const navigate = useNavigate()
@@ -556,7 +537,6 @@ export default function Warehouse3DMap() {
   const [shelfProducts, setShelfProducts]     = useState([])
   const [loadingProducts, setLoadingProducts] = useState(false)
 
-  // ── Load real stock levels from DB on mount ──────────────────────────────
   useEffect(() => {
     if (!token) return
     apiRequest('/products?per_page=500').then(resp => {
@@ -589,7 +569,6 @@ export default function Warehouse3DMap() {
     })
   }, [token])
 
-  // ── Activity feed for heatmap ────────────────────────────────────────────
   useEffect(() => {
     if (!token) return
     apiRequest('/dashboard/activity-feed?limit=100').then(data => {
@@ -602,7 +581,6 @@ export default function Warehouse3DMap() {
     }).catch(() => {})
   }, [token])
 
-  // ── WebSocket: real-time stock updates ───────────────────────────────────
   useEffect(() => {
     const echo = getEcho()
     if (!echo || !user?.company_id) return
@@ -717,7 +695,6 @@ export default function Warehouse3DMap() {
         <color attach="background" args={['#060c18']} />
         <fog attach="fog" args={['#0d1626', 42, 90]} />
 
-        {/* ── Lighting ── */}
         <ambientLight intensity={0.85} color="#d6e0f5" />
 
         {/* Soft fill from top-right */}
@@ -752,7 +729,6 @@ export default function Warehouse3DMap() {
 
         <ZoneLights />
 
-        {/* ── Warehouse walls — 3 explicit planes ── */}
         {/* Back wall */}
         <mesh position={[2, 11, -33]} receiveShadow>
           <planeGeometry args={[82, 24]} />
@@ -788,7 +764,6 @@ export default function Warehouse3DMap() {
           </mesh>
         ))}
 
-        {/* ── Polished concrete floor — no grid, just reflective ── */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[2, 0, -4]} receiveShadow>
           <planeGeometry args={[84, 62]} />
           <meshStandardMaterial
@@ -821,7 +796,6 @@ export default function Warehouse3DMap() {
           </mesh>
         ))}
 
-        {/* ── Skid marks — near vehicles and zone centres ── */}
         <SkidMarks />
 
         {/* racks */}
@@ -837,7 +811,6 @@ export default function Warehouse3DMap() {
           />
         ))}
 
-        {/* ── VEHICLES ── */}
         <Forklift position={[24, 0, -6]}  rotation={[0, -0.6, 0]} />
         <Forklift position={[-22, 0, -4]} rotation={[0,  2.2, 0]} />
 

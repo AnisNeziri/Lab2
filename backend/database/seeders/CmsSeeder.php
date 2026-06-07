@@ -38,7 +38,7 @@ class CmsSeeder extends Seeder
             [
                 'slug' => 'about-section',
                 'title' => 'About AIMS Inventory',
-                'content' => 'AIMS is built by passionate engineers and business experts who understand how critical inventory control is for a company\'s success. Our mission is to make inventory management smarter, faster, and more reliable for businesses of all sizes.',
+                'content' => 'AIMS helps teams track stock, suppliers, and daily warehouse work without juggling spreadsheets. We built it for small and mid-size companies that need a clear picture of what they have on hand.',
             ],
         ];
 

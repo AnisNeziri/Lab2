@@ -1,13 +1,25 @@
 import { useEffect, useState } from 'react'
 import { getReports } from '../api/reports'
-import { Download } from 'lucide-react'
-import { exportProducts } from '../api/products'
+import { Download, Upload } from 'lucide-react'
+import { downloadExport } from '../api/export'
+import { importList } from '../api/import'
+
+const DATA_LISTS = [
+  { id: 'products', label: 'Products' },
+  { id: 'categories', label: 'Categories' },
+  { id: 'suppliers', label: 'Suppliers' },
+  { id: 'stock_movements', label: 'Stock movements' },
+  { id: 'invoices', label: 'Invoices' },
+]
+
+const FORMATS = ['csv', 'json', 'xlsx']
 
 function Reports() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [exporting, setExporting] = useState(false)
+  const [message, setMessage] = useState('')
+  const [busyKey, setBusyKey] = useState('')
 
   useEffect(() => {
     async function loadReports() {
@@ -26,41 +38,112 @@ function Reports() {
     loadReports()
   }, [])
 
-  const handleExportCSV = async () => {
+  const handleExport = async (list, format) => {
+    const key = `export-${list}-${format}`
     try {
-      setExporting(true)
-      await exportProducts()
-    } catch {
-      setError('Failed to export products to CSV.')
+      setBusyKey(key)
+      setError('')
+      setMessage('')
+      await downloadExport(list, format)
+    } catch (err) {
+      setError(err.message || `Could not export ${list}.`)
     } finally {
-      setExporting(false)
+      setBusyKey('')
+    }
+  }
+
+  const handleImport = async (list, event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+
+    if (!file) return
+
+    const key = `import-${list}`
+    try {
+      setBusyKey(key)
+      setError('')
+      setMessage('')
+      const result = await importList(list, file)
+      setMessage(`Imported ${result.records_imported || 0} of ${result.records_total || 0} ${list} rows.`)
+    } catch (err) {
+      setError(err.message || `Could not import ${list}.`)
+    } finally {
+      setBusyKey('')
     }
   }
 
   if (loading) {
-    return <p className="page-message">Loading reports...</p>
+    return (
+      <main className="reports-page page-stack">
+        <p className="page-intro">Loading reports...</p>
+      </main>
+    )
   }
 
-  if (error) {
-    return <p className="error page-message">{error}</p>
+  if (!data) {
+    return (
+      <main className="reports-page page-stack">
+        <p className="page-intro">{error || 'No report data.'}</p>
+      </main>
+    )
   }
 
   return (
-    <main className="reports-page">
-      <div className="section-header">
-        <h1>Reports</h1>
-        <div className="section-header-actions">
-          <button
-            type="button"
-            className="secondary"
-            onClick={handleExportCSV}
-            disabled={exporting}
-          >
-            <Download size={16} style={{ marginRight: '0.5rem' }} />
-            {exporting ? 'Exporting...' : 'Export Products CSV'}
-          </button>
+    <main className="reports-page page-stack">
+      <section className="card">
+        <h2>Reports</h2>
+        <p className="page-intro">Stock summaries plus export and import for the main data lists.</p>
+        {error && <div className="form-error-banner">{error}</div>}
+        {message && <div className="success-banner">{message}</div>}
+      </section>
+
+      <section className="card">
+        <h3>Export / import</h3>
+        <div className="table-wrap">
+          <table className="product-table">
+            <thead>
+              <tr>
+                <th>List</th>
+                <th>Export</th>
+                <th>Import</th>
+              </tr>
+            </thead>
+            <tbody>
+              {DATA_LISTS.map((list) => (
+                <tr key={list.id}>
+                  <td>{list.label}</td>
+                  <td className="table-actions">
+                    {FORMATS.map((format) => (
+                      <button
+                        key={format}
+                        type="button"
+                        className="secondary"
+                        disabled={busyKey === `export-${list.id}-${format}`}
+                        onClick={() => handleExport(list.id, format)}
+                      >
+                        <Download size={14} />
+                        {busyKey === `export-${list.id}-${format}` ? '...' : format.toUpperCase()}
+                      </button>
+                    ))}
+                  </td>
+                  <td>
+                    <label className="import-file-label">
+                      <Upload size={14} />
+                      {busyKey === `import-${list.id}` ? 'Importing...' : 'Choose file'}
+                      <input
+                        type="file"
+                        accept=".csv,.json,.xlsx,.txt"
+                        hidden
+                        onChange={(event) => handleImport(list.id, event)}
+                      />
+                    </label>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      </div>
+      </section>
 
       <section className="stats-grid stats-grid-3">
         <article className="stat-card">

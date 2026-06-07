@@ -4,7 +4,6 @@ import { getProducts } from '../api/products'
 import { recordPayment } from '../api/payments'
 import { Download, X, Eye, CreditCard, Plus, Trash2, FileText, AlertCircle, CheckCircle, Clock, Banknote } from 'lucide-react'
 
-// ── helpers ──────────────────────────────────────────────────────────────────
 const emptyLineItem = () => ({ product_id: '', quantity: 1, unit_price: '' })
 
 const fmtMoney = (n) => `€${Number(n ?? 0).toFixed(2)}`
@@ -56,7 +55,6 @@ function BalanceBadge({ invoice }) {
   )
 }
 
-// ── Payment modal ─────────────────────────────────────────────────────────────
 function PaymentModal({ invoice, onClose, onSuccess }) {
   const bal = remaining(invoice)
   const [amount, setAmount]   = useState(String(bal))
@@ -190,7 +188,6 @@ function PaymentModal({ invoice, onClose, onSuccess }) {
   )
 }
 
-// ── Main Invoices page ────────────────────────────────────────────────────────
 function Invoices() {
   const [invoices,       setInvoices]       = useState([])
   const [products,       setProducts]       = useState([])

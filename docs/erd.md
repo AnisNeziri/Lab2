@@ -1,6 +1,6 @@
 # Database ERD
 
-AIMS uses a multi-tenant relational schema with 26 tables (3NF normalized).
+AIMS uses a multi-tenant MySQL schema with 26+ tables in 3NF.
 
 ```mermaid
 erDiagram
@@ -10,13 +10,20 @@ erDiagram
     companies ||--o{ products : has
     companies ||--o{ stock_movements : has
     companies ||--o{ invoices : has
-    companies ||--o{ activity_logs : has
+    companies ||--o{ audit_logs : has
     companies ||--o{ notifications : has
     companies ||--o{ payment_transactions : has
     companies ||--o{ cms_pages : has
     companies ||--o{ import_logs : has
     companies ||--o{ warehouses : has
     companies ||--o{ purchase_orders : has
+
+    users ||--o{ user_roles : assigned
+    roles ||--o{ user_roles : includes
+    roles ||--o{ role_permissions : grants
+    permissions ||--o{ role_permissions : assigned
+    users ||--o{ refresh_tokens : owns
+    users ||--o{ files : uploads
 
     categories ||--o{ products : categorizes
     suppliers ||--o{ products : supplies
@@ -31,111 +38,42 @@ erDiagram
 
     warehouses ||--o{ warehouse_stock : holds
 
-    users ||--o{ activity_logs : performs
+    users ||--o{ audit_logs : performs
     users ||--o{ notifications : receives
     users ||--o{ import_logs : uploads
-
-    roles ||--o{ role_permission : grants
-    permissions ||--o{ role_permission : assigned
-
-    companies {
-        bigint id PK
-        string name
-        string address
-        timestamps created_at
-        timestamps updated_at
-    }
-
-    users {
-        bigint id PK
-        bigint company_id FK
-        string name
-        string email UK
-        string password
-        enum role
-        string api_token
-        boolean must_change_password
-        boolean temporary_password_consumed
-    }
-
-    products {
-        bigint id PK
-        bigint company_id FK
-        bigint category_id FK
-        bigint supplier_id FK
-        string name
-        string sku
-        string barcode
-        int quantity
-        int min_quantity
-        decimal price
-    }
-
-    roles {
-        bigint id PK
-        string name UK
-        string slug UK
-    }
-
-    permissions {
-        bigint id PK
-        string slug UK
-        string group
-    }
-
-    notifications {
-        bigint id PK
-        bigint company_id FK
-        bigint user_id FK
-        string type
-        string title
-        text message
-        timestamp read_at
-    }
-
-    payment_transactions {
-        bigint id PK
-        bigint company_id FK
-        bigint invoice_id FK
-        decimal amount
-        string status
-        string transaction_ref UK
-    }
-
-    cms_pages {
-        bigint id PK
-        bigint company_id FK
-        string slug
-        string title
-        longtext content
-        boolean is_published
-    }
 ```
 
-## Table inventory (26)
+## Mandatory system tables
 
 | Table | Purpose |
 |-------|---------|
-| users | Authentication and role assignment |
-| password_reset_tokens | Password recovery |
-| sessions | Session storage |
-| cache / cache_locks | Application cache |
-| jobs / job_batches / failed_jobs | Queue processing |
-| companies | Multi-tenant root entity |
-| categories | Product categorization |
-| suppliers | Vendor management |
+| users | Accounts with roles and company scope |
+| roles | admin, manager, staff |
+| user_roles | Many-to-many user and role link |
+| permissions | Fine-grained access slugs |
+| role_permissions | Role to permission mapping |
+| refresh_tokens | JWT refresh token storage |
+| audit_logs | Critical action audit trail |
+| notifications | In-app alerts |
+| settings | Global key/value config |
+| files | Uploaded file metadata |
+
+## Domain tables
+
+| Table | Purpose |
+|-------|---------|
+| companies | Tenant root |
+| categories | Product groups |
+| suppliers | Vendors |
 | products | Inventory items |
-| stock_movements | Stock in/out audit trail |
-| invoices | Customer billing |
-| invoice_items | Line items per invoice |
-| activity_logs | User action audit |
-| roles | RBAC roles |
-| permissions | Granular access rights |
-| role_permission | Role-to-permission mapping |
-| notifications | Real-time alert storage |
-| payment_transactions | Online payment records |
-| cms_pages | Content management |
-| import_logs | CSV import audit |
-| warehouses | Storage locations |
-| warehouse_stock | Per-warehouse quantities |
-| purchase_orders | Procurement tracking |
+| stock_movements | Stock in/out history |
+| invoices / invoice_items | Billing |
+| payment_transactions | Payment records |
+| cms_pages | Landing page content blocks |
+| import_logs | Import job history |
+| warehouses / warehouse_stock | Storage locations |
+| purchase_orders | Supplier orders |
+
+## Supporting tables
+
+cache, cache_locks, jobs, job_batches, failed_jobs, sessions, password_reset_tokens

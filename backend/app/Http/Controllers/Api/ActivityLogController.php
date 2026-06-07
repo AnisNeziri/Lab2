@@ -3,17 +3,17 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\ActivityLog;
+use App\Services\ActivityLogService;
 use Illuminate\Http\JsonResponse;
 
 class ActivityLogController extends Controller
 {
+    public function __construct(
+        private ActivityLogService $activityLogs
+    ) {}
+
     public function index(): JsonResponse
     {
-        $logs = ActivityLog::with('user')
-            ->latest('id')
-            ->paginate(25);
-
-        return response()->json($logs);
+        return response()->json($this->activityLogs->list());
     }
 }

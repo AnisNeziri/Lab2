@@ -44,26 +44,25 @@ Multi-tenancy: every record has `company_id`. The `BelongsToCompany` trait autom
 
 ---
 
-## Project Requirements Compliance (Lab 2)
+## Lab 2 checklist
 
-| Requirement | Status | Notes |
-|---|---|---|
-| Stack #7 — Laravel + React + Vite + MySQL + Redis | ✅ | Full stack implemented |
-| Minimum 24 relational tables (3NF) | ✅ | 31 tables, all in 3NF with FKs and indexes |
-| 10 mandatory system tables | ✅ | users, roles, user_roles, permissions, role_permissions, refresh_tokens, audit_logs, notifications, settings, files |
-| Layered architecture (Controllers/Services/Repos) | ✅ | All core modules follow the pattern |
-| JWT access + refresh tokens | ✅ | JwtService, auto-refresh on 401 |
-| Authentication, RBAC, input validation, CORS | ✅ | Role middleware, hashed passwords, SQL injection protection |
-| NoSQL — Redis integration | ✅ | Hash (dashboard stats), Sorted Set (activity feed), Set (low-stock alerts) |
-| Real-time WebSockets | ✅ | Laravel Reverb + Echo, no polling |
-| State management + lazy loading + code splitting | ✅ | Zustand + React.lazy() + Suspense |
-| Advanced Search (min. 5 lists) | ✅ | Products, categories, suppliers, invoices, stock movements |
-| CMS | ✅ | Admin edits static landing page text only |
-| Data Export / Import | ✅ | CSV export/import for products and stock movements |
-| Dynamic Reports | ✅ | Category, supplier, stock summary with export |
-| Version control — Git | ✅ | Individual commits, descriptive messages |
-| Project Management Tool | ✅ | GitHub Projects — To Do / In Progress / Done |
-| Documentation — README, API docs, ERD | ✅ | This file + Postman collection + ERD |
+| Area | Status |
+|------|--------|
+| Laravel + React + Vite + MySQL | Done |
+| Redis (NoSQL) | Done when Redis is running; app falls back if not |
+| 24+ DB tables, mandatory 10 system tables | Done — see `docs/erd.md` |
+| Controllers / Services / Repositories | Done on main modules |
+| JWT + refresh tokens, RBAC, validation | Done |
+| WebSockets (Reverb + Echo) | Done — run `php artisan reverb:start` |
+| Zustand, lazy routes, Tailwind | Done |
+| Advanced search (5 lists) | products, categories, suppliers, invoices, stock movements |
+| Export / import (5 lists, CSV/JSON/Excel) | Reports page + `/api/export/{list}` |
+| CMS (landing text only) | Site Content admin page |
+| Dynamic reports | Reports page |
+| Payments | Simulated gateway (local transaction records) |
+| Git + docs | README, OpenAPI, Postman, ERD |
+
+Team tasks (not in code): invite `elton.boshnjaku@ubt-uni.net`, keep GitHub Projects board updated, make sure every member has their own commits.
 
 ---
 
@@ -319,14 +318,14 @@ UC-002,out,5,Sold to client
 
 | Feature | Admin | Manager | User |
 |---|---|---|---|
-| Dashboard, Products, Stock, Invoices | ✅ | ✅ | ✅ |
-| 3D Warehouse Map | ✅ | ✅ | ✅ |
-| Reports, Search, Categories, Suppliers | ✅ | ✅ | ✅ |
-| Create/Edit Products & Invoices | ✅ | ✅ | ✅ |
-| Delete Products/Categories/Suppliers | ✅ | ✅ | ❌ |
-| User Management | ✅ | ❌ | ❌ |
-| Activity Logs | ✅ | ❌ | ❌ |
-| CMS (Site Content) | ✅ | ❌ | ❌ |
+| Dashboard, Products, Stock, Invoices | Yes | Yes | Yes |
+| 3D Warehouse Map | Yes | Yes | Yes |
+| Reports, Search, Categories, Suppliers | Yes | Yes | Yes |
+| Create/Edit Products & Invoices | Yes | Yes | Yes |
+| Delete Products/Categories/Suppliers | Yes | Yes | No |
+| User Management | Yes | No | No |
+| Activity Logs | Yes | No | No |
+| CMS (Site Content) | Yes | No | No |
 
 ---
 
