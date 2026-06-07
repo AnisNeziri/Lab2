@@ -57,6 +57,7 @@ Route::middleware('auth.token')->group(function () {
 
         Route::get('/products/lookup', [ProductController::class, 'lookup']);
         Route::get('/products/export', [ProductController::class, 'export']);
+        Route::get('/shelves/{locationCode}/products', [ProductController::class, 'byShelf']);
         Route::post('/products/import', [ImportController::class, 'products']);
         Route::apiResource('categories', CategoryController::class)->except(['destroy']);
         Route::apiResource('suppliers', SupplierController::class)->except(['destroy']);
