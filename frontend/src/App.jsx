@@ -1,5 +1,7 @@
 import { lazy, Suspense, useState, useEffect } from 'react'
+import LandingPage from './pages/LandingPage'
 import Login from './pages/Login'
+import Register from './pages/Register'
 import Sidebar from './components/Sidebar'
 import { logout } from './api/login'
 import './App.css'
@@ -18,7 +20,7 @@ function PageLoader() {
 }
 
 function App() {
-  const [page, setPage] = useState('dashboard')
+  const [page, setPage] = useState('landing')
   const [authChecked, setAuthChecked] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [userRole, setUserRole] = useState('staff')
@@ -28,22 +30,19 @@ function App() {
     const role = localStorage.getItem('user_role') || 'staff'
     setIsAuthenticated(!!token)
     setUserRole(role)
-    if (!token) {
-      setPage('login')
-    }
     setAuthChecked(true)
 
     const handleUnauthorized = () => {
       setIsAuthenticated(false)
       setUserRole('staff')
-      setPage('login')
+      setPage('landing')
     }
 
     window.addEventListener('auth-unauthorized', handleUnauthorized)
     return () => window.removeEventListener('auth-unauthorized', handleUnauthorized)
   }, [])
 
-  const handleLoginSuccess = (userData) => {
+  const handleAuthSuccess = (userData) => {
     localStorage.setItem('api_token', userData.token)
     localStorage.setItem('user_role', userData.user.role)
     localStorage.setItem('user', JSON.stringify(userData.user))
@@ -62,7 +61,7 @@ function App() {
       localStorage.removeItem('user_role')
       setIsAuthenticated(false)
       setUserRole('staff')
-      setPage('login')
+      setPage('landing')
     }
   }
 
@@ -70,17 +69,57 @@ function App() {
     return null
   }
 
+  if (page === 'landing') {
+    return (
+      <LandingPage
+        isAuthenticated={isAuthenticated}
+        onLogin={() => setPage('login')}
+        onRegister={() => setPage('register')}
+        onOpenDashboard={() => setPage('dashboard')}
+      />
+    )
+  }
+
   if (page === 'login') {
-    return <Login onLoginSuccess={handleLoginSuccess} />
+    return (
+      <Login
+        onLoginSuccess={handleAuthSuccess}
+        onBackHome={() => setPage('landing')}
+        onRegister={() => setPage('register')}
+      />
+    )
+  }
+
+  if (page === 'register') {
+    return (
+      <Register
+        onRegisterSuccess={handleAuthSuccess}
+        onBackHome={() => setPage('landing')}
+        onLogin={() => setPage('login')}
+      />
+    )
   }
 
   if (!isAuthenticated) {
-    return null
+    return (
+      <LandingPage
+        isAuthenticated={false}
+        onLogin={() => setPage('login')}
+        onRegister={() => setPage('register')}
+        onOpenDashboard={() => setPage('login')}
+      />
+    )
   }
 
   return (
     <div className="app">
-      <Sidebar currentPage={page} onPageChange={setPage} userRole={userRole} onLogout={handleLogout} />
+      <Sidebar
+        currentPage={page}
+        onPageChange={setPage}
+        userRole={userRole}
+        onLogout={handleLogout}
+        onHome={() => setPage('landing')}
+      />
       <div className="main-content">
         <Suspense fallback={<PageLoader />}>
           {page === 'products' && <Products userRole={userRole} />}

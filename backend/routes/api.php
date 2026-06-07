@@ -20,6 +20,7 @@ Route::get('/status', function () {
 });
 
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/register', [AuthController::class, 'register']);
 
 // Protected routes
 Route::middleware('auth.token')->group(function () {

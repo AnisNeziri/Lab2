@@ -10,8 +10,9 @@ import {
   LogOut
 } from 'lucide-react'
 import NotificationCenter from './NotificationCenter'
+import AimsLogo from './AimsLogo'
 
-export default function Sidebar({ currentPage, onPageChange, userRole, onLogout }) {
+export default function Sidebar({ currentPage, onPageChange, userRole, onLogout, onHome }) {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'products', label: 'Products', icon: Package },
@@ -26,13 +27,15 @@ export default function Sidebar({ currentPage, onPageChange, userRole, onLogout 
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <div className="sidebar-logo">
-          <Package className="logo-icon" size={28} />
-          <h1>Inventory</h1>
-        </div>
+        <button type="button" className="sidebar-logo sidebar-logo-btn" onClick={onHome}>
+          <AimsLogo showText={false} size="sm" />
+          <div className="sidebar-logo-text">
+            <h1>AIMS</h1>
+            <p className="sidebar-subtitle">Enterprise Management</p>
+          </div>
+        </button>
         <div className="sidebar-header-actions">
-          <p className="sidebar-subtitle">Enterprise Management</p>
-          <NotificationCenter />
+          <NotificationCenter onViewStock={() => onPageChange('stock')} />
         </div>
       </div>
 
