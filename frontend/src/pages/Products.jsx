@@ -12,6 +12,8 @@ import { importProducts } from '../api/import'
 import StockBadge from '../components/StockBadge'
 import { useAuthStore } from '../store/authStore'
 import { Upload } from 'lucide-react'
+import { getWarehouseSections } from '../api/warehouse'
+import { sectionLocationKey } from '../lib/warehouseLayout'
 
 const ProductDetail = lazy(() => import('../components/ProductDetail'))
 
@@ -26,6 +28,7 @@ const emptyForm = {
   unit: 'pcs',
   min_quantity: 5,
   high_stock_threshold: 0,
+  location_code: '',
   price: '',
   purchase_price: '',
   selling_price: '',
@@ -37,6 +40,7 @@ function Products() {
   const [pagination, setPagination] = useState(null)
   const [categories, setCategories] = useState([])
   const [suppliers, setSuppliers] = useState([])
+  const [warehouseSections, setWarehouseSections] = useState([])
   const [form, setForm] = useState(emptyForm)
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
@@ -80,7 +84,7 @@ function Products() {
   }
 
   useEffect(() => {
-    Promise.all([loadCategories(), loadSuppliers()]).catch(() => {
+    Promise.all([loadCategories(), loadSuppliers(), getWarehouseSections().then(setWarehouseSections).catch(() => [])]).catch(() => {
       setError('Could not load categories or suppliers. Make sure the API is running.')
     })
   }, [])
@@ -132,6 +136,7 @@ function Products() {
       unit: product.unit ?? 'pcs',
       min_quantity: product.min_quantity ?? 5,
       high_stock_threshold: product.high_stock_threshold ?? 0,
+      location_code: product.location_code ?? '',
       price: product.price,
       purchase_price: product.purchase_price ?? '',
       selling_price: product.selling_price ?? '',
@@ -193,6 +198,7 @@ function Products() {
       unit: form.unit || 'pcs',
       min_quantity: Number(form.min_quantity),
       high_stock_threshold: Number(form.high_stock_threshold),
+      location_code: form.location_code || null,
       price: Number(form.price),
       purchase_price: form.purchase_price ? Number(form.purchase_price) : null,
       selling_price: form.selling_price ? Number(form.selling_price) : null,
@@ -289,6 +295,18 @@ function Products() {
           <label>
             SKU
             <input name="sku" value={form.sku} onChange={handleChange} required />
+          </label>
+
+          <label>
+            Warehouse section
+            <select name="location_code" value={form.location_code} onChange={handleChange}>
+              <option value="">No section assigned</option>
+              {warehouseSections.map((section) => (
+                <option key={section.id} value={sectionLocationKey(section.floor_level, section.code)}>
+                  L{section.floor_level ?? 1} · {section.code} — {section.name}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label>
@@ -524,6 +542,7 @@ function Products() {
                   <th>Category</th>
                   <th>Supplier</th>
                   <th>SKU</th>
+                  <th>Section</th>
                   <th>Qty</th>
                   <th>Unit</th>
                   <th>Min</th>
@@ -538,6 +557,7 @@ function Products() {
                     <td>{product.category?.name ?? '-'}</td>
                     <td>{product.supplier?.name ?? '-'}</td>
                     <td>{product.sku}</td>
+                    <td>{product.location_code || '—'}</td>
                     <td>
                       <StockBadge quantity={product.quantity} minQuantity={product.min_quantity} />
                     </td>

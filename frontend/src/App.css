@@ -1435,3 +1435,354 @@ button.danger {
     grid-template-columns: 1fr;
   }
 }
+
+.warehouse-layout-page {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: grid;
+  gap: 1.5rem;
+  padding: 1.5rem;
+}
+
+.page-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.page-header-row h2 {
+  margin: 0 0 0.35rem;
+}
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.page-error {
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.page-success {
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+
+.warehouse-layout-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.warehouse-preview-card {
+  min-height: 0;
+}
+
+.warehouse-layout-grid {
+  align-items: stretch;
+}
+
+.floor-workspace {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.floor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.floor-toolbar-hint {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.floor-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.floor-snap-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.floor-snap-toggle select {
+  padding: 0.25rem 0.4rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.floor-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+}
+
+.floor-tool-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.floor-tool-btn.floor-tool-auto {
+  width: auto;
+  padding: 0 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.floor-zoom-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  min-width: 2.5rem;
+}
+
+.floor-viewport {
+  position: relative;
+  min-height: 520px;
+  max-height: min(70vh, 720px);
+  border: 2px solid #cbd5e1;
+  border-radius: 12px;
+  background: #e2e8f0;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+
+.floor-viewport.is-panning {
+  cursor: grabbing;
+}
+
+.floor-transform {
+  transform-origin: top left;
+  will-change: transform;
+}
+
+.warehouse-floor-preview {
+  position: relative;
+  border-radius: 8px;
+  background: #f8fafc;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px #cbd5e1;
+  touch-action: none;
+}
+
+.warehouse-floor-grid {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.warehouse-floor-grid .grid-minor {
+  stroke: rgba(148, 163, 184, 0.35);
+  stroke-width: 0.08;
+}
+
+.warehouse-floor-grid .grid-major {
+  stroke: rgba(100, 116, 139, 0.5);
+  stroke-width: 0.12;
+}
+
+.warehouse-floor-grid .grid-axis {
+  stroke: rgba(37, 99, 235, 0.45);
+  stroke-width: 0.18;
+  stroke-dasharray: 0.6 0.4;
+}
+
+.warehouse-section-marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border: 2px solid rgba(15, 23, 42, 0.3);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2);
+  min-width: 36px;
+  min-height: 28px;
+  z-index: 1;
+}
+
+.warehouse-section-marker:hover,
+.warehouse-section-marker.is-selected {
+  z-index: 3;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.28);
+}
+
+.warehouse-section-marker.is-selected {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+.warehouse-section-marker.is-dragging {
+  z-index: 6;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.38);
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+
+.section-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 2px 0;
+  border: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+  background: rgba(0, 0, 0, 0.2);
+  color: #fff;
+  cursor: grab;
+  flex-shrink: 0;
+}
+
+.section-drag-handle:active {
+  cursor: grabbing;
+}
+
+.section-label-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.floor-coords-readout {
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 0.85rem;
+  font-family: ui-monospace, monospace;
+}
+
+.floor-coords-readout strong {
+  color: #93c5fd;
+}
+
+.warehouse-floor-grid-label {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 2px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.warehouse-floor-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 1.5rem;
+  text-align: center;
+  color: #64748b;
+  font-size: 0.9rem;
+  pointer-events: none;
+}
+
+.warehouse-dim-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  margin: 0.5rem 0 1rem;
+  color: #475569;
+  font-size: 0.92rem;
+}
+
+.floor-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.floor-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #475569;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.floor-tab.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.floor-tab.add-floor {
+  border-style: dashed;
+  color: #2563eb;
+}
+
+.form-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.row-active-floor {
+  background: #f8fafc;
+}
+
+@media (max-width: 960px) {
+  .warehouse-layout-grid {
+    grid-template-columns: 1fr;
+  }
+}

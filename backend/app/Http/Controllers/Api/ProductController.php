@@ -80,12 +80,14 @@ class ProductController extends Controller
             'unit' => ['nullable', 'string', 'max:20'],
             'min_quantity' => ['required', 'integer', 'min:0'],
             'high_stock_threshold' => ['nullable', 'integer', 'min:0'],
+            'location_code' => ['nullable', 'string', 'max:20'],
             'price' => ['required', 'numeric', 'min:0'],
             'purchase_price' => ['nullable', 'numeric', 'min:0'],
             'selling_price' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $validated['company_id'] = $companyId;
+        $validated['location_code'] = $validated['location_code'] ?? null;
         $product = $this->productService->create($validated);
 
         return response()->json($product, 201);
@@ -121,6 +123,7 @@ class ProductController extends Controller
             'unit' => ['nullable', 'string', 'max:20'],
             'min_quantity' => ['sometimes', 'required', 'integer', 'min:0'],
             'high_stock_threshold' => ['nullable', 'integer', 'min:0'],
+            'location_code' => ['nullable', 'string', 'max:20'],
             'price' => ['sometimes', 'required', 'numeric', 'min:0'],
             'purchase_price' => ['nullable', 'numeric', 'min:0'],
             'selling_price' => ['nullable', 'numeric', 'min:0'],

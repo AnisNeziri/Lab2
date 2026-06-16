@@ -15,12 +15,20 @@ class Warehouse extends Model
         'name',
         'code',
         'address',
+        'length_m',
+        'width_m',
+        'height_m',
+        'floor_count',
         'is_active',
     ];
 
     protected function casts(): array
     {
         return [
+            'length_m' => 'float',
+            'width_m' => 'float',
+            'height_m' => 'float',
+            'floor_count' => 'integer',
             'is_active' => 'boolean',
         ];
     }
@@ -28,5 +36,10 @@ class Warehouse extends Model
     public function stock(): HasMany
     {
         return $this->hasMany(WarehouseStock::class);
+    }
+
+    public function sections(): HasMany
+    {
+        return $this->hasMany(WarehouseSection::class)->orderBy('sort_order');
     }
 }

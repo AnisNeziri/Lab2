@@ -1,45 +1,14 @@
-import { useRef, useState, useEffect, useMemo } from 'react'
+import { useRef, useState, useEffect, useMemo, useCallback } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls, Html, Float } from '@react-three/drei'
 import { useAuthStore } from '../store/authStore'
 import { useNavigate } from 'react-router-dom'
 import { getEcho } from '../lib/echo'
 import { apiRequest } from '../api/client'
+import { getWarehouseLayout } from '../api/warehouse'
+import { productMatchesShelf, STANDARD_FLOOR_HEIGHT } from '../lib/warehouseLayout'
+import { buildShelfStockMap, productHealthPercent, sectionsToShelves, sectionsToZones } from '../lib/warehouseStock'
 import * as THREE from 'three'
-
-const ZONES = [
-  { id: 'A', label: 'Zone A — Electronics', color: '#6366f1', lightColor: '#818cf8',
-    shelves: [
-      { id: 'A1', x: -18, z: -18 }, { id: 'A2', x: -11, z: -18 },
-      { id: 'A3', x: -18, z: -10 }, { id: 'A4', x: -11, z: -10 },
-    ] },
-  { id: 'B', label: 'Zone B — Hardware', color: '#f59e0b', lightColor: '#fbbf24',
-    shelves: [
-      { id: 'B1', x: -2,  z: -18 }, { id: 'B2', x: 5,   z: -18 },
-      { id: 'B3', x: -2,  z: -10 }, { id: 'B4', x: 5,   z: -10 },
-    ] },
-  { id: 'C', label: 'Zone C — Consumables', color: '#10b981', lightColor: '#34d399',
-    shelves: [
-      { id: 'C1', x: 14,  z: -18 }, { id: 'C2', x: 21,  z: -18 },
-      { id: 'C3', x: 14,  z: -10 }, { id: 'C4', x: 21,  z: -10 },
-    ] },
-  { id: 'D', label: 'Zone D — Overflow', color: '#8b5cf6', lightColor: '#a78bfa',
-    shelves: [
-      { id: 'D1', x: -8,  z: 2  }, { id: 'D2', x: -1,  z: 2  },
-      { id: 'D3', x: 6,   z: 2  }, { id: 'D4', x: 13,  z: 2  },
-    ] },
-]
-const ALL_SHELVES = ZONES.flatMap(z => z.shelves.map(s => ({ ...s, zoneId: z.id, zoneLabel: z.label, zoneColor: z.color })))
-
-function mapProductToShelf(productId) {
-  if (!productId) return null
-  return ALL_SHELVES[productId % ALL_SHELVES.length]?.id ?? null
-}
-
-// raw DB quantity → 0-100 visual density level
-function quantityToLevel(qty) {
-  return Math.min(Math.max(Math.round(qty), 0), 100)
-}
 
 function stockColor(level, heatmap, score) {
   if (heatmap) {
@@ -47,8 +16,8 @@ function stockColor(level, heatmap, score) {
     return new THREE.Color(t, 1 - t, 0.05)
   }
   if (level === null) return new THREE.Color('#475569')
-  if (level === 0)    return new THREE.Color('#dc2626')
-  if (level < 20)    return new THREE.Color('#ea580c')
+  if (level === 0) return new THREE.Color('#dc2626')
+  if (level < 100) return new THREE.Color('#ea580c')
   return new THREE.Color('#16a34a')
 }
 
@@ -85,7 +54,7 @@ function RackFrame() {
 function ShelfBoxGrid({ y, stockLevel }) {
   // Pre-generate stable random offsets keyed by slot index so they don't
   // jitter every frame — only recalc when stockLevel bucket changes
-  const bucket = stockLevel === null ? 'u' : stockLevel === 0 ? '0' : stockLevel < 20 ? 'lo' : stockLevel < 60 ? 'md' : 'hi'
+  const bucket = stockLevel === null ? 'u' : stockLevel === 0 ? '0' : stockLevel < 100 ? 'lo' : 'hi'
 
   const layout = useMemo(() => {
     const ALL_SLOTS = []
@@ -109,14 +78,12 @@ function ShelfBoxGrid({ y, stockLevel }) {
   const fillCount = useMemo(() => {
     if (stockLevel === null) return 8          // unknown → mostly full
     if (stockLevel === 0)    return 0          // out of stock → empty
-    if (stockLevel < 10)    return 1           // critically low → 1 box
-    if (stockLevel < 20)    return 3           // low → 3 boxes
-    if (stockLevel < 40)    return 5           // medium-low → half
-    if (stockLevel < 60)    return 7           // medium → 7
-    return 10                                  // healthy → full
+    if (stockLevel < 50) return 3
+    if (stockLevel < 100) return 6
+    return 10
   }, [stockLevel])
 
-  const color = stockLevel !== null && stockLevel < 20 ? '#7c2d12' : '#92400e'
+  const color = stockLevel !== null && stockLevel > 0 && stockLevel < 100 ? '#7c2d12' : '#92400e'
 
   return (
     <>
@@ -133,7 +100,7 @@ function ShelfBoxGrid({ y, stockLevel }) {
 function LedStrip({ stockLevel, heatmap, activityScore }) {
   const meshRef = useRef()
   const color   = useMemo(() => stockColor(stockLevel, heatmap, activityScore), [stockLevel, heatmap, activityScore])
-  const isAlert = !heatmap && stockLevel !== null && stockLevel < 20
+  const isAlert = !heatmap && stockLevel !== null && stockLevel > 0 && stockLevel < 100
   useFrame(({ clock }) => {
     if (meshRef.current && isAlert)
       meshRef.current.material.emissiveIntensity = 1.2 + Math.sin(clock.elapsedTime * 4) * 1.0
@@ -186,7 +153,7 @@ function ShelfUnit({ shelf, stockLevel, heatmap, activityScore, onClick }) {
     : '#4ade80'
 
   return (
-    <group ref={groupRef} position={[shelf.x, 0, shelf.z]}>
+    <group ref={groupRef} position={[shelf.x, shelf.y ?? 0, shelf.z]}>
       <RackFrame />
       {[0.08, 1.38, 2.68, 3.98].map(y => (
         <ShelfBoxGrid key={y} y={y} stockLevel={stockLevel} />
@@ -245,8 +212,8 @@ function ZoneLabel({ zone }) {
   )
 }
 
-function ZoneLights() {
-  return ZONES.map(zone => {
+function ZoneLights({ zones }) {
+  return (zones ?? []).map(zone => {
     const cx = zone.shelves.reduce((s, sh) => s + sh.x, 0) / zone.shelves.length
     const cz = zone.shelves.reduce((s, sh) => s + sh.z, 0) / zone.shelves.length
     return <pointLight key={zone.id} position={[cx, 7, cz]} color={zone.lightColor} intensity={18} distance={18} decay={2} />
@@ -450,7 +417,9 @@ function ShelfModal({ shelf, products, loading, onClose }) {
 
       {/* Header */}
       <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid #1e293b', borderLeft: `3px solid ${shelf.zoneColor}` }}>
-        <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 4 }}>{shelf.zoneLabel}</div>
+        <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 4 }}>
+          {shelf.floorLevel > 1 ? `Level ${shelf.floorLevel} · ` : ''}{shelf.zoneLabel}
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <span style={{ fontSize: 24, fontWeight: 800, color: 'white', fontFamily: 'monospace' }}>Shelf {shelf.id}</span>
@@ -529,94 +498,100 @@ export default function Warehouse3DMap() {
   const { token, user } = useAuthStore()
   const navigate = useNavigate()
 
-  // stockData maps shelfId → 0-100 visual level derived from real DB quantities
+  const [zones, setZones] = useState([])
+  const [allShelves, setAllShelves] = useState([])
   const [stockData, setStockData] = useState({})
-  const [activityScores, setActivityScores]   = useState({})
-  const [heatmapActive, setHeatmapActive]     = useState(false)
-  const [selectedShelf, setSelectedShelf]     = useState(null)
-  const [shelfProducts, setShelfProducts]     = useState([])
+  const [activityScores, setActivityScores] = useState({})
+  const [heatmapActive, setHeatmapActive] = useState(false)
+  const [selectedShelf, setSelectedShelf] = useState(null)
+  const [shelfProducts, setShelfProducts] = useState([])
   const [loadingProducts, setLoadingProducts] = useState(false)
+  const [layoutLoading, setLayoutLoading] = useState(true)
+  const [warehouse, setWarehouse] = useState(null)
+  const [floorFilter, setFloorFilter] = useState('all')
 
-  useEffect(() => {
-    if (!token) return
-    apiRequest('/products?per_page=500').then(resp => {
+  const loadStockLevels = useCallback(async (shelfList) => {
+    if (!token || !shelfList.length) return
+    try {
+      const resp = await apiRequest('/products?per_page=500')
       const products = resp.data ?? resp
-      // Aggregate quantities per shelf: sum all products mapped to same shelf
-      const totals = {}
-      const counts = {}
-      products.forEach(p => {
-        const shelfId = mapProductToShelf(p.id)
-        if (!shelfId) return
-        totals[shelfId] = (totals[shelfId] ?? 0) + (p.quantity ?? 0)
-        counts[shelfId] = (counts[shelfId] ?? 0) + 1
-      })
-      // Average per shelf, capped to 0-100 for visual density
-      const levels = {}
-      ALL_SHELVES.forEach(s => {
-        if (totals[s.id] !== undefined) {
-          // Scale: if avg quantity > 100, cap at 100; treat 0 as truly empty
-          levels[s.id] = quantityToLevel(counts[s.id] > 0 ? totals[s.id] / counts[s.id] : 0)
-        } else {
-          levels[s.id] = 50  // no product assigned yet → show half-full
-        }
-      })
+      const { levels } = buildShelfStockMap(products, shelfList)
       setStockData(levels)
-    }).catch(() => {
-      // Fallback to random values when API unavailable
-      const d = {}
-      ALL_SHELVES.forEach(s => { d[s.id] = Math.floor(Math.random() * 100) })
-      setStockData(d)
-    })
+    } catch {
+      setStockData({})
+    }
   }, [token])
 
   useEffect(() => {
     if (!token) return
-    apiRequest('/dashboard/activity-feed?limit=100').then(data => {
-      const s = {}
-      ;(data.feed || []).forEach(ev => {
-        const id = mapProductToShelf(ev.entity_id)
-        if (id) s[id] = (s[id] || 0) + 1
+    setLayoutLoading(true)
+    getWarehouseLayout()
+      .then((data) => {
+        setWarehouse(data.warehouse ?? null)
+        const shelves = sectionsToShelves(data.sections ?? [])
+        setAllShelves(shelves)
+        setZones(sectionsToZones(data.sections ?? []))
+        return loadStockLevels(shelves)
       })
-      setActivityScores(s)
+      .catch(() => {
+        setAllShelves([])
+        setZones([])
+      })
+      .finally(() => setLayoutLoading(false))
+  }, [token, loadStockLevels])
+
+  useEffect(() => {
+    if (!token) return
+    apiRequest('/products?per_page=500').then((resp) => {
+      const products = resp.data ?? resp
+      const locMap = {}
+      products.forEach((p) => {
+        if (!p.location_code) return
+        const shelf = allShelves.find((s) => productMatchesShelf(p, s))
+        if (shelf) locMap[p.id] = shelf.id
+      })
+      apiRequest('/dashboard/activity-feed?limit=100').then((data) => {
+        const s = {}
+        ;(data.feed || []).forEach((ev) => {
+          const id = locMap[ev.entity_id]
+          if (id) s[id] = (s[id] || 0) + 1
+        })
+        setActivityScores(s)
+      }).catch(() => {})
     }).catch(() => {})
-  }, [token])
+  }, [token, allShelves])
 
   useEffect(() => {
     const echo = getEcho()
     if (!echo || !user?.company_id) return
     const ch = echo.private(`company.${user.company_id}`)
 
-    ch.listen('.StockUpdated', e => {
-      const id  = mapProductToShelf(e.movement?.product_id)
-      if (!id) return
-      const qty = e.movement?.quantity_after ?? null
-      if (qty !== null) {
-        // quantity_after is the real DB quantity — convert to visual level
-        setStockData(p => ({ ...p, [id]: quantityToLevel(qty) }))
-        setActivityScores(p => ({ ...p, [id]: (p[id] || 0) + 1 }))
+    const refreshShelf = (product) => {
+      const shelf = allShelves.find((s) => productMatchesShelf(product, s))
+      if (!shelf) {
+        loadStockLevels(allShelves)
+        return
       }
+      const health = productHealthPercent(product)
+      setStockData((p) => ({ ...p, [shelf.id]: health }))
+      setActivityScores((prev) => ({ ...prev, [shelf.id]: (prev[shelf.id] || 0) + 1 }))
+    }
+
+    ch.listen('.StockUpdated', (e) => {
+      if (e?.product) refreshShelf(e.product)
+      else loadStockLevels(allShelves)
     })
 
-    // StockMovement event (alternate event name from some setups)
-    ch.listen('.StockMovement', e => {
-      const id  = mapProductToShelf(e.product_id)
-      if (!id) return
-      const qty = e.quantity_after ?? e.current_quantity ?? null
-      if (qty !== null) setStockData(p => ({ ...p, [id]: quantityToLevel(qty) }))
-    })
+    ch.listen('.StockMovement', () => loadStockLevels(allShelves))
 
-    ch.listen('.LowStockDetected', e => {
-      const id = mapProductToShelf(e.notification?.entity_id)
-      // Mark as low (level 5) so the shelf visually goes nearly empty
-      if (id) setStockData(p => ({ ...p, [id]: Math.min(p[id] ?? 15, 8) }))
-    })
+    ch.listen('.LowStockDetected', () => loadStockLevels(allShelves))
 
     return () => {
       ch.stopListening('.StockUpdated')
         .stopListening('.StockMovement')
         .stopListening('.LowStockDetected')
     }
-  }, [user?.company_id])
+  }, [user?.company_id, allShelves, loadStockLevels])
 
   const handleShelfClick = async (shelf) => {
     setSelectedShelf(shelf)
@@ -630,7 +605,18 @@ export default function Warehouse3DMap() {
     finally { setLoadingProducts(false) }
   }
 
-  const lowStockCount = Object.values(stockData).filter(v => v < 20).length
+  const lowStockCount = Object.values(stockData).filter((v) => v !== null && v > 0 && v < 100).length
+
+  const lengthM = Number(warehouse?.length_m) || 80
+  const widthM = Number(warehouse?.width_m) || 90
+  const floorCount = Number(warehouse?.floor_count) || 1
+  const floorLevels = Array.from({ length: floorCount }, (_, i) => i + 1)
+  const visibleShelves = floorFilter === 'all'
+    ? allShelves
+    : allShelves.filter((s) => s.floorLevel === floorFilter)
+  const visibleZones = floorFilter === 'all'
+    ? zones
+    : zones.filter((z) => z.shelves.some((s) => s.floorLevel === floorFilter))
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100vh', background: '#060c18', overflow: 'hidden' }}>
@@ -640,8 +626,39 @@ export default function Warehouse3DMap() {
         <div>
           <div style={{ color: 'white', fontSize: 18, fontWeight: 700 }}>3D Warehouse Map</div>
           <div style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
-            {ALL_SHELVES.length} shelves &nbsp;·&nbsp;
-            <span style={{ color: lowStockCount > 0 ? '#fb923c' : '#4ade80' }}>{lowStockCount} low-stock alerts</span>
+            {allShelves.length} sections &nbsp;·&nbsp; {floorCount} floor{floorCount > 1 ? 's' : ''} &nbsp;·&nbsp;
+            <span style={{ color: lowStockCount > 0 ? '#fb923c' : '#4ade80' }}>{lowStockCount} low-stock sections</span>
+            &nbsp;·&nbsp;
+            <button type="button" onClick={() => navigate('/warehouse-layout')} style={{ background: 'none', border: 'none', color: '#60a5fa', cursor: 'pointer', fontSize: 12, padding: 0 }}>Edit layout</button>
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginTop: 8, pointerEvents: 'auto', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => setFloorFilter('all')}
+              style={{
+                padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                border: `1px solid ${floorFilter === 'all' ? '#60a5fa' : '#334155'}`,
+                background: floorFilter === 'all' ? 'rgba(96,165,250,0.2)' : 'rgba(6,12,24,0.88)',
+                color: floorFilter === 'all' ? '#93c5fd' : '#94a3b8',
+              }}
+            >
+              All floors
+            </button>
+            {floorLevels.map((level) => (
+              <button
+                key={level}
+                type="button"
+                onClick={() => setFloorFilter(level)}
+                style={{
+                  padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  border: `1px solid ${floorFilter === level ? '#60a5fa' : '#334155'}`,
+                  background: floorFilter === level ? 'rgba(96,165,250,0.2)' : 'rgba(6,12,24,0.88)',
+                  color: floorFilter === level ? '#93c5fd' : '#94a3b8',
+                }}
+              >
+                Level {level}
+              </button>
+            ))}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, pointerEvents: 'auto' }}>
@@ -727,82 +744,50 @@ export default function Warehouse3DMap() {
         <pointLight position={[ 26, 12, -6]}  intensity={22} color="#f0f4ff" distance={18} decay={2} />
         <pointLight position={[  2, 16, -8]}  intensity={30} color="#f0f4ff" distance={38} decay={2} />
 
-        <ZoneLights />
+        <ZoneLights zones={visibleZones} />
 
-        {/* Back wall */}
-        <mesh position={[2, 11, -33]} receiveShadow>
-          <planeGeometry args={[82, 24]} />
-          <meshStandardMaterial color="#3a4a5c" roughness={0.88} metalness={0.1} />
-        </mesh>
-        {/* Left wall */}
-        <mesh position={[-40, 11, -4]} rotation={[0, Math.PI / 2, 0]} receiveShadow>
-          <planeGeometry args={[60, 24]} />
-          <meshStandardMaterial color="#354152" roughness={0.9} metalness={0.08} />
-        </mesh>
-        {/* Right wall */}
-        <mesh position={[44, 11, -4]} rotation={[0, -Math.PI / 2, 0]} receiveShadow>
-          <planeGeometry args={[60, 24]} />
-          <meshStandardMaterial color="#354152" roughness={0.9} metalness={0.08} />
-        </mesh>
-        {/* Ceiling */}
-        <mesh position={[2, 22, -4]} rotation={[Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[84, 60]} />
+        {floorLevels.map((level) => {
+          const y = (level - 1) * STANDARD_FLOOR_HEIGHT
+          const dimmed = floorFilter !== 'all' && floorFilter !== level
+          return (
+            <group key={level}>
+              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, y, 0]} receiveShadow>
+                <planeGeometry args={[lengthM, widthM]} />
+                <meshStandardMaterial
+                  color="#2e3d50"
+                  roughness={0.35}
+                  metalness={0.15}
+                  transparent={dimmed}
+                  opacity={dimmed ? 0.25 : 1}
+                />
+              </mesh>
+              {level < floorCount && (
+                <mesh position={[0, y + STANDARD_FLOOR_HEIGHT, 0]}>
+                  <boxGeometry args={[lengthM + 0.4, 0.35, widthM + 0.4]} />
+                  <meshStandardMaterial color="#1e293b" roughness={0.9} metalness={0.1} transparent opacity={dimmed ? 0.2 : 0.85} />
+                </mesh>
+              )}
+              <Html position={[-lengthM / 2 + 2, y + 6, -widthM / 2 + 2]} distanceFactor={28} style={{ pointerEvents: 'none' }} zIndexRange={[0, 0]}>
+                <div style={{ background: 'rgba(0,0,0,0.7)', color: '#94a3b8', fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 4, fontFamily: 'monospace' }}>
+                  LEVEL {level}
+                </div>
+              </Html>
+            </group>
+          )
+        })}
+
+        <mesh position={[0, floorCount * STANDARD_FLOOR_HEIGHT + 2, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[lengthM + 4, widthM + 4]} />
           <meshStandardMaterial color="#1e2a38" roughness={1} metalness={0} />
         </mesh>
-
-        {/* Ceiling structural beams */}
-        {[-30, -15, 0, 15, 30].map((x, i) => (
-          <mesh key={i} position={[x, 21.2, -4]}>
-            <boxGeometry args={[0.5, 0.6, 58]} />
-            <meshStandardMaterial color="#0f1724" roughness={0.8} metalness={0.4} />
-          </mesh>
-        ))}
-        {[-28, -14, 0, 14, 28].map((z, i) => (
-          <mesh key={i} position={[2, 21.2, z - 5]}>
-            <boxGeometry args={[82, 0.5, 0.4]} />
-            <meshStandardMaterial color="#0f1724" roughness={0.8} metalness={0.4} />
-          </mesh>
-        ))}
-
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[2, 0, -4]} receiveShadow>
-          <planeGeometry args={[84, 62]} />
-          <meshStandardMaterial
-            color="#2e3d50"
-            roughness={0.35}
-            metalness={0.15}
-            envMapIntensity={0.6}
-          />
-        </mesh>
-
-        {/* Subtle floor panel joints */}
-        {Array.from({ length: 9 }, (_, i) => i * 9 - 36).map((x, i) => (
-          <mesh key={`fv${i}`} rotation={[-Math.PI / 2, 0, 0]} position={[x, 0.004, -4]}>
-            <planeGeometry args={[0.06, 62]} />
-            <meshBasicMaterial color="#141e2c" transparent opacity={0.7} />
-          </mesh>
-        ))}
-        {Array.from({ length: 7 }, (_, i) => i * 9 - 27).map((z, i) => (
-          <mesh key={`fh${i}`} rotation={[-Math.PI / 2, 0, 0]} position={[2, 0.004, z - 4]}>
-            <planeGeometry args={[84, 0.06]} />
-            <meshBasicMaterial color="#141e2c" transparent opacity={0.7} />
-          </mesh>
-        ))}
-
-        {/* Aisle safety lines */}
-        {[-6, 8].map((x, i) => (
-          <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} position={[x, 0.006, -8]}>
-            <planeGeometry args={[0.14, 52]} />
-            <meshBasicMaterial color="#f59e0b" transparent opacity={0.4} />
-          </mesh>
-        ))}
 
         <SkidMarks />
 
         {/* racks */}
-        {ZONES.map(zone => <ZoneLabel key={zone.id} zone={zone} />)}
-        {ALL_SHELVES.map(shelf => (
+        {visibleZones.map(zone => <ZoneLabel key={zone.id} zone={zone} />)}
+        {visibleShelves.map(shelf => (
           <ShelfUnit
-            key={shelf.id}
+            key={`${shelf.floorLevel}-${shelf.id}`}
             shelf={shelf}
             stockLevel={stockData[shelf.id] ?? null}
             heatmap={heatmapActive}
@@ -829,9 +814,9 @@ export default function Warehouse3DMap() {
           enableDamping
           dampingFactor={0.06}
           minDistance={0.5}
-          maxDistance={80}
-          maxPolarAngle={Math.PI / 2.08}
-          target={[2, 2, -8]}
+          maxDistance={Math.max(120, lengthM * 1.5)}
+          maxPolarAngle={Math.PI / 2.05}
+          target={[0, (floorCount * STANDARD_FLOOR_HEIGHT) / 2, 0]}
         />
       </Canvas>
 

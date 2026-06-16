@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\StockMovementController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WarehouseController;
+use App\Http\Controllers\Api\WarehouseLayoutController;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
@@ -67,6 +68,13 @@ Route::middleware('auth.token')->group(function () {
         Route::get('/warehouses', [WarehouseController::class, 'index']);
         Route::get('/settings', [WarehouseController::class, 'settings']);
         Route::get('/purchase-orders', [WarehouseController::class, 'purchaseOrders']);
+        Route::get('/warehouse/layout', [WarehouseLayoutController::class, 'show']);
+        Route::put('/warehouse/layout', [WarehouseLayoutController::class, 'updateWarehouse']);
+        Route::get('/warehouse/sections', [WarehouseLayoutController::class, 'sectionOptions']);
+        Route::get('/warehouse/sections/distribution', [WarehouseLayoutController::class, 'distribution']);
+        Route::post('/warehouse/sections', [WarehouseLayoutController::class, 'storeSection']);
+        Route::put('/warehouse/sections/{section}', [WarehouseLayoutController::class, 'updateSection']);
+        Route::delete('/warehouse/sections/{section}', [WarehouseLayoutController::class, 'destroySection']);
         Route::apiResource('categories', CategoryController::class)->except(['destroy']);
         Route::apiResource('suppliers', SupplierController::class)->except(['destroy']);
         Route::apiResource('products', ProductController::class)->except(['destroy']);

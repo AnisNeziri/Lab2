@@ -34,7 +34,7 @@ class StockUpdated implements ShouldBroadcastNow
     {
         return [
             'movement' => $this->movement->toArray(),
-            'product' => $this->movement->product?->only(['id', 'name', 'sku', 'quantity']),
+            'product' => $this->movement->product?->only(['id', 'name', 'sku', 'quantity', 'location_code', 'min_quantity']),
         ];
     }
 }

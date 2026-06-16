@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getDashboard } from '../api/dashboard'
+import { getSectionDistribution } from '../api/warehouse'
 import { apiRequest } from '../api/client'
 import { useAuthStore } from '../store/authStore'
 import { getEcho } from '../lib/echo'
@@ -30,7 +31,10 @@ const C = {
   purple:  '#7c3aed',
 }
 
-const ZONE_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#8b5cf6']
+const ZONE_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4']
+const CHART_GRID = '#e8edf3'
+const axisTick = { fontSize: 11, fill: '#64748b' }
+const chartMargin = { top: 8, right: 12, left: 0, bottom: 0 }
 
 const fmtMoney = (n) =>
   n == null ? '—' : `€${Number(n).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -288,6 +292,7 @@ export default function Dashboard() {
   const [newFeedIds,  setNewFeedIds] = useState(new Set())
   const [echoStatus,  setEchoStatus] = useState('connecting')
   const [lastRefresh, setLastRefresh] = useState(null)
+  const [sectionChart, setSectionChart] = useState([])
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -316,11 +321,17 @@ export default function Dashboard() {
     loadDashboard()
     loadFeed()
     loadAlerts()
+    getSectionDistribution().then(setSectionChart).catch(() => setSectionChart([]))
   }, [loadDashboard, loadFeed, loadAlerts])
 
   // Window events fired by App.jsx Echo handler
   useEffect(() => {
-    const refresh = () => { loadDashboard(); loadFeed(); loadAlerts() }
+    const refresh = () => {
+      loadDashboard()
+      loadFeed()
+      loadAlerts()
+      getSectionDistribution().then(setSectionChart).catch(() => setSectionChart([]))
+    }
     window.addEventListener('dashboard-refresh', refresh)
     window.addEventListener('stock-refresh',     refresh)
     return () => {
@@ -401,15 +412,12 @@ export default function Dashboard() {
       .sort((a, b) => b.value - a.value).slice(0, 6)
   })()
 
-  const zoneData = [
-    { name: 'Zone A', value: 8 },
-    { name: 'Zone B', value: 8 },
-    { name: 'Zone C', value: 8 },
-    { name: 'Zone D', value: 8 },
-  ]
-
   const totalValue  = data?.total_value      ?? 0
   const totalProds  = data?.total_products   ?? 0
+
+  const zoneData = sectionChart.length > 0
+    ? sectionChart.slice(0, 8)
+    : [{ name: 'Unassigned', value: totalProds || 1 }]
   const lowCnt      = (data?.low_stock_products?.length ?? 0) + (data?.out_of_stock_products?.length ?? 0)
   const turnover    = data?.stock_turnover   ?? 0
   const accuracy    = totalProds > 0 ? Math.round(((totalProds - lowCnt) / totalProds) * 100) : 100
@@ -471,7 +479,7 @@ export default function Dashboard() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
           <KpiCard icon={DollarSign}  label="Total Stock Value"        value={fmtMoney(totalValue)}             color={C.green}  glow trend={4}                          sub={`${fmt(totalProds)} SKUs tracked`} />
           <KpiCard icon={TrendingUp}  label="Inventory Turnover Rate"  value={turnover ? `${turnover}×` : '—'} color={C.cyan}       trend={turnover > 2 ? 8 : -3}        sub="Inventory cycles / period" />
-          <KpiCard icon={Boxes}       label="Active Warehouses & Zones" value="4 Zones"                        color={C.purple} glow sub="A · B · C · D — All Operational" />
+          <KpiCard icon={Boxes}       label="Warehouse Sections"        value={`${sectionChart.length || 0} active`} color={C.purple} glow sub={sectionChart.length ? 'Stock spread across layout' : 'Configure layout to assign products'} />
           <KpiCard icon={ShieldCheck} label="Fulfillment Accuracy Rate" value={`${accuracy}%`}                 color={C.indigo}     glow={accuracy < 85} trend={accuracy >= 90 ? 2 : -5} sub={lowCnt > 0 ? `${lowCnt} item${lowCnt !== 1 ? 's' : ''} need attention` : 'All stock healthy'} />
         </div>
 
@@ -482,24 +490,24 @@ export default function Dashboard() {
             {movementChart.length === 0 ? (
               <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.muted, fontSize: 13 }}>No movement data yet</div>
             ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <AreaChart data={movementChart}>
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={movementChart} margin={chartMargin}>
                   <defs>
-                    <linearGradient id="gIn"  x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor={C.green} stopOpacity={0.3} />
-                      <stop offset="95%" stopColor={C.green} stopOpacity={0} />
+                    <linearGradient id="gIn" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={C.green} stopOpacity={0.18} />
+                      <stop offset="100%" stopColor={C.green} stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gOut" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor={C.red}   stopOpacity={0.3} />
-                      <stop offset="95%" stopColor={C.red}   stopOpacity={0} />
+                      <stop offset="0%" stopColor={C.red} stopOpacity={0.14} />
+                      <stop offset="100%" stopColor={C.red} stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} />
+                  <CartesianGrid stroke={CHART_GRID} strokeDasharray="4 4" vertical={false} />
+                  <XAxis dataKey="date" tick={axisTick} axisLine={false} tickLine={false} dy={6} />
+                  <YAxis tick={axisTick} axisLine={false} tickLine={false} width={36} />
                   <Tooltip content={<ChartTip />} />
-                  <Area type="monotone" dataKey="In"  stroke={C.green} strokeWidth={2} fill="url(#gIn)"  name="Inbound" />
-                  <Area type="monotone" dataKey="Out" stroke={C.red}   strokeWidth={2} fill="url(#gOut)" name="Outbound" />
+                  <Area type="monotone" dataKey="In" stroke={C.green} strokeWidth={2.5} fill="url(#gIn)" name="Inbound" dot={false} activeDot={{ r: 4 }} />
+                  <Area type="monotone" dataKey="Out" stroke={C.red} strokeWidth={2.5} fill="url(#gOut)" name="Outbound" dot={false} activeDot={{ r: 4 }} />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -510,13 +518,13 @@ export default function Dashboard() {
             {categoryChart.length === 0 ? (
               <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.muted, fontSize: 13 }}>No category data</div>
             ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={categoryChart} barCategoryGap="30%">
-                  <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
-                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: C.muted }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 10, fill: C.muted }} axisLine={false} tickLine={false} />
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={categoryChart} barCategoryGap="28%" margin={chartMargin}>
+                  <CartesianGrid stroke={CHART_GRID} strokeDasharray="4 4" vertical={false} />
+                  <XAxis dataKey="name" tick={{ ...axisTick, fontSize: 10 }} axisLine={false} tickLine={false} interval={0} angle={-18} textAnchor="end" height={50} />
+                  <YAxis tick={axisTick} axisLine={false} tickLine={false} width={36} />
                   <Tooltip content={<ChartTip />} />
-                  <Bar dataKey="value" name="Units" radius={[4, 4, 0, 0]}>
+                  <Bar dataKey="value" name="Units" radius={[6, 6, 0, 0]} maxBarSize={42}>
                     {categoryChart.map((_, i) => <Cell key={i} fill={ZONE_COLORS[i % ZONE_COLORS.length]} />)}
                   </Bar>
                 </BarChart>
@@ -525,14 +533,14 @@ export default function Dashboard() {
           </ChartCard>
 
           {/* Zone donut */}
-          <ChartCard title="Zone Distribution" icon={Boxes} color={C.purple}>
-            <ResponsiveContainer width="100%" height={200}>
+          <ChartCard title="Stock by Section" icon={Boxes} color={C.purple}>
+            <ResponsiveContainer width="100%" height={220}>
               <PieChart>
-                <Pie data={zoneData} cx="50%" cy="50%" innerRadius={52} outerRadius={80} dataKey="value" paddingAngle={3}>
-                  {zoneData.map((_, i) => <Cell key={i} fill={ZONE_COLORS[i]} stroke="none" />)}
+                <Pie data={zoneData} cx="50%" cy="45%" innerRadius={48} outerRadius={72} dataKey="value" paddingAngle={2} stroke="none">
+                  {zoneData.map((_, i) => <Cell key={i} fill={ZONE_COLORS[i % ZONE_COLORS.length]} />)}
                 </Pie>
                 <Tooltip content={<ChartTip />} />
-                <Legend iconType="circle" iconSize={8} formatter={v => <span style={{ fontSize: 11, color: C.muted }}>{v}</span>} />
+                <Legend iconType="circle" iconSize={7} layout="horizontal" verticalAlign="bottom" formatter={(v) => <span style={{ fontSize: 11, color: C.muted }}>{v}</span>} />
               </PieChart>
             </ResponsiveContainer>
           </ChartCard>

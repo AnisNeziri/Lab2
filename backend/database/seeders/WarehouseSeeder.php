@@ -24,6 +24,10 @@ class WarehouseSeeder extends Seeder
                 'code' => 'WH-MAIN',
                 'address' => '123 Enterprise Blvd',
                 'is_active' => true,
+                'length_m' => 80,
+                'width_m' => 90,
+                'height_m' => 8,
+                'floor_count' => 1,
             ]
         );
 
