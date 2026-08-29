@@ -9,6 +9,7 @@ import { getWarehouseLayout } from '../api/warehouse'
 import { productMatchesShelf, STANDARD_FLOOR_HEIGHT } from '../lib/warehouseLayout'
 import { buildShelfStockMap, productHealthPercent, sectionsToShelves, sectionsToZones } from '../lib/warehouseStock'
 import * as THREE from 'three'
+import './Warehouse3DMap.css'
 
 function stockColor(level, heatmap, score) {
   if (heatmap) {
@@ -508,6 +509,8 @@ export default function Warehouse3DMap() {
   const [loadingProducts, setLoadingProducts] = useState(false)
   const [layoutLoading, setLayoutLoading] = useState(true)
   const [warehouse, setWarehouse] = useState(null)
+  const [warehouses, setWarehouses] = useState([])
+  const [warehouseId, setWarehouseId] = useState('')
   const [floorFilter, setFloorFilter] = useState('all')
 
   const loadStockLevels = useCallback(async (shelfList) => {
@@ -525,9 +528,11 @@ export default function Warehouse3DMap() {
   useEffect(() => {
     if (!token) return
     setLayoutLoading(true)
-    getWarehouseLayout()
+    getWarehouseLayout(warehouseId || undefined)
       .then((data) => {
         setWarehouse(data.warehouse ?? null)
+        setWarehouses(data.warehouses ?? [])
+        setWarehouseId((current) => current || String(data.warehouse?.id ?? ''))
         const shelves = sectionsToShelves(data.sections ?? [])
         setAllShelves(shelves)
         setZones(sectionsToZones(data.sections ?? []))
@@ -538,7 +543,7 @@ export default function Warehouse3DMap() {
         setZones([])
       })
       .finally(() => setLayoutLoading(false))
-  }, [token, loadStockLevels])
+  }, [token, loadStockLevels, warehouseId])
 
   useEffect(() => {
     if (!token) return
@@ -619,11 +624,11 @@ export default function Warehouse3DMap() {
     : zones.filter((z) => z.shelves.some((s) => s.floorLevel === floorFilter))
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100vh', background: '#060c18', overflow: 'hidden' }}>
+    <div className="warehouse-3d-page" style={{ position: 'relative', width: '100%', height: '100vh', background: '#060c18', overflow: 'hidden' }}>
 
       {/* Toolbar */}
-      <div style={{ position: 'absolute', top: 16, left: 16, right: 16, zIndex: 10, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', pointerEvents: 'none' }}>
-        <div>
+      <div className="warehouse-3d-toolbar" style={{ position: 'absolute', top: 16, left: 16, right: 16, zIndex: 10, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', pointerEvents: 'none' }}>
+        <div className="warehouse-3d-heading">
           <div style={{ color: 'white', fontSize: 18, fontWeight: 700 }}>3D Warehouse Map</div>
           <div style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
             {allShelves.length} sections &nbsp;·&nbsp; {floorCount} floor{floorCount > 1 ? 's' : ''} &nbsp;·&nbsp;
@@ -632,6 +637,16 @@ export default function Warehouse3DMap() {
             <button type="button" onClick={() => navigate('/warehouse-layout')} style={{ background: 'none', border: 'none', color: '#60a5fa', cursor: 'pointer', fontSize: 12, padding: 0 }}>Edit layout</button>
           </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 8, pointerEvents: 'auto', flexWrap: 'wrap' }}>
+            {warehouses.length > 1 && (
+              <select
+                aria-label="Warehouse"
+                value={warehouseId}
+                onChange={(event) => { setSelectedShelf(null); setFloorFilter('all'); setWarehouseId(event.target.value) }}
+                style={{ padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, border: '1px solid #334155', background: 'rgba(6,12,24,0.92)', color: '#e2e8f0' }}
+              >
+                {warehouses.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}
+              </select>
+            )}
             <button
               type="button"
               onClick={() => setFloorFilter('all')}
@@ -661,7 +676,7 @@ export default function Warehouse3DMap() {
             ))}
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, pointerEvents: 'auto' }}>
+        <div className="warehouse-3d-actions" style={{ display: 'flex', alignItems: 'center', gap: 12, pointerEvents: 'auto' }}>
           <button
             onClick={() => navigate(-1)}
             style={{

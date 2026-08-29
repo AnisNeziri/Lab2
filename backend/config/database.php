@@ -151,6 +151,10 @@ return [
             'cluster' => env('REDIS_CLUSTER', 'redis'),
             'prefix' => env('REDIS_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')).'-database-'),
             'persistent' => env('REDIS_PERSISTENT', false),
+            // Redis is an optional realtime/cache accelerator. Never let an offline
+            // Redis service block normal database-backed pages for several seconds.
+            'timeout' => (float) env('REDIS_TIMEOUT', 0.5),
+            'read_timeout' => (float) env('REDIS_READ_TIMEOUT', 0.5),
         ],
 
         'default' => [

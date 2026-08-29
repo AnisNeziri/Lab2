@@ -1,0 +1,53 @@
+name: AIMS signed desktop release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    env:
+      CSC_LINK: ${{ secrets.AIMS_WINDOWS_CERTIFICATE_BASE64 }}
+      CSC_KEY_PASSWORD: ${{ secrets.AIMS_WINDOWS_CERTIFICATE_PASSWORD }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Check out AIMS
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            desktop/package-lock.json
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, openssl, pdo_sqlite, sqlite3, fileinfo, curl, zip
+          tools: composer:v2
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+
+      - name: Build web interface
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build, sign, and publish update
+        working-directory: desktop
+        run: npm run release:win

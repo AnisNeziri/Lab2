@@ -28,6 +28,8 @@ const emptySection = {
 export default function WarehouseLayout() {
   const navigate = useNavigate()
   const [sections, setSections] = useState([])
+  const [warehouses, setWarehouses] = useState([])
+  const [warehouseId, setWarehouseId] = useState('')
   const [form, setForm] = useState(emptySection)
   const [dims, setDims] = useState({ length_m: 80, width_m: 90, floor_count: 1 })
   const [activeFloor, setActiveFloor] = useState(1)
@@ -41,12 +43,14 @@ export default function WarehouseLayout() {
     [dims.length_m, dims.width_m],
   )
 
-  async function load() {
+  async function load(nextWarehouseId = warehouseId) {
     try {
       setLoading(true)
       setError('')
-      const data = await getWarehouseLayout()
+      const data = await getWarehouseLayout(nextWarehouseId || undefined)
       setSections(data.sections ?? [])
+      setWarehouses(data.warehouses ?? [])
+      setWarehouseId(String(data.warehouse?.id ?? ''))
       setDims({
         length_m: data.warehouse?.length_m ?? 80,
         width_m: data.warehouse?.width_m ?? 90,
@@ -60,12 +64,13 @@ export default function WarehouseLayout() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load('') }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function saveDimensions(e) {
     e.preventDefault()
     try {
       await updateWarehouseLayout({
+        warehouse_id: Number(warehouseId),
         length_m: Number(dims.length_m),
         width_m: Number(dims.width_m),
         height_m: STANDARD_HEIGHT,
@@ -82,7 +87,7 @@ export default function WarehouseLayout() {
     setEditingId(section.id)
     setActiveFloor(section.floor_level ?? 1)
     setForm({
-      code: section.code,
+      code: section.location_code ?? section.code,
       name: section.name,
       color: section.color,
       light_color: section.light_color,
@@ -98,20 +103,22 @@ export default function WarehouseLayout() {
     e.preventDefault()
     try {
       setError('')
+      const { pos_x, pos_z, ...sectionForm } = form
       const payload = {
-        ...form,
+        ...sectionForm,
+        warehouse_id: Number(warehouseId),
         floor_level: activeFloor,
-        pos_x: Number(form.pos_x),
-        pos_z: Number(form.pos_z),
         width: Number(form.width),
         depth: Number(form.depth),
       }
       if (editingId) {
+        payload.pos_x = Number(pos_x)
+        payload.pos_z = Number(pos_z)
         await updateWarehouseSection(editingId, payload)
         setMessage('Section updated.')
       } else {
         await createWarehouseSection(payload)
-        setMessage('Section created — drag it on the floor plan to position it.')
+        setMessage('Section created and placed automatically — drag it to fine-tune the position.')
       }
       setForm({ ...emptySection, floor_level: activeFloor })
       setEditingId(null)
@@ -141,7 +148,7 @@ export default function WarehouseLayout() {
   }
 
   async function handleDelete(section) {
-    if (!window.confirm(`Delete section ${section.code} on level ${section.floor_level ?? 1}? Products there will be unassigned.`)) return
+    if (!window.confirm(`Delete location ${section.display_code ?? section.code} on level ${section.floor_level ?? 1}? It must be empty and have no child locations.`)) return
     try {
       await deleteWarehouseSection(section.id)
       setMessage('Section deleted.')
@@ -155,6 +162,7 @@ export default function WarehouseLayout() {
     const next = Number(dims.floor_count) + 1
     try {
       await updateWarehouseLayout({
+        warehouse_id: Number(warehouseId),
         length_m: Number(dims.length_m),
         width_m: Number(dims.width_m),
         height_m: STANDARD_HEIGHT,
@@ -180,6 +188,14 @@ export default function WarehouseLayout() {
           </p>
         </div>
         <div className="header-actions">
+          {warehouses.length > 1 && (
+            <label className="warehouse-layout-selector">
+              <span>Warehouse</span>
+              <select value={warehouseId} onChange={(event) => { setEditingId(null); setActiveFloor(1); void load(event.target.value) }}>
+                {warehouses.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}
+              </select>
+            </label>
+          )}
           <button type="button" className="btn-secondary" onClick={() => navigate('/warehouse-3d')}>
             <Box size={16} /> 3D map
           </button>
@@ -334,7 +350,7 @@ export default function WarehouseLayout() {
                   {sections.map((s) => (
                     <tr key={s.id} className={s.floor_level === activeFloor ? 'row-active-floor' : ''}>
                       <td>L{s.floor_level ?? 1}</td>
-                      <td><strong>{s.code}</strong></td>
+                      <td><strong>{s.display_code ?? s.code}</strong></td>
                       <td>{s.name}</td>
                       <td>X {s.pos_x}, Z {s.pos_z}</td>
                       <td>{s.product_count ?? 0}</td>

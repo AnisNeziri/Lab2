@@ -1,2 +1,43 @@
 .DS_Store
 Thumbs.db
+
+# Local environment and private release material
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.aims-license
+
+# Dependencies and generated builds
+node_modules/
+vendor/
+.pnpm-store/
+frontend/dist/
+backend/public/build/
+desktop/dist/
+desktop/resources/
+desktop/runtime/
+desktop/.offline-runtime-test/
+
+# Runtime data, backups and generated exports
+backups/
+output/
+outputs/
+tmp/
+backend/tmp/
+*.sqlite
+*.sqlite-*
+*.sql
+*.log
+backend/storage/framework/aisstream-worker.lock
+
+# Downloadable local development tools
+tools/mailpit/*.exe
+tools/mailpit/*.zip
+
+# Test and editor caches
+.phpunit.result.cache
+.phpunit.cache/
+.idea/
+.vscode/

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use App\Services\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,6 +30,14 @@ class AuthController extends Controller
                 'message' => 'User not found.',
                 'errors' => ['email' => ['The provided credentials are incorrect.']],
             ], 422);
+        }
+
+        if (($result['error'] ?? null) === 'email_unverified') {
+            return response()->json([
+                'message' => 'Please verify your email address before signing in.',
+                'code' => 'EMAIL_NOT_VERIFIED',
+                'errors' => ['email' => ['Email verification required.']],
+            ], 403);
         }
 
         if (($result['error'] ?? null) === 'temp_expired') {
@@ -65,6 +74,11 @@ class AuthController extends Controller
         return response()->json($result);
     }
 
+    public function me(Request $request): JsonResponse
+    {
+        return response()->json($this->authService->formatUser(Auth::user()));
+    }
+
     public function logout(Request $request): JsonResponse
     {
         $user = Auth::user();
@@ -78,6 +92,12 @@ class AuthController extends Controller
 
     public function register(Request $request): JsonResponse
     {
+        if (config('system.operation_mode') === 'offline' && User::withoutGlobalScopes()->exists()) {
+            return response()->json([
+                'message' => 'This offline AIMS installation already has its local administrator account.',
+            ], 403);
+        }
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
@@ -86,7 +106,13 @@ class AuthController extends Controller
             'company_address' => ['required', 'string', 'max:1000'],
         ]);
 
-        $result = $this->authService->register($validated);
+        try {
+            $result = $this->authService->register($validated);
+        } catch (\RuntimeException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 503);
+        }
 
         return response()->json($result, 201);
     }

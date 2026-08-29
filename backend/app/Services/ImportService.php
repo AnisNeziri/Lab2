@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\ImportLog;
 use App\Models\Product;
 use App\Repositories\Contracts\CategoryRepositoryInterface;
-use App\Repositories\Contracts\ProductRepositoryInterface;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -13,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 class ImportService
 {
     public function __construct(
-        private ProductRepositoryInterface $products,
+        private ProductService $productService,
         private CategoryRepositoryInterface $categories
     ) {}
 
@@ -43,6 +42,7 @@ class ImportService
 
                 if (count($row) < 4) {
                     $errors[] = "Row {$total}: insufficient columns";
+
                     continue;
                 }
 
@@ -64,16 +64,26 @@ class ImportService
                     'category_id' => $category->id,
                     'name' => trim($name),
                     'sku' => trim($sku),
-                    'quantity' => (int) $quantity,
-                    'min_quantity' => (int) ($row[5] ?? 5),
+                    'quantity' => (float) $quantity,
+                    'min_quantity' => (float) ($row[5] ?? 5),
                     'price' => (float) ($row[6] ?? 0),
                     'unit' => trim($row[7] ?? 'pcs') ?: 'pcs',
                 ];
 
                 if ($existing) {
-                    $this->products->update($existing, $data);
+                    $this->productService->update($existing, $data, [
+                        'reason' => "Product import {$log->filename} row {$total}",
+                        'source_type' => 'import_log',
+                        'source_id' => $log->id,
+                        'idempotency_key' => "product-import-{$log->id}-row-{$total}",
+                    ]);
                 } else {
-                    $this->products->create($data);
+                    $this->productService->create($data, [
+                        'reason' => "Opening balance from product import {$log->filename} row {$total}",
+                        'source_type' => 'import_log',
+                        'source_id' => $log->id,
+                        'idempotency_key' => "product-import-{$log->id}-row-{$total}",
+                    ]);
                 }
 
                 $imported++;

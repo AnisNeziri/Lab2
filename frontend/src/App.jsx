@@ -1,168 +1,326 @@
-import { lazy, Suspense, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
-import LandingPage from './pages/LandingPage'
-import Login from './pages/Login'
-import Register from './pages/Register'
-import ChangePassword from './pages/ChangePassword'
-import AppLayout from './components/AppLayout'
-import { useAuthStore } from './store/authStore'
-import { logout } from './api/login'
-import { initEcho, disconnectEcho } from './lib/echo'
-import { getNotifications } from './api/notifications'
-import { useNotificationStore } from './store/notificationStore'
-import './App.css'
+import { lazy, Suspense, useEffect } from "react";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
+import LandingPage from "./pages/LandingPage";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import VerifyEmail from "./pages/VerifyEmail";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
+import ChangePassword from "./pages/ChangePassword";
+import AppLayout from "./components/AppLayout";
+import { useAuthStore } from "./store/authStore";
+import { useSettingsStore } from "./store/settingsStore";
+import { logout } from "./api/login";
+import { initEcho, disconnectEcho } from "./lib/echo";
+import { getNotifications } from "./api/notifications";
+import { useNotificationStore } from "./store/notificationStore";
+import PreferencesProvider from "./components/PreferencesProvider";
+import "./App.css";
 
-const Dashboard = lazy(() => import('./pages/Dashboard'))
-const Products = lazy(() => import('./pages/Products'))
-const Stock = lazy(() => import('./pages/Stock'))
-const Categories = lazy(() => import('./pages/Categories'))
-const Suppliers = lazy(() => import('./pages/Suppliers'))
-const Reports = lazy(() => import('./pages/Reports'))
-const Invoices = lazy(() => import('./pages/Invoices'))
-const ActivityLogs = lazy(() => import('./pages/ActivityLogs'))
-const Users = lazy(() => import('./pages/Users'))
-const Cms = lazy(() => import('./pages/Cms'))
-const Warehouse3DMap = lazy(() => import('./pages/Warehouse3DMap'))
-const WarehouseLayout = lazy(() => import('./pages/WarehouseLayout'))
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Products = lazy(() => import("./pages/Products"));
+const Stock = lazy(() => import("./pages/Stock"));
+const Categories = lazy(() => import("./pages/Categories"));
+const Suppliers = lazy(() => import("./pages/Suppliers"));
+const Reports = lazy(() => import("./pages/Reports"));
+const ActivityLogs = lazy(() => import("./pages/ActivityLogs"));
+const Users = lazy(() => import("./pages/Users"));
+const Cms = lazy(() => import("./pages/Cms"));
+const Warehouse3DMap = lazy(() => import("./pages/Warehouse3DMap"));
+const WarehouseLayout = lazy(() => import("./pages/WarehouseLayout"));
+const WarehouseOperations = lazy(() => import("./pages/WarehouseOperations"));
+const ShipmentsGlobalMap = lazy(() => import("./pages/shipment/GlobalMap"));
+const MyShipments = lazy(() => import("./pages/shipment/MyShipments"));
+const ShipmentAlerts = lazy(() => import("./pages/shipment/ShipmentAlerts"));
+const DailySales = lazy(() => import("./pages/DailySales"));
+const Superadmin = lazy(() => import("./pages/Superadmin"));
+const PurchaseOrders = lazy(() => import("./pages/PurchaseOrders"));
+const CustomerDebts = lazy(() => import("./pages/CustomerDebts"));
+const Invoices = lazy(() => import("./pages/Invoices"));
+const FinanceCenter = lazy(() => import("./pages/FinanceCenter"));
+const MobileWarehouse = lazy(() => import("./pages/MobileWarehouse"));
+const OperationsCenter = lazy(() => import("./pages/OperationsCenter"));
+const MoneyAccounts = lazy(() => import("./pages/MoneyAccounts"));
 
 function PageLoader() {
-  return <p className="page-message">Loading page...</p>
+  return <p className="page-message">Loading page...</p>;
 }
 
-function ProtectedRoute({ children, adminOnly = false }) {
-  const { isAuthenticated, mustChangePassword, role } = useAuthStore()
+function WarehouseFeatureRoute({ children }) {
+  const enable3dMap = useSettingsStore((state) => state.enable_3d_map);
+
+  if (!enable3dMap) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
+function PermissionRoute({ permission, children }) {
+  const permissions = useAuthStore((state) => state.permissions);
+
+  if (!permissions.includes(permission)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
+function ProtectedRoute({ children, adminOnly = false, allowedRoles = null }) {
+  const { isAuthenticated, mustChangePassword, role, authReady } =
+    useAuthStore();
+
+  if (!authReady) {
+    return <PageLoader />;
+  }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
+    return <Navigate to="/login" replace />;
   }
 
   if (mustChangePassword) {
-    return <Navigate to="/change-password" replace />
+    return <Navigate to="/change-password" replace />;
   }
 
-  if (adminOnly && role !== 'admin') {
-    return <Navigate to="/dashboard" replace />
+  if (adminOnly && !["admin", "superadmin"].includes(role)) {
+    return <Navigate to="/dashboard" replace />;
   }
 
-  return children
+  if (allowedRoles && !allowedRoles.includes(role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+}
+
+function RoleAppGate({ children }) {
+  const role = useAuthStore((state) => state.role);
+  const location = useLocation();
+
+  if (role === "superadmin" && location.pathname !== "/superadmin") {
+    return <Navigate to="/superadmin" replace />;
+  }
+
+  return children;
 }
 
 function RealtimeProvider({ children }) {
-  const { token, user, isAuthenticated, mustChangePassword } = useAuthStore()
-  const setNotifications = useNotificationStore((state) => state.setNotifications)
-  const addNotification = useNotificationStore((state) => state.addNotification)
+  const { token, user, isAuthenticated, mustChangePassword } = useAuthStore();
+  const setNotifications = useNotificationStore(
+    (state) => state.setNotifications,
+  );
+  const addNotification = useNotificationStore(
+    (state) => state.addNotification,
+  );
 
   useEffect(() => {
     if (!isAuthenticated || mustChangePassword || !token || !user?.company_id) {
-      disconnectEcho()
-      return undefined
+      disconnectEcho();
+      return undefined;
     }
 
     getNotifications()
       .then((data) => setNotifications(data.notifications || []))
-      .catch(() => setNotifications([]))
+      .catch(() => setNotifications([]));
 
-    const echo = initEcho(token, user.company_id)
+    // Electron already owns the local backend and intentionally uses file
+    // cache + database polling. Do not create a Reverb socket that cannot
+    // exist in the standalone/offline runtime.
+    const echo = window.__AIMS_API_BASE__
+      ? null
+      : initEcho(token, user.company_id);
+    let refreshInFlight = false;
+    const refreshQuietly = async () => {
+      if (document.visibilityState !== "visible" || refreshInFlight) return;
+
+      refreshInFlight = true;
+      try {
+        const data = await getNotifications();
+        setNotifications(data.notifications || []);
+      } catch {
+        // A temporary network/database failure must not clear the current UI.
+      } finally {
+        refreshInFlight = false;
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("database-refresh", {
+          detail: { source: "background-poll", silent: true },
+        }),
+      );
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshQuietly();
+    };
+    const poll = window.setInterval(refreshQuietly, 15000);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     if (!echo) {
-      return undefined
+      return () => {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+        window.clearInterval(poll);
+      };
     }
 
-    const channel = echo.private(`company.${user.company_id}`)
+    const channel = echo.private(`company.${user.company_id}`);
 
     channel.error((error) => {
-      console.error('[Echo] Channel subscription failed', error)
-    })
+      console.error("[Echo] Channel subscription failed", error);
+    });
 
-    channel.listen('.notification.created', (event) => {
+    channel.listen(".notification.created", (event) => {
       if (event.notification) {
-        addNotification(event.notification)
+        addNotification(event.notification);
       }
-    })
+    });
 
-    channel.listen('.dashboard.updated', () => {
-      window.dispatchEvent(new CustomEvent('dashboard-refresh'))
-    })
+    channel.listen(".dashboard.updated", (event) => {
+      window.dispatchEvent(new CustomEvent("dashboard-refresh", { detail: event }));
+    });
 
-    channel.listen('.stock.updated', () => {
-      window.dispatchEvent(new CustomEvent('stock-refresh'))
-    })
+    channel.listen(".stock.updated", (event) => {
+      window.dispatchEvent(new CustomEvent("stock-refresh", { detail: event }));
+    });
 
     return () => {
-      channel.stopListening('.notification.created')
-      channel.stopListening('.dashboard.updated')
-      channel.stopListening('.stock.updated')
-      disconnectEcho()
-    }
-  }, [token, user?.company_id, isAuthenticated, mustChangePassword, setNotifications, addNotification])
+      channel.stopListening(".notification.created");
+      channel.stopListening(".dashboard.updated");
+      channel.stopListening(".stock.updated");
+      disconnectEcho();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.clearInterval(poll);
+    };
+  }, [
+    token,
+    user?.company_id,
+    isAuthenticated,
+    mustChangePassword,
+    setNotifications,
+    addNotification,
+  ]);
 
-  return children
+  return children;
 }
 
 function AuthEvents() {
-  const navigate = useNavigate()
-  const clearAuth = useAuthStore((state) => state.clearAuth)
-  const setTokens = useAuthStore((state) => state.setTokens)
+  const navigate = useNavigate();
+  const clearAuth = useAuthStore((state) => state.clearAuth);
+  const setTokens = useAuthStore((state) => state.setTokens);
+  const updateUser = useAuthStore((state) => state.updateUser);
 
   useEffect(() => {
     const handleUnauthorized = () => {
-      disconnectEcho()
-      clearAuth()
-      navigate('/')
-    }
+      disconnectEcho();
+      clearAuth();
+      navigate("/");
+    };
 
     const handlePasswordChangeRequired = () => {
-      navigate('/change-password')
-    }
+      navigate("/change-password");
+    };
 
     const handleTokenRefreshed = (event) => {
-      setTokens(event.detail.accessToken, event.detail.refreshToken)
-    }
+      setTokens(event.detail.accessToken, event.detail.refreshToken);
+      if (event.detail.user) {
+        updateUser(event.detail.user);
+      }
+    };
 
-    window.addEventListener('auth-unauthorized', handleUnauthorized)
-    window.addEventListener('password-change-required', handlePasswordChangeRequired)
-    window.addEventListener('auth-token-refreshed', handleTokenRefreshed)
+    window.addEventListener("auth-unauthorized", handleUnauthorized);
+    window.addEventListener(
+      "password-change-required",
+      handlePasswordChangeRequired,
+    );
+    window.addEventListener("auth-token-refreshed", handleTokenRefreshed);
     return () => {
-      window.removeEventListener('auth-unauthorized', handleUnauthorized)
-      window.removeEventListener('password-change-required', handlePasswordChangeRequired)
-      window.removeEventListener('auth-token-refreshed', handleTokenRefreshed)
-    }
-  }, [navigate, clearAuth, setTokens])
+      window.removeEventListener("auth-unauthorized", handleUnauthorized);
+      window.removeEventListener(
+        "password-change-required",
+        handlePasswordChangeRequired,
+      );
+      window.removeEventListener("auth-token-refreshed", handleTokenRefreshed);
+    };
+  }, [navigate, clearAuth, setTokens, updateUser]);
 
-  return null
+  return null;
 }
 
 function AppRoutes() {
-  const navigate = useNavigate()
-  const { hydrate, isAuthenticated, mustChangePassword, setAuth, updateUser, clearAuth } = useAuthStore()
+  const navigate = useNavigate();
+  const {
+    hydrate,
+    syncSession,
+    isAuthenticated,
+    mustChangePassword,
+    authReady,
+    hasValidSession,
+    setAuth,
+    updateUser,
+    clearAuth,
+  } = useAuthStore();
+  const isDesktop = Boolean(window.__AIMS_API_BASE__);
 
   useEffect(() => {
-    hydrate()
-  }, [hydrate])
+    hydrate();
+  }, [hydrate]);
+
+  useEffect(() => {
+    if (!authReady || !isAuthenticated || mustChangePassword) return;
+    syncSession();
+  }, [authReady, isAuthenticated, mustChangePassword, syncSession]);
 
   const handleAuthSuccess = (userData) => {
-    const accessToken = userData.access_token || userData.token
-    setAuth(accessToken, userData.user, userData.refresh_token)
-    navigate(userData.user.must_change_password ? '/change-password' : '/dashboard', { replace: true })
-  }
+    const accessToken = userData.access_token || userData.token;
+    setAuth(accessToken, userData.user, userData.refresh_token);
+    if (userData.user?.preferences) {
+      useSettingsStore.getState().loadFromUser(userData.user.preferences);
+    }
+    navigate(
+      userData.user.must_change_password
+        ? "/change-password"
+        : userData.user.role === "superadmin"
+          ? "/superadmin"
+          : "/dashboard",
+      { replace: true },
+    );
+  };
+
+  const handleRegisterSuccess = (data) => {
+    if (data.verification_required) {
+      navigate(`/verify-email?email=${encodeURIComponent(data.email)}`, {
+        replace: true,
+      });
+      return;
+    }
+    handleAuthSuccess(data);
+  };
 
   const handlePasswordChanged = (data) => {
-    const token = useAuthStore.getState().token
-    updateUser(data.user)
+    const token = useAuthStore.getState().token;
+    updateUser(data.user);
     if (token) {
-      setAuth(token, data.user)
+      setAuth(token, data.user);
     }
-    navigate('/dashboard', { replace: true })
-  }
+    navigate(data.user?.role === "superadmin" ? "/superadmin" : "/dashboard", {
+      replace: true,
+    });
+  };
 
   const handleLogout = async () => {
     try {
-      await logout()
+      await logout();
     } catch {
     } finally {
-      disconnectEcho()
-      clearAuth()
+      disconnectEcho();
+      clearAuth();
     }
-  }
+  };
 
   return (
     <>
@@ -171,68 +329,334 @@ function AppRoutes() {
         <Route
           path="/"
           element={
-            <LandingPage
-              isAuthenticated={isAuthenticated}
-              onLogin={() => window.location.assign('/login')}
-              onRegister={() => window.location.assign('/register')}
-              onOpenDashboard={() => window.location.assign(isAuthenticated && !mustChangePassword ? '/dashboard' : '/login')}
-            />
+            isDesktop ? (
+              <Navigate to="/login" replace />
+            ) : (
+              <LandingPage
+                isAuthenticated={isAuthenticated}
+                onLogin={() => window.location.assign("/login")}
+                onRegister={() => window.location.assign("/register")}
+                onOpenDashboard={() =>
+                  window.location.assign(
+                    isAuthenticated && !mustChangePassword
+                      ? "/dashboard"
+                      : "/login",
+                  )
+                }
+              />
+            )
           }
         />
         <Route
           path="/login"
           element={
-            isAuthenticated
-              ? <Navigate to={mustChangePassword ? '/change-password' : '/dashboard'} replace />
-              : <Login onLoginSuccess={handleAuthSuccess} onBackHome={() => navigate('/')} onRegister={() => navigate('/register')} />
+            !authReady ? (
+              <PageLoader />
+            ) : hasValidSession() ? (
+              <Navigate
+                to={mustChangePassword ? "/change-password" : "/dashboard"}
+                replace
+              />
+            ) : (
+              <Login
+                onLoginSuccess={handleAuthSuccess}
+                onBackHome={() => navigate("/")}
+                onRegister={() => navigate("/register")}
+              />
+            )
           }
         />
         <Route
           path="/register"
           element={
-            isAuthenticated && !mustChangePassword
-              ? <Navigate to="/dashboard" replace />
-              : <Register onRegisterSuccess={handleAuthSuccess} onBackHome={() => window.location.assign('/')} onLogin={() => window.location.assign('/login')} />
+            isDesktop ? (
+              <Navigate to="/login" replace />
+            ) : !authReady ? (
+              <PageLoader />
+            ) : isAuthenticated && !mustChangePassword ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
+              <Register
+                onRegisterSuccess={handleRegisterSuccess}
+                onBackHome={() => window.location.assign("/")}
+                onLogin={() => window.location.assign("/login")}
+              />
+            )
           }
         />
+        <Route path="/verify-email" element={<VerifyEmail />} />
+        <Route
+          path="/forgot-password"
+          element={
+            isDesktop ? (
+              <Navigate to="/login" replace />
+            ) : (
+              <ForgotPassword onBackLogin={() => navigate("/login")} />
+            )
+          }
+        />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route
           path="/change-password"
           element={
-            !isAuthenticated
-              ? <Navigate to="/login" replace />
-              : <ChangePassword requiresChange={mustChangePassword} onPasswordChanged={handlePasswordChanged} onLogout={handleLogout} />
+            !isAuthenticated ? (
+              <Navigate to="/login" replace />
+            ) : (
+              <ChangePassword
+                requiresChange={mustChangePassword}
+                onPasswordChanged={handlePasswordChanged}
+                onLogout={handleLogout}
+              />
+            )
           }
         />
         <Route
           element={
             <ProtectedRoute>
-              <RealtimeProvider>
-                <AppLayout />
-              </RealtimeProvider>
+              <RoleAppGate>
+                <PreferencesProvider>
+                  <RealtimeProvider>
+                    <AppLayout />
+                  </RealtimeProvider>
+                </PreferencesProvider>
+              </RoleAppGate>
             </ProtectedRoute>
           }
         >
-          <Route path="/dashboard" element={<Suspense fallback={<PageLoader />}><Dashboard /></Suspense>} />
-          <Route path="/products" element={<Suspense fallback={<PageLoader />}><Products /></Suspense>} />
-          <Route path="/stock" element={<Suspense fallback={<PageLoader />}><Stock /></Suspense>} />
-          <Route path="/categories" element={<Suspense fallback={<PageLoader />}><Categories /></Suspense>} />
-          <Route path="/suppliers" element={<Suspense fallback={<PageLoader />}><Suppliers /></Suspense>} />
-          <Route path="/reports" element={<Suspense fallback={<PageLoader />}><Reports /></Suspense>} />
-          <Route path="/invoices" element={<Suspense fallback={<PageLoader />}><Invoices /></Suspense>} />
-          <Route path="/users" element={<ProtectedRoute adminOnly><Suspense fallback={<PageLoader />}><Users /></Suspense></ProtectedRoute>} />
-          <Route path="/activity-logs" element={<ProtectedRoute adminOnly><Suspense fallback={<PageLoader />}><ActivityLogs /></Suspense></ProtectedRoute>} />
-          <Route path="/cms" element={<ProtectedRoute adminOnly><Suspense fallback={<PageLoader />}><Cms /></Suspense></ProtectedRoute>} />
-          <Route path="/warehouse-layout" element={<Suspense fallback={<PageLoader />}><WarehouseLayout /></Suspense>} />
+          <Route
+            path="/dashboard"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <Dashboard />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/products"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <Products />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/stock"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <Stock />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/categories"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <Categories />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/suppliers"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <Suppliers />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <Reports />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/finance"
+            element={
+              <PermissionRoute permission="finance.view">
+                <Suspense fallback={<PageLoader />}>
+                  <FinanceCenter />
+                </Suspense>
+              </PermissionRoute>
+            }
+          />
+          <Route
+            path="/money-accounts"
+            element={
+              <PermissionRoute permission="financial_accounts.view">
+                <Suspense fallback={<PageLoader />}>
+                  <MoneyAccounts />
+                </Suspense>
+              </PermissionRoute>
+            }
+          />
+          <Route
+            path="/invoices"
+            element={
+              <PermissionRoute permission="invoices.manage">
+                <Suspense fallback={<PageLoader />}>
+                  <Invoices />
+                </Suspense>
+              </PermissionRoute>
+            }
+          />
+          <Route
+            path="/purchase-orders"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <PurchaseOrders />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/customer-debts"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <CustomerDebts />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/daily-sales"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <DailySales />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/shipments"
+            element={<Navigate to="/shipments/my-shipments" replace />}
+          />
+          <Route
+            path="/shipments/global-map"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <ShipmentsGlobalMap />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/shipments/my-shipments"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <MyShipments />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/shipments/alerts"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <ShipmentAlerts />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/users"
+            element={
+              <ProtectedRoute adminOnly>
+                <Suspense fallback={<PageLoader />}>
+                  <Users />
+                </Suspense>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/activity-logs"
+            element={
+              <ProtectedRoute adminOnly>
+                <Suspense fallback={<PageLoader />}>
+                  <ActivityLogs />
+                </Suspense>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/cms"
+            element={
+              <ProtectedRoute adminOnly>
+                <Suspense fallback={<PageLoader />}>
+                  <Cms />
+                </Suspense>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/superadmin"
+            element={
+              <ProtectedRoute allowedRoles={["superadmin"]}>
+                <Suspense fallback={<PageLoader />}>
+                  <Superadmin />
+                </Suspense>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/warehouse-operations"
+            element={
+              <PermissionRoute permission="transfers.view">
+                <Suspense fallback={<PageLoader />}>
+                  <WarehouseOperations />
+                </Suspense>
+              </PermissionRoute>
+            }
+          />
+          <Route
+            path="/warehouse-mobile"
+            element={
+              <PermissionRoute permission="warehouse_mobile.use">
+                <Suspense fallback={<PageLoader />}>
+                  <MobileWarehouse />
+                </Suspense>
+              </PermissionRoute>
+            }
+          />
+          <Route
+            path="/operations-center"
+            element={
+              <PermissionRoute permission="inventory.view">
+                <Suspense fallback={<PageLoader />}>
+                  <OperationsCenter />
+                </Suspense>
+              </PermissionRoute>
+            }
+          />
+          <Route
+            path="/warehouse-layout"
+            element={
+              <WarehouseFeatureRoute>
+                <Suspense fallback={<PageLoader />}>
+                  <WarehouseLayout />
+                </Suspense>
+              </WarehouseFeatureRoute>
+            }
+          />
         </Route>
-        <Route path="/warehouse-3d" element={
-          <ProtectedRoute>
-            <Suspense fallback={<PageLoader />}><Warehouse3DMap /></Suspense>
-          </ProtectedRoute>
-        } />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route
+          path="/warehouse-3d"
+          element={
+            <ProtectedRoute>
+              <WarehouseFeatureRoute>
+                <Suspense fallback={<PageLoader />}>
+                  <Warehouse3DMap />
+                </Suspense>
+              </WarehouseFeatureRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={<Navigate to="/dashboard" replace />}
+        />
+        <Route
+          path="*"
+          element={<Navigate to={isDesktop ? "/login" : "/"} replace />}
+        />
       </Routes>
     </>
-  )
+  );
 }
 
 export default function App() {
@@ -240,5 +664,5 @@ export default function App() {
     <BrowserRouter>
       <AppRoutes />
     </BrowserRouter>
-  )
+  );
 }

@@ -1,17 +1,44 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { Bell, X, AlertTriangle, Package } from 'lucide-react'
-import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../api/notifications'
+import { Bell, X, AlertTriangle, Package, Trash2 } from 'lucide-react'
+import { clearNotifications, getNotifications, markNotificationRead, markAllNotificationsRead } from '../api/notifications'
 import { useNotificationStore } from '../store/notificationStore'
 
-export default function NotificationCenter({ onViewStock }) {
+export default function NotificationCenter({ onNavigate }) {
   const notifications = useNotificationStore((state) => state.notifications)
   const unreadCount = useNotificationStore((state) => state.unreadCount)
   const setNotifications = useNotificationStore((state) => state.setNotifications)
   const markAsRead = useNotificationStore((state) => state.markAsRead)
   const markAllAsRead = useNotificationStore((state) => state.markAllAsRead)
   const [isOpen, setIsOpen] = useState(false)
+  const [clearBusy, setClearBusy] = useState(false)
   const panelRef = useRef(null)
+  const bellRef = useRef(null)
+  const [panelStyle, setPanelStyle] = useState({ top: 72, left: 16 })
+
+  const updatePanelPosition = useCallback(() => {
+    if (!bellRef.current) return
+    const rect = bellRef.current.getBoundingClientRect()
+    const width = Math.min(360, window.innerWidth - 32)
+    let left = rect.left
+    if (left + width > window.innerWidth - 16) {
+      left = Math.max(16, window.innerWidth - width - 16)
+    }
+    setPanelStyle({
+      top: rect.bottom + 8,
+      left,
+    })
+  }, [])
+
+  const toggleOpen = () => {
+    setIsOpen((open) => {
+      const next = !open
+      if (next) {
+        updatePanelPosition()
+      }
+      return next
+    })
+  }
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -27,9 +54,19 @@ export default function NotificationCenter({ onViewStock }) {
   }, [fetchNotifications])
 
   useEffect(() => {
+    const refreshNotifications = () => void fetchNotifications()
+    window.addEventListener('notifications-refresh', refreshNotifications)
+    return () => window.removeEventListener('notifications-refresh', refreshNotifications)
+  }, [fetchNotifications])
+
+  useEffect(() => {
     if (!isOpen) {
       return undefined
     }
+
+    updatePanelPosition()
+    window.addEventListener('resize', updatePanelPosition)
+    window.addEventListener('scroll', updatePanelPosition, true)
 
     function handlePointerDown(event) {
       if (panelRef.current && !panelRef.current.contains(event.target)) {
@@ -46,10 +83,12 @@ export default function NotificationCenter({ onViewStock }) {
     document.addEventListener('mousedown', handlePointerDown)
     document.addEventListener('keydown', handleEscape)
     return () => {
+      window.removeEventListener('resize', updatePanelPosition)
+      window.removeEventListener('scroll', updatePanelPosition, true)
       document.removeEventListener('mousedown', handlePointerDown)
       document.removeEventListener('keydown', handleEscape)
     }
-  }, [isOpen])
+  }, [isOpen, updatePanelPosition])
 
   const handleMarkAsRead = async (id) => {
     markAsRead(id)
@@ -67,19 +106,34 @@ export default function NotificationCenter({ onViewStock }) {
     }
   }
 
+  const handleClear = async () => {
+    if (!notifications.length || clearBusy) return
+    setClearBusy(true)
+    try {
+      await clearNotifications('all')
+      setNotifications([])
+    } catch {
+    } finally {
+      setClearBusy(false)
+    }
+  }
+
   const handleNotificationClick = (notification) => {
     handleMarkAsRead(notification.id)
-    if (onViewStock) {
-      onViewStock()
-      setIsOpen(false)
-    }
+    const data = notification.data || {}
+    let path = '/dashboard'
+    if (data.shipment_id) path = `/shipments/my-shipments?shipment=${data.shipment_id}`
+    else if (data.invoice_id) path = `/invoices?invoice=${data.invoice_id}`
+    else if (data.product_id) path = '/stock'
+    onNavigate?.(path)
+    setIsOpen(false)
   }
 
   const dropdown = isOpen
     ? createPortal(
         <>
           <div className="notification-backdrop" onClick={() => setIsOpen(false)} />
-          <div className="notification-dropdown" ref={panelRef}>
+          <div className="notification-dropdown" ref={panelRef} style={panelStyle}>
             <div className="notification-header">
               <h3>Notifications</h3>
               <div className="notification-header-actions">
@@ -88,6 +142,12 @@ export default function NotificationCenter({ onViewStock }) {
                     Mark all read
                   </button>
                 )}
+                <>
+                  <button type="button" className="mark-read-btn notification-clear-btn" onClick={handleClear} disabled={clearBusy || notifications.length === 0} aria-label="Clear notifications">
+                    <Trash2 size={13} />
+                    {clearBusy ? 'Clearing…' : 'Clear'}
+                  </button>
+                </>
                 <button type="button" className="close-btn" onClick={() => setIsOpen(false)}>
                   <X size={16} />
                 </button>
@@ -133,9 +193,10 @@ export default function NotificationCenter({ onViewStock }) {
       <button
         type="button"
         className="notification-bell"
+        ref={bellRef}
         aria-expanded={isOpen}
         aria-label="Open notifications"
-        onClick={() => setIsOpen((open) => !open)}
+        onClick={toggleOpen}
       >
         <Bell size={20} />
         {unreadCount > 0 && <span className="notification-badge">{unreadCount}</span>}

@@ -4,6 +4,7 @@ namespace Tests;
 
 use App\Models\Company;
 use App\Models\User;
+use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
@@ -12,7 +13,7 @@ abstract class TestCase extends BaseTestCase
 
     protected function actingAsApiUser(string $role = 'admin'): self
     {
-        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
+        $this->seed(RolePermissionSeeder::class);
 
         $this->apiCompany = Company::factory()->create();
         $plainToken = 'test-token-'.$role;
@@ -21,6 +22,7 @@ abstract class TestCase extends BaseTestCase
             'company_id' => $this->apiCompany->id,
             'role' => $role,
             'api_token' => hash('sha256', $plainToken),
+            'email_verified_at' => now(),
         ]);
 
         return $this->withHeader('Authorization', 'Bearer '.$plainToken);

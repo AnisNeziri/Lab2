@@ -12,6 +12,7 @@ import './LandingNavbar.css'
 
 const NAV_LINKS = [
   { id: 'features', label: 'Features' },
+  { id: 'capabilities', label: 'Capabilities' },
   { id: 'about', label: 'About' },
   { id: 'contact', label: 'Contact' },
 ]

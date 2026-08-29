@@ -379,3 +379,25 @@ button.landing-mobile-link:hover:not(:disabled) {
     top: 72px;
   }
 }
+
+html.dark .landing-page .landing-header,
+html[data-theme='dark'] .landing-page .landing-header {
+  background: rgba(15, 23, 42, 0.92);
+}
+
+html.dark .landing-page .landing-header.is-scrolled,
+html[data-theme='dark'] .landing-page .landing-header.is-scrolled {
+  background: rgba(15, 23, 42, 0.96);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+}
+
+html.dark .landing-nav-link,
+html[data-theme='dark'] .landing-nav-link {
+  color: #cbd5e1;
+}
+
+html.dark .landing-mobile-menu,
+html[data-theme='dark'] .landing-mobile-menu {
+  background: #1e293b;
+  border-color: #334155;
+}

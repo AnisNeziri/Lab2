@@ -55,7 +55,9 @@ export default function GlobalSearch({ onNavigate }) {
     results.categories?.length > 0 ||
     results.suppliers?.length > 0 ||
     results.invoices?.length > 0 ||
-    results.stock_movements?.length > 0
+    results.stock_movements?.length > 0 ||
+    results.customers?.length > 0 || results.purchase_orders?.length > 0 ||
+    results.shipments?.length > 0 || results.stock_transfers?.length > 0 || results.goods_receipts?.length > 0
   )
 
   return (
@@ -122,6 +124,11 @@ export default function GlobalSearch({ onNavigate }) {
               ))}
             </section>
           )}
+          {results.customers?.length > 0 && <section><h4>Customers</h4>{results.customers.map((item) => <button key={`cu-${item.id}`} type="button" onClick={() => handleSelect('customer-debts', item)}>{item.name} <span>{item.business_registration_number || item.email}</span></button>)}</section>}
+          {results.purchase_orders?.length > 0 && <section><h4>Purchase orders</h4>{results.purchase_orders.map((item) => <button key={`po-${item.id}`} type="button" onClick={() => handleSelect('purchase-orders', item)}>{item.po_number} <span>{item.supplier?.name}</span></button>)}</section>}
+          {results.shipments?.length > 0 && <section><h4>Shipments</h4>{results.shipments.map((item) => <button key={`sh-${item.id}`} type="button" onClick={() => handleSelect('shipments/my-shipments', item)}>{item.tracking_number || item.tracking_reference} <span>{item.destination_port}</span></button>)}</section>}
+          {results.stock_transfers?.length > 0 && <section><h4>Stock transfers</h4>{results.stock_transfers.map((item) => <button key={`tr-${item.id}`} type="button" onClick={() => handleSelect('warehouse-operations', item)}>{item.transfer_number} <span>{item.status}</span></button>)}</section>}
+          {results.goods_receipts?.length > 0 && <section><h4>Goods receipts</h4>{results.goods_receipts.map((item) => <button key={`gr-${item.id}`} type="button" onClick={() => handleSelect('warehouse-operations', item)}>{item.receipt_number} <span>{item.purchase_order?.po_number}</span></button>)}</section>}
         </div>
       )}
     </div>

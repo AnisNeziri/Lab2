@@ -1,34 +1,35 @@
-import { useState } from 'react'
-import { Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { Menu, X } from 'lucide-react'
-import Sidebar from './Sidebar'
-import { useAuthStore } from '../store/authStore'
-import { logout } from '../api/login'
-import { disconnectEcho } from '../lib/echo'
+import { useState } from "react";
+import { Outlet, useNavigate, useLocation } from "react-router-dom";
+import { Menu, X } from "lucide-react";
+import Sidebar from "./Sidebar";
+import { useAuthStore } from "../store/authStore";
+import { logout } from "../api/login";
+import { disconnectEcho } from "../lib/echo";
 
 export default function AppLayout() {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const navigate = useNavigate()
-  const location = useLocation()
-  const { role, clearAuth } = useAuthStore()
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { role, clearAuth } = useAuthStore();
 
-  const currentPage = location.pathname.replace('/', '') || 'dashboard'
+  const currentPage = location.pathname.replace("/", "") || "dashboard";
 
-  const handlePageChange = (page) => {
-    navigate(`/${page}`)
-    setSidebarOpen(false)
-  }
+  const handlePageChange = (page, item = null) => {
+    const query = page === "invoices" && item?.id ? `?invoice=${item.id}` : "";
+    navigate(`/${page}${query}`);
+    setSidebarOpen(false);
+  };
 
   const handleLogout = async () => {
     try {
-      await logout()
+      await logout();
     } catch {
     } finally {
-      disconnectEcho()
-      clearAuth()
-      navigate('/')
+      disconnectEcho();
+      clearAuth();
+      navigate("/");
     }
-  }
+  };
 
   return (
     <div className="app">
@@ -43,7 +44,7 @@ export default function AppLayout() {
 
       <button
         type="button"
-        className={`sidebar-backdrop ${sidebarOpen ? 'is-visible' : ''}`}
+        className={`sidebar-backdrop ${sidebarOpen ? "is-visible" : ""}`}
         aria-label="Close navigation"
         onClick={() => setSidebarOpen(false)}
       />
@@ -53,13 +54,17 @@ export default function AppLayout() {
         onPageChange={handlePageChange}
         userRole={role}
         onLogout={handleLogout}
-        onHome={() => navigate('/')}
+        onHome={() =>
+          navigate(role === "superadmin" ? "/superadmin" : "/dashboard")
+        }
         isOpen={sidebarOpen}
       />
 
       <div className="main-content">
-        <Outlet />
+        <div key={location.pathname} className="page-transition">
+          <Outlet />
+        </div>
       </div>
     </div>
-  )
+  );
 }

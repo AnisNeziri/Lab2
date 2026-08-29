@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Area,
   CartesianGrid,
@@ -9,6 +9,7 @@ import {
   YAxis,
 } from 'recharts'
 import { getAllProducts } from '../api/products'
+import { formatQuantity } from '../utils/formatQuantity'
 import {
   createStockMovement,
   exportStockMovements,
@@ -56,6 +57,11 @@ function MovementTooltip({ active, payload, label }) {
   )
 }
 
+function movementLabel(code, type) {
+  if (!code) return type === 'in' ? 'Stock in' : 'Stock out'
+  return code.split('_').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+}
+
 const emptyForm = {
   product_id: '',
   type: 'in',
@@ -74,10 +80,14 @@ function Stock() {
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
   const [exporting, setExporting] = useState(false)
+  const filtersRef = useRef(filters)
+  const dataRequestRef = useRef(0)
+  const submissionKeyRef = useRef(null)
+  filtersRef.current = filters
 
   const chartData = useMemo(() => buildChartData(movements), [movements])
 
-  const loadMovements = useCallback(async (activeFilters = filters) => {
+  const loadMovements = useCallback(async (activeFilters = filtersRef.current) => {
     const movementFilters = {}
     if (activeFilters.product_id) {
       movementFilters.product_id = Number(activeFilters.product_id)
@@ -86,28 +96,37 @@ function Stock() {
       movementFilters.type = activeFilters.type
     }
     return getStockMovements(movementFilters)
-  }, [filters])
+  }, [])
 
-  async function loadData() {
+  const loadData = useCallback(async ({ silent = false, activeFilters = filtersRef.current } = {}) => {
+    const requestId = ++dataRequestRef.current
     try {
-      setLoading(true)
-      setError('')
+      if (!silent) {
+        setLoading(true)
+        setError('')
+      }
       const [productsList, movementsData] = await Promise.all([
         getAllProducts(),
-        loadMovements(),
+        loadMovements(activeFilters),
       ])
+      if (requestId !== dataRequestRef.current) return
       setProducts(productsList)
       setMovements(movementsData)
     } catch {
-      setError('Could not load stock data.')
+      if (!silent && requestId === dataRequestRef.current) {
+        setError('Could not load stock data.')
+      }
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
-  }
+  }, [loadMovements])
 
   useEffect(() => {
     loadData()
-  }, [])
+    const refresh = () => loadData({ silent: true })
+    window.addEventListener('database-refresh', refresh)
+    return () => window.removeEventListener('database-refresh', refresh)
+  }, [loadData])
 
   async function applyFilters(event) {
     event.preventDefault()
@@ -135,6 +154,7 @@ function Stock() {
 
   function handleChange(event) {
     const { name, value } = event.target
+    submissionKeyRef.current = null
     setForm((current) => ({
       ...current,
       [name]: value,
@@ -160,11 +180,12 @@ function Stock() {
 
     try {
       const product = await lookupProductBySku(skuLookup.trim())
+      submissionKeyRef.current = null
       setForm((current) => ({
         ...current,
         product_id: String(product.id),
       }))
-      setLookupMessage(`Selected: ${product.name} (${product.quantity} in stock)`)
+      setLookupMessage(`Selected: ${product.name} (${formatQuantity(product.quantity, product.unit)} ${product.unit || 'units'} in stock)`)
     } catch {
       setLookupMessage('No product found for that SKU.')
     }
@@ -193,17 +214,21 @@ function Stock() {
     setFormError('')
 
     try {
+      submissionKeyRef.current ||= globalThis.crypto?.randomUUID?.()
+        || `stock-${Date.now()}-${Math.random().toString(16).slice(2)}`
       await createStockMovement({
         product_id: Number(form.product_id),
         type: form.type,
         quantity: Number(form.quantity),
-        reason: form.reason || null,
+        reason: form.reason.trim(),
+        idempotency_key: submissionKeyRef.current,
       })
 
+      submissionKeyRef.current = null
       setForm(emptyForm)
       setSkuLookup('')
       setLookupMessage('')
-      await loadData()
+      await loadData({ silent: true })
     } catch (err) {
       if (err.errors) {
         const messages = Object.values(err.errors).flat().join(' ')
@@ -248,7 +273,7 @@ function Stock() {
               <option value="">Select a product</option>
               {products.map((product) => (
                 <option key={product.id} value={product.id}>
-                  {product.name} ({product.sku}) - {product.quantity} in stock
+                  {product.name} ({product.sku}) - {formatQuantity(product.quantity, product.unit)} {product.unit || 'units'} in stock
                 </option>
               ))}
             </select>
@@ -268,7 +293,8 @@ function Stock() {
               <input
                 name="quantity"
                 type="number"
-                min="1"
+                min="0.001"
+                step="0.001"
                 value={form.quantity}
                 onChange={handleChange}
                 required
@@ -277,12 +303,14 @@ function Stock() {
           </div>
 
           <label>
-            Reason (optional)
+            Reason
             <input
               name="reason"
               value={form.reason}
               onChange={handleChange}
               placeholder="e.g. New delivery, sold to customer"
+              minLength="3"
+              required
             />
           </label>
 
@@ -426,26 +454,30 @@ function Stock() {
               <tr>
                 <th>Date</th>
                 <th>Product</th>
-                <th>Type</th>
+                <th>Movement</th>
                 <th>Qty</th>
                 <th>Before</th>
                 <th>After</th>
+                <th>Source</th>
+                <th>User</th>
                 <th>Reason</th>
               </tr>
             </thead>
             <tbody>
               {movements.map((movement) => (
                 <tr key={movement.id}>
-                  <td>{new Date(movement.created_at).toLocaleString()}</td>
+                  <td>{new Date(movement.occurred_at || movement.created_at).toLocaleString()}</td>
                   <td>{movement.product?.name}</td>
                   <td>
                     <span className={`badge badge-${movement.type}`}>
-                      {movement.type === 'in' ? 'Stock in' : 'Stock out'}
+                      {movementLabel(movement.movement_code, movement.type)}
                     </span>
                   </td>
-                  <td>{movement.quantity}</td>
-                  <td>{movement.quantity_before}</td>
-                  <td>{movement.quantity_after}</td>
+                  <td>{formatQuantity(movement.quantity, movement.product?.unit)}</td>
+                  <td>{formatQuantity(movement.quantity_before, movement.product?.unit)}</td>
+                  <td>{formatQuantity(movement.quantity_after, movement.product?.unit)}</td>
+                  <td>{movement.source_type ? `${movement.source_type}${movement.source_id ? ` #${movement.source_id}` : ''}` : '-'}</td>
+                  <td>{movement.actor?.name || 'System'}</td>
                   <td>{movement.reason ?? '-'}</td>
                 </tr>
               ))}

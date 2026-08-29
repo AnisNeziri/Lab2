@@ -66,6 +66,12 @@ class InvoiceSeeder extends Seeder
                 [
                     ...$invoiceData,
                     'company_id' => $companyId,
+                    'document_type' => 'invoice',
+                    'currency' => 'EUR',
+                    'invoice_date' => $invoiceData['issued_at']->toDateString(),
+                    'supply_date' => $invoiceData['issued_at']->toDateString(),
+                    'payment_status' => $invoiceData['status'] === 'paid' ? 'paid' : 'unpaid',
+                    'compliance_status' => 'legacy',
                     'total_amount' => 0,
                 ]
             );
@@ -91,11 +97,23 @@ class InvoiceSeeder extends Seeder
                     'description' => $product->name,
                     'quantity' => $item['quantity'],
                     'unit_price' => $product->price,
+                    'unit' => $product->unit ?: 'pcs',
+                    'sku_snapshot' => $product->sku,
+                    'taxable_amount' => $lineTotal,
+                    'vat_rate' => 0,
+                    'vat_amount' => 0,
+                    'tax_treatment' => 'non_vat',
                     'line_total' => $lineTotal,
                 ]);
             }
 
-            $invoice->update(['total_amount' => $total]);
+            $invoice->update([
+                'subtotal' => $total,
+                'taxable_total' => $total,
+                'grand_total' => $total,
+                'total_amount' => $total,
+                'total_paid' => $invoice->status === 'paid' ? $total : 0,
+            ]);
         }
     }
 }

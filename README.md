@@ -199,6 +199,18 @@ pnpm run dev
 
 Frontend runs at: `http://localhost:5173`
 
+### 6. Real vessel tracking (online web system)
+
+Parcel and aircraft demo providers are disabled, so AIMS never presents simulated positions as live data. After configuring `AISSTREAM_API_KEY`, start the real vessel worker once:
+
+```powershell
+.\scripts\start-aisstream.ps1
+```
+
+Add a vessel using its nine-digit MMSI. The worker runs hidden in the background and stores verified AISStream positions in the database. To search a new vessel by its seven-digit IMO and resolve it to the MMSI required by AISStream, configure the optional server-side `VESSELAPI_API_KEY`. The key is never sent to the browser. AIMS then lets the operator link the verified vessel to a purchase order; its stored AIS position appears on the Global Map and can create shipment alerts.
+
+Manual and demo positions are never shown. Existing historical manual records remain in the database for audit safety but are excluded from the operational shipment list. AISStream is event-driven, so a newly linked MMSI may show “waiting for position” until the vessel next broadcasts inside AIS reception coverage. See the official [AISStream documentation](https://aisstream.io/documentation) and [VesselAPI reference](https://vesselapi.com/api-reference).
+
 ---
 
 ## Environment Variables
@@ -330,6 +342,29 @@ UC-002,out,5,Sold to client
 ---
 
 ## Useful Commands
+
+### Verified vessel tracking
+
+AISStream supplies background positions and static AIS messages for linked MMSIs. Keep the key on the Laravel server and run the consumer as a supervised process:
+
+```env
+TRACKING_VESSEL_PROVIDER=aisstream
+AISSTREAM_API_KEY=your_server_side_key
+```
+
+```bash
+cd backend
+php artisan tracking:aisstream
+```
+
+For immediate vessel details and IMO-to-MMSI resolution, create a VesselAPI account and add its optional server-side key. Without this key, nine-digit MMSI tracking still works through AISStream; a new IMO that has not already been resolved locally cannot be subscribed because AISStream filters by MMSI.
+
+```env
+TRACKING_VESSEL_LOOKUP_PROVIDER=vesselapi
+VESSELAPI_API_KEY=your_server_side_key
+```
+
+Never place either provider key in frontend code or commit a live key to source control. Provider positions are last-known AIS observations and are not suitable for navigation or safety decisions.
 
 ```bash
 # Run backend tests

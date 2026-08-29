@@ -43,6 +43,20 @@ export async function updateProduct(id, product) {
   )
 }
 
+export async function uploadProductImage(id, file) {
+  const body = new FormData()
+  body.append('image', file)
+
+  return apiRequest(
+    buildApiUrl(`/products/${id}/image`),
+    {
+      method: 'POST',
+      body,
+    },
+    'Failed to upload product image'
+  )
+}
+
 export async function deleteProduct(id) {
   await apiRequest(
     buildApiUrl(`/products/${id}`),

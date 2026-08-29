@@ -1,39 +1,44 @@
-.main-content input:not([type='checkbox']):not([type='file']):not([type='radio']):not([type='hidden']):not([type='submit']):not([type='button']),
+.main-content
+  input:not([type="checkbox"]):not([type="file"]):not([type="radio"]):not(
+    [type="hidden"]
+  ):not([type="submit"]):not([type="button"]),
 .main-content textarea,
 .main-content select,
-.form-grid input:not([type='checkbox']):not([type='file']),
+.form-grid input:not([type="checkbox"]):not([type="file"]),
 .form-grid textarea,
 .form-grid select,
-.product-form input:not([type='checkbox']):not([type='file']),
+.product-form input:not([type="checkbox"]):not([type="file"]),
 .product-form textarea,
 .product-form select,
-.stock-form input:not([type='checkbox']):not([type='file']),
+.stock-form input:not([type="checkbox"]):not([type="file"]),
 .stock-form select,
 .category-form input,
 .supplier-form input,
 .filters input,
 .filters select,
-.users-page input:not([type='checkbox']):not([type='file']),
+.users-page input:not([type="checkbox"]):not([type="file"]),
 .users-page textarea,
 .users-page select,
-.cms-page input:not([type='checkbox']):not([type='file']),
+.cms-page input:not([type="checkbox"]):not([type="file"]),
 .cms-page textarea,
 .cms-page select,
-.invoices-page input:not([type='checkbox']):not([type='file']),
+.invoices-page input:not([type="checkbox"]):not([type="file"]),
 .invoices-page textarea,
 .invoices-page select,
-.activity-logs-page input:not([type='checkbox']):not([type='file']),
+.activity-logs-page input:not([type="checkbox"]):not([type="file"]),
 .activity-logs-page textarea,
 .activity-logs-page select {
   width: 100%;
   padding: 0.65rem 0.85rem;
-  border: 1px solid #64748b;
+  border: 1px solid var(--border-color, #64748b);
   border-radius: 8px;
   font: inherit;
-  color: #0f172a;
-  background: #fff;
-  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.06);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  color: var(--text-color, #0f172a);
+  background: var(--card-bg, #fff);
+  box-shadow: inset 0 1px 2px var(--shadow-color, rgba(15, 23, 42, 0.06));
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .main-content input::placeholder,
@@ -76,13 +81,109 @@
   max-width: 760px;
 }
 
+.form-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: none;
+}
+
+.form-span-2 {
+  grid-column: 1 / -1;
+}
+
+.inline-editor {
+  margin: 1.25rem 0;
+  padding: 1.25rem;
+  border: 1px solid var(--border-color, #bfdbfe);
+  border-radius: 10px;
+  background: var(--surface-soft, #f8fafc);
+}
+
+.inline-editor .section-header h3,
+.inline-editor .section-header p {
+  margin: 0;
+}
+
+.filter-toolbar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.85rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 10px;
+  background: var(--surface-soft, #f8fafc);
+}
+
+.filter-toolbar + .table-wrap {
+  margin-top: 0;
+}
+
+.card > .form-grid + .table-wrap,
+.card > .form-row + .table-wrap,
+.card > .stats-grid + .product-table,
+.card > .inline-editor + .stats-grid {
+  margin-top: 1.5rem;
+}
+
+.separated-table {
+  margin-top: 1.5rem;
+}
+
+.checkbox-row {
+  display: flex !important;
+  align-items: center;
+  gap: 0.65rem !important;
+  align-self: end;
+  min-height: 42px;
+}
+
+.checkbox-row input {
+  width: auto !important;
+}
+
+.danger-confirmation {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.superadmin-page .section-header h2,
+.superadmin-page button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.superadmin-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.service-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.service-status-grid p {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.9rem;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 8px;
+}
+
+.service-status-grid span {
+  color: var(--text-muted, #64748b);
+}
+
 .form-grid label,
 .page-form label {
   display: grid;
   gap: 0.45rem;
   font-size: 0.9rem;
   font-weight: 600;
-  color: #334155;
+  color: var(--text-color, #334155);
 }
 
 .page-stack,
@@ -104,7 +205,7 @@
 
 .page-intro {
   margin: 0 0 1rem;
-  color: #64748b;
+  color: var(--text-muted, #64748b);
   line-height: 1.6;
   max-width: 72ch;
 }
@@ -112,9 +213,10 @@
 .table-wrap select {
   min-width: 120px;
   padding: 0.45rem 0.6rem;
-  border: 1px solid #64748b;
+  border: 1px solid var(--border-color, #64748b);
   border-radius: 6px;
-  background: #fff;
+  color: var(--text-color, #0f172a);
+  background: var(--card-bg, #fff);
 }
 
 .login-error,
@@ -140,4 +242,73 @@
 
 .cms-block + .cms-block {
   margin-top: 0;
+}
+
+/* Dark theme — all editable fields */
+html.dark
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(
+    [type="hidden"]
+  ):not([type="submit"]):not([type="button"]):not([type="range"]):not(
+    [type="color"]
+  ),
+html.dark textarea,
+html.dark select,
+html[data-theme="dark"]
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(
+    [type="hidden"]
+  ):not([type="submit"]):not([type="button"]):not([type="range"]):not(
+    [type="color"]
+  ),
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] select {
+  background: #0f172a;
+  border-color: #475569;
+  color: #f1f5f9;
+  box-shadow: none;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder,
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+  color: #94a3b8;
+}
+
+html.dark .form-grid label,
+html.dark .page-form label,
+html.dark .filters label,
+html.dark .shipments-form label,
+html.dark .daily-sales-browse-field,
+html[data-theme="dark"] .form-grid label,
+html[data-theme="dark"] .page-form label,
+html[data-theme="dark"] .filters label,
+html[data-theme="dark"] .shipments-form label,
+html[data-theme="dark"] .daily-sales-browse-field {
+  color: #cbd5e1;
+}
+
+html.dark .table-wrap select,
+html[data-theme="dark"] .table-wrap select {
+  background: #0f172a;
+  border-color: #475569;
+  color: #f1f5f9;
+}
+
+html.dark .inline-editor,
+html.dark .filter-toolbar,
+html.dark .danger-confirmation,
+html[data-theme="dark"] .inline-editor,
+html[data-theme="dark"] .filter-toolbar,
+html[data-theme="dark"] .danger-confirmation {
+  background: #0f172a;
+  border-color: #334155;
+}
+
+@media (max-width: 640px) {
+  .form-grid-2,
+  .filter-toolbar,
+  .superadmin-metrics,
+  .service-status-grid {
+    grid-template-columns: 1fr;
+  }
 }

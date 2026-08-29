@@ -24,14 +24,14 @@ class AuthTest extends TestCase
 
         $response
             ->assertCreated()
-            ->assertJsonPath('user.role', 'admin')
-            ->assertJsonPath('user.company_name', 'Acme Corp')
-            ->assertJsonPath('user.must_change_password', false);
+            ->assertJsonPath('verification_required', true)
+            ->assertJsonPath('email', 'jane@acme.test');
 
         $this->assertDatabaseHas('companies', ['name' => 'Acme Corp']);
         $this->assertDatabaseHas('users', [
             'email' => 'jane@acme.test',
             'role' => 'admin',
+            'email_verified_at' => null,
         ]);
     }
 
@@ -70,6 +70,10 @@ class AuthTest extends TestCase
             'temporary_password_confirmation' => $tempPassword,
         ])->assertCreated();
 
+        $user = User::where('email', 'temp@acme.test')->first();
+        $user->email_verified_at = now();
+        $user->save();
+
         $firstLogin = $this->postJson('/api/login', [
             'email' => 'temp@acme.test',
             'password' => $tempPassword,
@@ -100,6 +104,7 @@ class AuthTest extends TestCase
             'api_token' => hash('sha256', 'forced-change-token'),
             'must_change_password' => true,
             'temporary_password_consumed' => true,
+            'email_verified_at' => now(),
         ]);
 
         $this->withHeader('Authorization', 'Bearer forced-change-token')

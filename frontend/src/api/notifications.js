@@ -11,3 +11,10 @@ export function markNotificationRead(id) {
 export function markAllNotificationsRead() {
   return apiRequest('/notifications/read-all', { method: 'POST' })
 }
+
+export function clearNotifications(scope = 'all') {
+  return apiRequest('/notifications/clear', {
+    method: 'POST',
+    body: JSON.stringify({ scope }),
+  })
+}

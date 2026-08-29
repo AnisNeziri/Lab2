@@ -1,58 +1,86 @@
-import { useEffect, useRef, useState } from 'react'
-import { Html5QrcodeScanner } from 'html5-qrcode'
+import { useEffect, useId, useRef, useState } from 'react'
+import { Html5Qrcode } from 'html5-qrcode'
 import { X, ScanLine } from 'lucide-react'
 
 export default function BarcodeScanner({ onScanSuccess, onClose }) {
-  const scannerRef = useRef(null)
+  const reactId = useId()
+  const scannerId = `barcode-scanner-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`
+  const successRef = useRef(onScanSuccess)
   const [error, setError] = useState('')
-  const [isScanning, setIsScanning] = useState(true)
+  const [attempt, setAttempt] = useState(0)
+  const [status, setStatus] = useState('starting')
 
   useEffect(() => {
+    successRef.current = onScanSuccess
+  }, [onScanSuccess])
+
+  useEffect(() => {
+    let mounted = true
     let scanner = null
+    let delivered = false
+    let stopPromise = null
+
+    const stopScanner = () => {
+      if (stopPromise) return stopPromise
+      stopPromise = (async () => {
+        if (!scanner) return
+        try {
+          if (scanner.isScanning) await scanner.stop()
+        } catch {
+          // A browser may stop the camera stream before React unmounts it.
+        }
+        try {
+          await scanner.clear()
+        } catch {
+          // The scanner may already be cleared after a successful scan.
+        }
+      })()
+
+      return stopPromise
+    }
 
     const startScanner = async () => {
       try {
-        scanner = new Html5QrcodeScanner(
-          scannerRef.current.id,
-          {
-            fps: 10,
-            qrbox: { width: 250, height: 250 },
-            aspectRatio: 1.0,
-          },
-          false
-        )
+        scanner = new Html5Qrcode(scannerId)
 
         await scanner.start(
           { facingMode: 'environment' },
-          (decodedText) => {
-            setIsScanning(false)
-            onScanSuccess(decodedText)
-            if (scanner) {
-              scanner.stop()
-            }
+          {
+            fps: 10,
+            qrbox: (width, height) => {
+              const edge = Math.max(180, Math.min(280, Math.floor(Math.min(width, height) * 0.72)))
+              return { width: edge, height: edge }
+            },
+            aspectRatio: 1,
           },
-          (errorMessage) => {
-            console.debug('Scan error:', errorMessage)
-          }
+          (decodedText) => {
+            if (delivered) return
+            delivered = true
+            if (mounted) setStatus('success')
+            void stopScanner().finally(() => successRef.current(decodedText))
+          },
+          () => {},
         )
+        if (mounted) setStatus('scanning')
       } catch (err) {
-        setError('Failed to start camera. Please ensure camera permissions are granted.')
-        console.error('Scanner error:', err)
+        if (!mounted) return
+        setStatus('error')
+        setError(err?.message || 'Failed to start camera. Please allow camera access and try again.')
       }
     }
 
-    startScanner()
+    void startScanner()
 
     return () => {
-      if (scanner) {
-        scanner.stop().catch(console.error)
-      }
+      mounted = false
+      void stopScanner()
     }
-  }, [onScanSuccess])
+  }, [attempt, scannerId])
 
   const handleRescan = () => {
-    setIsScanning(true)
     setError('')
+    setStatus('starting')
+    setAttempt((value) => value + 1)
   }
 
   return (
@@ -83,22 +111,11 @@ export default function BarcodeScanner({ onScanSuccess, onClose }) {
             </div>
           ) : (
             <>
-              <div
-                id="barcode-scanner"
-                ref={scannerRef}
-                className="scanner-container"
-              />
-              {!isScanning && (
+              <div id={scannerId} className="scanner-container" />
+              {status === 'success' && (
                 <div className="scan-success">
                   <ScanLine size={48} />
                   <p>Barcode scanned successfully!</p>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={handleRescan}
-                  >
-                    Scan Another
-                  </button>
                 </div>
               )}
             </>

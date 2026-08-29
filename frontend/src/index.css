@@ -2,11 +2,60 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: light;
+  --primary-color: #2563eb;
+  --primary-color-strong: #1d4ed8;
+  --page-bg: #f4f7fb;
+  --card-bg: #ffffff;
+  --surface-soft: #eef3f9;
+  --surface-raised: #ffffff;
+  --text-color: #172033;
+  --text-muted: #64748b;
+  --border-color: #d9e1ec;
+  --focus-ring: rgba(37, 99, 235, 0.2);
+  --shadow-color: rgba(15, 23, 42, 0.1);
+}
+
+html.dark,
+html[data-theme='dark'] {
+  color-scheme: dark;
+  --primary-color: #60a5fa;
+  --primary-color-strong: #93c5fd;
+  --page-bg: #0b1220;
+  --card-bg: #172033;
+  --surface-soft: #111c2f;
+  --surface-raised: #1d2a3d;
+  --text-color: #e7edf6;
+  --text-muted: #a7b4c7;
+  --border-color: #33445b;
+  --focus-ring: rgba(96, 165, 250, 0.24);
+  --shadow-color: rgba(0, 0, 0, 0.32);
+}
+
 body {
   font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   @apply bg-slate-50 text-slate-900 antialiased;
+  background: var(--page-bg);
+  color: var(--text-color);
   margin: 0;
   width: 100%;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+html.dark body,
+html[data-theme='dark'] body {
+  @apply bg-slate-900 text-slate-100;
+}
+
+html.dark .main-content,
+html[data-theme='dark'] .main-content {
+  background: var(--page-bg);
+}
+
+html.dark .dashboard-page,
+html[data-theme='dark'] .dashboard-page {
+  background: var(--page-bg);
 }
 
 #root {

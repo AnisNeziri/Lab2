@@ -13,6 +13,7 @@ class WarehouseSection extends Model
     protected $fillable = [
         'company_id',
         'warehouse_id',
+        'warehouse_location_id',
         'code',
         'name',
         'color',
@@ -41,5 +42,10 @@ class WarehouseSection extends Model
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class);
+    }
+
+    public function location(): BelongsTo
+    {
+        return $this->belongsTo(WarehouseLocation::class, 'warehouse_location_id');
     }
 }

@@ -17,7 +17,14 @@ export function shelfHealthFromProducts(products) {
 export function buildShelfStockMap(products, shelves) {
   const levels = {}
   shelves.forEach((shelf) => {
-    const prods = products.filter((p) => productMatchesShelf(p, shelf))
+    const locatedProducts = products.flatMap((product) => {
+      const balance = (product.warehouse_stock ?? []).find((item) => Number(item.location_id) === Number(shelf.locationId))
+      if (!balance) return []
+      return [{ ...product, quantity: Number(balance.available_quantity ?? balance.quantity ?? 0) }]
+    })
+    const prods = locatedProducts.length
+      ? locatedProducts
+      : products.filter((p) => productMatchesShelf(p, shelf))
     levels[shelf.id] = prods.length ? shelfHealthFromProducts(prods) : null
   })
   return { levels }
@@ -33,11 +40,13 @@ export function sectionsToShelves(sections) {
       y: (floorLevel - 1) * STANDARD_FLOOR_HEIGHT,
       z: Number(s.pos_z),
       floorLevel,
-      zoneId: `${s.code.charAt(0)}-L${floorLevel}`,
+      zoneId: `${String(s.location_path || s.code).replace(/^L\d+-/, '').split('/')[0].charAt(0)}-L${floorLevel}`,
       zoneLabel: s.name,
       zoneColor: s.color,
       lightColor: s.light_color,
       sectionId: s.id,
+      locationId: s.warehouse_location_id,
+      locationPath: s.location_path,
     }
   })
 }
@@ -49,7 +58,7 @@ export function sectionsToZones(sections) {
     if (!map[key]) {
       map[key] = {
         id: key,
-        label: shelf.zoneLabel.split('—')[0]?.trim() || `Zone ${key}`,
+        label: shelf.zoneLabel.split(/\s*(?:—|\?{2,3})\s*/)[0]?.trim() || `Zone ${key}`,
         color: shelf.zoneColor,
         lightColor: shelf.lightColor,
         shelves: [],

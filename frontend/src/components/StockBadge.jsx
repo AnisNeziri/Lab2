@@ -1,11 +1,7 @@
-export default function StockBadge({ quantity, minQuantity }) {
-  const getStockStatus = () => {
-    if (quantity === 0) return { status: 'Out of Stock', className: 'out-of-stock' }
-    if (quantity <= minQuantity) return { status: 'Low Stock', className: 'low-stock' }
-    return { status: 'In Stock', className: 'in-stock' }
-  }
+import { getStockStatus } from '../utils/stockStatus'
 
-  const { status, className } = getStockStatus()
+export default function StockBadge({ quantity, minQuantity, highStockThreshold }) {
+  const { label: status, className } = getStockStatus(quantity, minQuantity, highStockThreshold)
 
   return (
     <span className={`stock-badge ${className}`}>

@@ -10,7 +10,9 @@ class StockMovementRepository implements StockMovementRepositoryInterface
 {
     public function list(array $filters, int $limit = 50): Collection
     {
-        $query = StockMovement::with('product.category')->latest();
+        $query = StockMovement::with(['product.category', 'actor:id,name', 'warehouse:id,name,code', 'location:id,name,code,path'])
+            ->orderByRaw('COALESCE(occurred_at, created_at) DESC')
+            ->orderByDesc('id');
 
         if (! empty($filters['product_id'])) {
             $query->where('product_id', $filters['product_id']);
@@ -18,6 +20,20 @@ class StockMovementRepository implements StockMovementRepositoryInterface
 
         if (! empty($filters['type'])) {
             $query->where('type', $filters['type']);
+        }
+
+        if (! empty($filters['movement_code'])) {
+            $query->where('movement_code', $filters['movement_code']);
+        }
+
+        if (! empty($filters['source_type'])) {
+            $query->where('source_type', $filters['source_type']);
+        }
+        if (! empty($filters['warehouse_id'])) {
+            $query->where('warehouse_id', $filters['warehouse_id']);
+        }
+        if (! empty($filters['stock_state'])) {
+            $query->where('stock_state', $filters['stock_state']);
         }
 
         return $query->limit($limit)->get();
@@ -25,7 +41,9 @@ class StockMovementRepository implements StockMovementRepositoryInterface
 
     public function exportList(array $filters): Collection
     {
-        $query = StockMovement::with('product')->latest();
+        $query = StockMovement::with(['product', 'actor:id,name', 'warehouse:id,name,code', 'location:id,name,code,path'])
+            ->orderByRaw('COALESCE(occurred_at, created_at) DESC')
+            ->orderByDesc('id');
 
         if (! empty($filters['product_id'])) {
             $query->where('product_id', $filters['product_id']);
@@ -33,6 +51,20 @@ class StockMovementRepository implements StockMovementRepositoryInterface
 
         if (! empty($filters['type'])) {
             $query->where('type', $filters['type']);
+        }
+
+        if (! empty($filters['movement_code'])) {
+            $query->where('movement_code', $filters['movement_code']);
+        }
+
+        if (! empty($filters['source_type'])) {
+            $query->where('source_type', $filters['source_type']);
+        }
+        if (! empty($filters['warehouse_id'])) {
+            $query->where('warehouse_id', $filters['warehouse_id']);
+        }
+        if (! empty($filters['stock_state'])) {
+            $query->where('stock_state', $filters['stock_state']);
         }
 
         return $query->get();
@@ -52,8 +84,8 @@ class StockMovementRepository implements StockMovementRepositoryInterface
         }
 
         return [
-            'total_stock_in' => (int) (clone $query)->where('type', 'in')->sum('quantity'),
-            'total_stock_out' => (int) (clone $query)->where('type', 'out')->sum('quantity'),
+            'total_stock_in' => round((float) (clone $query)->where('type', 'in')->sum('quantity'), 3),
+            'total_stock_out' => round((float) (clone $query)->where('type', 'out')->sum('quantity'), 3),
             'movement_count' => (int) (clone $query)->count(),
         ];
     }

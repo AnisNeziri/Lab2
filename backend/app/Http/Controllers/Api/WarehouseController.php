@@ -6,13 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Models\PurchaseOrder;
 use App\Models\Setting;
 use App\Models\Warehouse;
+use App\Services\WarehouseOperationsService;
 use Illuminate\Http\JsonResponse;
 
 class WarehouseController extends Controller
 {
+    public function __construct(private readonly WarehouseOperationsService $operations) {}
+
     public function index(): JsonResponse
     {
-        return response()->json(Warehouse::withCount('stock')->orderBy('name')->get());
+        return response()->json($this->operations->warehouses());
     }
 
     public function settings(): JsonResponse

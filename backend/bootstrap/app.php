@@ -1,5 +1,13 @@
 <?php
 
+use App\Http\Middleware\AuthenticateApiToken;
+use App\Http\Middleware\CheckPermission;
+use App\Http\Middleware\CheckRole;
+use App\Http\Middleware\EnsureCompanyContext;
+use App\Http\Middleware\EnsurePasswordChanged;
+use App\Jobs\RefreshVesselFleetCacheJob;
+use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -14,12 +22,29 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
-            'auth.token' => \App\Http\Middleware\AuthenticateApiToken::class,
-            'role' => \App\Http\Middleware\CheckRole::class,
-            'permission' => \App\Http\Middleware\CheckPermission::class,
-            'password.changed' => \App\Http\Middleware\EnsurePasswordChanged::class,
+            'auth.token' => AuthenticateApiToken::class,
+            'role' => CheckRole::class,
+            'permission' => CheckPermission::class,
+            'password.changed' => EnsurePasswordChanged::class,
+            'company.context' => EnsureCompanyContext::class,
         ]);
     })
+    ->withSchedule(function (Schedule $schedule): void {
+        $schedule->job(new RefreshVesselFleetCacheJob)->everyFiveMinutes();
+        $schedule->command('shipments:refresh-tracking')->everyTenMinutes()->withoutOverlapping();
+    })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->shouldRenderJsonWhen(fn ($request) => $request->is('api/*') || $request->expectsJson());
+
+        $exceptions->render(function (QueryException $exception, $request) {
+            if (! ($request->is('api/*') || $request->expectsJson())) {
+                return null;
+            }
+
+            report($exception);
+
+            return response()->json([
+                'message' => 'The request could not be completed. Please try again.',
+            ], 500);
+        });
     })->create();

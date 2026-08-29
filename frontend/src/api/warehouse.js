@@ -1,7 +1,7 @@
-import { apiRequest } from './client'
+import { apiRequest, buildApiUrl } from './client'
 
-export function getWarehouseLayout() {
-  return apiRequest('/warehouse/layout')
+export function getWarehouseLayout(warehouseId) {
+  return apiRequest(buildApiUrl('/warehouse/layout', { warehouse_id: warehouseId }))
 }
 
 export function updateWarehouseLayout(payload) {
@@ -11,12 +11,12 @@ export function updateWarehouseLayout(payload) {
   }, 'Could not update warehouse.')
 }
 
-export function getWarehouseSections() {
-  return apiRequest('/warehouse/sections')
+export function getWarehouseSections(warehouseId) {
+  return apiRequest(buildApiUrl('/warehouse/sections', { warehouse_id: warehouseId }))
 }
 
-export function getSectionDistribution() {
-  return apiRequest('/warehouse/sections/distribution')
+export function getSectionDistribution(warehouseId) {
+  return apiRequest(buildApiUrl('/warehouse/sections/distribution', { warehouse_id: warehouseId }))
 }
 
 export function createWarehouseSection(payload) {

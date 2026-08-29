@@ -6,13 +6,15 @@ use App\Models\Company;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\UserRole;
+use App\Support\UserPreferences;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 class AuthService
 {
     public function __construct(
-        private JwtService $jwt
+        private JwtService $jwt,
+        private EmailVerificationService $emailVerification,
     ) {}
 
     public function attemptLogin(string $email, string $password): array
@@ -21,6 +23,10 @@ class AuthService
 
         if (! $user || $user->is_active === false) {
             return ['error' => 'not_found'];
+        }
+
+        if (! $user->email_verified_at) {
+            return ['error' => 'email_unverified'];
         }
 
         if ($user->must_change_password && $user->temporary_password_consumed) {
@@ -33,8 +39,16 @@ class AuthService
 
         if ($user->must_change_password && ! $user->temporary_password_consumed) {
             $user->temporary_password_consumed = true;
-            $user->save();
         }
+
+        $user->last_login_at = now();
+        $user->login_count = (int) $user->login_count + 1;
+        $user->save();
+        DB::table('user_login_events')->insert([
+            'user_id' => $user->id,
+            'company_id' => $user->company_id,
+            'logged_in_at' => now(),
+        ]);
 
         return $this->tokenResponse($user);
     }
@@ -60,6 +74,7 @@ class AuthService
                 'is_active' => true,
                 'must_change_password' => false,
                 'temporary_password_consumed' => false,
+                'email_verified_at' => config('system.operation_mode') === 'offline' ? now() : null,
             ]);
 
             $this->assignRole($user, 'admin');
@@ -67,9 +82,20 @@ class AuthService
             return $user;
         });
 
-        $user->load('company');
+        if (config('system.operation_mode') === 'offline') {
+            return array_merge($this->tokenResponse($user), [
+                'message' => 'Local AIMS administrator account created.',
+                'verification_required' => false,
+            ]);
+        }
 
-        return $this->tokenResponse($user);
+        $this->emailVerification->sendVerification($user);
+
+        return [
+            'message' => 'Registration successful. Please verify your email before signing in.',
+            'verification_required' => true,
+            'email' => $user->email,
+        ];
     }
 
     public function refresh(string $refreshToken): ?array
@@ -83,7 +109,7 @@ class AuthService
         $payload = $this->jwt->validateAccessToken($tokens['access_token']);
         $user = User::find($payload->sub ?? null);
 
-        if (! $user) {
+        if (! $user || ! $user->email_verified_at) {
             return null;
         }
 
@@ -121,7 +147,9 @@ class AuthService
             'company_id' => $user->company_id,
             'company_name' => $user->company?->name,
             'must_change_password' => $user->must_change_password,
+            'email_verified' => $user->email_verified_at !== null,
             'permissions' => app(PermissionService::class)->forRole($user->role),
+            'preferences' => UserPreferences::normalize($user->preferences),
         ];
     }
 

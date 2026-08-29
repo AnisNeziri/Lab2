@@ -1,21 +1,24 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, createContext, useContext, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getDashboard } from '../api/dashboard'
+import { getDashboard, getSalesAnalytics } from '../api/dashboard'
 import { getSectionDistribution } from '../api/warehouse'
 import { apiRequest } from '../api/client'
 import { useAuthStore } from '../store/authStore'
+import { useSettingsStore } from '../store/settingsStore'
 import { getEcho } from '../lib/echo'
+import { useTranslation } from '../hooks/useTranslation'
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  AreaChart, Area, BarChart, Bar, ComposedChart, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
 import {
   TrendingUp, Package, AlertTriangle, DollarSign, Activity,
-  Zap, RefreshCw, Search, FileText, ArrowUpRight, ArrowDownRight,
+  Zap, RefreshCw, Search, ShoppingCart, ArrowUpRight, ArrowDownRight,
   Boxes, BarChart3, ShieldCheck, Clock, ChevronRight, Flame,
+  LineChart, CalendarDays, Sparkles,
 } from 'lucide-react'
 
-const C = {
+const LIGHT_C = {
   bg:      '#f1f5f9',
   surface: '#ffffff',
   card:    '#ffffff',
@@ -31,11 +34,30 @@ const C = {
   purple:  '#7c3aed',
 }
 
-const ZONE_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4']
-const CHART_GRID = '#e8edf3'
-const axisTick = { fontSize: 11, fill: '#64748b' }
-const chartMargin = { top: 8, right: 12, left: 0, bottom: 0 }
+const DARK_C = {
+  bg:      '#0f172a',
+  surface: '#1e293b',
+  card:    '#1e293b',
+  border:  '#334155',
+  text:    '#f1f5f9',
+  muted:   '#94a3b8',
+  green:   '#22c55e',
+  amber:   '#fbbf24',
+  red:     '#f87171',
+  blue:    '#60a5fa',
+  indigo:  '#818cf8',
+  cyan:    '#22d3ee',
+  purple:  '#a78bfa',
+}
 
+const DashboardColorsContext = createContext(LIGHT_C)
+
+function useDashColors() {
+  return useContext(DashboardColorsContext)
+}
+
+const ZONE_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4']
+const chartMargin = { top: 8, right: 12, left: 0, bottom: 0 }
 const fmtMoney = (n) =>
   n == null ? '—' : `€${Number(n).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -52,9 +74,10 @@ function timeAgo(ts) {
 }
 
 function KpiCard({ icon: Icon, label, value, sub, color, glow, trend }) {
+  const c = useDashColors()
   return (
-    <div style={{
-      background: C.card, border: `1px solid ${C.border}`, borderRadius: 14,
+    <div className="dashboard-motion-card" style={{
+      background: c.card, border: `1px solid ${c.border}`, borderRadius: 14,
       padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 10,
       boxShadow: glow ? `0 0 28px ${color}22` : 'none',
       position: 'relative', overflow: 'hidden',
@@ -65,30 +88,32 @@ function KpiCard({ icon: Icon, label, value, sub, color, glow, trend }) {
           <Icon size={18} color={color} />
         </div>
         {trend != null && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 700, color: trend >= 0 ? C.green : C.red }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 700, color: trend >= 0 ? c.green : c.red }}>
             {trend >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
             {Math.abs(trend)}%
           </div>
         )}
       </div>
       <div>
-        <div style={{ fontSize: 26, fontWeight: 800, color: C.text, letterSpacing: '-0.02em', lineHeight: 1.1 }}>{value}</div>
-        <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>{label}</div>
+        <div style={{ fontSize: 26, fontWeight: 800, color: c.text, letterSpacing: '-0.02em', lineHeight: 1.1 }}>{value}</div>
+        <div style={{ fontSize: 13, color: c.muted, marginTop: 4 }}>{label}</div>
         {sub && <div style={{ fontSize: 11, color, marginTop: 3, fontWeight: 600 }}>{sub}</div>}
       </div>
     </div>
   )
 }
 
-function SectionTitle({ children, icon: Icon, color = C.cyan, badge }) {
+function SectionTitle({ children, icon: Icon, color, badge }) {
+  const c = useDashColors()
+  const accent = color ?? c.cyan
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 16 }}>
-      <div style={{ background: `${color}18`, border: `1px solid ${color}44`, borderRadius: 8, padding: 7, display: 'inline-flex' }}>
-        <Icon size={15} color={color} />
+      <div style={{ background: `${accent}18`, border: `1px solid ${accent}44`, borderRadius: 8, padding: 7, display: 'inline-flex' }}>
+        <Icon size={15} color={accent} />
       </div>
-      <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{children}</span>
+      <span style={{ fontSize: 15, fontWeight: 700, color: c.text }}>{children}</span>
       {badge != null && (
-        <span style={{ fontSize: 11, background: `${color}1a`, color, border: `1px solid ${color}33`, borderRadius: 99, padding: '2px 9px', marginLeft: 2 }}>
+        <span style={{ fontSize: 11, background: `${accent}1a`, color: accent, border: `1px solid ${accent}33`, borderRadius: 99, padding: '2px 9px', marginLeft: 2 }}>
           {badge}
         </span>
       )}
@@ -97,8 +122,9 @@ function SectionTitle({ children, icon: Icon, color = C.cyan, badge }) {
 }
 
 function ChartCard({ title, icon, color, children, style }) {
+  const c = useDashColors()
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: '20px 22px', ...style }}>
+    <div className="dashboard-motion-card" style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '20px 22px', ...style }}>
       <SectionTitle icon={icon} color={color}>{title}</SectionTitle>
       {children}
     </div>
@@ -106,10 +132,11 @@ function ChartCard({ title, icon, color, children, style }) {
 }
 
 function ChartTip({ active, payload, label }) {
+  const c = useDashColors()
   if (!active || !payload?.length) return null
   return (
-    <div style={{ background: '#0d1829', border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 14px', fontSize: 12 }}>
-      {label && <div style={{ color: C.muted, marginBottom: 6 }}>{label}</div>}
+    <div style={{ background: '#0d1829', border: `1px solid ${c.border}`, borderRadius: 8, padding: '10px 14px', fontSize: 12 }}>
+      {label && <div style={{ color: c.muted, marginBottom: 6 }}>{label}</div>}
       {payload.map(p => (
         <div key={p.name} style={{ color: p.color, fontWeight: 700 }}>{p.name}: {p.value}</div>
       ))}
@@ -118,10 +145,11 @@ function ChartTip({ active, payload, label }) {
 }
 
 function FeedItem({ item, isNew }) {
+  const c = useDashColors()
   const actionColor = {
-    create: C.green, update: C.cyan, delete: C.red,
-    stock_in: C.green, stock_out: C.amber,
-  }[String(item.action).toLowerCase()] ?? C.indigo
+    create: c.green, update: c.cyan, delete: c.red,
+    stock_in: c.green, stock_out: c.amber,
+  }[String(item.action).toLowerCase()] ?? c.indigo
 
   return (
     <div style={{
@@ -133,12 +161,12 @@ function FeedItem({ item, isNew }) {
     }}>
       <div style={{ width: 8, height: 8, borderRadius: '50%', background: actionColor, marginTop: 5, flexShrink: 0, boxShadow: `0 0 6px ${actionColor}` }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, color: C.text, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{ fontSize: 13, color: c.text, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           <span style={{ color: actionColor, textTransform: 'capitalize' }}>{item.action}</span>
           {' · '}
           {item.entity ?? 'Product'} #{item.entity_id ?? item.id}
         </div>
-        <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+        <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>
           {item.user ?? item.causer_name ?? 'System'} · {timeAgo(item.ts ?? item.created_at)}
         </div>
       </div>
@@ -148,11 +176,12 @@ function FeedItem({ item, isNew }) {
 
 function AlertCard({ product }) {
   const navigate = useNavigate()
+  const c = useDashColors()
   const pct = product.min_quantity > 0
     ? Math.round((product.quantity / product.min_quantity) * 100)
     : 0
-  const isOut = product.quantity === 0
-  const color = isOut ? C.red : C.amber
+  const isOut = Number(product.quantity) <= 0
+  const color = isOut ? c.red : c.amber
 
   return (
     <div style={{
@@ -162,16 +191,16 @@ function AlertCard({ product }) {
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{product.name}</div>
-          <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{product.sku} · min {product.min_quantity}</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: c.text }}>{product.name}</div>
+          <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>{product.sku} · min {fmt(product.min_quantity)}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
           <Flame size={13} color={color} />
-          <span style={{ fontSize: 16, fontWeight: 800, color }}>{product.quantity}</span>
-          <span style={{ fontSize: 11, color: C.muted }}>left</span>
+          <span style={{ fontSize: 16, fontWeight: 800, color }}>{fmt(product.quantity)}</span>
+          <span style={{ fontSize: 11, color: c.muted }}>left</span>
         </div>
       </div>
-      <div style={{ background: C.border, borderRadius: 99, height: 5, overflow: 'hidden' }}>
+      <div style={{ background: c.border, borderRadius: 99, height: 5, overflow: 'hidden' }}>
         <div style={{
           height: '100%', borderRadius: 99, width: `${Math.min(pct, 100)}%`,
           background: `linear-gradient(90deg, ${color}, ${color}88)`,
@@ -179,7 +208,7 @@ function AlertCard({ product }) {
         }} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-        <span style={{ fontSize: 10, color: C.muted }}>{pct}% of minimum</span>
+        <span style={{ fontSize: 10, color: c.muted }}>{pct}% of minimum</span>
         <button
           onClick={() => navigate('/stock')}
           style={{ fontSize: 11, color, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, padding: 0 }}
@@ -193,6 +222,8 @@ function AlertCard({ product }) {
 
 function QuickActions() {
   const navigate  = useNavigate()
+  const c = useDashColors()
+  const { t } = useTranslation()
   const [query,   setQuery]    = useState('')
   const [results, setResults]  = useState([])
   const [busy,    setBusy]     = useState(false)
@@ -213,47 +244,47 @@ function QuickActions() {
   }
 
   const ACTIONS = [
-    { label: 'Adjust Stock',  icon: Package,  color: C.cyan,   path: '/stock' },
-    { label: 'New Invoice',   icon: FileText, color: C.green,  path: '/invoices' },
-    { label: 'View Reports',  icon: BarChart3, color: C.indigo, path: '/reports' },
+    { label: t('dashboard.adjustStock'), icon: Package, color: c.cyan, path: '/stock' },
+    { label: t('dashboard.recordDailySale'), icon: ShoppingCart, color: c.green, path: '/daily-sales' },
+    { label: t('dashboard.viewReports'), icon: BarChart3, color: c.indigo, path: '/reports' },
   ]
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: '20px 22px' }}>
-      <SectionTitle icon={Zap} color={C.amber}>Quick Actions</SectionTitle>
+    <div className="dashboard-motion-card" style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 14, padding: '20px 22px' }}>
+      <SectionTitle icon={Zap} color={c.amber}>{t('dashboard.quickActions')}</SectionTitle>
 
       <div style={{ position: 'relative', marginBottom: 14 }}>
-        <Search size={14} color={C.muted} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+        <Search size={14} color={c.muted} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
         <input
           value={query}
           onChange={e => handleSearch(e.target.value)}
-          placeholder="Search products, SKUs…"
+          placeholder={t('dashboard.searchProducts')}
           style={{
-            width: '100%', background: C.surface, border: `1px solid ${C.border}`,
-            borderRadius: 8, padding: '9px 36px 9px 34px', color: C.text,
+            width: '100%', background: c.surface, border: `1px solid ${c.border}`,
+            borderRadius: 8, padding: '9px 36px 9px 34px', color: c.text,
             fontSize: 13, outline: 'none', boxSizing: 'border-box',
           }}
-          onFocus={e => e.target.style.borderColor = C.cyan}
-          onBlur={e => { e.target.style.borderColor = C.border; setTimeout(() => setResults([]), 200) }}
+          onFocus={e => e.target.style.borderColor = c.cyan}
+          onBlur={e => { e.target.style.borderColor = c.border; setTimeout(() => setResults([]), 200) }}
         />
-        {busy && <RefreshCw size={12} color={C.muted} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', animation: 'spin 1s linear infinite' }} />}
+        {busy && <RefreshCw size={12} color={c.muted} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', animation: 'spin 1s linear infinite' }} />}
       </div>
 
       {results.length > 0 && (
-        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, marginBottom: 14, overflow: 'hidden' }}>
+        <div style={{ background: c.surface, border: `1px solid ${c.border}`, borderRadius: 8, marginBottom: 14, overflow: 'hidden' }}>
           {results.map((r, i) => (
             <div
               key={i}
               onMouseDown={() => { setQuery(''); setResults([]); navigate('/products') }}
-              style={{ padding: '9px 14px', borderBottom: i < results.length - 1 ? `1px solid ${C.border}` : 'none', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-              onMouseEnter={e => e.currentTarget.style.background = C.card}
+              style={{ padding: '9px 14px', borderBottom: i < results.length - 1 ? `1px solid ${c.border}` : 'none', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              onMouseEnter={e => e.currentTarget.style.background = c.card}
               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             >
               <div>
-                <div style={{ fontSize: 13, color: C.text, fontWeight: 600 }}>{r.name ?? r}</div>
-                {r.sku && <div style={{ fontSize: 11, color: C.muted }}>{r.sku}</div>}
+                <div style={{ fontSize: 13, color: c.text, fontWeight: 600 }}>{r.name ?? r}</div>
+                {r.sku && <div style={{ fontSize: 11, color: c.muted }}>{r.sku}</div>}
               </div>
-              <ChevronRight size={13} color={C.muted} />
+              <ChevronRight size={13} color={c.muted} />
             </div>
           ))}
         </div>
@@ -283,38 +314,96 @@ function QuickActions() {
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const { t, language } = useTranslation()
+  const theme = useSettingsStore((state) => state.theme)
+  const palette = useMemo(() => (theme === 'dark' ? DARK_C : LIGHT_C), [theme])
+  const chartGrid = theme === 'dark' ? '#334155' : '#e8edf3'
+  const axisTick = useMemo(
+    () => ({ fontSize: 11, fill: theme === 'dark' ? '#94a3b8' : '#64748b' }),
+    [theme]
+  )
+  const enable3dMap = useSettingsStore((state) => state.enable_3d_map)
   const { user }  = useAuthStore()
 
   const [data,        setData]       = useState(null)
   const [loading,     setLoading]    = useState(true)
+  const [dashboardError, setDashboardError] = useState('')
   const [feed,        setFeed]       = useState([])
   const [lowAlerts,   setLowAlerts]  = useState([])
   const [newFeedIds,  setNewFeedIds] = useState(new Set())
-  const [echoStatus,  setEchoStatus] = useState('connecting')
-  const [lastRefresh, setLastRefresh] = useState(null)
   const [sectionChart, setSectionChart] = useState([])
+  const [salesPeriod, setSalesPeriod] = useState('week')
+  const [salesAnalytics, setSalesAnalytics] = useState(null)
+  const [salesLoading, setSalesLoading] = useState(true)
+  const [liveEvent, setLiveEvent] = useState(null)
+  const liveEventTimer = useRef(null)
+  const refreshTimer = useRef(null)
+  const dashboardRequest = useRef(0)
+  const analyticsRequest = useRef(0)
+  const salesChartData = useMemo(() => {
+    const locale = language === 'sq' ? 'sq-AL' : 'en-US'
+    const formatter = new Intl.DateTimeFormat(
+      locale,
+      salesPeriod === 'year'
+        ? { month: 'short' }
+        : { weekday: 'short', day: '2-digit' },
+    )
 
-  const loadDashboard = useCallback(async () => {
+    return (salesAnalytics?.series ?? []).map((item) => {
+      const source = salesPeriod === 'year' ? `${item.date}-01` : item.date
+      const parsed = new Date(`${source}T00:00:00`)
+      return Number.isNaN(parsed.getTime())
+        ? item
+        : { ...item, label: formatter.format(parsed) }
+    })
+  }, [language, salesAnalytics, salesPeriod])
+
+  const loadDashboard = useCallback(async (silent = false) => {
+    const requestId = ++dashboardRequest.current
     try {
       const summary = await getDashboard()
+      if (requestId !== dashboardRequest.current) return
       setData(summary)
-      setLastRefresh(new Date())
-    } catch { /* keep stale */ }
-    finally { setLoading(false) }
+      setDashboardError('')
+    } catch {
+      if (!silent && requestId === dashboardRequest.current) {
+        setDashboardError('Could not load the latest inventory status.')
+      }
+    }
+    finally { if (!silent) setLoading(false) }
   }, [])
 
-  const loadFeed = useCallback(async () => {
+  const loadFeed = useCallback(async (silent = false) => {
     try {
       const res = await apiRequest('/dashboard/activity-feed?limit=100')
       setFeed(res.feed ?? [])
-    } catch { setFeed([]) }
+    } catch { if (!silent) setFeed([]) }
   }, [])
 
-  const loadAlerts = useCallback(async () => {
+  const loadAlerts = useCallback(async (silent = false) => {
     try {
       const res = await apiRequest('/dashboard/low-stock-alerts')
       setLowAlerts(res.alerts ?? [])
-    } catch { setLowAlerts([]) }
+    } catch { if (!silent) setLowAlerts([]) }
+  }, [])
+
+  const loadSalesAnalytics = useCallback(async (silent = false) => {
+    const requestId = ++analyticsRequest.current
+    if (!silent) setSalesLoading(true)
+    try {
+      const analytics = await getSalesAnalytics(salesPeriod)
+      if (requestId === analyticsRequest.current) setSalesAnalytics(analytics)
+    } catch {
+      if (!silent && requestId === analyticsRequest.current) setSalesAnalytics(null)
+    } finally {
+      if (!silent) setSalesLoading(false)
+    }
+  }, [salesPeriod])
+
+  const showLiveEvent = useCallback((event) => {
+    setLiveEvent(event)
+    window.clearTimeout(liveEventTimer.current)
+    liveEventTimer.current = window.setTimeout(() => setLiveEvent(null), 5200)
   }, [])
 
   useEffect(() => {
@@ -324,34 +413,59 @@ export default function Dashboard() {
     getSectionDistribution().then(setSectionChart).catch(() => setSectionChart([]))
   }, [loadDashboard, loadFeed, loadAlerts])
 
-  // Window events fired by App.jsx Echo handler
+  useEffect(() => {
+    loadSalesAnalytics()
+  }, [loadSalesAnalytics])
+
+  useEffect(() => () => window.clearTimeout(liveEventTimer.current), [])
+
+  // App.jsx emits one coalesced background event. Refresh data without replacing
+  // the current dashboard with loaders or clearing good data on transient errors.
   useEffect(() => {
     const refresh = () => {
-      loadDashboard()
-      loadFeed()
-      loadAlerts()
-      getSectionDistribution().then(setSectionChart).catch(() => setSectionChart([]))
+      if (refreshTimer.current) return
+      refreshTimer.current = window.setTimeout(() => {
+        refreshTimer.current = null
+        void Promise.all([
+          loadDashboard(true),
+          loadFeed(true),
+          loadAlerts(true),
+          loadSalesAnalytics(true),
+          getSectionDistribution().then(setSectionChart).catch(() => undefined),
+        ])
+      }, 250)
     }
-    window.addEventListener('dashboard-refresh', refresh)
-    window.addEventListener('stock-refresh',     refresh)
+    const handleDashboardRefresh = (event) => {
+      if (event.detail?.event === 'product.created') {
+        showLiveEvent({
+          kind: 'product',
+          title: 'Product registered',
+          detail: event.detail.payload?.name ? `${event.detail.payload.name} is now part of your inventory.` : 'A new product is now part of your inventory.',
+        })
+      }
+      refresh()
+    }
+    const handleStockRefresh = (event) => {
+      const movement = event.detail?.movement
+      if (movement?.type === 'in' && String(movement.reason ?? '').toLowerCase().includes('purchase order')) {
+        showLiveEvent({
+          kind: 'receipt',
+          title: 'Inventory received',
+          detail: 'Products from a purchase order were added to stock.',
+        })
+      }
+      refresh()
+    }
+    window.addEventListener('database-refresh', refresh)
+    window.addEventListener('dashboard-refresh', handleDashboardRefresh)
+    window.addEventListener('stock-refresh', handleStockRefresh)
     return () => {
-      window.removeEventListener('dashboard-refresh', refresh)
-      window.removeEventListener('stock-refresh',     refresh)
+      window.removeEventListener('database-refresh', refresh)
+      window.removeEventListener('dashboard-refresh', handleDashboardRefresh)
+      window.removeEventListener('stock-refresh', handleStockRefresh)
+      if (refreshTimer.current) window.clearTimeout(refreshTimer.current)
     }
-  }, [loadDashboard, loadFeed, loadAlerts])
-
-  // Echo connection status probe
-  useEffect(() => {
-    const probe = () => {
-      const echo = getEcho()
-      if (!echo) { setEchoStatus('disconnected'); return }
-      const state = echo.connector?.pusher?.connection?.state
-      setEchoStatus(state === 'connected' ? 'connected' : state === 'connecting' ? 'connecting' : 'disconnected')
-    }
-    probe()
-    const id = setInterval(probe, 2500)
-    return () => clearInterval(id)
-  }, [])
+  }, [loadDashboard, loadFeed, loadAlerts, loadSalesAnalytics, showLiveEvent])
 
   // Echo: push StockUpdated into feed live
   useEffect(() => {
@@ -359,7 +473,7 @@ export default function Dashboard() {
     if (!echo || !user?.company_id) return
     const ch = echo.private(`company.${user.company_id}`)
 
-    ch.listen('.StockUpdated', (e) => {
+    ch.listen('.stock.updated', (e) => {
       if (!e?.movement) return
       const item = {
         action: e.movement.type === 'in' ? 'stock_in' : 'stock_out',
@@ -370,14 +484,15 @@ export default function Dashboard() {
       setFeed(prev => [item, ...prev].slice(0, 100))
       setNewFeedIds(prev => new Set([...prev, item._rid]))
       setTimeout(() => setNewFeedIds(prev => { const n = new Set(prev); n.delete(item._rid); return n }), 3500)
-      loadDashboard()
-      loadAlerts()
+      if (e.movement.type === 'in' && String(e.movement.reason ?? '').toLowerCase().includes('purchase order')) {
+        showLiveEvent({ kind: 'receipt', title: 'Inventory received', detail: 'Products from a purchase order were added to stock.' })
+      }
     })
 
-    ch.listen('.LowStockDetected', () => { loadAlerts(); loadDashboard() })
+    ch.listen('.notification.created', () => { loadAlerts(true); loadDashboard(true) })
 
-    return () => ch.stopListening('.StockUpdated').stopListening('.LowStockDetected')
-  }, [user?.company_id, loadDashboard, loadAlerts])
+    return () => ch.stopListening('.stock.updated').stopListening('.notification.created')
+  }, [user?.company_id, loadDashboard, loadAlerts, showLiveEvent])
 
   const movementChart = (() => {
     if (!data?.recent_movements?.length) return []
@@ -385,8 +500,8 @@ export default function Dashboard() {
     ;[...data.recent_movements].reverse().forEach(m => {
       const d = new Date(m.created_at).toLocaleDateString('en', { month: 'short', day: 'numeric' })
       if (!map[d]) map[d] = { date: d, In: 0, Out: 0 }
-      if (m.type === 'in')  map[d].In  += m.quantity
-      if (m.type === 'out') map[d].Out += m.quantity
+      if (m.type === 'in')  map[d].In  += Number(m.quantity || 0)
+      if (m.type === 'out') map[d].Out += Number(m.quantity || 0)
     })
     return Object.values(map).slice(-10)
   })()
@@ -399,7 +514,7 @@ export default function Dashboard() {
       .filter(m => m.type === 'out')
       .forEach(m => {
         const k = m.product?.category?.name ?? m.category_name ?? 'Other'
-        map[k] = (map[k] ?? 0) + (m.quantity ?? 0)
+        map[k] = (map[k] ?? 0) + Number(m.quantity ?? 0)
       })
     // fallback: if no movement category data, use all products by category
     if (!Object.keys(map).length) {
@@ -418,25 +533,48 @@ export default function Dashboard() {
   const zoneData = sectionChart.length > 0
     ? sectionChart.slice(0, 8)
     : [{ name: 'Unassigned', value: totalProds || 1 }]
-  const lowCnt      = (data?.low_stock_products?.length ?? 0) + (data?.out_of_stock_products?.length ?? 0)
+  const lowCnt = new Set([
+    ...(data?.low_stock_products ?? []).map(product => product.id),
+    ...(data?.out_of_stock_products ?? []).map(product => product.id),
+  ]).size
   const turnover    = data?.stock_turnover   ?? 0
   const accuracy    = totalProds > 0 ? Math.round(((totalProds - lowCnt) / totalProds) * 100) : 100
 
-  const sdot  = { connected: C.green, connecting: C.amber, disconnected: C.red }[echoStatus]
-  const slabel = { connected: 'Live Sync', connecting: 'Connecting…', disconnected: 'Offline' }[echoStatus]
-
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: C.bg, color: C.muted, gap: 12, fontSize: 14 }}>
-      <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
-      Loading dashboard...
-    </div>
+    <DashboardColorsContext.Provider value={palette}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: palette.bg, color: palette.muted, gap: 12, fontSize: 14 }}>
+        <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
+        Loading dashboard...
+      </div>
+    </DashboardColorsContext.Provider>
   )
 
-  const allAlerts = [...(data?.out_of_stock_products ?? []), ...(data?.low_stock_products ?? []), ...lowAlerts]
-  const uniqueAlerts = allAlerts.filter((p, i, a) => a.findIndex(x => x.id === p.id) === i).slice(0, 10)
+  if (!data) return (
+    <DashboardColorsContext.Provider value={palette}>
+      <div style={{ padding: 32, color: palette.text, background: palette.bg, minHeight: '100vh' }}>
+        <h2>Dashboard unavailable</h2>
+        <p style={{ color: palette.muted }}>{dashboardError || 'No inventory data was returned.'}</p>
+        <button type="button" onClick={() => { setLoading(true); loadDashboard() }}>
+          Try again
+        </button>
+      </div>
+    </DashboardColorsContext.Provider>
+  )
+
+  const allAlerts = [
+    ...(data.out_of_stock_products ?? []),
+    ...(data.low_stock_products ?? []),
+    ...lowAlerts.filter((product) => Number(product.quantity) <= Number(product.min_quantity)),
+  ]
+  const uniqueAlerts = allAlerts
+    .filter((product, index, alerts) => (
+      alerts.findIndex(candidate => String(candidate.id) === String(product.id)) === index
+    ))
+    .slice(0, 10)
 
   return (
-    <div style={{ background: C.bg, minHeight: '100vh', color: C.text, fontFamily: 'system-ui,sans-serif' }}>
+    <DashboardColorsContext.Provider value={palette}>
+    <div className="dashboard-page" style={{ background: palette.bg, minHeight: '100vh', width: '100%', boxSizing: 'border-box', color: palette.text, fontFamily: 'system-ui,sans-serif' }}>
       <style>{`
         @keyframes spin    { to { transform:rotate(360deg) } }
         @keyframes pulse   { 0%,100%{opacity:1}50%{opacity:.35} }
@@ -444,83 +582,120 @@ export default function Dashboard() {
         @keyframes fadeIn  { from{opacity:0}to{opacity:1} }
         ::-webkit-scrollbar{width:4px}
         ::-webkit-scrollbar-track{background:transparent}
-        ::-webkit-scrollbar-thumb{background:${C.border};border-radius:4px}
+        ::-webkit-scrollbar-thumb{background:${palette.border};border-radius:4px}
+        .dashboard-kpi-grid,.dashboard-analytics-grid,.dashboard-lower-grid{display:grid;min-width:0}
+        .dashboard-kpi-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+        .dashboard-analytics-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+        .dashboard-lower-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+        .dashboard-kpi-grid>* , .dashboard-analytics-grid>* , .dashboard-lower-grid>*{min-width:0}
+        @media(max-width:1100px){
+          .dashboard-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+          .dashboard-analytics-grid,.dashboard-lower-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+        }
+        @media(max-width:700px){
+          .dashboard-kpi-grid,.dashboard-analytics-grid,.dashboard-lower-grid{grid-template-columns:1fr}
+        }
       `}</style>
 
-      <div style={{
+      {liveEvent ? (
+        <div className={`dashboard-live-event dashboard-live-event-${liveEvent.kind}`} role="status">
+          <div className="dashboard-live-event-icon"><Sparkles size={17} /></div>
+          <div>
+            <strong>{liveEvent.title}</strong>
+            <span>{liveEvent.detail}</span>
+          </div>
+          <button type="button" aria-label="Dismiss update" onClick={() => setLiveEvent(null)}>×</button>
+        </div>
+      ) : null}
+
+      <div className="dashboard-header-bar" style={{
         position: 'sticky', top: 0, zIndex: 50,
-        background: `${C.surface}ee`, backdropFilter: 'blur(12px)',
-        borderBottom: `1px solid ${C.border}`,
+        background: `${palette.surface}ee`, backdropFilter: 'blur(12px)',
+        borderBottom: `1px solid ${palette.border}`,
+        width: '100%', boxSizing: 'border-box',
         padding: '12px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.02em' }}>Dashboard</div>
-          <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>
-            Welcome back, <span style={{ color: C.cyan }}>{user?.name}</span>
-            {lastRefresh && <span> · Updated {timeAgo(lastRefresh)}</span>}
+          <div className="dashboard-heading" style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.02em' }}>Dashboard</div>
+          <div style={{ fontSize: 11, color: palette.muted, marginTop: 1 }}>
+            Welcome back, <span style={{ color: palette.cyan }}>{user?.name}</span>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: `${sdot}12`, border: `1px solid ${sdot}44`, borderRadius: 99, padding: '5px 13px', fontSize: 12, fontWeight: 700, color: sdot }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: sdot, display: 'inline-block', boxShadow: `0 0 6px ${sdot}`, animation: echoStatus === 'connected' ? 'pulse 2s infinite' : 'none' }} />
-            {slabel}
+          <div
+            className="dashboard-live-chip"
+            role="status"
+            aria-live="off"
+            title={t('dashboard.autoRefreshHint')}
+            style={{
+              background: `${palette.green}12`,
+              border: `1px solid ${palette.green}42`,
+              color: palette.green,
+            }}
+          >
+            <span className="dashboard-live-chip-icon" aria-hidden="true">
+              <RefreshCw size={12} />
+            </span>
+            <span>{t('dashboard.autoRefresh')}</span>
           </div>
-          <button onClick={() => { loadDashboard(); loadFeed(); loadAlerts() }} style={{ background: `${C.cyan}15`, border: `1px solid ${C.cyan}44`, borderRadius: 8, padding: '7px 14px', color: C.cyan, fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button className="dashboard-refresh-button" onClick={() => { loadDashboard(); loadFeed(); loadAlerts(); loadSalesAnalytics() }} style={{ background: `${palette.cyan}15`, border: `1px solid ${palette.cyan}44`, borderRadius: 8, padding: '7px 14px', color: palette.cyan, fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
             <RefreshCw size={13} />Refresh
           </button>
-          <button onClick={() => navigate('/warehouse-3d')} style={{ background: `${C.indigo}15`, border: `1px solid ${C.indigo}44`, borderRadius: 8, padding: '7px 14px', color: C.indigo, fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Boxes size={13} />3D Map
-          </button>
+          {enable3dMap ? (
+            <button onClick={() => navigate('/warehouse-3d')} style={{ background: `${palette.indigo}15`, border: `1px solid ${palette.indigo}44`, borderRadius: 8, padding: '7px 14px', color: palette.indigo, fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Boxes size={13} />3D Map
+            </button>
+          ) : null}
         </div>
       </div>
 
-      <div style={{ padding: '24px 28px', maxWidth: 1600, margin: '0 auto' }}>
+      <div style={{ width: '100%', boxSizing: 'border-box', padding: '24px 28px', maxWidth: 1600, margin: '0 auto' }}>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
-          <KpiCard icon={DollarSign}  label="Total Stock Value"        value={fmtMoney(totalValue)}             color={C.green}  glow trend={4}                          sub={`${fmt(totalProds)} SKUs tracked`} />
-          <KpiCard icon={TrendingUp}  label="Inventory Turnover Rate"  value={turnover ? `${turnover}×` : '—'} color={C.cyan}       trend={turnover > 2 ? 8 : -3}        sub="Inventory cycles / period" />
-          <KpiCard icon={Boxes}       label="Warehouse Sections"        value={`${sectionChart.length || 0} active`} color={C.purple} glow sub={sectionChart.length ? 'Stock spread across layout' : 'Configure layout to assign products'} />
-          <KpiCard icon={ShieldCheck} label="Fulfillment Accuracy Rate" value={`${accuracy}%`}                 color={C.indigo}     glow={accuracy < 85} trend={accuracy >= 90 ? 2 : -5} sub={lowCnt > 0 ? `${lowCnt} item${lowCnt !== 1 ? 's' : ''} need attention` : 'All stock healthy'} />
+        <div className="dashboard-kpi-grid" style={{ gap: 16, marginBottom: 24 }}>
+          <KpiCard icon={DollarSign}  label="Total Stock Value"        value={fmtMoney(totalValue)}             color={palette.green}  glow sub={`${fmt(totalProds)} SKUs tracked`} />
+          <KpiCard icon={TrendingUp}  label="Inventory Turnover Rate"  value={turnover ? `${turnover}×` : '—'} color={palette.cyan} sub="Inventory cycles / period" />
+          <KpiCard icon={Boxes}       label="Warehouse Sections"        value={`${sectionChart.length || 0} active`} color={palette.purple} glow sub={sectionChart.length ? 'Stock spread across layout' : 'Configure layout to assign products'} />
+          <KpiCard icon={ShieldCheck} label="Fulfillment Accuracy Rate" value={`${accuracy}%`}                 color={palette.indigo}     glow={accuracy < 85} sub={lowCnt > 0 ? `${lowCnt} item${lowCnt !== 1 ? 's' : ''} need attention` : 'All stock healthy'} />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 320px', gap: 16, marginBottom: 24 }}>
+        <div className="dashboard-analytics-grid" style={{ gap: 16, marginBottom: 24 }}>
 
           {/* Inbound vs Outbound */}
-          <ChartCard title="Inbound vs Outbound Movements" icon={Activity} color={C.cyan}>
+          <ChartCard title="Inbound vs Outbound Movements" icon={Activity} color={palette.cyan}>
             {movementChart.length === 0 ? (
-              <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.muted, fontSize: 13 }}>No movement data yet</div>
+              <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: palette.muted, fontSize: 13 }}>No movement data yet</div>
             ) : (
               <ResponsiveContainer width="100%" height={220}>
                 <AreaChart data={movementChart} margin={chartMargin}>
                   <defs>
                     <linearGradient id="gIn" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={C.green} stopOpacity={0.18} />
-                      <stop offset="100%" stopColor={C.green} stopOpacity={0} />
+                      <stop offset="0%" stopColor={palette.green} stopOpacity={0.18} />
+                      <stop offset="100%" stopColor={palette.green} stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gOut" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={C.red} stopOpacity={0.14} />
-                      <stop offset="100%" stopColor={C.red} stopOpacity={0} />
+                      <stop offset="0%" stopColor={palette.red} stopOpacity={0.14} />
+                      <stop offset="100%" stopColor={palette.red} stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke={CHART_GRID} strokeDasharray="4 4" vertical={false} />
+                  <CartesianGrid stroke={chartGrid} strokeDasharray="4 4" vertical={false} />
                   <XAxis dataKey="date" tick={axisTick} axisLine={false} tickLine={false} dy={6} />
                   <YAxis tick={axisTick} axisLine={false} tickLine={false} width={36} />
                   <Tooltip content={<ChartTip />} />
-                  <Area type="monotone" dataKey="In" stroke={C.green} strokeWidth={2.5} fill="url(#gIn)" name="Inbound" dot={false} activeDot={{ r: 4 }} />
-                  <Area type="monotone" dataKey="Out" stroke={C.red} strokeWidth={2.5} fill="url(#gOut)" name="Outbound" dot={false} activeDot={{ r: 4 }} />
+                  <Area type="monotone" dataKey="In" stroke={palette.green} strokeWidth={2.5} fill="url(#gIn)" name="Inbound" dot={false} activeDot={{ r: 4 }} />
+                  <Area type="monotone" dataKey="Out" stroke={palette.red} strokeWidth={2.5} fill="url(#gOut)" name="Outbound" dot={false} activeDot={{ r: 4 }} />
                 </AreaChart>
               </ResponsiveContainer>
             )}
           </ChartCard>
 
           {/* Category bar chart */}
-          <ChartCard title="Top Selling Categories" icon={BarChart3} color={C.indigo}>
+          <ChartCard title="Top Selling Categories" icon={BarChart3} color={palette.indigo}>
             {categoryChart.length === 0 ? (
-              <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.muted, fontSize: 13 }}>No category data</div>
+              <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: palette.muted, fontSize: 13 }}>No category data</div>
             ) : (
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={categoryChart} barCategoryGap="28%" margin={chartMargin}>
-                  <CartesianGrid stroke={CHART_GRID} strokeDasharray="4 4" vertical={false} />
+                  <CartesianGrid stroke={chartGrid} strokeDasharray="4 4" vertical={false} />
                   <XAxis dataKey="name" tick={{ ...axisTick, fontSize: 10 }} axisLine={false} tickLine={false} interval={0} angle={-18} textAnchor="end" height={50} />
                   <YAxis tick={axisTick} axisLine={false} tickLine={false} width={36} />
                   <Tooltip content={<ChartTip />} />
@@ -533,45 +708,129 @@ export default function Dashboard() {
           </ChartCard>
 
           {/* Zone donut */}
-          <ChartCard title="Stock by Section" icon={Boxes} color={C.purple}>
+          <ChartCard title="Stock by Section" icon={Boxes} color={palette.purple}>
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie data={zoneData} cx="50%" cy="45%" innerRadius={48} outerRadius={72} dataKey="value" paddingAngle={2} stroke="none">
                   {zoneData.map((_, i) => <Cell key={i} fill={ZONE_COLORS[i % ZONE_COLORS.length]} />)}
                 </Pie>
                 <Tooltip content={<ChartTip />} />
-                <Legend iconType="circle" iconSize={7} layout="horizontal" verticalAlign="bottom" formatter={(v) => <span style={{ fontSize: 11, color: C.muted }}>{v}</span>} />
+                <Legend iconType="circle" iconSize={7} layout="horizontal" verticalAlign="bottom" formatter={(v) => <span style={{ fontSize: 11, color: palette.muted }}>{v}</span>} />
               </PieChart>
             </ResponsiveContainer>
           </ChartCard>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 300px', gap: 16 }}>
+        <div className="dashboard-sales-card dashboard-motion-card" style={{ background: palette.card, border: `1px solid ${palette.border}`, borderRadius: 14, padding: '20px 22px', marginBottom: 24 }}>
+          <div className="dashboard-sales-card-header">
+            <SectionTitle icon={LineChart} color={palette.green}>
+              {t('dashboard.salesAnalytics')}
+            </SectionTitle>
+            <select
+              className="dashboard-period-select"
+              value={salesPeriod}
+              aria-label={t('dashboard.salesPeriod')}
+              onChange={(event) => setSalesPeriod(event.target.value)}
+            >
+              <option value="week">{t('dashboard.salesWeek')}</option>
+              <option value="month">{t('dashboard.salesMonth')}</option>
+              <option value="year">{t('dashboard.salesYear')}</option>
+            </select>
+          </div>
+          <div className="dashboard-sales-period-copy">
+            <span>{t('dashboard.salesAnalyticsSubtitle')}</span>
+            {salesAnalytics ? <strong>{salesAnalytics.start_date} → {salesAnalytics.end_date}</strong> : null}
+          </div>
+          <div className="dashboard-sales-summary">
+            <div><span>{t('dashboard.salesTotal')}</span><strong>{fmtMoney(salesAnalytics?.total_sales ?? 0)}</strong></div>
+            <div><span>{t('dashboard.salesCost')}</span><strong>{fmtMoney(salesAnalytics?.total_cost ?? 0)}</strong></div>
+            <div className="dashboard-profit-summary"><span>{t('dashboard.salesProfit')}</span><strong>{fmtMoney(salesAnalytics?.gross_profit ?? 0)}</strong></div>
+            <div className={Number(salesAnalytics?.gross_margin_percent ?? 0) >= 0 ? 'is-positive' : 'is-negative'}>
+              <span>{t('dashboard.salesMargin')}</span>
+              <strong>{salesAnalytics?.gross_margin_percent == null ? '—' : `${salesAnalytics.gross_margin_percent}%`}</strong>
+            </div>
+            <div><span>{t('dashboard.salesTransactions')}</span><strong>{fmt(salesAnalytics?.transaction_count ?? 0)}</strong></div>
+            <div><span>{t('dashboard.salesQuantity')}</span><strong>{fmt(salesAnalytics?.total_quantity ?? 0)}</strong></div>
+            <div><span>{t('dashboard.salesAverage')}</span><strong>{fmtMoney(salesAnalytics?.average_sale ?? 0)}</strong></div>
+            <div className={salesAnalytics?.change_percent == null ? '' : salesAnalytics.change_percent >= 0 ? 'is-positive' : 'is-negative'}>
+              <span>{t('dashboard.salesVsPrevious')}</span>
+              <strong>{salesAnalytics?.change_percent == null ? '—' : `${salesAnalytics.change_percent > 0 ? '+' : ''}${salesAnalytics.change_percent}%`}</strong>
+            </div>
+          </div>
+          {Number(salesAnalytics?.uncosted_revenue ?? 0) > 0 ? (
+            <div className="dashboard-cost-warning">
+              <AlertTriangle size={14} />
+              {t('dashboard.salesUncosted', {
+                amount: fmtMoney(salesAnalytics.uncosted_revenue),
+                coverage: Number(salesAnalytics.cost_coverage_percent ?? 0).toLocaleString(
+                  language === 'sq' ? 'sq-AL' : 'en-US',
+                  { maximumFractionDigits: 1 },
+                ),
+              })}
+            </div>
+          ) : null}
+          <div className="dashboard-sales-chart">
+            {salesLoading ? (
+              <div className="dashboard-sales-placeholder"><RefreshCw size={16} /> {t('dashboard.salesLoading')}</div>
+            ) : salesChartData.some((item) => Number(item.sales) > 0) ? (
+              <ResponsiveContainer width="100%" height={230}>
+                <ComposedChart data={salesChartData} margin={chartMargin}>
+                  <defs>
+                    <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={palette.green} stopOpacity={0.28} />
+                      <stop offset="100%" stopColor={palette.green} stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={palette.amber} stopOpacity={0.2} />
+                      <stop offset="100%" stopColor={palette.amber} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke={chartGrid} strokeDasharray="4 4" vertical={false} />
+                  <XAxis dataKey="label" tick={axisTick} axisLine={false} tickLine={false} dy={6} />
+                  <YAxis tick={axisTick} axisLine={false} tickLine={false} width={48} />
+                  <Tooltip content={<ChartTip />} />
+                  <Legend iconType="circle" iconSize={7} formatter={(value) => <span style={{ fontSize: 11, color: palette.muted }}>{value}</span>} />
+                  <Area type="monotone" dataKey="sales" name={t('dashboard.salesRevenue')} stroke={palette.green} strokeWidth={3} fill="url(#salesGradient)" activeDot={{ r: 5 }} animationDuration={900} />
+                  <Area type="monotone" dataKey="cost" name={t('dashboard.salesCost')} stroke={palette.amber} strokeWidth={2} fill="url(#costGradient)" activeDot={{ r: 4 }} animationDuration={980} />
+                  <Bar dataKey="profit" name={t('dashboard.salesProfit')} fill={palette.blue} radius={[4, 4, 0, 0]} maxBarSize={18} animationDuration={1050} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="dashboard-sales-placeholder"><CalendarDays size={18} /> {t('dashboard.salesNoData')}</div>
+            )}
+          </div>
+        </div>
+
+        <div className="dashboard-lower-grid" style={{ gap: 16 }}>
 
           {/* Activity feed */}
-          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: '20px 22px' }}>
-            <SectionTitle icon={Clock} color={C.cyan} badge={feed.length}>Live Activity Feed</SectionTitle>
+          <div className="dashboard-motion-card" style={{ background: palette.card, border: `1px solid ${palette.border}`, borderRadius: 14, padding: '20px 22px' }}>
+            <SectionTitle icon={Clock} color={palette.cyan} badge={feed.length}>Live Activity Feed</SectionTitle>
             <div style={{ overflowY: 'auto', maxHeight: 360, display: 'flex', flexDirection: 'column', gap: 2 }}>
               {feed.length === 0 ? (
-                <div style={{ textAlign: 'center', color: C.muted, padding: '40px 0', fontSize: 13 }}>
+                <div style={{ textAlign: 'center', color: palette.muted, padding: '40px 0', fontSize: 13 }}>
                   No activity yet. Actions appear here in real-time.
                 </div>
               ) : feed.map((item, i) => (
-                <FeedItem key={item._rid ?? item.id ?? i} item={item} isNew={newFeedIds.has(item._rid)} />
+                <FeedItem
+                  key={`feed-${item._rid ?? item.id ?? 'event'}-${item.ts ?? item.created_at ?? 'time'}-${i}`}
+                  item={item}
+                  isNew={newFeedIds.has(item._rid)}
+                />
               ))}
             </div>
           </div>
 
           {/* Alerts */}
-          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: '20px 22px' }}>
-            <SectionTitle icon={AlertTriangle} color={C.amber} badge={uniqueAlerts.length > 0 ? uniqueAlerts.length : undefined}>Critical Alerts</SectionTitle>
+          <div className="dashboard-motion-card" style={{ background: palette.card, border: `1px solid ${palette.border}`, borderRadius: 14, padding: '20px 22px' }}>
+            <SectionTitle icon={AlertTriangle} color={palette.amber} badge={uniqueAlerts.length > 0 ? uniqueAlerts.length : undefined}>Critical Alerts</SectionTitle>
             <div style={{ overflowY: 'auto', maxHeight: 360 }}>
               {uniqueAlerts.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                  <ShieldCheck size={28} color={C.green} style={{ margin: '0 auto 10px', display: 'block' }} />
-                  <div style={{ fontSize: 13, color: C.muted }}>All stock levels healthy</div>
+                  <ShieldCheck size={28} color={palette.green} style={{ margin: '0 auto 10px', display: 'block' }} />
+                  <div style={{ fontSize: 13, color: palette.muted }}>All stock levels healthy</div>
                 </div>
-              ) : uniqueAlerts.map(p => <AlertCard key={p.id} product={p} />)}
+              ) : uniqueAlerts.map(p => <AlertCard key={`alert-${String(p.id)}`} product={p} />)}
             </div>
           </div>
 
@@ -580,5 +839,6 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
+    </DashboardColorsContext.Provider>
   )
 }

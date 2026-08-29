@@ -7,7 +7,9 @@ use Illuminate\Support\Facades\Redis;
 class RedisStoreService
 {
     private const STATS_TTL = 300;
+
     private const FEED_MAX = 100;
+
     private const ALERT_TTL = 3600;
 
     public function setDashboardStats(int $companyId, array $stats): void
@@ -93,6 +95,10 @@ class RedisStoreService
 
     public function isAvailable(): bool
     {
+        if ($this->isDisabledForOfflineMode()) {
+            return false;
+        }
+
         try {
             Redis::connection()->ping();
 
@@ -104,10 +110,20 @@ class RedisStoreService
 
     private function run(callable $callback, mixed $default = null): mixed
     {
+        if ($this->isDisabledForOfflineMode()) {
+            return $default;
+        }
+
         try {
             return $callback();
         } catch (\Throwable) {
             return $default;
         }
+    }
+
+    private function isDisabledForOfflineMode(): bool
+    {
+        return config('system.operation_mode') === 'offline'
+            || config('cache.default') === 'array';
     }
 }

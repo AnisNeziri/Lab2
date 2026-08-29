@@ -12,7 +12,7 @@ class CheckRole
     {
         $user = Auth::user();
 
-        if (! $user || ! in_array($user->role, $roles, true)) {
+        if (! $user || ($user->role !== 'superadmin' && ! in_array($user->role, $roles, true))) {
             return response()->json([
                 'message' => 'Unauthorized. Insufficient permissions.',
             ], 403);

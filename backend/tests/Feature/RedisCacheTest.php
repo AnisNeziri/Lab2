@@ -2,8 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\Category;
-use App\Models\Product;
 use App\Services\RedisStoreService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -17,6 +15,18 @@ class RedisCacheTest extends TestCase
         $service = app(RedisStoreService::class);
 
         $this->assertFalse($service->getRecentActivity(1, 5) === null);
+    }
+
+    public function test_offline_mode_never_requires_redis(): void
+    {
+        config()->set('system.operation_mode', 'offline');
+
+        $service = app(RedisStoreService::class);
+
+        $this->assertFalse($service->isAvailable());
+        $this->assertSame([], $service->getRecentActivity(1, 5));
+        $this->assertSame([], $service->getLowStockAlerts(1));
+        $this->assertNull($service->getDashboardStats(1));
     }
 
     public function test_dashboard_stats_round_trip_when_redis_up(): void

@@ -1,8 +1,21 @@
-const API_BASE = '/api'
+const API_BASE = window.__AIMS_API_BASE__ || '/api'
 
 let refreshPromise = null
 
 export function buildApiUrl(path, params = {}) {
+  // Several API modules pass an already-built absolute URL into apiRequest.
+  // Preserve it instead of prefixing the API base a second time (which caused
+  // desktop requests such as /apihttp://127.0.0.1:18765/api/categories).
+  if (/^https?:\/\//i.test(path)) {
+    const url = new URL(path)
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '' && value !== false) {
+        url.searchParams.set(key, value)
+      }
+    })
+    return url.toString()
+  }
+
   const searchParams = new URLSearchParams()
 
   Object.entries(params).forEach(([key, value]) => {
@@ -53,11 +66,16 @@ async function refreshAccessToken() {
         if (payload.refresh_token) {
           localStorage.setItem('refresh_token', payload.refresh_token)
         }
+        if (payload.user) {
+          localStorage.setItem('user', JSON.stringify(payload.user))
+          localStorage.setItem('user_role', payload.user.role)
+        }
 
         window.dispatchEvent(new CustomEvent('auth-token-refreshed', {
           detail: {
             accessToken: payload.access_token,
             refreshToken: payload.refresh_token ?? refreshToken,
+            user: payload.user ?? null,
           },
         }))
 
@@ -133,10 +151,11 @@ export async function authenticatedFetch(pathOrUrl, options = {}) {
 export async function apiRequest(path, options = {}, fallbackMessage = 'API request failed') {
   const makeRequest = async (retryOnUnauthorized = true) => {
     const token = localStorage.getItem('api_token')
+    const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
 
     const headers = {
       Accept: 'application/json',
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     }

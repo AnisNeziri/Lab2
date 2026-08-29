@@ -14,7 +14,7 @@ class ProductRepository implements ProductRepositoryInterface
         $sort = $filters['sort'] ?? 'name';
         $direction = $filters['direction'] ?? 'asc';
 
-        $query = Product::with(['category', 'supplier'])->orderBy($sort, $direction);
+        $query = Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])->orderBy($sort, $direction);
 
         if (! empty($filters['search'])) {
             $search = $filters['search'];
@@ -30,7 +30,11 @@ class ProductRepository implements ProductRepositoryInterface
         }
 
         if (! empty($filters['supplier_id'])) {
-            $query->where('supplier_id', $filters['supplier_id']);
+            $query->where(fn ($supplierQuery) => $supplierQuery
+                ->where('supplier_id', $filters['supplier_id'])
+                ->orWhereHas('supplierCatalogue', fn ($catalogue) => $catalogue
+                    ->where('supplier_id', $filters['supplier_id'])
+                    ->where('is_active', true)));
         }
 
         if (! empty($filters['low_stock'])) {
@@ -46,17 +50,17 @@ class ProductRepository implements ProductRepositoryInterface
 
     public function allWithRelations(): Collection
     {
-        return Product::with(['category', 'supplier'])->orderBy('name')->get();
+        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])->orderBy('name')->get();
     }
 
     public function findBySku(string $sku): ?Product
     {
-        return Product::with(['category', 'supplier'])->where('sku', $sku)->first();
+        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])->where('sku', $sku)->first();
     }
 
     public function findById(int $id): ?Product
     {
-        return Product::with(['category', 'supplier'])->find($id);
+        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])->find($id);
     }
 
     public function create(array $data): Product
@@ -66,9 +70,13 @@ class ProductRepository implements ProductRepositoryInterface
 
     public function update(Product $product, array $data): Product
     {
+        if (array_key_exists('quantity', $data)) {
+            throw new \LogicException('Inventory quantity must be changed through StockMovementService.');
+        }
+
         $product->update($data);
 
-        return $product->fresh(['category', 'supplier']);
+        return $product->fresh(['category', 'supplier', 'supplierCatalogue.supplier', 'defaultWarehouse', 'units', 'warehouseStock.warehouse', 'warehouseStock.location']);
     }
 
     public function delete(Product $product): void
@@ -78,7 +86,7 @@ class ProductRepository implements ProductRepositoryInterface
 
     public function byLocationCode(string $locationCode, int $companyId): Collection
     {
-        return Product::with(['category', 'supplier'])
+        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])
             ->where('company_id', $companyId)
             ->where('location_code', $locationCode)
             ->orderBy('name')
@@ -87,7 +95,7 @@ class ProductRepository implements ProductRepositoryInterface
 
     public function searchGlobal(string $term, int $limit = 20): Collection
     {
-        return Product::with(['category', 'supplier'])
+        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])
             ->where(function ($query) use ($term) {
                 $query->where('name', 'like', "%{$term}%")
                     ->orWhere('sku', 'like', "%{$term}%")

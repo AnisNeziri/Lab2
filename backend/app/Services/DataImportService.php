@@ -4,9 +4,7 @@ namespace App\Services;
 
 use App\Models\Category;
 use App\Models\ImportLog;
-use App\Models\Invoice;
 use App\Models\Product;
-use App\Models\StockMovement;
 use App\Models\Supplier;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
@@ -14,10 +12,11 @@ use Illuminate\Support\Facades\DB;
 
 class DataImportService
 {
-    public const LISTS = ['products', 'categories', 'suppliers', 'stock_movements', 'invoices'];
+    public const LISTS = ['products', 'categories', 'suppliers', 'stock_movements'];
 
     public function __construct(
-        private ImportService $productImporter
+        private ImportService $productImporter,
+        private StockMovementService $stockMovements,
     ) {}
 
     public function import(string $list, UploadedFile $file): ImportLog
@@ -42,7 +41,6 @@ class DataImportService
             'categories' => $this->importCategories($file, $rows),
             'suppliers' => $this->importSuppliers($file, $rows),
             'stock_movements' => $this->importStockMovements($file, $rows),
-            'invoices' => $this->importInvoices($file, $rows),
             default => abort(422, 'Unsupported import list.'),
         };
     }
@@ -102,6 +100,7 @@ class DataImportService
 
             if ($index === 0) {
                 $header = array_map(fn ($value) => strtolower(trim($value)), $cells);
+
                 continue;
             }
 
@@ -117,7 +116,7 @@ class DataImportService
 
     private function importCategories(UploadedFile $file, array $rows): ImportLog
     {
-        return $this->runImport($file, 'categories', $rows, function (array $row) {
+        return $this->runImport($file, 'categories', $rows, function (array $row, int $_index, ImportLog $_log) {
             $name = trim((string) ($row['name'] ?? ''));
 
             if ($name === '') {
@@ -133,7 +132,7 @@ class DataImportService
 
     private function importSuppliers(UploadedFile $file, array $rows): ImportLog
     {
-        return $this->runImport($file, 'suppliers', $rows, function (array $row) {
+        return $this->runImport($file, 'suppliers', $rows, function (array $row, int $_index, ImportLog $_log) {
             $name = trim((string) ($row['name'] ?? ''));
 
             if ($name === '') {
@@ -153,12 +152,12 @@ class DataImportService
 
     private function importStockMovements(UploadedFile $file, array $rows): ImportLog
     {
-        return $this->runImport($file, 'stock_movements', $rows, function (array $row) {
+        return $this->runImport($file, 'stock_movements', $rows, function (array $row, int $index, ImportLog $log) {
             $sku = trim((string) ($row['sku'] ?? $row['product_sku'] ?? ''));
             $type = strtolower(trim((string) ($row['type'] ?? 'in')));
-            $quantity = (int) ($row['quantity'] ?? $row['qty'] ?? 0);
+            $quantity = round((float) ($row['quantity'] ?? $row['qty'] ?? 0), 3);
 
-            if ($sku === '' || $quantity < 1 || ! in_array($type, ['in', 'out'], true)) {
+            if ($sku === '' || $quantity < 0.001 || ! in_array($type, ['in', 'out'], true)) {
                 throw new \InvalidArgumentException('Stock row needs sku, type in/out, and quantity.');
             }
 
@@ -168,49 +167,16 @@ class DataImportService
                 throw new \InvalidArgumentException("Product SKU {$sku} not found.");
             }
 
-            $before = $product->quantity;
-            $after = $type === 'in' ? $before + $quantity : $before - $quantity;
-
-            if ($after < 0) {
-                throw new \InvalidArgumentException("Not enough stock for SKU {$sku}.");
-            }
-
-            $product->update(['quantity' => $after]);
-
-            StockMovement::create([
-                'company_id' => Auth::user()->company_id,
+            $this->stockMovements->store([
                 'product_id' => $product->id,
                 'type' => $type,
                 'quantity' => $quantity,
-                'quantity_before' => $before,
-                'quantity_after' => $after,
                 'reason' => $row['reason'] ?? 'Imported',
+                'movement_code' => $type === 'in' ? 'import_adjustment_in' : 'import_adjustment_out',
+                'source_type' => 'import_log',
+                'source_id' => $log->id,
+                'idempotency_key' => "stock-import-{$log->id}-row-".($index + 1),
             ]);
-        });
-    }
-
-    private function importInvoices(UploadedFile $file, array $rows): ImportLog
-    {
-        return $this->runImport($file, 'invoices', $rows, function (array $row) {
-            $number = trim((string) ($row['number'] ?? $row['invoice_number'] ?? ''));
-            $customer = trim((string) ($row['customer'] ?? $row['customer_name'] ?? ''));
-
-            if ($number === '' || $customer === '') {
-                throw new \InvalidArgumentException('Invoice number and customer are required.');
-            }
-
-            Invoice::updateOrCreate(
-                [
-                    'company_id' => Auth::user()->company_id,
-                    'invoice_number' => $number,
-                ],
-                [
-                    'customer_name' => $customer,
-                    'status' => $row['status'] ?? 'unpaid',
-                    'total_amount' => (float) ($row['total'] ?? $row['total_amount'] ?? 0),
-                    'issued_at' => $row['issued_at'] ?? now()->toDateString(),
-                ]
-            );
         });
     }
 
@@ -233,7 +199,7 @@ class DataImportService
         try {
             foreach ($rows as $index => $row) {
                 try {
-                    $handler($row);
+                    $handler($row, $index, $log);
                     $imported++;
                 } catch (\Throwable $e) {
                     $errors[] = 'Row '.($index + 1).': '.$e->getMessage();

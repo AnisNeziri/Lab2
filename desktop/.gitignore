@@ -1,0 +1,9 @@
+node_modules/
+dist/
+resources/
+runtime/
+.offline-runtime-test/
+
+build/.aims-icon.bmp
+build/icon.ico
+build/test.bmp

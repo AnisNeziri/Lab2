@@ -6,8 +6,10 @@ use App\Models\Category;
 use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\StockMovement;
+use App\Support\OpenXmlWorkbook;
 use App\Models\Supplier;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DataExportService
@@ -16,6 +18,12 @@ class DataExportService
 
     public function export(string $list, string $format): Response|StreamedResponse
     {
+        abort_unless(
+            Auth::user()?->company_id,
+            403,
+            'Select an explicit company context before exporting company data.'
+        );
+
         if (! in_array($list, self::LISTS, true)) {
             abort(422, 'Unknown export list.');
         }
@@ -76,9 +84,23 @@ class DataExportService
 
     private function stockRows(): array
     {
-        $headers = ['Date', 'Product', 'Type', 'Qty', 'Reason'];
-        $rows = StockMovement::with('product')->latest()->get()->map(fn (StockMovement $m) => [
-            $m->created_at, $m->product?->name, $m->type, $m->quantity, $m->reason,
+        $headers = ['Date', 'Product', 'SKU', 'Movement', 'Type', 'Qty', 'Unit', 'Before', 'After', 'Source', 'Source ID', 'User', 'Reason'];
+        $rows = StockMovement::with(['product', 'actor:id,name'])
+            ->orderByRaw('COALESCE(occurred_at, created_at) DESC')
+            ->orderByDesc('id')->get()->map(fn (StockMovement $m) => [
+            $m->occurred_at ?? $m->created_at,
+            $m->product?->name,
+            $m->product?->sku,
+            $m->movement_code,
+            $m->type,
+            $m->quantity,
+            $m->unit_snapshot ?? $m->product?->unit,
+            $m->quantity_before,
+            $m->quantity_after,
+            $m->source_type,
+            $m->source_id,
+            $m->actor?->name ?? 'System',
+            $m->reason,
         ])->all();
 
         return [$headers, $rows];
@@ -86,10 +108,40 @@ class DataExportService
 
     private function invoiceRows(): array
     {
-        $headers = ['Number', 'Customer', 'Status', 'Total'];
-        $rows = Invoice::orderByDesc('id')->get()->map(fn (Invoice $i) => [
-            $i->invoice_number, $i->customer_name, $i->status, $i->total_amount,
-        ])->all();
+        $headers = [
+            'Document Type', 'Number', 'Status', 'Payment Status', 'Invoice Date', 'Supply Date',
+            'Due Date', 'Customer', 'Buyer NUI', 'Buyer Fiscal Number', 'Buyer VAT Number',
+            'Currency', 'Subtotal', 'Discount', 'Taxable', 'VAT', 'Grand Total', 'Paid',
+            'Remaining', 'Original Invoice', 'Compliance', 'Integrity Hash',
+        ];
+        $rows = Invoice::with('originalInvoice:id,invoice_number')->orderByDesc('id')->get()->map(function (Invoice $i) {
+            $sign = $i->document_type === 'credit_note' ? -1 : 1;
+
+            return [
+                $i->document_type,
+                $i->invoice_number,
+                $i->status,
+                $i->payment_status,
+                $i->invoice_date?->toDateString(),
+                $i->supply_date?->toDateString(),
+                $i->due_at?->toDateString(),
+                $i->buyer_snapshot['legal_name'] ?? $i->customer_name,
+                $i->buyer_snapshot['business_registration_number'] ?? null,
+                $i->buyer_snapshot['fiscal_number'] ?? null,
+                $i->buyer_snapshot['vat_number'] ?? null,
+                $i->currency,
+                $sign * (float) $i->subtotal,
+                $sign * (float) $i->discount_total,
+                $sign * (float) $i->taxable_total,
+                $sign * (float) $i->vat_total,
+                $sign * (float) $i->grand_total,
+                $i->document_type === 'credit_note' ? 0 : (float) $i->total_paid,
+                $i->remaining_balance,
+                $i->originalInvoice?->invoice_number,
+                $i->compliance_status,
+                $i->integrity_hash,
+            ];
+        })->all();
 
         return [$headers, $rows];
     }
@@ -110,7 +162,7 @@ class DataExportService
             $h = fopen('php://output', 'w');
             fputcsv($h, $headers);
             foreach ($rows as $row) {
-                fputcsv($h, $row);
+                fputcsv($h, array_map($this->sanitizeCsvCell(...), $row));
             }
             fclose($h);
         }, 200, [
@@ -119,25 +171,45 @@ class DataExportService
         ]);
     }
 
+    private function sanitizeCsvCell(mixed $cell): mixed
+    {
+        if (! is_string($cell) || is_numeric($cell)) {
+            return $cell;
+        }
+
+        // Prevent customer-entered text from becoming a spreadsheet formula.
+        // An apostrophe is Excel/LibreOffice's standard literal-text marker.
+        if (preg_match('/^[\x00-\x20]*[=+\-@]/u', $cell) === 1) {
+            return "'".$cell;
+        }
+
+        return $cell;
+    }
+
     private function asExcel(string $list, array $headers, array $rows): Response
     {
-        $xml = '<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>';
-        $xml .= '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">';
-        $xml .= '<Worksheet ss:Name="data"><Table>';
-        $xml .= '<Row>'.implode('', array_map(fn ($h) => '<Cell><Data ss:Type="String">'.htmlspecialchars((string) $h).'</Data></Cell>', $headers)).'</Row>';
+        $workbook = new OpenXmlWorkbook;
+        $sheetRows = [array_map(fn ($header) => OpenXmlWorkbook::cell($header, 'header'), $headers)];
         foreach ($rows as $row) {
-            $xml .= '<Row>';
-            foreach ($row as $cell) {
-                $type = is_numeric($cell) ? 'Number' : 'String';
-                $xml .= '<Cell><Data ss:Type="'.$type.'">'.htmlspecialchars((string) $cell).'</Data></Cell>';
-            }
-            $xml .= '</Row>';
-        }
-        $xml .= '</Table></Worksheet></Workbook>';
+            $sheetRows[] = array_map(function ($cell, $index) use ($headers) {
+                $header = strtolower((string) ($headers[$index] ?? ''));
+                if (is_numeric($cell) && preg_match('/qty|products|price|subtotal|discount|taxable|vat|total|paid|remaining|amount/i', $header)) {
+                    $style = preg_match('/qty|products/i', $header) ? 'integer' : 'currency';
 
-        return response($xml, 200, [
-            'Content-Type' => 'application/vnd.ms-excel',
+                    return ['value' => $cell, 'style' => $style, 'type' => 'number'];
+                }
+
+                return $cell;
+            }, array_values($row), array_keys(array_values($row)));
+        }
+        $workbook->addSheet(ucwords(str_replace('_', ' ', $list)), $sheetRows);
+        $bytes = $workbook->bytes();
+
+        return response($bytes, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="'.$list.'.xlsx"',
+            'Content-Length' => (string) strlen($bytes),
+            'X-Content-Type-Options' => 'nosniff',
         ]);
     }
 }

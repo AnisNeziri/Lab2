@@ -27,6 +27,8 @@ class NotificationController extends Controller
 
     public function markRead(Notification $notification): JsonResponse
     {
+        abort_unless($notification->company_id === Auth::user()->company_id, 404);
+
         $notification = $this->notificationService->markAsRead($notification);
 
         return response()->json($notification);
@@ -38,5 +40,20 @@ class NotificationController extends Controller
         $count = $this->notificationService->markAllAsRead($user->company_id, $user->id);
 
         return response()->json(['marked' => $count]);
+    }
+
+    public function clear(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'scope' => ['nullable', 'in:all,notifications,shipments'],
+        ]);
+        $user = Auth::user();
+        $count = $this->notificationService->clearForUser(
+            $user->company_id,
+            $user->id,
+            $validated['scope'] ?? 'all',
+        );
+
+        return response()->json(['cleared' => $count]);
     }
 }

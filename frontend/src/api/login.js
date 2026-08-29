@@ -12,3 +12,7 @@ export async function logout() {
     method: 'POST',
   }, 'Failed to logout')
 }
+
+export async function getCurrentUser() {
+  return apiRequest('/me', {}, 'Failed to load user session')
+}

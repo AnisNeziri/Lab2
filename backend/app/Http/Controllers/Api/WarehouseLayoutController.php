@@ -16,11 +16,14 @@ class WarehouseLayoutController extends Controller
         private WarehouseLayoutService $layout
     ) {}
 
-    public function show(): JsonResponse
+    public function show(Request $request): JsonResponse
     {
         $companyId = Auth::user()->company_id;
+        $validated = $request->validate([
+            'warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('company_id', $companyId)],
+        ]);
 
-        return response()->json($this->layout->getLayout($companyId));
+        return response()->json($this->layout->getLayout($companyId, $validated['warehouse_id'] ?? null));
     }
 
     public function updateWarehouse(Request $request): JsonResponse
@@ -28,6 +31,7 @@ class WarehouseLayoutController extends Controller
         $companyId = Auth::user()->company_id;
 
         $validated = $request->validate([
+            'warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('company_id', $companyId)],
             'name' => ['sometimes', 'string', 'max:255'],
             'code' => ['sometimes', 'string', 'max:50'],
             'address' => ['nullable', 'string', 'max:500'],
@@ -37,7 +41,9 @@ class WarehouseLayoutController extends Controller
             'floor_count' => ['nullable', 'integer', 'min:1', 'max:20'],
         ]);
 
-        $warehouse = $this->layout->updateWarehouse($companyId, $validated);
+        $warehouseId = isset($validated['warehouse_id']) ? (int) $validated['warehouse_id'] : null;
+        unset($validated['warehouse_id']);
+        $warehouse = $this->layout->updateWarehouse($companyId, $validated, $warehouseId);
 
         return response()->json([
             'message' => 'Warehouse updated.',
@@ -48,18 +54,14 @@ class WarehouseLayoutController extends Controller
     public function storeSection(Request $request): JsonResponse
     {
         $companyId = Auth::user()->company_id;
-        $warehouse = $this->layout->getOrCreatePrimaryWarehouse($companyId);
+        $warehouseId = $request->integer('warehouse_id') ?: null;
+        $warehouse = $this->layout->warehouseForCompany($companyId, $warehouseId);
 
         $floorLevel = (int) $request->input('floor_level', 1);
 
         $validated = $request->validate([
-            'code' => [
-                'required', 'string', 'max:20',
-                Rule::unique('warehouse_sections', 'code')
-                    ->where(function ($query) use ($warehouse, $floorLevel) {
-                        $query->where('warehouse_id', $warehouse->id)->where('floor_level', $floorLevel);
-                    }),
-            ],
+            'code' => ['required', 'string', 'max:20'],
+            'warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('company_id', $companyId)],
             'name' => ['required', 'string', 'max:255'],
             'color' => ['nullable', 'string', 'max:20'],
             'light_color' => ['nullable', 'string', 'max:20'],
@@ -72,7 +74,8 @@ class WarehouseLayoutController extends Controller
         ]);
 
         $validated['floor_level'] = $floorLevel;
-        $section = $this->layout->createSection($companyId, $validated);
+        unset($validated['warehouse_id']);
+        $section = $this->layout->createSection($companyId, $validated, $warehouse->id);
 
         return response()->json($section, 201);
     }
@@ -82,14 +85,7 @@ class WarehouseLayoutController extends Controller
         $floorLevel = (int) $request->input('floor_level', $section->floor_level ?? 1);
 
         $validated = $request->validate([
-            'code' => [
-                'sometimes', 'string', 'max:20',
-                Rule::unique('warehouse_sections', 'code')
-                    ->where(function ($query) use ($section, $floorLevel) {
-                        $query->where('warehouse_id', $section->warehouse_id)->where('floor_level', $floorLevel);
-                    })
-                    ->ignore($section->id),
-            ],
+            'code' => ['sometimes', 'string', 'max:20'],
             'name' => ['sometimes', 'string', 'max:255'],
             'color' => ['nullable', 'string', 'max:20'],
             'light_color' => ['nullable', 'string', 'max:20'],
@@ -116,17 +112,26 @@ class WarehouseLayoutController extends Controller
         return response()->json(null, 204);
     }
 
-    public function sectionOptions(): JsonResponse
+    public function sectionOptions(Request $request): JsonResponse
     {
-        $layout = $this->layout->getLayout(Auth::user()->company_id);
+        $companyId = Auth::user()->company_id;
+        $validated = $request->validate([
+            'warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('company_id', $companyId)],
+        ]);
+        $layout = $this->layout->getLayout($companyId, $validated['warehouse_id'] ?? null);
 
         return response()->json($layout['sections']);
     }
 
-    public function distribution(): JsonResponse
+    public function distribution(Request $request): JsonResponse
     {
+        $companyId = Auth::user()->company_id;
+        $validated = $request->validate([
+            'warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('company_id', $companyId)],
+        ]);
+
         return response()->json(
-            $this->layout->sectionDistribution(Auth::user()->company_id)
+            $this->layout->sectionDistribution($companyId, $validated['warehouse_id'] ?? null)
         );
     }
 }
