@@ -18,6 +18,11 @@ export const recordPurchaseOrderPayment = (id, payload) =>
     method: "POST",
     body: JSON.stringify(payload),
   });
+export const reversePurchaseOrderPayment = (id, reason) =>
+  apiRequest(`/purchase-order-payments/${id}/reverse`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
 export const receivePurchaseOrder = (id, payload) =>
   apiRequest(`/purchase-orders/${id}/receive`, {
     method: "POST",

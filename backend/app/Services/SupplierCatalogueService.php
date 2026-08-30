@@ -35,8 +35,14 @@ class SupplierCatalogueService
             }
 
             $values = $this->normalizedValues($data);
-            $makePreferred = (bool) ($values['is_preferred'] ?? false)
-                || ! ProductSupplier::query()->where('product_id', $product->id)->where('is_active', true)->exists();
+            $willBeActive = (bool) ($values['is_active'] ?? true);
+            $makePreferred = $willBeActive && (
+                (bool) ($values['is_preferred'] ?? false)
+                || ! ProductSupplier::query()->where('product_id', $product->id)->where('is_active', true)->exists()
+            );
+            if ($willBeActive || $makePreferred) {
+                $this->assertProductMayBeReplenished($product);
+            }
             if ($makePreferred && ! $values['is_active']) {
                 throw ValidationException::withMessages(['is_preferred' => ['An inactive catalogue item cannot be preferred.']]);
             }
@@ -68,7 +74,12 @@ class SupplierCatalogueService
             $oldPrice = $catalogue->purchase_price;
             $oldCurrency = $catalogue->currency;
             $oldRate = $catalogue->exchange_rate_to_base;
+            $oldRateDate = $catalogue->exchange_rate_date?->toDateString();
             $values = $this->normalizedValues($data, $catalogue);
+
+            if (($values['is_active'] ?? $catalogue->is_active) || ($values['is_preferred'] ?? $catalogue->is_preferred)) {
+                $this->assertProductMayBeReplenished($product);
+            }
 
             if (($values['is_preferred'] ?? $catalogue->is_preferred) && ! ($values['is_active'] ?? $catalogue->is_active)) {
                 throw ValidationException::withMessages(['is_preferred' => ['An inactive catalogue item cannot be preferred.']]);
@@ -83,7 +94,8 @@ class SupplierCatalogueService
             $catalogue->update(array_merge($values, ['updated_by' => Auth::id()]));
             $priceChanged = (string) $oldPrice !== (string) $catalogue->purchase_price
                 || $oldCurrency !== $catalogue->currency
-                || (string) $oldRate !== (string) $catalogue->exchange_rate_to_base;
+                || (string) $oldRate !== (string) $catalogue->exchange_rate_to_base
+                || $oldRateDate !== $catalogue->exchange_rate_date?->toDateString();
             if ($priceChanged) {
                 if ($catalogue->purchase_price === null) {
                     throw ValidationException::withMessages(['purchase_price' => ['A supplier price can be replaced, but not erased after price history exists.']]);
@@ -215,6 +227,7 @@ class SupplierCatalogueService
         $keys = [
             'supplier_sku', 'purchase_price', 'pack_size', 'minimum_order_quantity',
             'usual_lead_time_days', 'is_preferred', 'is_active', 'supplier_description',
+            'exchange_rate_date',
         ];
         $values = [];
         foreach ($keys as $key) {
@@ -224,6 +237,9 @@ class SupplierCatalogueService
         }
         $values['currency'] = $currency;
         $values['exchange_rate_to_base'] = $rate;
+        $values['exchange_rate_date'] = $currency === 'EUR'
+            ? null
+            : ($data['exchange_rate_date'] ?? $existing?->exchange_rate_date?->toDateString());
         if (! $existing) {
             $values += ['pack_size' => 1, 'minimum_order_quantity' => 0, 'usual_lead_time_days' => 0, 'is_preferred' => false, 'is_active' => true];
         }
@@ -241,11 +257,21 @@ class SupplierCatalogueService
             'purchase_price' => $catalogue->purchase_price,
             'currency' => $catalogue->currency,
             'exchange_rate_to_base' => $catalogue->exchange_rate_to_base,
+            'exchange_rate_date' => $catalogue->exchange_rate_date?->toDateString(),
             'base_currency_price' => $catalogue->base_currency_price,
             'effective_at' => $effectiveAt,
             'changed_by' => Auth::id(),
             'change_reason' => $reason,
         ]);
+    }
+
+    private function assertProductMayBeReplenished(Product $product): void
+    {
+        if (($product->lifecycle_status ?? 'active') !== 'active') {
+            throw ValidationException::withMessages([
+                'product_id' => ['Only active products can receive a new or active supplier catalogue entry. Discontinued stock remains available for sale and returns, but it cannot be replenished.'],
+            ]);
+        }
     }
 
     private function syncLegacyPreferred(Product $product): void

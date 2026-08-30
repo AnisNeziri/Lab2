@@ -98,7 +98,7 @@ class Shipment extends Model
 
     public function purchaseOrder(): BelongsTo
     {
-        return $this->belongsTo(PurchaseOrder::class);
+        return $this->belongsTo(PurchaseOrder::class)->withTrashed();
     }
 
     public function warehouse(): BelongsTo
@@ -108,7 +108,7 @@ class Shipment extends Model
 
     public function supplier(): BelongsTo
     {
-        return $this->belongsTo(Supplier::class);
+        return $this->belongsTo(Supplier::class)->withTrashed();
     }
 
     public function histories(): HasMany

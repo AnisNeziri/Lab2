@@ -10,6 +10,7 @@ use App\Models\StockMovement;
 use App\Models\InventoryLot;
 use App\Repositories\Contracts\StockMovementRepositoryInterface;
 use App\Support\SafeBroadcast;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
@@ -61,6 +62,7 @@ class StockMovementService
         private UnitConversionService $unitConversions,
         private InventoryCostingService $costing,
         private TraceabilityService $traceability,
+        private PermissionService $permissions,
     ) {}
 
     public function list(array $filters): Collection
@@ -87,6 +89,30 @@ class StockMovementService
                     ?? ($validated['type'] === 'in' ? 'manual_adjustment_in' : 'manual_adjustment_out');
                 if (! in_array($movementCode, self::MOVEMENT_CODES, true)) {
                     throw ValidationException::withMessages(['movement_code' => ['The selected stock movement code is invalid.']]);
+                }
+
+                $expiredOverride = (bool) ($validated['allow_expired_override'] ?? false);
+                $overrideReason = trim((string) ($validated['expired_override_reason'] ?? ''));
+                if ($expiredOverride) {
+                    $user = Auth::user();
+                    if (! $user || ! $this->permissions->roleHasPermission($user->role, 'inventory.expired.override')) {
+                        throw new AuthorizationException('You are not authorized to issue expired inventory.');
+                    }
+                    if (mb_strlen($overrideReason) < 5) {
+                        throw ValidationException::withMessages([
+                            'expired_override_reason' => ['Explain why expired stock must be issued.'],
+                        ]);
+                    }
+                }
+
+                if (($product->lifecycle_status ?? 'active') === 'archived'
+                    && ! in_array($movementCode, [
+                        'daily_sale_reversal', 'invoice_credit', 'customer_return', 'supplier_return',
+                        'transfer_return', 'reconciliation_adjustment', 'stock_count',
+                    ], true)) {
+                    throw ValidationException::withMessages([
+                        'product_id' => ['Archived products cannot be used in normal inventory operations.'],
+                    ]);
                 }
 
                 if ($idempotencyKey) {
@@ -168,6 +194,15 @@ class StockMovementService
                     $locationId,
                 );
 
+                $metadata = is_array($validated['metadata'] ?? null) ? $validated['metadata'] : [];
+                if ($expiredOverride) {
+                    $metadata['expired_stock_override'] = [
+                        'authorized_by' => Auth::id(),
+                        'reason' => $overrideReason,
+                        'authorized_at' => now()->toIso8601String(),
+                    ];
+                }
+
                 $movement = $this->movements->create([
                     'company_id' => $product->company_id,
                     'product_id' => $product->id,
@@ -193,7 +228,7 @@ class StockMovementService
                     'performed_by' => $validated['performed_by'] ?? Auth::id(),
                     'idempotency_key' => $idempotencyKey,
                     'occurred_at' => $validated['occurred_at'] ?? now(),
-                    'metadata' => $validated['metadata'] ?? null,
+                    'metadata' => $metadata ?: null,
                     'base_purchase_unit_cost' => $costSnapshot['base_purchase_unit_cost'],
                     'landed_cost_unit' => $costSnapshot['landed_cost_unit'],
                     'final_unit_cost' => $costSnapshot['final_unit_cost'],
@@ -210,6 +245,7 @@ class StockMovementService
                     $locationId,
                     $stockState,
                     $validated['trace_allocations'] ?? [],
+                    $expiredOverride,
                 );
 
                 return $movement;
@@ -272,7 +308,7 @@ class StockMovementService
                     $userName
                 );
 
-                if ($committedMovement->product->quantity <= $committedMovement->product->min_quantity) {
+                if ($this->notifications->isLowStock($committedMovement->product)) {
                     try {
                         $notification = $this->notifications->createLowStockAlert($committedMovement->product);
                         SafeBroadcast::dispatch(new LowStockDetected($companyId, $notification));
@@ -285,6 +321,7 @@ class StockMovementService
                     }
                     $this->redisStore->addLowStockAlert($companyId, $committedMovement->product_id);
                 } else {
+                    $this->notifications->resolveLowStockAlert($committedMovement->product);
                     $this->redisStore->removeLowStockAlert($companyId, $committedMovement->product_id);
                 }
             };
@@ -382,6 +419,11 @@ class StockMovementService
             $same = $same && $this->canonicalRequestedTrace($product, $requested['trace_allocations'])
                 === $this->canonicalMovementTrace($existing);
         }
+        $existingOverride = (array) data_get($existing->metadata, 'expired_stock_override', []);
+        $same = $same
+            && (bool) ($requested['allow_expired_override'] ?? false) === ($existingOverride !== [])
+            && (! ($requested['allow_expired_override'] ?? false)
+                || trim((string) ($requested['expired_override_reason'] ?? '')) === trim((string) ($existingOverride['reason'] ?? '')));
 
         if (! $same) {
             throw ValidationException::withMessages([

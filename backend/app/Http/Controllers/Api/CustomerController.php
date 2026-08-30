@@ -11,6 +11,7 @@ use App\Http\Requests\UpdateDebtTransactionRequest;
 use App\Models\Customer;
 use App\Models\CustomerDebtTransaction;
 use App\Services\CustomerDebtService;
+use App\Support\Money;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -24,7 +25,7 @@ class CustomerController extends Controller
         $businessDate = now('Europe/Tirane')->toDateString();
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:255'],
-            'status' => ['nullable', 'in:all,active,paid,overdue'],
+            'status' => ['nullable', 'in:all,active,paid,credit,overdue'],
             'min_debt' => ['nullable', 'numeric', 'min:0'],
             'max_debt' => ['nullable', 'numeric', 'min:0'],
             'sort' => ['nullable', 'in:debt_desc,debt_asc,recent'],
@@ -55,6 +56,7 @@ class CustomerController extends Controller
         match ($validated['status'] ?? 'all') {
             'active' => $query->where('current_debt', '>', 0),
             'paid' => $query->where('current_debt', 0),
+            'credit' => $query->where('current_credit', '>', 0),
             'overdue' => $query->where('current_debt', '>', 0)->whereHas(
                 'debtTransactions',
                 fn ($transaction) => $transaction->whereNotNull('due_date')->whereDate('due_date', '<', $businessDate)
@@ -92,6 +94,12 @@ class CustomerController extends Controller
 
     public function destroy(Customer $customer): JsonResponse
     {
+        if (Money::compare($customer->current_debt, '0.00') > 0
+            || Money::compare($customer->current_credit, '0.00') > 0) {
+            return response()->json([
+                'message' => 'A customer with an outstanding debt or credit advance cannot be deleted. Settle the ledger first.',
+            ], 422);
+        }
         $customer->delete();
 
         return response()->json(['message' => 'Debt sheet deleted.']);
@@ -103,7 +111,6 @@ class CustomerController extends Controller
             'debtTransactions' => fn ($query) => $query
                 ->with('user:id,name')
                 ->withCount('reversals')
-                ->latest('transaction_date')
                 ->latest('id'),
         ]);
 
@@ -152,6 +159,7 @@ class CustomerController extends Controller
 
         return response()->json([
             'total_debt' => (float) Customer::sum('current_debt'),
+            'total_customer_credit' => (float) Customer::sum('current_credit'),
             'customers_with_debt' => Customer::where('current_debt', '>', 0)->count(),
             'payments_today' => (float) CustomerDebtTransaction::where('type', 'payment')->whereDate('transaction_date', $businessDate)->sum('amount'),
             'new_debt_today' => (float) CustomerDebtTransaction::whereIn('type', ['debt_added', 'opening_balance', 'positive_adjustment'])->whereDate('transaction_date', $businessDate)->sum('amount'),
@@ -164,7 +172,6 @@ class CustomerController extends Controller
     {
         $transactions = $customer->debtTransactions()
             ->with('user:id,name')
-            ->oldest('transaction_date')
             ->oldest('id')
             ->get();
         $company = $request->user()->company;
@@ -175,9 +182,9 @@ class CustomerController extends Controller
             fputcsv($out, ['Customer', $customer->name, 'Business', $customer->business_name]);
             fputcsv($out, ['Phone', $customer->phone, 'Email', $customer->email, 'Tax number', $customer->tax_number]);
             fputcsv($out, ['Period', $transactions->first()?->transaction_date?->toDateString(), $transactions->last()?->transaction_date?->toDateString()]);
-            fputcsv($out, ['Opening balance', '0.00', 'Closing balance', $customer->current_debt]);
+            fputcsv($out, ['Opening debt', '0.00', 'Closing debt', $customer->current_debt, 'Customer credit', $customer->current_credit]);
             fputcsv($out, []);
-            fputcsv($out, ['Date', 'Type', 'Reference', 'Sale', 'Amount', 'Balance Before', 'Balance After', 'Payment Method', 'Note', 'User']);
+            fputcsv($out, ['Date', 'Type', 'Reference', 'Sale', 'Amount', 'Debt Before', 'Debt After', 'Credit Before', 'Credit After', 'Payment Method', 'Note', 'User']);
             foreach ($transactions as $transaction) {
                 fputcsv($out, [
                     $transaction->transaction_date->toDateString(),
@@ -187,6 +194,8 @@ class CustomerController extends Controller
                     $transaction->amount,
                     $transaction->balance_before,
                     $transaction->balance_after,
+                    $transaction->credit_before,
+                    $transaction->credit_after,
                     $transaction->payment_method,
                     $transaction->note,
                     $transaction->user?->name,

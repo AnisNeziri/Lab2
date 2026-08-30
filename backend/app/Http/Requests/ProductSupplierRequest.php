@@ -28,6 +28,10 @@ class ProductSupplierRequest extends FormRequest
                 Rule::requiredIf(fn () => $this->filled('currency') && strtoupper((string) $this->input('currency')) !== 'EUR'),
                 'nullable', 'numeric', 'gt:0', 'max:1000000',
             ],
+            'exchange_rate_date' => [
+                Rule::requiredIf(fn () => $this->filled('currency') && strtoupper((string) $this->input('currency')) !== 'EUR'),
+                'nullable', 'date',
+            ],
             'pack_size' => ['sometimes', 'numeric', 'min:0.001', 'max:999999999999'],
             'minimum_order_quantity' => ['sometimes', 'numeric', 'min:0', 'max:999999999999'],
             'usual_lead_time_days' => ['sometimes', 'integer', 'min:0', 'max:3650'],

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Support\Money;
 
 class PurchaseOrder extends Model
 {
@@ -58,7 +59,7 @@ class PurchaseOrder extends Model
 
     public function supplier(): BelongsTo
     {
-        return $this->belongsTo(Supplier::class);
+        return $this->belongsTo(Supplier::class)->withTrashed();
     }
 
     public function warehouse(): BelongsTo
@@ -78,17 +79,17 @@ class PurchaseOrder extends Model
 
     public function creator(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
     }
 
     public function updater(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'updated_by');
+        return $this->belongsTo(User::class, 'updated_by')->withTrashed();
     }
 
     public function getRemainingBalanceAttribute(): float
     {
-        return max(0, round((float) $this->total_amount - (float) $this->total_paid, 2));
+        return (float) Money::maximum('0.00', Money::subtract($this->total_amount, $this->total_paid));
     }
 
     public function getIsOverdueAttribute(): bool

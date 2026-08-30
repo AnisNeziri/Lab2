@@ -37,4 +37,14 @@ class ExpensePayment extends Model
     {
         return $this->belongsTo(FinancialAccount::class);
     }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
+    }
+
+    public function reversedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reversed_by')->withTrashed();
+    }
 }

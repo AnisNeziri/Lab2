@@ -238,7 +238,7 @@ class PortableBackupTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        return Product::withoutGlobalScopes()->create([
+        return Product::withoutEvents(fn () => Product::withoutGlobalScopes()->create([
             'company_id' => $company->id,
             'category_id' => $categoryId,
             'supplier_id' => $supplierId,
@@ -251,6 +251,6 @@ class PortableBackupTest extends TestCase
             'price' => 5,
             'purchase_price' => 3,
             'selling_price' => 5,
-        ]);
+        ]));
     }
 }

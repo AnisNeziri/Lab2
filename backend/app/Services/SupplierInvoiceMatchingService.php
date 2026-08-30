@@ -46,7 +46,7 @@ class SupplierInvoiceMatchingService
         return $expense->load([
             'supplier', 'purchaseOrder.items.product', 'goodsReceipts.items.product',
             'supplierInvoiceItems.product', 'supplierInvoiceItems.purchaseOrderItem',
-            'supplierInvoiceItems.goodsReceiptItem', 'matchEvents' => fn ($q) => $q->latest('id'),
+            'supplierInvoiceItems.goodsReceiptItem', 'matchEvents' => fn ($q) => $q->with('user:id,name')->latest('id'),
             'payments', 'purchaseOrderPaymentAllocations.payment',
             'purchaseOrder.payments' => fn ($query) => $query->with('allocations')->oldest('payment_date')->oldest('id'),
         ]);
@@ -151,10 +151,10 @@ class SupplierInvoiceMatchingService
         });
     }
 
-    public function allocatePayment(Expense $expense, int $paymentId, float $amount, ?string $reason = null): Expense
+    public function allocatePayment(Expense $expense, int $paymentId, mixed $amount, ?string $reason, string $idempotencyKey): Expense
     {
         $payment = PurchaseOrderPayment::query()->findOrFail($paymentId);
-        $this->paymentAllocations->allocate($payment, $expense, $amount, $reason);
+        $this->paymentAllocations->allocate($payment, $expense, $amount, $reason, $idempotencyKey);
 
         return $this->show($expense->fresh());
     }

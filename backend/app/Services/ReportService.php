@@ -11,61 +11,61 @@ use Illuminate\Support\Facades\Auth;
 class ReportService
 {
     public function __construct(
-        private StockMovementRepositoryInterface $movements
+        private StockMovementRepositoryInterface $movements,
+        private InventorySnapshotService $inventorySnapshots,
     ) {}
 
     public function generate(): array
     {
         $companyId = Auth::user()?->company_id;
 
-        $categoryReports = Category::query()
-            ->leftJoin('products', 'categories.id', '=', 'products.category_id')
-            ->select('categories.id', 'categories.name')
-            ->selectRaw('COUNT(products.id) as product_count')
-            ->selectRaw('COALESCE(SUM(products.quantity), 0) as total_units')
-            ->selectRaw('COALESCE(SUM(products.quantity * products.price), 0) as total_value')
-            ->groupBy('categories.id', 'categories.name')
-            ->orderBy('categories.name')
-            ->get()
-            ->map(fn ($row) => [
-                'id' => $row->id,
-                'name' => $row->name,
-                'product_count' => (int) $row->product_count,
-                'total_units' => (int) $row->total_units,
-                'total_value' => round((float) $row->total_value, 2),
-            ]);
+        $products = Product::with(['category', 'supplier'])->get();
+        $snapshots = $this->inventorySnapshots->forProducts($products);
+        $snapshot = fn (Product $product): array => $snapshots->get((int) $product->id, [
+            'on_hand' => (float) $product->quantity,
+            'available' => (float) $product->quantity,
+        ]);
 
-        $topProducts = Product::with('category')
-            ->get()
+        $byCategory = $products->groupBy('category_id');
+        $categoryReports = Category::query()->orderBy('name')->get()->map(function (Category $category) use ($byCategory, $snapshot): array {
+            $items = $byCategory->get($category->id, collect());
+
+            return [
+                'id' => $category->id,
+                'name' => $category->name,
+                'product_count' => $items->count(),
+                'total_units' => round($items->sum(fn (Product $product) => $snapshot($product)['on_hand']), 3),
+                'total_value' => round($items->sum(fn (Product $product) => $snapshot($product)['on_hand'] * (float) $product->price), 2),
+            ];
+        });
+
+        $topProducts = $products
             ->map(fn (Product $product) => [
                 'id' => $product->id,
                 'name' => $product->name,
                 'sku' => $product->sku,
                 'category' => $product->category?->name,
-                'quantity' => $product->quantity,
+                'quantity' => $snapshot($product)['on_hand'],
+                'available_quantity' => $snapshot($product)['available'],
                 'price' => $product->price,
-                'value' => round($product->quantity * $product->price, 2),
+                'value' => round($snapshot($product)['on_hand'] * (float) $product->price, 2),
             ])
             ->sortByDesc('value')
             ->take(10)
             ->values();
 
-        $supplierReports = Supplier::query()
-            ->leftJoin('products', 'suppliers.id', '=', 'products.supplier_id')
-            ->select('suppliers.id', 'suppliers.name')
-            ->selectRaw('COUNT(products.id) as product_count')
-            ->selectRaw('COALESCE(SUM(products.quantity), 0) as total_units')
-            ->selectRaw('COALESCE(SUM(products.quantity * products.price), 0) as total_value')
-            ->groupBy('suppliers.id', 'suppliers.name')
-            ->orderBy('suppliers.name')
-            ->get()
-            ->map(fn ($row) => [
-                'id' => $row->id,
-                'name' => $row->name,
-                'product_count' => (int) $row->product_count,
-                'total_units' => (int) $row->total_units,
-                'total_value' => round((float) $row->total_value, 2),
-            ]);
+        $bySupplier = $products->groupBy('supplier_id');
+        $supplierReports = Supplier::query()->orderBy('name')->get()->map(function (Supplier $supplier) use ($bySupplier, $snapshot): array {
+            $items = $bySupplier->get($supplier->id, collect());
+
+            return [
+                'id' => $supplier->id,
+                'name' => $supplier->name,
+                'product_count' => $items->count(),
+                'total_units' => round($items->sum(fn (Product $product) => $snapshot($product)['on_hand']), 3),
+                'total_value' => round($items->sum(fn (Product $product) => $snapshot($product)['on_hand'] * (float) $product->price), 2),
+            ];
+        });
 
         return [
             'categories' => $categoryReports,

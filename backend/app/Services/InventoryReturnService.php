@@ -10,6 +10,9 @@ use App\Models\InventoryReturnEvent;
 use App\Models\InventoryReturnItem;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
+use App\Models\WarehouseLocation;
+use App\Support\Money;
+use App\Support\RequestFingerprint;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -53,13 +56,29 @@ class InventoryReturnService
         return DB::transaction(function () use ($data) {
             $this->validateHeader($data);
             $key = (string) ($data['idempotency_key'] ?? Str::uuid());
-            if ($existing = InventoryReturn::query()->where('idempotency_key', $key)->first()) return $this->show($existing);
+            $fingerprint = RequestFingerprint::make($data, ['idempotency_key']);
+            $companyId = (int) Auth::user()->company_id;
+            // Serializes return-number assignment and makes the idempotency
+            // lookup deterministic under simultaneous submissions.
+            DB::table('companies')->where('id', $companyId)->lockForUpdate()->first();
+            if ($existing = InventoryReturn::query()->where('idempotency_key', $key)->first()) {
+                if (! $existing->request_fingerprint
+                    || ! hash_equals($existing->request_fingerprint, $fingerprint)) {
+                    throw ValidationException::withMessages([
+                        'idempotency_key' => ['This idempotency key was already used for different return details.'],
+                    ]);
+                }
+
+                return $this->show($existing);
+            }
             $return = InventoryReturn::create([
-                ...$this->header($data), 'company_id' => Auth::user()->company_id,
+                ...$this->header($data), 'company_id' => $companyId,
                 'return_number' => $this->nextNumber($data['type']), 'status' => 'draft',
-                'idempotency_key' => $key, 'created_by' => Auth::id(),
+                'idempotency_key' => $key, 'request_fingerprint' => $fingerprint,
+                'created_by' => Auth::id(),
             ]);
             $this->replaceItems($return, $data['items']);
+            $this->validateFinancialAmount($return);
             $this->event($return, 'created', null, $return->fresh()->toArray());
             return $this->show($return->fresh());
         });
@@ -74,6 +93,7 @@ class InventoryReturnService
             $old = $this->show($locked)->toArray();
             $locked->update($this->header($data));
             $this->replaceItems($locked, $data['items']);
+            $this->validateFinancialAmount($locked);
             $this->event($locked, 'updated', $old, $this->show($locked->fresh())->toArray());
             return $this->show($locked->fresh());
         });
@@ -123,6 +143,7 @@ class InventoryReturnService
             if ($locked->status === 'completed') return $this->show($locked);
             if ($locked->status !== 'approved') throw ValidationException::withMessages(['status' => ['Approve the return before completing it.']]);
             $this->validateReturnableQuantities($locked, true);
+            $this->validateFinancialAmount($locked);
             $old = $locked->toArray();
             foreach ($locked->items()->with('product')->lockForUpdate()->get() as $item) {
                 $this->processStock($locked, $item);
@@ -273,7 +294,12 @@ class InventoryReturnService
         foreach ($items as $line) {
             $product = Product::query()->findOrFail($line['product_id']);
             $saleItem = ! empty($line['daily_sale_item_id']) ? DailySaleItem::query()->findOrFail($line['daily_sale_item_id']) : null;
-            $receiptItem = ! empty($line['goods_receipt_item_id']) ? GoodsReceiptItem::query()->with('purchaseOrderItem')->findOrFail($line['goods_receipt_item_id']) : null;
+            $receiptItem = ! empty($line['goods_receipt_item_id'])
+                ? GoodsReceiptItem::query()
+                    ->with(['purchaseOrderItem', 'receipt.purchaseOrder'])
+                    ->whereHas('receipt', fn ($query) => $query->where('company_id', $return->company_id))
+                    ->findOrFail($line['goods_receipt_item_id'])
+                : null;
             if ($saleItem && ((int) $saleItem->product_id !== (int) $product->id || ($return->daily_sale_id && (int) $saleItem->daily_sale_id !== (int) $return->daily_sale_id))) {
                 throw ValidationException::withMessages(['items' => ['A sale line does not match the return product or sale.']]);
             }
@@ -282,15 +308,43 @@ class InventoryReturnService
             }
             if ($return->type === 'customer' && $receiptItem) throw ValidationException::withMessages(['items' => ['Customer returns cannot reference supplier receipt lines.']]);
             if ($return->type === 'supplier' && $saleItem) throw ValidationException::withMessages(['items' => ['Supplier returns cannot reference customer sale lines.']]);
+            if ($receiptItem && (int) $receiptItem->receipt?->purchaseOrder?->supplier_id !== (int) $return->supplier_id) {
+                throw ValidationException::withMessages([
+                    'items' => ['A supplier return line must come from a receipt issued by the selected supplier.'],
+                ]);
+            }
+            if (! empty($line['location_id']) && ! WarehouseLocation::query()
+                ->whereKey((int) $line['location_id'])
+                ->where('warehouse_id', (int) $line['warehouse_id'])
+                ->where('is_active', true)
+                ->exists()) {
+                throw ValidationException::withMessages([
+                    'items' => ['A return location must be active and belong to its selected warehouse.'],
+                ]);
+            }
             $quantity = round((float) $line['quantity'], 3);
+            $expectedState = match ($line['condition']) {
+                'sellable' => 'available',
+                'quarantine' => 'quarantine',
+                default => 'damaged',
+            };
+            if (! empty($line['stock_state']) && $line['stock_state'] !== $expectedState) {
+                throw ValidationException::withMessages([
+                    'items' => ["Stock state {$line['stock_state']} does not match condition {$line['condition']}."],
+                ]);
+            }
             $unitCost = (float) ($saleItem?->unit_cost ?? $product->weighted_average_cost ?? $product->purchase_price ?? 0);
             $saleUnitValue = $saleItem && (float) $saleItem->base_quantity > 0 ? (float) $saleItem->line_total / (float) $saleItem->base_quantity : null;
-            $receiptUnitValue = $receiptItem?->purchaseOrderItem && (float) $receiptItem->purchaseOrderItem->conversion_factor > 0
-                ? (float) $receiptItem->purchaseOrderItem->unit_price / (float) $receiptItem->purchaseOrderItem->conversion_factor : (float) ($receiptItem?->purchaseOrderItem?->unit_price ?? 0);
+            $receiptUnitValue = $receiptItem?->base_purchase_unit_cost !== null
+                ? (float) $receiptItem->base_purchase_unit_cost
+                : ($receiptItem?->purchaseOrderItem && (float) $receiptItem->purchaseOrderItem->conversion_factor > 0
+                    ? ((float) $receiptItem->purchaseOrderItem->unit_price * (float) ($receiptItem->receipt?->purchaseOrder?->exchange_rate ?: 1))
+                        / (float) $receiptItem->purchaseOrderItem->conversion_factor
+                    : (float) ($receiptItem?->purchaseOrderItem?->unit_price ?? 0) * (float) ($receiptItem?->receipt?->purchaseOrder?->exchange_rate ?: 1));
             InventoryReturnItem::create([
                 ...$line, 'inventory_return_id' => $return->id, 'quantity' => $quantity,
                 'processed_quantity' => 0, 'unit' => $product->unit,
-                'stock_state' => $line['stock_state'] ?? null, 'unit_cost' => $unitCost,
+                'stock_state' => $expectedState, 'unit_cost' => $unitCost,
                 'line_value' => round($quantity * ($return->type === 'customer' ? ($saleUnitValue ?? 0) : $receiptUnitValue), 2),
             ]);
         }
@@ -310,7 +364,9 @@ class InventoryReturnService
                 }
             }
             if ($item->goods_receipt_item_id) {
-                $sourceQuery = GoodsReceiptItem::query()->whereKey($item->goods_receipt_item_id);
+                $sourceQuery = GoodsReceiptItem::query()
+                    ->whereKey($item->goods_receipt_item_id)
+                    ->whereHas('receipt', fn ($query) => $query->where('company_id', $return->company_id));
                 $source = $lock ? $sourceQuery->lockForUpdate()->firstOrFail() : $sourceQuery->firstOrFail();
                 $received = (float) $source->accepted_base_quantity + (float) $source->damaged_base_quantity;
                 $already = (float) InventoryReturnItem::query()->where('goods_receipt_item_id', $source->id)->whereKeyNot($item->id)
@@ -319,6 +375,29 @@ class InventoryReturnService
                     throw ValidationException::withMessages(['items' => ["Return quantity for {$item->product->name} exceeds the quantity received."]]);
                 }
             }
+        }
+    }
+
+    private function validateFinancialAmount(InventoryReturn $return): void
+    {
+        if (in_array($return->financial_resolution, ['none', 'replacement'], true)) {
+            return;
+        }
+
+        $amount = Money::normalize($return->financial_amount ?? 0);
+        if (Money::compare($amount, '0.00') <= 0) {
+            throw ValidationException::withMessages([
+                'financial_amount' => ['Enter a positive amount for the selected financial resolution.'],
+            ]);
+        }
+        $maximum = $return->items()->pluck('line_value')->reduce(
+            fn (string $total, mixed $value): string => Money::add($total, $value ?? 0),
+            '0.00',
+        );
+        if (Money::compare($amount, $maximum) > 0) {
+            throw ValidationException::withMessages([
+                'financial_amount' => ["The financial resolution cannot exceed the returned goods value of {$maximum} EUR."],
+            ]);
         }
     }
 

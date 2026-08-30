@@ -28,8 +28,10 @@ class ProductController extends Controller
     {
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:255'],
-            'category_id' => ['nullable', 'integer', 'exists:categories,id'],
-            'supplier_id' => ['nullable', 'integer', 'exists:suppliers,id'],
+            'category_id' => ['nullable', 'integer', Rule::exists('categories', 'id')->where('company_id', $request->user()->company_id)],
+            'supplier_id' => ['nullable', 'integer', Rule::exists('suppliers', 'id')->where('company_id', $request->user()->company_id)],
+            'lifecycle_status' => ['nullable', Rule::in(['active', 'discontinued', 'archived'])],
+            'include_archived' => ['nullable', 'boolean'],
             'sort' => ['nullable', 'in:name,sku,quantity,min_quantity,price'],
             'direction' => ['nullable', 'in:asc,desc'],
             'low_stock' => ['nullable', 'boolean'],
@@ -38,6 +40,7 @@ class ProductController extends Controller
 
         $perPage = min($request->integer('per_page', 10), 50);
         $validated['low_stock'] = $request->boolean('low_stock');
+        $validated['include_archived'] = $request->boolean('include_archived');
 
         return response()->json($this->productService->list($validated, $perPage));
     }
@@ -79,6 +82,7 @@ class ProductController extends Controller
 
         if ($section?->warehouse_location_id) {
             $products = Product::with(['category', 'supplier', 'warehouseStock.warehouse:id,name,code'])
+                ->where('lifecycle_status', '!=', 'archived')
                 ->whereHas('warehouseStock', fn ($query) => $query
                     ->where('warehouse_id', $section->warehouse_id)
                     ->where('location_id', $section->warehouse_location_id))
@@ -108,14 +112,23 @@ class ProductController extends Controller
         $companyId = $request->user()->company_id;
 
         $validated = $request->validate([
-            'category_id' => ['required', 'exists:categories,id'],
-            'supplier_id' => ['nullable', 'exists:suppliers,id'],
+            'category_id' => ['required', Rule::exists('categories', 'id')->where('company_id', $companyId)],
+            'supplier_id' => ['nullable', Rule::exists('suppliers', 'id')->where('company_id', $companyId)],
             'default_warehouse_id' => ['nullable', Rule::exists('warehouses', 'id')->where('company_id', $companyId)],
             'name' => ['required', 'string', 'max:255'],
             'sku' => ['nullable', 'string', 'max:100', Rule::unique('products', 'sku')->where('company_id', $companyId)],
             'barcode' => ['nullable', 'string', 'max:50', Rule::unique('products', 'barcode')->where('company_id', $companyId)],
+            'alternative_barcodes' => ['nullable', 'array', 'max:20'],
+            'alternative_barcodes.*.barcode' => ['required', 'string', 'max:100', 'distinct'],
+            'alternative_barcodes.*.label' => ['nullable', 'string', 'max:100'],
+            'alternative_barcodes.*.is_active' => ['nullable', 'boolean'],
             'description' => ['nullable', 'string'],
+            'brand' => ['nullable', 'string', 'max:120'],
+            'attributes' => ['nullable', 'array', 'max:50'],
+            'attributes.*' => ['nullable', 'string', 'max:500'],
             'tracking_mode' => ['nullable', Rule::in(TraceabilityService::MODES)],
+            'expiration_controlled' => ['nullable', 'boolean'],
+            'default_shelf_life_days' => ['nullable', 'integer', 'min:1', 'max:36500'],
             'near_expiry_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
             'fefo_enabled' => ['nullable', 'boolean'],
             'quantity' => ['required', 'numeric', 'min:0'],
@@ -130,7 +143,13 @@ class ProductController extends Controller
             'price' => ['required', 'numeric', 'min:0'],
             'purchase_price' => ['nullable', 'numeric', 'min:0'],
             'weight_kg' => ['nullable', 'numeric', 'min:0'],
+            'length_cm' => ['nullable', 'numeric', 'min:0'],
+            'width_cm' => ['nullable', 'numeric', 'min:0'],
+            'height_cm' => ['nullable', 'numeric', 'min:0'],
             'volume_m3' => ['nullable', 'numeric', 'min:0'],
+            'country_of_origin' => ['nullable', 'string', 'size:2', 'regex:/^[A-Za-z]{2}$/'],
+            'hs_code' => ['nullable', 'string', 'max:32', 'regex:/^[A-Za-z0-9. -]+$/'],
+            'lifecycle_status' => ['nullable', Rule::in(['active', 'discontinued'])],
             'selling_price' => ['nullable', 'numeric', 'min:0'],
             'unit_conversions' => ['nullable', 'array', 'max:20'],
             'unit_conversions.*.code' => ['required', 'string', 'max:30'],
@@ -164,7 +183,7 @@ class ProductController extends Controller
 
     public function show(Product $product): JsonResponse
     {
-        $product->load(['category', 'supplier', 'supplierCatalogue.supplier', 'defaultWarehouse', 'units', 'warehouseStock.warehouse', 'warehouseStock.location']);
+        $product->load(['category', 'supplier', 'supplierCatalogue.supplier', 'alternativeBarcodes', 'defaultWarehouse', 'units', 'warehouseStock.warehouse', 'warehouseStock.location']);
 
         $movements = $product->stockMovements()
             ->with(['warehouse:id,name,code', 'location:id,name,code,path'])
@@ -203,14 +222,23 @@ class ProductController extends Controller
         $companyId = $request->user()->company_id;
 
         $validated = $request->validate([
-            'category_id' => ['sometimes', 'required', 'exists:categories,id'],
-            'supplier_id' => ['nullable', 'exists:suppliers,id'],
+            'category_id' => ['sometimes', 'required', Rule::exists('categories', 'id')->where('company_id', $companyId)],
+            'supplier_id' => ['nullable', Rule::exists('suppliers', 'id')->where('company_id', $companyId)],
             'default_warehouse_id' => ['nullable', Rule::exists('warehouses', 'id')->where('company_id', $companyId)],
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'sku' => ['sometimes', 'nullable', 'string', 'max:100', Rule::unique('products', 'sku')->where('company_id', $companyId)->ignore($product->id)],
             'barcode' => ['nullable', 'string', 'max:50', Rule::unique('products', 'barcode')->where('company_id', $companyId)->ignore($product->id)],
+            'alternative_barcodes' => ['sometimes', 'array', 'max:20'],
+            'alternative_barcodes.*.barcode' => ['required', 'string', 'max:100', 'distinct'],
+            'alternative_barcodes.*.label' => ['nullable', 'string', 'max:100'],
+            'alternative_barcodes.*.is_active' => ['nullable', 'boolean'],
             'description' => ['nullable', 'string'],
+            'brand' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'attributes' => ['sometimes', 'nullable', 'array', 'max:50'],
+            'attributes.*' => ['nullable', 'string', 'max:500'],
             'tracking_mode' => ['sometimes', Rule::in(TraceabilityService::MODES)],
+            'expiration_controlled' => ['sometimes', 'boolean'],
+            'default_shelf_life_days' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:36500'],
             'near_expiry_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
             'fefo_enabled' => ['nullable', 'boolean'],
             'quantity' => ['sometimes', 'required', 'numeric', 'min:0'],
@@ -226,7 +254,13 @@ class ProductController extends Controller
             'price' => ['sometimes', 'required', 'numeric', 'min:0'],
             'purchase_price' => ['nullable', 'numeric', 'min:0'],
             'weight_kg' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'length_cm' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'width_cm' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'height_cm' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'volume_m3' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'country_of_origin' => ['sometimes', 'nullable', 'string', 'size:2', 'regex:/^[A-Za-z]{2}$/'],
+            'hs_code' => ['sometimes', 'nullable', 'string', 'max:32', 'regex:/^[A-Za-z0-9. -]+$/'],
+            'lifecycle_status' => ['sometimes', Rule::in(['active', 'discontinued', 'archived'])],
             'selling_price' => ['nullable', 'numeric', 'min:0'],
             'unit_conversions' => ['sometimes', 'array', 'max:20'],
             'unit_conversions.*.code' => ['required', 'string', 'max:30'],

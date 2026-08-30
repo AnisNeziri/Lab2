@@ -5,9 +5,15 @@ namespace App\Services;
 use App\Models\Notification;
 use App\Models\Product;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Cache;
 
 class NotificationService
 {
+    public function __construct(
+        private readonly InventorySnapshotService $inventorySnapshots,
+        private readonly InventoryExpiryAlertService $expiryAlerts,
+    ) {}
+
     public const SHIPMENT_TYPES = [
         'vessel_tracking_started',
         'vessel_position_available',
@@ -20,6 +26,11 @@ class NotificationService
 
     public function listForUser(int $companyId, ?int $userId = null, int $limit = 50): Collection
     {
+        // Keeps desktop installations accurate even when no external scheduler
+        // is running; durable alert state prevents repeated notifications.
+        if (Cache::add("inventory-expiry-sync:{$companyId}", true, now()->addMinutes(10))) {
+            $this->expiryAlerts->syncCompany($companyId);
+        }
         $query = Notification::where('company_id', $companyId)
             ->where(function ($builder) use ($userId) {
                 $builder->whereNull('user_id');
@@ -94,16 +105,47 @@ class NotificationService
 
     public function createLowStockAlert(Product $product): Notification
     {
-        return Notification::create([
+        $available = $this->inventorySnapshots->forProduct($product)['available'];
+        $values = [
             'company_id' => $product->company_id,
             'type' => 'low_stock',
             'title' => 'Low Stock Alert',
-            'message' => "{$product->name} is running low ({$product->quantity} units left)",
+            'message' => "{$product->name} is running low ({$available} {$product->unit} available)",
             'data' => [
                 'product_id' => $product->id,
                 'sku' => $product->sku,
-                'quantity' => $product->quantity,
+                'quantity' => $available,
+                'available_quantity' => $available,
             ],
-        ]);
+        ];
+        $existing = Notification::query()
+            ->where('company_id', $product->company_id)
+            ->where('type', 'low_stock')
+            ->whereNull('read_at')
+            ->where('data->product_id', $product->id)
+            ->latest('id')
+            ->first();
+        if ($existing) {
+            $existing->update($values);
+
+            return $existing->fresh();
+        }
+
+        return Notification::create($values);
+    }
+
+    public function isLowStock(Product $product): bool
+    {
+        return $this->inventorySnapshots->forProduct($product)['available'] <= (float) $product->min_quantity;
+    }
+
+    public function resolveLowStockAlert(Product $product): int
+    {
+        return Notification::query()
+            ->where('company_id', $product->company_id)
+            ->where('type', 'low_stock')
+            ->whereNull('read_at')
+            ->where('data->product_id', $product->id)
+            ->update(['read_at' => now()]);
     }
 }

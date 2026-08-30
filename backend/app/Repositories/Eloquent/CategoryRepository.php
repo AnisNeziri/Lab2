@@ -5,6 +5,7 @@ namespace App\Repositories\Eloquent;
 use App\Models\Category;
 use App\Repositories\Contracts\CategoryRepositoryInterface;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Validation\ValidationException;
 
 class CategoryRepository implements CategoryRepositoryInterface
 {
@@ -27,6 +28,12 @@ class CategoryRepository implements CategoryRepositoryInterface
 
     public function delete(Category $category): void
     {
+        if ($category->products()->exists()) {
+            throw ValidationException::withMessages([
+                'category' => ['A category used by products cannot be deleted. Reassign the products first.'],
+            ]);
+        }
+
         $category->delete();
     }
 

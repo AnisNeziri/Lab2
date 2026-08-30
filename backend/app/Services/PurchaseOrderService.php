@@ -10,6 +10,9 @@ use App\Models\Expense;
 use App\Models\Product;
 use App\Models\ProductSupplier;
 use App\Models\Warehouse;
+use App\Support\Money;
+use App\Models\WarehouseLocation;
+use App\Support\RequestFingerprint;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -132,16 +135,27 @@ class PurchaseOrderService
             }
 
             $old = $this->snapshot($order->load('items'));
+            $hasExistingReceipts = $order->goodsReceipts()->exists();
+            if ($hasExistingReceipts && (int) $data['supplier_id'] !== (int) $order->supplier_id) {
+                throw ValidationException::withMessages([
+                    'supplier_id' => ['The supplier cannot be changed after products have been received.'],
+                ]);
+            }
+            if (! $hasExistingReceipts && isset($data['status']) && $data['status'] !== $order->status) {
+                $this->assertStatusTransition($order->status, $data['status']);
+            }
             $total = $this->total($data['items']);
             $money = $this->currencySnapshot($data['currency'], $total, $data);
-            if ($total < (float) $order->total_paid) {
+            if (Money::compare($total, $order->total_paid) < 0) {
                 throw ValidationException::withMessages(['items' => ['The new order total cannot be lower than the amount already paid.']]);
             }
 
             $order->update([
                 'supplier_id' => $data['supplier_id'],
                 'warehouse_id' => $data['warehouse_id'] ?? $order->warehouse_id,
-                'status' => $data['status'] ?? $order->status,
+                // Receipt history owns the operational state. A generic edit
+                // must not roll a received order back to draft/ordered.
+                'status' => $hasExistingReceipts ? $order->status : ($data['status'] ?? $order->status),
                 'total_amount' => $total,
                 'total_amount_eur' => $money['total_amount_eur'],
                 'currency' => $data['currency'],
@@ -180,11 +194,31 @@ class PurchaseOrderService
             }
             $existing = PurchaseOrderPayment::where('company_id', $order->company_id)->where('idempotency_key', $data['idempotency_key'])->first();
             if ($existing) {
+                $requestedExpenseId = (int) ($data['expense_id'] ?? 0);
+                $originalExpenseId = (int) (DB::table('supplier_payment_allocation_requests')
+                    ->where('company_id', $order->company_id)
+                    ->where('idempotency_key', $data['idempotency_key'].'-allocation')
+                    ->value('expense_id') ?? 0);
+                $same = (int) $existing->purchase_order_id === (int) $order->id
+                    && $existing->status === 'completed'
+                    && Money::compare($existing->amount, $data['amount']) === 0
+                    && $existing->payment_date?->toDateString() === (string) $data['payment_date']
+                    && $existing->payment_method === $data['payment_method']
+                    && ($existing->reference_number ?? '') === ($data['reference_number'] ?? '')
+                    && ($existing->note ?? '') === ($data['note'] ?? '')
+                    && (int) ($existing->financial_account_id ?? 0) === (int) ($data['financial_account_id'] ?? 0)
+                    && $originalExpenseId === $requestedExpenseId;
+                if (! $same) {
+                    throw ValidationException::withMessages([
+                        'idempotency_key' => ['This payment key was already used with different payment details.'],
+                    ]);
+                }
+
                 return $this->find($order);
             }
 
-            $amount = round((float) $data['amount'], 2);
-            if ($amount > $order->remaining_balance) {
+            $amount = Money::normalize($data['amount']);
+            if (Money::compare($amount, $order->remaining_balance) > 0) {
                 throw ValidationException::withMessages(['amount' => ['Payment cannot exceed the remaining order balance.']]);
             }
 
@@ -198,7 +232,8 @@ class PurchaseOrderService
                 'amount' => $amount,
                 'currency' => $order->currency,
                 'exchange_rate' => $order->exchange_rate ?: 1,
-                'amount_eur' => round($amount * (float) ($order->exchange_rate ?: 1), 2),
+                'amount_eur' => Money::multiply($amount, $order->exchange_rate ?: 1),
+                'status' => 'completed',
                 'payment_date' => $data['payment_date'],
                 'payment_method' => $data['payment_method'],
                 'reference_number' => $data['reference_number'] ?? null,
@@ -210,7 +245,7 @@ class PurchaseOrderService
             ]);
             if (! empty($data['financial_account_id'])) {
                 $ledger = $this->financialAccounts->post((int) $data['financial_account_id'], [
-                    'type' => 'outflow', 'amount' => round($amount * (float) ($order->exchange_rate ?: 1), 2),
+                    'type' => 'outflow', 'amount' => Money::multiply($amount, $order->exchange_rate ?: 1),
                     'transaction_date' => $data['payment_date'], 'source_type' => 'purchase_order_payment',
                     'source_id' => $payment->id, 'counterparty' => $order->supplier?->name,
                     'reference_number' => $data['reference_number'] ?? null,
@@ -219,17 +254,80 @@ class PurchaseOrderService
                 ]);
                 $payment->update(['financial_account_transaction_id' => $ledger->id]);
             }
-            $before = (float) $order->total_paid;
-            $order->update(['total_paid' => round($before + $amount, 2), 'updated_by' => Auth::id()]);
+            $before = Money::normalize($order->total_paid);
+            $order->update(['total_paid' => Money::add($before, $amount), 'updated_by' => Auth::id()]);
             if ($linkedExpense) {
                 $this->paymentAllocations->allocate(
                     $payment,
                     $linkedExpense,
                     $amount,
                     $data['note'] ?? 'Allocated when the Purchase Order payment was recorded.',
+                    $data['idempotency_key'].'-allocation',
                 );
             }
-            $this->audit($order, 'payment_recorded', ['total_paid' => $before], ['total_paid' => (float) $order->total_paid, 'amount' => $amount], $data['note'] ?? null);
+            $this->audit($order, 'payment_recorded', ['total_paid' => $before], ['total_paid' => Money::normalize($order->total_paid), 'amount' => $amount], $data['note'] ?? null);
+
+            return $this->find($order->fresh());
+        });
+    }
+
+    public function reversePayment(PurchaseOrderPayment $payment, string $reason): PurchaseOrder
+    {
+        return DB::transaction(function () use ($payment, $reason) {
+            $order = PurchaseOrder::query()->lockForUpdate()->findOrFail($payment->purchase_order_id);
+            $payment = PurchaseOrderPayment::query()
+                ->where('purchase_order_id', $order->id)
+                ->lockForUpdate()
+                ->findOrFail($payment->id);
+            if ($payment->status !== 'completed' || $payment->reversed_at) {
+                throw ValidationException::withMessages(['payment' => ['Only an active Purchase Order payment can be reversed.']]);
+            }
+
+            foreach ($payment->allocations()->lockForUpdate()->get() as $allocation) {
+                $oldAmount = $allocation->amount;
+                DB::table('supplier_payment_allocation_requests')
+                    ->where('purchase_order_payment_id', $payment->id)
+                    ->where('expense_id', $allocation->expense_id)
+                    ->where('status', 'completed')
+                    ->update([
+                        'status' => 'reversed', 'reversed_at' => now(),
+                        'reversed_by' => Auth::id(), 'reversal_reason' => trim($reason),
+                        'updated_at' => now(),
+                    ]);
+                $allocation->update([
+                    'amount' => '0.00', 'allocated_by' => Auth::id(), 'allocated_at' => now(),
+                    'reason' => 'Reversed with Purchase Order payment: '.trim($reason),
+                ]);
+                \App\Models\SupplierMatchEvent::create([
+                    'company_id' => $order->company_id, 'expense_id' => $allocation->expense_id,
+                    'action' => 'purchase_order_payment_allocation_reversed',
+                    'old_values' => ['purchase_order_payment_id' => $payment->id, 'amount' => $oldAmount],
+                    'new_values' => ['purchase_order_payment_id' => $payment->id, 'amount' => '0.00'],
+                    'reason' => trim($reason), 'user_id' => Auth::id(), 'created_at' => now(),
+                ]);
+            }
+
+            $payment->update([
+                'status' => 'reversed', 'expense_id' => null, 'reversed_at' => now(),
+                'reversed_by' => Auth::id(), 'reversal_reason' => trim($reason),
+            ]);
+            if ($payment->financial_account_transaction_id) {
+                $ledger = \App\Models\FinancialAccountTransaction::query()->find($payment->financial_account_transaction_id);
+                if ($ledger && $ledger->status === 'posted') {
+                    $this->financialAccounts->reverse($ledger, 'Purchase Order payment reversal: '.trim($reason));
+                }
+            }
+
+            $before = Money::normalize($order->total_paid);
+            $totalPaid = Money::normalize($order->payments()->where('status', 'completed')->sum('amount'));
+            $order->update(['total_paid' => $totalPaid, 'updated_by' => Auth::id()]);
+            $this->audit(
+                $order,
+                'payment_reversed',
+                ['total_paid' => $before, 'payment_id' => $payment->id, 'amount' => $payment->amount],
+                ['total_paid' => $totalPaid, 'payment_id' => $payment->id, 'status' => 'reversed'],
+                trim($reason),
+            );
 
             return $this->find($order->fresh());
         });
@@ -239,9 +337,7 @@ class PurchaseOrderService
     {
         return DB::transaction(function () use ($order, $data) {
             $order = PurchaseOrder::query()->lockForUpdate()->findOrFail($order->id);
-            if (in_array($order->status, ['completed', 'cancelled'], true)) {
-                throw ValidationException::withMessages(['status' => ['This order cannot receive more products.']]);
-            }
+            $requestFingerprint = RequestFingerprint::make($data, ['idempotency_key']);
             $existingReceipt = GoodsReceipt::withoutGlobalScopes()
                 ->where('company_id', $order->company_id)
                 ->where('idempotency_key', $data['idempotency_key'])
@@ -250,11 +346,31 @@ class PurchaseOrderService
                 if ((int) $existingReceipt->purchase_order_id !== (int) $order->id) {
                     throw ValidationException::withMessages(['idempotency_key' => ['This idempotency key was already used for another goods receipt.']]);
                 }
+                if (! $existingReceipt->request_fingerprint
+                    || ! hash_equals($existingReceipt->request_fingerprint, $requestFingerprint)) {
+                    throw ValidationException::withMessages([
+                        'idempotency_key' => ['This idempotency key was already used for different receipt details.'],
+                    ]);
+                }
 
                 return $this->find($order);
             }
+            if (! in_array($order->status, ['ordered', 'partially_received'], true)) {
+                throw ValidationException::withMessages([
+                    'status' => ['Only an ordered or partially received Purchase Order can receive products.'],
+                ]);
+            }
             $warehouseId = (int) ($data['warehouse_id'] ?? $order->warehouse_id);
             $warehouse = Warehouse::query()->findOrFail($warehouseId);
+            if (! empty($data['location_id']) && ! WarehouseLocation::query()
+                ->whereKey((int) $data['location_id'])
+                ->where('warehouse_id', $warehouse->id)
+                ->where('is_active', true)
+                ->exists()) {
+                throw ValidationException::withMessages([
+                    'location_id' => ['The receipt location must be active and belong to the selected warehouse.'],
+                ]);
+            }
             $receipt = GoodsReceipt::create([
                 'company_id' => $order->company_id,
                 'purchase_order_id' => $order->id,
@@ -267,6 +383,7 @@ class PurchaseOrderService
                 'notes' => $data['notes'] ?? ($data['reason'] ?? null),
                 'received_by' => Auth::id(),
                 'idempotency_key' => $data['idempotency_key'],
+                'request_fingerprint' => $requestFingerprint,
             ]);
             $order->load('items.product');
             $received = [];
@@ -278,11 +395,21 @@ class PurchaseOrderService
                 if (! $item->product_id) {
                     throw ValidationException::withMessages(['items' => ['Every received line must be linked to an inventory product.']]);
                 }
+                if (($item->product->lifecycle_status ?? 'active') === 'archived') {
+                    throw ValidationException::withMessages([
+                        'items' => ["Archived product {$item->product->name} cannot be received."],
+                    ]);
+                }
                 $accepted = round((float) ($input['accepted_quantity'] ?? $input['quantity'] ?? 0), 3);
                 $damaged = round((float) ($input['damaged_quantity'] ?? 0), 3);
                 $rejected = round((float) ($input['rejected_quantity'] ?? 0), 3);
                 $quantity = round($accepted + $damaged, 3);
                 $inspectedQuantity = round($accepted + $damaged + $rejected, 3);
+                if (($item->product->lifecycle_status ?? 'active') === 'discontinued' && $quantity > 0) {
+                    throw ValidationException::withMessages([
+                        'items' => ["Discontinued product {$item->product->name} cannot be replenished. Record only rejected quantity or reactivate the product first."],
+                    ]);
+                }
                 if ($accepted < 0 || $damaged < 0 || $rejected < 0 || $inspectedQuantity <= 0) {
                     throw ValidationException::withMessages(['items' => ["Enter an accepted, damaged, or rejected quantity for {$item->description}."]]);
                 }
@@ -307,10 +434,10 @@ class PurchaseOrderService
                     isset($input['damaged_base_quantity']) ? (float) $input['damaged_base_quantity'] : null,
                 ) : 0;
                 $inventoryBaseQuantity = round($acceptedBase + $damagedBase, 3);
-                $purchaseExchangeRate = round((float) ($order->exchange_rate ?: 1), 8);
-                $basePurchaseCost = round($quantity * (float) $item->unit_price * $purchaseExchangeRate, 6);
+                $purchaseExchangeRate = Money::normalizeDecimal($order->exchange_rate ?: '1', 8);
+                $basePurchaseCost = Money::product([$quantity, $item->unit_price, $purchaseExchangeRate], 6);
                 $basePurchaseUnitCost = $inventoryBaseQuantity > 0
-                    ? round($basePurchaseCost / $inventoryBaseQuantity, 6)
+                    ? Money::divide($basePurchaseCost, $inventoryBaseQuantity, 6)
                     : null;
                 $costedMovements = [];
                 foreach ([
@@ -392,12 +519,10 @@ class PurchaseOrderService
     {
         return DB::transaction(function () use ($order, $status, $reason) {
             $order = PurchaseOrder::query()->lockForUpdate()->findOrFail($order->id);
-            if (in_array($order->status, ['partially_received', 'received', 'cancelled'], true) && $status !== 'completed') {
-                throw ValidationException::withMessages(['status' => ['This order status can no longer be changed.']]);
+            if ($status === $order->status) {
+                return $this->find($order);
             }
-            if ($status === 'completed' && $order->status !== 'received') {
-                throw ValidationException::withMessages(['status' => ['Only a fully received order can be completed.']]);
-            }
+            $this->assertStatusTransition($order->status, $status);
             $old = $order->status;
             $order->update(['status' => $status, 'updated_by' => Auth::id()]);
             $this->audit($order, 'status_changed', ['status' => $old], ['status' => $status], $reason);
@@ -413,7 +538,7 @@ class PurchaseOrderService
             if (in_array($order->status, ['received', 'partially_received', 'completed'], true)) {
                 throw ValidationException::withMessages(['status' => ['An order with received stock cannot be cancelled.']]);
             }
-            if ((float) $order->total_paid > 0) {
+            if (Money::compare($order->total_paid, '0.00') > 0) {
                 throw ValidationException::withMessages(['payments' => ['Refund or correct recorded payments before cancelling this order.']]);
             }
             $old = $order->status;
@@ -466,26 +591,45 @@ class PurchaseOrderService
         $kept = [];
         foreach ($items as $item) {
             $line = ! empty($item['id']) ? $existing->get((int) $item['id']) : null;
+            $lineHasReceiptHistory = $line?->receiptItems()->exists() ?? false;
             if ($line && (float) $item['quantity'] < (float) $line->received_quantity) {
                 throw ValidationException::withMessages(['items' => ["Quantity for {$line->description} cannot be lower than the amount already received."]]);
+            }
+            if ($lineHasReceiptHistory
+                && (int) ($item['product_id'] ?? 0) !== (int) ($line->product_id ?? 0)) {
+                throw ValidationException::withMessages([
+                    'items' => ["The product on received item {$line->description} cannot be changed."],
+                ]);
             }
             $values = [
                 'product_id' => $item['product_id'] ?? null,
                 'description' => $item['description'],
                 'unit' => $item['unit'],
                 'quantity' => round((float) $item['quantity'], 3),
-                'unit_price' => round((float) $item['unit_price'], 2),
-                'line_total' => round((float) $item['quantity'] * (float) $item['unit_price'], 2),
+                'unit_price' => Money::normalize($item['unit_price']),
+                'line_total' => Money::multiply(Money::normalize($item['unit_price']), $item['quantity']),
             ];
             if (! empty($item['product_id'])) {
                 $product = Product::query()->with('units')->findOrFail($item['product_id']);
+                $lifecycle = $product->lifecycle_status ?? 'active';
+                if ($lifecycle === 'archived') {
+                    throw ValidationException::withMessages([
+                        'items' => ["Archived product {$product->name} cannot be purchased."],
+                    ]);
+                }
+                $sameExistingProduct = $line && (int) $line->product_id === (int) $product->id;
+                if ($lifecycle === 'discontinued' && ! $sameExistingProduct) {
+                    throw ValidationException::withMessages([
+                        'items' => ["Discontinued product {$product->name} cannot be added to a new Purchase Order line."],
+                    ]);
+                }
                 $values['product_supplier_id'] = ProductSupplier::query()
                     ->where('product_id', $product->id)
                     ->where('supplier_id', $order->supplier_id)
                     ->value('id');
                 $unitSnapshot = $this->units->describeOrderUnit($product, (float) $item['quantity'], $item['unit'], 'purchase');
                 $values = [...$values, ...$unitSnapshot];
-                if ($line && (float) $line->received_quantity > 0
+                if ($lineHasReceiptHistory
                     && ($line->unit !== $values['unit'] || $line->conversion_mode !== $values['conversion_mode'] || abs((float) $line->conversion_factor - (float) $values['conversion_factor']) > 0.000001)) {
                     throw ValidationException::withMessages(['items' => ["The unit conversion for received item {$line->description} cannot be changed."]]);
                 }
@@ -504,16 +648,19 @@ class PurchaseOrderService
             }
         }
         foreach ($existing->except($kept) as $line) {
-            if ((float) $line->received_quantity > 0) {
+            if ($line->receiptItems()->exists()) {
                 throw ValidationException::withMessages(['items' => ["A received item ({$line->description}) cannot be removed."]]);
             }
             $line->delete();
         }
     }
 
-    private function total(array $items): float
+    private function total(array $items): string
     {
-        return round(collect($items)->sum(fn ($item) => (float) $item['quantity'] * (float) $item['unit_price']), 2);
+        return Money::add(...array_map(
+            fn (array $item): string => Money::multiply(Money::normalize($item['unit_price']), $item['quantity']),
+            $items,
+        ));
     }
 
     private function nextNumber(): string
@@ -530,10 +677,10 @@ class PurchaseOrderService
     private function snapshot(PurchaseOrder $order): array
     {
         return [
-            'supplier_id' => $order->supplier_id, 'warehouse_id' => $order->warehouse_id, 'status' => $order->status, 'total_amount' => (float) $order->total_amount, 'total_amount_eur' => (float) $order->total_amount_eur,
-            'currency' => $order->currency, 'exchange_rate' => (float) $order->exchange_rate, 'exchange_rate_date' => $order->exchange_rate_date?->toDateString(), 'ordered_at' => $order->ordered_at?->toDateString(), 'expected_at' => $order->expected_at?->toDateString(),
+            'supplier_id' => $order->supplier_id, 'warehouse_id' => $order->warehouse_id, 'status' => $order->status, 'total_amount' => Money::normalize($order->total_amount), 'total_amount_eur' => Money::normalize($order->total_amount_eur),
+            'currency' => $order->currency, 'exchange_rate' => (string) $order->exchange_rate, 'exchange_rate_date' => $order->exchange_rate_date?->toDateString(), 'ordered_at' => $order->ordered_at?->toDateString(), 'expected_at' => $order->expected_at?->toDateString(),
             'due_at' => $order->due_at?->toDateString(), 'notes' => $order->notes,
-            'items' => $order->items->map(fn ($item) => ['id' => $item->id, 'product_id' => $item->product_id, 'description' => $item->description, 'unit' => $item->unit, 'quantity' => (float) $item->quantity, 'unit_price' => (float) $item->unit_price])->values()->all(),
+            'items' => $order->items->map(fn ($item) => ['id' => $item->id, 'product_id' => $item->product_id, 'description' => $item->description, 'unit' => $item->unit, 'quantity' => (string) $item->quantity, 'unit_price' => Money::normalize($item->unit_price)])->values()->all(),
         ];
     }
 
@@ -542,11 +689,11 @@ class PurchaseOrderService
         PurchaseOrderChange::create(['company_id' => $order->company_id, 'purchase_order_id' => $order->id, 'user_id' => Auth::id(), 'action' => $action, 'reason' => $reason, 'old_values' => $old, 'new_values' => $new]);
     }
 
-    private function currencySnapshot(string $currency, float $total, array $data): array
+    private function currencySnapshot(string $currency, string $total, array $data): array
     {
         $currency = strtoupper($currency);
-        $rate = $currency === 'EUR' ? 1.0 : round((float) ($data['exchange_rate'] ?? 0), 6);
-        if ($rate <= 0) {
+        $rate = Money::normalizeDecimal($currency === 'EUR' ? '1' : ($data['exchange_rate'] ?? '0'), 6);
+        if (Money::compareDecimal($rate, '0') <= 0) {
             throw ValidationException::withMessages(['exchange_rate' => ['Enter the historical conversion rate from the order currency to EUR.']]);
         }
 
@@ -554,7 +701,7 @@ class PurchaseOrderService
             'exchange_rate' => $rate,
             'exchange_rate_date' => $data['exchange_rate_date'] ?? ($currency === 'EUR' ? ($data['ordered_at'] ?? now()->toDateString()) : null),
             'exchange_rate_source' => $data['exchange_rate_source'] ?? ($currency === 'EUR' ? 'EUR base currency' : null),
-            'total_amount_eur' => round($total * $rate, 2),
+            'total_amount_eur' => Money::multiply($total, $rate),
         ];
     }
 
@@ -567,5 +714,21 @@ class PurchaseOrderService
         } while (GoodsReceipt::withoutGlobalScopes()->where('company_id', $companyId)->where('receipt_number', $number)->exists());
 
         return $number;
+    }
+
+    private function assertStatusTransition(string $from, string $to): void
+    {
+        $allowed = [
+            'draft' => ['confirmed', 'ordered'],
+            'confirmed' => ['draft', 'ordered'],
+            'ordered' => ['confirmed'],
+            'received' => ['completed'],
+        ];
+
+        if (! in_array($to, $allowed[$from] ?? [], true)) {
+            throw ValidationException::withMessages([
+                'status' => ["Purchase Order status cannot change from {$from} to {$to}."],
+            ]);
+        }
     }
 }

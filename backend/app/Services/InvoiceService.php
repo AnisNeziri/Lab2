@@ -9,6 +9,7 @@ use App\Models\InvoiceProfile;
 use App\Models\InvoiceSequence;
 use App\Models\Product;
 use App\Models\StockMovement;
+use App\Support\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\QueryException;
@@ -316,7 +317,7 @@ class InvoiceService
             if ($existing) {
                 return $this->find($existing);
             }
-            if ($original->document_type !== 'invoice' || $original->status !== 'issued' || (float) $original->total_paid > 0) {
+            if ($original->document_type !== 'invoice' || $original->status !== 'issued' || Money::compare($original->total_paid, '0.00') > 0) {
                 throw ValidationException::withMessages([
                     'invoice' => ['A full credit note is available only for an issued, completely unpaid tax invoice.'],
                 ]);
@@ -402,8 +403,8 @@ class InvoiceService
                 return [
                     'tax_treatment' => $first->tax_treatment,
                     'vat_rate' => (float) $first->vat_rate,
-                    'taxable_amount' => round((float) $items->sum('taxable_amount'), 2),
-                    'vat_amount' => round((float) $items->sum('vat_amount'), 2),
+                    'taxable_amount' => (float) Money::add(...$items->pluck('taxable_amount')->all()),
+                    'vat_amount' => (float) Money::add(...$items->pluck('vat_amount')->all()),
                     'legal_reference' => $items->pluck('tax_legal_reference')->filter()->unique()->implode('; '),
                 ];
             })->values()->all();
@@ -411,6 +412,9 @@ class InvoiceService
 
     private function syncItems(Invoice $invoice, array $items, bool $lockProducts = false): void
     {
+        $profile = InvoiceProfile::query()->first();
+        $isVatRegistered = (bool) ($profile?->is_vat_registered ?? false);
+
         foreach ($items as $input) {
             $product = null;
             if (! empty($input['product_id'])) {
@@ -443,30 +447,34 @@ class InvoiceService
             if ($priceValue === null) {
                 throw ValidationException::withMessages(['items' => ["Enter a unit price for {$description}."]]);
             }
-            $unitPrice = round((float) $priceValue, 2);
-            $gross = round($quantity * $unitPrice, 2);
-            $discountPercent = round((float) ($input['discount_percent'] ?? 0), 2);
-            $explicitDiscount = round((float) ($input['discount_amount'] ?? 0), 2);
-            $percentageDiscount = $discountPercent > 0 ? round($gross * $discountPercent / 100, 2) : 0.0;
-            if ($discountPercent > 0 && $explicitDiscount > 0 && abs($explicitDiscount - $percentageDiscount) > 0.01) {
+            $unitPrice = Money::normalize($priceValue);
+            $gross = Money::multiply($unitPrice, $quantity);
+            $discountPercent = Money::normalizeDecimal($input['discount_percent'] ?? '0', 2);
+            $explicitDiscount = Money::normalize($input['discount_amount'] ?? '0');
+            $percentageDiscount = Money::compareDecimal($discountPercent, '0') > 0
+                ? Money::product([$gross, $discountPercent, '0.01'])
+                : '0.00';
+            if (Money::compareDecimal($discountPercent, '0') > 0
+                && Money::compare($explicitDiscount, '0.00') > 0
+                && Money::compare($explicitDiscount, $percentageDiscount) !== 0) {
                 throw ValidationException::withMessages(['items' => ['A line discount amount does not match its discount percentage.']]);
             }
-            $discount = $discountPercent > 0 ? $percentageDiscount : $explicitDiscount;
-            if ($discount > $gross) {
+            $discount = Money::compareDecimal($discountPercent, '0') > 0 ? $percentageDiscount : $explicitDiscount;
+            if (Money::compare($discount, $gross) > 0) {
                 throw ValidationException::withMessages(['items' => ["The discount for {$description} cannot exceed its line value."]]);
             }
-            $taxable = round($gross - $discount, 2);
+            $taxable = Money::subtract($gross, $discount);
             // Tax belongs to the legal sales document, not the inventory master.
             // Product selection therefore never silently decides an invoice's VAT.
-            $treatment = (string) ($input['tax_treatment'] ?? ($profile->is_vat_registered ? 'standard' : 'non_vat'));
-            $vatRate = round((float) ($input['vat_rate'] ?? ($treatment === 'standard' ? 18 : 0)), 2);
+            $treatment = (string) ($input['tax_treatment'] ?? ($isVatRegistered ? 'standard' : 'non_vat'));
+            $vatRate = Money::normalizeDecimal($input['vat_rate'] ?? ($treatment === 'standard' ? '18' : '0'), 2);
             if ($treatment !== 'standard') {
-                $vatRate = 0.0;
+                $vatRate = '0.00';
             }
-            $vat = $treatment === 'standard' ? round($taxable * $vatRate / 100, 2) : 0.0;
+            $vat = $treatment === 'standard' ? Money::product([$taxable, $vatRate, '0.01']) : '0.00';
             $baseUnitCost = $product ? $this->costing->currentUnitCost($product) : null;
-            $costTotal = $baseUnitCost === null ? null : round($resolvedUnit['base_quantity'] * $baseUnitCost, 2);
-            $unitCost = $costTotal === null ? null : round($costTotal / $quantity, 4);
+            $costTotal = $baseUnitCost === null ? null : Money::multiply($baseUnitCost, $resolvedUnit['base_quantity']);
+            $unitCost = $costTotal === null ? null : Money::divide($costTotal, $quantity, 4);
 
             $invoice->items()->create([
                 'product_id' => $product?->id,
@@ -486,7 +494,7 @@ class InvoiceService
                 'taxable_amount' => $taxable,
                 'vat_rate' => $vatRate,
                 'vat_amount' => $vat,
-                'line_total' => round($taxable + $vat, 2),
+                'line_total' => Money::add($taxable, $vat),
                 'tax_treatment' => $treatment,
                 'tax_legal_reference' => $input['tax_legal_reference'] ?? null,
                 'unit_cost' => $unitCost,
@@ -498,12 +506,13 @@ class InvoiceService
     private function storeTotals(Invoice $invoice): void
     {
         $items = $invoice->items()->get();
-        $subtotal = round((float) $items->sum(fn ($item) => (float) $item->taxable_amount + (float) $item->discount_amount), 2);
-        $discount = round((float) $items->sum('discount_amount'), 2);
-        $taxable = round((float) $items->sum('taxable_amount'), 2);
-        $vat = round((float) $items->sum('vat_amount'), 2);
-        $grand = round($taxable + $vat, 2);
-        if (max($subtotal, $discount, $taxable, $vat, $grand) > 9_000_000_000_000) {
+        $subtotal = Money::add(...$items->map(fn ($item) => Money::add($item->taxable_amount, $item->discount_amount))->all());
+        $discount = Money::add(...$items->pluck('discount_amount')->all());
+        $taxable = Money::add(...$items->pluck('taxable_amount')->all());
+        $vat = Money::add(...$items->pluck('vat_amount')->all());
+        $grand = Money::add($taxable, $vat);
+        if (collect([$subtotal, $discount, $taxable, $vat, $grand])
+            ->contains(fn (string $amount): bool => Money::compare($amount, '9000000000000.00') > 0)) {
             throw ValidationException::withMessages(['items' => ['Invoice totals exceed the supported accounting limit.']]);
         }
         $invoice->update([

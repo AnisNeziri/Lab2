@@ -32,11 +32,16 @@ class FinancialAccountTransaction extends Model
 
     public function creator(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
     }
 
     public function relatedTransaction(): BelongsTo
     {
         return $this->belongsTo(self::class, 'related_transaction_id');
+    }
+
+    public function reversedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reversed_by')->withTrashed();
     }
 }

@@ -19,8 +19,24 @@ trait BelongsToCompany
         });
 
         static::creating(function ($model) {
-            if (! $model->company_id && Auth::user()?->company_id) {
-                $model->company_id = Auth::user()->company_id;
+            $companyId = Auth::user()?->company_id;
+            if ($companyId) {
+                // Never trust a client-supplied company_id. Background imports,
+                // migrations and the company-less superadmin remain unaffected.
+                $model->company_id = $companyId;
+            }
+        });
+
+        static::updating(function ($model) {
+            $companyId = Auth::user()?->company_id;
+            if (! $companyId) {
+                return;
+            }
+            if ((int) $model->getOriginal('company_id') !== (int) $companyId) {
+                throw new \Illuminate\Auth\Access\AuthorizationException('The record belongs to another company.');
+            }
+            if ($model->isDirty('company_id')) {
+                $model->company_id = $companyId;
             }
         });
     }

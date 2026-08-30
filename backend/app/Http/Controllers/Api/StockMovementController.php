@@ -54,6 +54,8 @@ class StockMovementController extends Controller
             'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
             'location_id' => ['nullable', 'integer', 'exists:warehouse_locations,id'],
             'stock_state' => ['nullable', Rule::in(WarehouseInventoryService::STATES)],
+            'allow_expired_override' => ['nullable', 'boolean'],
+            'expired_override_reason' => ['nullable', 'required_if:allow_expired_override,true', 'string', 'min:5', 'max:1000'],
             'trace_allocations' => ['nullable', 'array', 'max:1000'],
             'trace_allocations.*.inventory_lot_id' => ['nullable', 'integer', 'exists:inventory_lots,id'],
             'trace_allocations.*.lot_number' => ['nullable', 'string', 'max:100'],

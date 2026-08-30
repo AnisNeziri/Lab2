@@ -15,7 +15,7 @@ class ProductSupplierPriceHistory extends Model
 
     protected $fillable = [
         'company_id', 'product_supplier_id', 'purchase_price', 'currency',
-        'exchange_rate_to_base', 'base_currency_price', 'effective_at',
+        'exchange_rate_to_base', 'exchange_rate_date', 'base_currency_price', 'effective_at',
         'changed_by', 'change_reason',
     ];
 
@@ -24,6 +24,7 @@ class ProductSupplierPriceHistory extends Model
         return [
             'purchase_price' => 'decimal:6',
             'exchange_rate_to_base' => 'decimal:8',
+            'exchange_rate_date' => 'date:Y-m-d',
             'base_currency_price' => 'decimal:6',
             'effective_at' => 'datetime',
         ];
@@ -42,6 +43,6 @@ class ProductSupplierPriceHistory extends Model
 
     public function changedBy(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'changed_by');
+        return $this->belongsTo(User::class, 'changed_by')->withTrashed();
     }
 }

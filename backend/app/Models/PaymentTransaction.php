@@ -52,12 +52,12 @@ class PaymentTransaction extends Model
 
     public function user(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class)->withTrashed();
     }
 
     public function reversedBy(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'reversed_by');
+        return $this->belongsTo(User::class, 'reversed_by')->withTrashed();
     }
 
     public function debtTransactions(): HasMany

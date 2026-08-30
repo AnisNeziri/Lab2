@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Services\DashboardService;
+use App\Services\InventorySnapshotService;
 use App\Services\RedisStoreService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,7 +14,8 @@ class DashboardController extends Controller
 {
     public function __construct(
         private DashboardService $dashboardService,
-        private RedisStoreService $redisStore
+        private RedisStoreService $redisStore,
+        private InventorySnapshotService $inventorySnapshots,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -49,28 +51,26 @@ class DashboardController extends Controller
 
     public function lowStockAlerts(Request $request): JsonResponse
     {
-        $companyId = $request->user()->company_id;
-
         // Redis is only an acceleration layer. Re-check the database so a
         // stale cache can never make the dashboard report healthy inventory.
-        $cachedIds = $this->redisStore->getLowStockAlerts($companyId);
-        $actualAlerts = Product::with('category')
-            ->whereColumn('quantity', '<=', 'min_quantity')
-            ->orderBy('quantity')
-            ->get();
-        $productIds = $actualAlerts->pluck('id')->map(fn ($id) => (string) $id)->all();
-        $alerts = $actualAlerts->keyBy('id');
-        if ($cachedIds) {
-            Product::with('category')->whereIn('id', $cachedIds)->get()->each(function ($product) use ($alerts) {
-                if ((float) $product->quantity <= (float) $product->min_quantity) {
-                    $alerts->put($product->id, $product);
-                }
-            });
-        }
+        $products = Product::with('category')->get();
+        $snapshots = $this->inventorySnapshots->forProducts($products);
+        $alerts = $products->filter(function (Product $product) use ($snapshots): bool {
+            return $snapshots->get((int) $product->id)['available'] <= (float) $product->min_quantity;
+        })->map(function (Product $product) use ($snapshots): Product {
+            $copy = clone $product;
+            $totals = $snapshots->get((int) $product->id);
+            $copy->setAttribute('quantity', $totals['available']);
+            $copy->setAttribute('available_quantity', $totals['available']);
+            $copy->setAttribute('on_hand_quantity', $totals['on_hand']);
+
+            return $copy;
+        })->sortBy('quantity')->values();
+        $productIds = $alerts->pluck('id')->map(fn ($id) => (string) $id)->all();
 
         return response()->json([
             'product_ids' => $productIds,
-            'alerts' => $alerts->sortBy('quantity')->values(),
+            'alerts' => $alerts,
         ]);
     }
 }

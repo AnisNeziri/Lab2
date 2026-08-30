@@ -210,10 +210,10 @@ class AdvancedInventoryOperationsTest extends TestCase
         ])->assertCreated()->json();
 
         $foreignCompany = Company::factory()->create();
-        $foreignWarehouse = Warehouse::withoutGlobalScopes()->create([
+        $foreignWarehouse = Warehouse::withoutEvents(fn () => Warehouse::withoutGlobalScopes()->create([
             'company_id' => $foreignCompany->id, 'name' => 'Foreign Warehouse',
             'code' => 'FOREIGN', 'is_active' => true, 'is_default' => true,
-        ]);
+        ]));
 
         $this->postJson('/api/stock-transfers', [
             'source_warehouse_id' => $foreignWarehouse->id,

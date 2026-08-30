@@ -177,6 +177,7 @@ Route::middleware('auth.token')->group(function () {
             Route::post('/purchase-orders/{purchaseOrder}/cancel', [PurchaseOrderController::class, 'cancel'])->middleware('permission:purchase_orders.manage');
             Route::delete('/purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'destroy'])->middleware('permission:purchase_orders.manage');
             Route::post('/purchase-orders/{purchaseOrder}/payments', [PurchaseOrderController::class, 'pay'])->middleware('permission:purchase_orders.payments');
+            Route::post('/purchase-order-payments/{payment}/reverse', [PurchaseOrderController::class, 'reversePayment'])->middleware('permission:purchase_orders.payments');
             Route::post('/purchase-orders/{purchaseOrder}/receive', [PurchaseOrderController::class, 'receive'])->middleware('permission:purchase_orders.receive');
             Route::get('/purchase-orders/{purchaseOrder}/statement', [PurchaseOrderController::class, 'statement'])->middleware('permission:purchase_orders.export');
             Route::get('/goods-receipts', [GoodsReceiptController::class, 'index'])->middleware('permission:purchase_orders.view');

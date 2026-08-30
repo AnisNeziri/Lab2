@@ -87,16 +87,17 @@ class ShipmentController extends Controller
 
     public function track(Request $request): JsonResponse
     {
+        $companyId = (int) $request->user()->company_id;
         $validated = $request->validate([
             'tracking_number' => ['required', 'string', 'max:100'],
             'transport_mode' => ['nullable', 'in:sea,air,cargo'],
-            'purchase_order_id' => ['nullable', 'integer', 'exists:purchase_orders,id'],
-            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
-            'supplier_id' => ['nullable', 'integer', 'exists:suppliers,id'],
+            'purchase_order_id' => ['nullable', 'integer', Rule::exists('purchase_orders', 'id')->where('company_id', $companyId)],
+            'warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('company_id', $companyId)],
+            'supplier_id' => ['nullable', 'integer', Rule::exists('suppliers', 'id')->where('company_id', $companyId)],
         ]);
 
         try {
-            $shipment = $this->tracking->trackByNumber($validated, Auth::user()->company_id);
+            $shipment = $this->tracking->trackByNumber($validated, $companyId);
         } catch (InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }
@@ -223,11 +224,13 @@ class ShipmentController extends Controller
 
     public function destroy(Shipment $shipment): JsonResponse
     {
-        $this->alerts->logHistory($shipment, 'removed', 'Shipment removed from tracking.');
         $this->notifications->clearForShipment((int) $shipment->company_id, (int) $shipment->id);
-        $shipment->delete();
+        if (! $shipment->archived_at) {
+            $shipment->forceFill(['archived_at' => now(), 'is_favorite' => false])->save();
+            $this->alerts->logHistory($shipment, 'archived_removed', 'Shipment removed from the active tracking list and archived with its history.');
+        }
 
-        return response()->json(['message' => 'Shipment removed.']);
+        return response()->json(['message' => 'Shipment archived.', 'shipment' => $shipment->fresh()]);
     }
 
     public function history(Shipment $shipment): JsonResponse

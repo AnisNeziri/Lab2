@@ -22,5 +22,5 @@ class SupplierInvoicePaymentAllocation extends Model
 
     public function payment(): BelongsTo { return $this->belongsTo(PurchaseOrderPayment::class, 'purchase_order_payment_id'); }
     public function expense(): BelongsTo { return $this->belongsTo(Expense::class); }
-    public function allocator(): BelongsTo { return $this->belongsTo(User::class, 'allocated_by'); }
+    public function allocator(): BelongsTo { return $this->belongsTo(User::class, 'allocated_by')->withTrashed(); }
 }

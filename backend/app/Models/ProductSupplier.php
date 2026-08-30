@@ -13,7 +13,7 @@ class ProductSupplier extends Model
 
     protected $fillable = [
         'company_id', 'product_id', 'supplier_id', 'supplier_sku', 'purchase_price',
-        'currency', 'exchange_rate_to_base', 'pack_size', 'minimum_order_quantity',
+        'currency', 'exchange_rate_to_base', 'exchange_rate_date', 'pack_size', 'minimum_order_quantity',
         'usual_lead_time_days', 'is_preferred', 'is_active', 'supplier_description',
         'last_price_changed_at', 'created_by', 'updated_by',
     ];
@@ -23,6 +23,7 @@ class ProductSupplier extends Model
         return [
             'purchase_price' => 'decimal:6',
             'exchange_rate_to_base' => 'decimal:8',
+            'exchange_rate_date' => 'date:Y-m-d',
             'pack_size' => 'decimal:3',
             'minimum_order_quantity' => 'decimal:3',
             'usual_lead_time_days' => 'integer',
@@ -39,7 +40,7 @@ class ProductSupplier extends Model
 
     public function supplier(): BelongsTo
     {
-        return $this->belongsTo(Supplier::class);
+        return $this->belongsTo(Supplier::class)->withTrashed();
     }
 
     public function priceHistory(): HasMany
@@ -49,12 +50,12 @@ class ProductSupplier extends Model
 
     public function creator(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
     }
 
     public function updater(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'updated_by');
+        return $this->belongsTo(User::class, 'updated_by')->withTrashed();
     }
 
     public function getBaseCurrencyPriceAttribute(): ?float

@@ -27,8 +27,10 @@ import {
 } from "../api/dailySales";
 import "./DailySales.css";
 import { getWarehouses } from "../api/warehouseOperations";
+import { getInventoryProduct } from "../api/advancedOperations";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
+const requestKey = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const money = (value) =>
   new Intl.NumberFormat("de-DE", {
     style: "currency",
@@ -39,6 +41,13 @@ function defaultSalePrice(product, unitDefinition = null) {
   const basePrice = Number(product?.selling_price ?? product?.price ?? 0);
   if (unitDefinition?.conversion_mode !== "fixed") return basePrice;
   return Number((basePrice * Number(unitDefinition.factor_to_base || 0)).toFixed(2));
+}
+function baseQuantity(row) {
+  if (row.conversion_mode === "fixed") {
+    return Number(row.quantity || 0) * Number(row.conversion_factor || 0);
+  }
+  if (row.conversion_mode === "variable") return Number(row.actual_base_quantity || 0);
+  return Number(row.quantity || 0);
 }
 function emptyRow(index = 1) {
   return {
@@ -55,6 +64,12 @@ function emptyRow(index = 1) {
     conversion_factor: null,
     actual_base_quantity: "",
     warehouse_id: "",
+    location_id: "",
+    tracking_mode: "none",
+    serial_options: [],
+    selected_serial_ids: [],
+    trace_loading: false,
+    trace_error: "",
   };
 }
 
@@ -73,6 +88,18 @@ function mapRow(item) {
     conversion_factor: item.conversion_factor ?? null,
     actual_base_quantity: item.conversion_mode === "variable" ? Number(item.base_quantity || 0) : "",
     warehouse_id: item.warehouse_id ? String(item.warehouse_id) : "",
+    location_id: item.location_id ? String(item.location_id) : "",
+    tracking_mode: item.product?.tracking_mode || "none",
+    serial_options: (item.trace_allocations || []).map((allocation) => ({
+      id: Number(allocation.inventory_lot_id),
+      serial_number: `#${allocation.inventory_lot_id}`,
+      location_id: item.location_id ? Number(item.location_id) : null,
+      location_name: "",
+      saved: true,
+    })),
+    selected_serial_ids: (item.trace_allocations || []).map((allocation) => Number(allocation.inventory_lot_id)),
+    trace_loading: false,
+    trace_error: "",
   };
 }
 
@@ -102,15 +129,19 @@ export default function DailySales() {
   const [message, setMessage] = useState("");
   const [confirmClose, setConfirmClose] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [allowExpiredOverride, setAllowExpiredOverride] = useState(false);
+  const [expiredOverrideReason, setExpiredOverrideReason] = useState("");
   const dayRequestRef = useRef(0);
   const notesRequestRef = useRef(0);
   const dayNotesDirtyRef = useRef(false);
   const productsRequestRef = useRef(0);
   const refreshTimerRef = useRef(null);
+  const submissionKeyRef = useRef(null);
 
   const canManage = permissions.includes("daily_sales.manage");
   const canFinalize = permissions.includes("daily_sales.finalize");
   const canDelete = permissions.includes("daily_sales.delete");
+  const canOverrideExpired = permissions.includes("inventory.expired.override");
 
   const loadDay = useCallback(
     async (targetDate, showLoading = true) => {
@@ -169,10 +200,13 @@ export default function DailySales() {
 
   useEffect(() => {
     dayNotesDirtyRef.current = false;
+    submissionKeyRef.current = null;
     setEditorOpen(false);
     setEditorId(null);
     setConfirmClose(false);
     setDeleteTarget(null);
+    setAllowExpiredOverride(false);
+    setExpiredOverrideReason("");
     loadDay(date);
     loadDayNotes(date);
   }, [date, loadDay, loadDayNotes]);
@@ -232,10 +266,7 @@ export default function DailySales() {
     rows.forEach((row) => {
       if (!row.product_id) return;
       const id = `${row.product_id}:${row.warehouse_id || "auto"}`;
-      const baseQuantity = row.conversion_mode === "fixed"
-        ? Number(row.quantity || 0) * Number(row.conversion_factor || 0)
-        : row.conversion_mode === "variable" ? Number(row.actual_base_quantity || 0) : Number(row.quantity || 0);
-      requested.set(id, (requested.get(id) || 0) + baseQuantity);
+      requested.set(id, (requested.get(id) || 0) + baseQuantity(row));
     });
     return rows.reduce((errors, row) => {
       if (!row.product_id || row.stock_available == null) return errors;
@@ -251,22 +282,41 @@ export default function DailySales() {
       return errors;
     }, {});
   }, [rows, t]);
+  const serialErrors = useMemo(() => rows.reduce((errors, row) => {
+    if (row.tracking_mode !== "serial" || !row.product_id) return errors;
+    const required = baseQuantity(row);
+    if (!Number.isInteger(required)) {
+      errors[row.key] = t("dailySales.serialWholeQuantity");
+    } else if (row.selected_serial_ids.length !== required) {
+      errors[row.key] = t("dailySales.serialCountRequired", {
+        selected: row.selected_serial_ids.length,
+        required,
+      });
+    }
+    return errors;
+  }, {}), [rows, t]);
 
   function resetEditor() {
+    submissionKeyRef.current = null;
     setEditorOpen(false);
     setEditorId(null);
     setSaleNumber("");
     setRows([emptyRow()]);
     setNotes("");
+    setAllowExpiredOverride(false);
+    setExpiredOverrideReason("");
     setError("");
   }
 
   function startNewSale() {
+    submissionKeyRef.current = requestKey();
     setEditorOpen(true);
     setEditorId(null);
     setSaleNumber("");
     setRows([emptyRow()]);
     setNotes("");
+    setAllowExpiredOverride(false);
+    setExpiredOverrideReason("");
     setConfirmClose(false);
     setDeleteTarget(null);
     setMessage("");
@@ -275,11 +325,20 @@ export default function DailySales() {
 
   function editSale(sale) {
     if (sale.status !== "draft") return;
+    submissionKeyRef.current = null;
     setEditorOpen(true);
     setEditorId(sale.id);
     setSaleNumber(sale.sale_number);
-    setRows(sale.items?.length ? sale.items.map(mapRow) : [emptyRow()]);
+    const mappedRows = sale.items?.length ? sale.items.map(mapRow) : [emptyRow()];
+    setRows(mappedRows);
+    mappedRows.forEach((row) => {
+      if (row.tracking_mode === "serial" && row.product_id && row.warehouse_id) {
+        void loadSerialOptions(row.key, row.product_id, row.warehouse_id, row.selected_serial_ids, row.location_id);
+      }
+    });
     setNotes(sale.notes || "");
+    setAllowExpiredOverride(false);
+    setExpiredOverrideReason("");
     setConfirmClose(false);
     setDeleteTarget(null);
     setMessage("");
@@ -314,6 +373,49 @@ export default function DailySales() {
     );
   }
 
+  async function loadSerialOptions(key, productId, warehouseId, preserveIds = [], preserveLocationId = "") {
+    if (!productId || !warehouseId) return;
+    setRows((current) => current.map((row) => row.key === key
+      ? { ...row, trace_loading: true, trace_error: "" }
+      : row));
+    try {
+      const inventory = await getInventoryProduct(productId, { warehouse_id: warehouseId });
+      const today = todayIso();
+      const options = (inventory?.lots || []).flatMap((lot) => {
+        const expiry = String(lot.expiry_at || "").slice(0, 10);
+        return (lot.balances || [])
+          .filter((balance) => String(balance.warehouse_id) === String(warehouseId)
+            && (balance.stock_state || "available") === "available"
+            && Number(balance.quantity || 0) >= 0.9995)
+          .map((balance) => ({
+            id: Number(lot.id),
+            serial_number: lot.serial_number || `#${lot.id}`,
+            expiry_at: expiry || null,
+            is_expired: Boolean(expiry && expiry < today),
+            location_id: balance.location_id ? Number(balance.location_id) : null,
+            location_name: balance.location?.path || balance.location?.name || t("dailySales.unassignedLocation"),
+          }));
+      });
+      setRows((current) => current.map((row) => {
+        if (row.key !== key || String(row.product_id) !== String(productId) || String(row.warehouse_id) !== String(warehouseId)) return row;
+        const preserved = row.serial_options.filter((option) => preserveIds.includes(Number(option.id)));
+        const merged = [...new Map([...preserved, ...options].map((option) => [Number(option.id), option])).values()];
+        return {
+          ...row,
+          serial_options: merged,
+          selected_serial_ids: preserveIds.map(Number),
+          location_id: preserveLocationId ? String(preserveLocationId) : row.location_id,
+          trace_loading: false,
+          trace_error: "",
+        };
+      }));
+    } catch (err) {
+      setRows((current) => current.map((row) => row.key === key
+        ? { ...row, trace_loading: false, trace_error: err.message || t("dailySales.serialLoadError") }
+        : row));
+    }
+  }
+
   function selectProduct(key, productId) {
     const product = products.find(
       (item) => String(item.id) === String(productId),
@@ -323,23 +425,37 @@ export default function DailySales() {
         product_id: "",
         product_name: "",
         stock_available: null,
+        tracking_mode: "none",
+        location_id: "",
+        serial_options: [],
+        selected_serial_ids: [],
       });
       return;
     }
     const defaultWarehouse = product.default_warehouse_id || warehouses.find((warehouse) => warehouse.is_default)?.id || "";
-    const warehouseBalance = product.warehouse_stock?.find((balance) => String(balance.warehouse_id) === String(defaultWarehouse));
+    const warehouseAvailable = (product.warehouse_stock || [])
+      .filter((balance) => String(balance.warehouse_id) === String(defaultWarehouse))
+      .reduce((total, balance) => total + Number(balance.available_quantity || 0), 0);
     updateRow(key, {
       product_id: product.id,
       product_name: product.name,
       unit: product.unit || "pcs",
       unit_price: defaultSalePrice(product, null),
-      stock_available: warehouseBalance?.available_quantity ?? product.quantity,
+      stock_available: defaultWarehouse ? warehouseAvailable : product.quantity,
       inventory_unit: product.unit || "pcs",
       conversion_mode: "none",
       conversion_factor: null,
       actual_base_quantity: "",
       warehouse_id: String(defaultWarehouse),
+      location_id: "",
+      tracking_mode: product.tracking_mode || "none",
+      serial_options: [],
+      selected_serial_ids: [],
+      trace_error: "",
     });
+    if ((product.tracking_mode || "none") === "serial" && defaultWarehouse) {
+      void loadSerialOptions(key, product.id, defaultWarehouse);
+    }
   }
 
   function selectSaleUnit(key, unitCode) {
@@ -358,8 +474,36 @@ export default function DailySales() {
   function selectSaleWarehouse(key, warehouseId) {
     const row = rows.find((candidate) => candidate.key === key);
     const product = products.find((candidate) => String(candidate.id) === String(row?.product_id));
-    const balance = product?.warehouse_stock?.find((candidate) => String(candidate.warehouse_id) === String(warehouseId));
-    updateRow(key, { warehouse_id: warehouseId, stock_available: balance?.available_quantity ?? 0 });
+    const available = (product?.warehouse_stock || [])
+      .filter((candidate) => String(candidate.warehouse_id) === String(warehouseId))
+      .reduce((total, balance) => total + Number(balance.available_quantity || 0), 0);
+    updateRow(key, {
+      warehouse_id: warehouseId,
+      stock_available: available,
+      location_id: "",
+      serial_options: [],
+      selected_serial_ids: [],
+      trace_error: "",
+    });
+    if (row?.tracking_mode === "serial" && warehouseId) {
+      void loadSerialOptions(key, row.product_id, warehouseId);
+    }
+  }
+
+  function toggleSerial(key, option, checked) {
+    setRows((current) => current.map((row) => {
+      if (row.key !== key) return row;
+      const selected = new Set(row.selected_serial_ids.map(Number));
+      if (checked) selected.add(Number(option.id));
+      else selected.delete(Number(option.id));
+      const ids = [...selected];
+      const firstSelected = row.serial_options.find((candidate) => ids.includes(Number(candidate.id)));
+      return {
+        ...row,
+        selected_serial_ids: ids,
+        location_id: firstSelected?.location_id != null ? String(firstSelected.location_id) : "",
+      };
+    }));
   }
 
   const addProduct = () =>
@@ -375,6 +519,8 @@ export default function DailySales() {
     return {
       sale_date: date,
       notes: notes || null,
+      allow_expired_override: canOverrideExpired && allowExpiredOverride,
+      expired_override_reason: canOverrideExpired && allowExpiredOverride ? expiredOverrideReason.trim() : null,
       items: rows
         .filter((row) => row.product_name.trim())
         .map((row) => ({
@@ -384,6 +530,10 @@ export default function DailySales() {
           quantity: row.quantity,
           unit_price: row.unit_price,
           warehouse_id: row.warehouse_id ? Number(row.warehouse_id) : null,
+          location_id: row.location_id ? Number(row.location_id) : null,
+          trace_allocations: row.tracking_mode === "serial"
+            ? row.selected_serial_ids.map((inventory_lot_id) => ({ inventory_lot_id, quantity: 1 }))
+            : undefined,
           actual_base_quantity: row.conversion_mode === "variable" ? Number(row.actual_base_quantity) : null,
         })),
     };
@@ -400,6 +550,15 @@ export default function DailySales() {
         !Number.isFinite(Number(row.quantity)) || !Number.isFinite(Number(row.unit_price));
     });
     if (incomplete) throw new Error(t("dailySales.numberFieldsRequired"));
+    if (canOverrideExpired && allowExpiredOverride && expiredOverrideReason.trim().length < 5) {
+      throw new Error(t("dailySales.expiredOverrideReasonRequired"));
+    }
+    const serialError = Object.values(serialErrors)[0];
+    if (serialError) throw new Error(serialError);
+    if (!editorId) {
+      submissionKeyRef.current ||= requestKey();
+      data.idempotency_key = submissionKeyRef.current;
+    }
     const saved = editorId
       ? await updateDailySale(editorId, data)
       : await createDailySale(data);
@@ -717,6 +876,38 @@ export default function DailySales() {
                             {stockErrors[row.key]}
                           </small>
                         ) : null}
+                        {row.tracking_mode === "serial" ? (
+                          <div className="daily-sales-serial-picker">
+                            <div>
+                              <strong>{t("dailySales.selectSerials")}</strong>
+                              <span>{row.selected_serial_ids.length}/{Number.isInteger(baseQuantity(row)) ? baseQuantity(row) : "—"}</span>
+                            </div>
+                            {row.trace_loading ? <small>{t("dailySales.loadingSerials")}</small> : null}
+                            {!row.trace_loading && row.serial_options.length === 0 ? <small>{t("dailySales.noSerials")}</small> : null}
+                            <div className="daily-sales-serial-options">
+                              {row.serial_options.map((option) => {
+                                const checked = row.selected_serial_ids.includes(Number(option.id));
+                                const selectedOption = row.serial_options.find((candidate) => row.selected_serial_ids.includes(Number(candidate.id)));
+                                const differentLocation = selectedOption
+                                  && String(option.location_id ?? 0) !== String(selectedOption.location_id ?? 0);
+                                const blockedExpired = option.is_expired && !allowExpiredOverride;
+                                return (
+                                  <label key={`${option.id}-${option.location_id ?? 0}`} className={(differentLocation && !checked) || blockedExpired ? "is-disabled" : ""}>
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      disabled={(differentLocation && !checked) || blockedExpired}
+                                      onChange={(event) => toggleSerial(row.key, option, event.target.checked)}
+                                    />
+                                    <span>{option.serial_number}<small>{option.location_name || t("dailySales.savedSerial")}{option.is_expired ? ` · ${t("dailySales.expiredSerial")}` : ""}</small></span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                            {row.trace_error ? <small className="daily-sales-error">{row.trace_error}</small> : null}
+                            {serialErrors[row.key] ? <small className="daily-sales-error">{serialErrors[row.key]}</small> : null}
+                          </div>
+                        ) : null}
                       </div>
                     </td>
                     <td>
@@ -796,6 +987,41 @@ export default function DailySales() {
                   onChange={(event) => setNotes(event.target.value)}
                 />
               </label>
+              {canOverrideExpired ? (
+                <div className="daily-sales-expired-override">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={allowExpiredOverride}
+                      onChange={(event) => {
+                        const enabled = event.target.checked;
+                        setAllowExpiredOverride(enabled);
+                        if (!enabled) {
+                          setExpiredOverrideReason("");
+                          setRows((current) => current.map((row) => {
+                            const selectedIds = row.selected_serial_ids.filter((id) => !row.serial_options.find((option) => Number(option.id) === Number(id))?.is_expired);
+                            const firstSelected = row.serial_options.find((option) => selectedIds.includes(Number(option.id)));
+                            return {
+                              ...row,
+                              selected_serial_ids: selectedIds,
+                              location_id: firstSelected?.location_id != null ? String(firstSelected.location_id) : "",
+                            };
+                          }));
+                        }
+                      }}
+                    />
+                    <span>{t("dailySales.expiredOverride")}</span>
+                  </label>
+                  {allowExpiredOverride ? (
+                    <input
+                      value={expiredOverrideReason}
+                      minLength="5"
+                      onChange={(event) => setExpiredOverrideReason(event.target.value)}
+                      placeholder={t("dailySales.expiredOverrideReason")}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
               <div className="form-actions">
                 <button
                   type="button"

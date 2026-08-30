@@ -13,6 +13,7 @@ import {
   getPurchaseOrders,
   receivePurchaseOrder,
   recordPurchaseOrderPayment,
+  reversePurchaseOrderPayment,
   updatePurchaseOrder,
 } from "../api/purchaseOrders";
 import { useTranslation } from "../hooks/useTranslation";
@@ -57,6 +58,7 @@ const emptyPayment = () => ({
   financial_account_id: "",
   reference_number: "",
   note: "",
+  idempotency_key: crypto.randomUUID(),
 });
 const errorText = (error) =>
   error?.errors ? Object.values(error.errors).flat().join(" ") : error?.message;
@@ -423,10 +425,26 @@ export default function PurchaseOrders() {
         financial_account_id: payment.financial_account_id ? Number(payment.financial_account_id) : undefined,
         reference_number: payment.reference_number || null,
         note: payment.note || null,
-        idempotency_key: crypto.randomUUID(),
+        idempotency_key: payment.idempotency_key,
       });
       setMode("");
       setMessage(t("po.paymentSaved"));
+      await refreshSelected();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reverseRecordedPayment = async (row) => {
+    const reason = window.prompt(t("po.paymentReversalPrompt"));
+    if (!reason || reason.trim().length < 3 || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await reversePurchaseOrderPayment(row.id, reason.trim());
+      setMessage(t("po.paymentReversed"));
       await refreshSelected();
     } catch (e) {
       setError(errorText(e));
@@ -1214,6 +1232,8 @@ export default function PurchaseOrders() {
                 <th>{t("po.reference")}</th>
                 <th>{t("po.notes")}</th>
                 <th>{t("po.user")}</th>
+                <th>{t("po.status")}</th>
+                <th>{t("po.action")}</th>
               </tr>
             </thead>
             <tbody>
@@ -1226,11 +1246,13 @@ export default function PurchaseOrders() {
                     <td>{row.reference_number || "—"}</td>
                     <td>{row.note || "—"}</td>
                     <td>{row.user?.name || "—"}</td>
+                    <td>{row.status === "reversed" ? t("po.paymentReversedStatus") : t("po.paymentCompletedStatus")}</td>
+                    <td>{row.status !== "reversed" ? <button type="button" className="danger" disabled={busy} onClick={() => reverseRecordedPayment(row)}>{t("po.reversePayment")}</button> : row.reversal_reason || "—"}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan="6">{t("po.noPayments")}</td>
+                  <td colSpan="8">{t("po.noPayments")}</td>
                 </tr>
               )}
             </tbody>

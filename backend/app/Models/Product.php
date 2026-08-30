@@ -18,13 +18,17 @@ class Product extends Model
         'supplier_id',
         'default_warehouse_id',
         'tracking_mode',
+        'expiration_controlled',
+        'default_shelf_life_days',
         'near_expiry_days',
         'fefo_enabled',
         'name',
+        'brand',
         'sku',
         'location_code',
         'barcode',
         'description',
+        'attributes',
         'image_data',
         'image_mime',
         'quantity',
@@ -40,7 +44,15 @@ class Product extends Model
         'weighted_average_cost',
         'inventory_value',
         'weight_kg',
+        'length_cm',
+        'width_cm',
+        'height_cm',
         'volume_m3',
+        'country_of_origin',
+        'hs_code',
+        'lifecycle_status',
+        'discontinued_at',
+        'archived_at',
         'selling_price',
         'vat_rate',
         'tax_treatment',
@@ -53,7 +65,10 @@ class Product extends Model
             'category_id' => 'integer',
             'supplier_id' => 'integer',
             'near_expiry_days' => 'integer',
+            'expiration_controlled' => 'boolean',
+            'default_shelf_life_days' => 'integer',
             'fefo_enabled' => 'boolean',
+            'attributes' => 'array',
             // Return quantities as numbers in JSON. Laravel's decimal cast
             // serializes values such as 700 as the string "700.000", which
             // is easily mistaken for 700000 in the product screens.
@@ -70,7 +85,12 @@ class Product extends Model
             'weighted_average_cost' => 'decimal:6',
             'inventory_value' => 'decimal:6',
             'weight_kg' => 'decimal:6',
+            'length_cm' => 'decimal:3',
+            'width_cm' => 'decimal:3',
+            'height_cm' => 'decimal:3',
             'volume_m3' => 'decimal:6',
+            'discontinued_at' => 'datetime',
+            'archived_at' => 'datetime',
             'selling_price' => 'decimal:2',
             'vat_rate' => 'decimal:2',
         ];
@@ -83,7 +103,7 @@ class Product extends Model
 
     public function supplier(): BelongsTo
     {
-        return $this->belongsTo(Supplier::class);
+        return $this->belongsTo(Supplier::class)->withTrashed();
     }
 
     public function defaultWarehouse(): BelongsTo
@@ -94,6 +114,11 @@ class Product extends Model
     public function units(): HasMany
     {
         return $this->hasMany(ProductUnit::class)->orderBy('code');
+    }
+
+    public function alternativeBarcodes(): HasMany
+    {
+        return $this->hasMany(ProductBarcode::class)->orderBy('id');
     }
 
     public function warehouseStock(): HasMany
@@ -123,24 +148,48 @@ class Product extends Model
 
     public function getStockStatusAttribute(): string
     {
-        if ((float) $this->quantity <= 0) {
+        $available = (float) $this->available_quantity;
+        if ($available <= 0) {
             return 'out';
         }
 
-        if ((float) $this->quantity <= (float) $this->min_quantity) {
+        if ($available <= (float) $this->min_quantity) {
             return 'low';
         }
 
         $highThreshold = (float) $this->high_stock_threshold;
 
-        if ($highThreshold > 0 && (float) $this->quantity >= $highThreshold) {
+        if ($highThreshold > 0 && $available >= $highThreshold) {
             return 'high';
         }
 
         return 'normal';
     }
 
-    protected $appends = ['stock_status'];
+    public function getAvailableQuantityAttribute(): float
+    {
+        if ($this->relationLoaded('warehouseStock')) {
+            return $this->warehouseStock->isNotEmpty()
+                ? round((float) $this->warehouseStock->sum('available_quantity'), 3)
+                : round((float) $this->quantity, 3);
+        }
+
+        // Some service responses serialize an individual product without the
+        // warehouse relation. Query the authoritative balance once; use the
+        // legacy aggregate only for records that truly have no balance rows.
+        $balance = WarehouseStock::withoutGlobalScopes()
+            ->where('company_id', $this->company_id)
+            ->where('product_id', $this->getKey())
+            ->selectRaw('COUNT(*) AS balance_count, COALESCE(SUM(available_quantity), 0) AS available_total')
+            ->first();
+        if ((int) ($balance?->balance_count ?? 0) > 0) {
+            return round((float) $balance->available_total, 3);
+        }
+
+        return round((float) $this->quantity, 3);
+    }
+
+    protected $appends = ['stock_status', 'available_quantity'];
 
     protected $hidden = ['image_data'];
 

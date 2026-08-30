@@ -23,7 +23,7 @@ class PurchaseOrderItem extends Model
 
     public function purchaseOrder(): BelongsTo
     {
-        return $this->belongsTo(PurchaseOrder::class);
+        return $this->belongsTo(PurchaseOrder::class)->withTrashed();
     }
 
     public function productSupplier(): BelongsTo

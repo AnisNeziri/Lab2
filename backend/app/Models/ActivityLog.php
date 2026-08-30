@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Traits\BelongsToCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use LogicException;
 
 class ActivityLog extends Model
 {
@@ -31,6 +32,8 @@ class ActivityLog extends Model
     {
         return [
             'created_at' => 'datetime',
+            'old_value' => 'array',
+            'new_value' => 'array',
         ];
     }
 
@@ -40,10 +43,16 @@ class ActivityLog extends Model
         static::creating(function ($model) {
             $model->created_at = $model->created_at ?? now();
         });
+        static::updating(function (): never {
+            throw new LogicException('Audit records are immutable.');
+        });
+        static::deleting(function (): never {
+            throw new LogicException('Audit records cannot be deleted.');
+        });
     }
 
     public function user(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class)->withTrashed();
     }
 }

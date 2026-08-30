@@ -23,4 +23,5 @@ class SupplierMatchEvent extends Model
     }
 
     public function expense(): BelongsTo { return $this->belongsTo(Expense::class); }
+    public function user(): BelongsTo { return $this->belongsTo(User::class)->withTrashed(); }
 }

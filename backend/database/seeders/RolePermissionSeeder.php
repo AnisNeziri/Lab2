@@ -19,6 +19,7 @@ class RolePermissionSeeder extends Seeder
             ['name' => 'View Bin Inventory', 'slug' => 'inventory.view', 'group' => 'inventory'],
             ['name' => 'Manage Physical Counts', 'slug' => 'inventory.counts.manage', 'group' => 'inventory'],
             ['name' => 'Approve Physical Counts', 'slug' => 'inventory.counts.approve', 'group' => 'inventory'],
+            ['name' => 'Override Expired Inventory Block', 'slug' => 'inventory.expired.override', 'group' => 'inventory'],
             ['name' => 'Use Mobile Warehouse', 'slug' => 'warehouse_mobile.use', 'group' => 'inventory'],
             ['name' => 'Manage Warehouses', 'slug' => 'warehouses.manage', 'group' => 'inventory'],
             ['name' => 'View Stock Transfers', 'slug' => 'transfers.view', 'group' => 'inventory'],

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Invoice;
 use App\Models\PaymentTransaction;
+use App\Support\Money;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -36,11 +37,13 @@ class PaymentService
                     if ((int) $existing->invoice_id !== (int) $invoice->id) {
                         throw ValidationException::withMessages(['idempotency_key' => ['This payment key is already used for another invoice.']]);
                     }
-                    $mismatch = (isset($data['amount']) && abs((float) $existing->amount - round((float) $data['amount'], 2)) > 0.001)
-                        || (isset($data['payment_method']) && $existing->payment_method !== $data['payment_method'])
-                        || (isset($data['payment_date']) && $existing->payment_date?->toDateString() !== $data['payment_date'])
-                        || (isset($data['reference_number']) && $existing->reference_number !== $data['reference_number'])
-                        || (isset($data['note']) && $existing->note !== $data['note']);
+                    $mismatch = $existing->status !== 'completed'
+                        || (isset($data['amount']) && Money::compare($existing->amount, $data['amount']) !== 0)
+                        || $existing->payment_method !== ($data['payment_method'] ?? 'cash')
+                        || $existing->payment_date?->toDateString() !== ($data['payment_date'] ?? now('Europe/Belgrade')->toDateString())
+                        || ($existing->reference_number ?? '') !== ($data['reference_number'] ?? '')
+                        || ($existing->note ?? '') !== ($data['note'] ?? '')
+                        || (int) ($existing->financial_account_id ?? 0) !== (int) ($data['financial_account_id'] ?? 0);
                     if ($mismatch) {
                         throw ValidationException::withMessages([
                             'idempotency_key' => ['This payment key was already used with different payment details.'],
@@ -51,13 +54,15 @@ class PaymentService
                 }
             }
 
-            if ((float) $invoice->remaining_balance <= 0) {
+            $invoiceTotal = Money::compare($invoice->grand_total, $invoice->total_amount) >= 0
+                ? Money::normalize($invoice->grand_total)
+                : Money::normalize($invoice->total_amount);
+            $remainingBefore = Money::maximum('0.00', Money::subtract($invoiceTotal, $invoice->total_paid));
+            if (Money::compare($remainingBefore, '0.00') <= 0) {
                 throw ValidationException::withMessages(['invoice_id' => ['This invoice has already been fully paid.']]);
             }
-            $amount = isset($data['amount'])
-                ? round((float) $data['amount'], 2)
-                : round((float) $invoice->remaining_balance, 2);
-            if ($amount <= 0 || $amount > (float) $invoice->remaining_balance) {
+            $amount = isset($data['amount']) ? Money::normalize($data['amount']) : $remainingBefore;
+            if (Money::compare($amount, '0.00') <= 0 || Money::compare($amount, $remainingBefore) > 0) {
                 throw ValidationException::withMessages([
                     'amount' => ['Payment must be greater than zero and cannot exceed the remaining balance of €'.number_format($invoice->remaining_balance, 2).'.'],
                 ]);
@@ -92,9 +97,9 @@ class PaymentService
                 $transaction->update(['financial_account_transaction_id' => $ledger->id]);
             }
 
-            $newTotalPaid = round((float) $invoice->total_paid + $amount, 2);
-            $remaining = round((float) $invoice->grand_total - $newTotalPaid, 2);
-            $paymentStatus = $remaining <= 0 ? 'paid' : 'partially_paid';
+            $newTotalPaid = Money::add($invoice->total_paid, $amount);
+            $remaining = Money::subtract($invoiceTotal, $newTotalPaid);
+            $paymentStatus = Money::compare($remaining, '0.00') <= 0 ? 'paid' : 'partially_paid';
             $invoice->update([
                 'total_paid' => $newTotalPaid,
                 'status' => 'issued',
@@ -155,15 +160,18 @@ class PaymentService
                 }
             }
 
-            $totalPaid = round((float) PaymentTransaction::query()
+            $totalPaid = Money::normalize(PaymentTransaction::query()
                 ->where('invoice_id', $invoice->id)
                 ->where('status', 'completed')
                 ->whereNull('reversed_at')
-                ->sum('amount'), 2);
-            $remaining = round((float) $invoice->grand_total - $totalPaid, 2);
-            $paymentStatus = $totalPaid <= 0
+                ->sum('amount'));
+            $invoiceTotal = Money::compare($invoice->grand_total, $invoice->total_amount) >= 0
+                ? Money::normalize($invoice->grand_total)
+                : Money::normalize($invoice->total_amount);
+            $remaining = Money::subtract($invoiceTotal, $totalPaid);
+            $paymentStatus = Money::compare($totalPaid, '0.00') <= 0
                 ? 'unpaid'
-                : ($remaining <= 0 ? 'paid' : 'partially_paid');
+                : (Money::compare($remaining, '0.00') <= 0 ? 'paid' : 'partially_paid');
 
             $invoice->update([
                 'total_paid' => $totalPaid,

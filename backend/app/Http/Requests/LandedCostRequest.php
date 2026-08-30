@@ -30,6 +30,10 @@ class LandedCostRequest extends FormRequest
                 Rule::requiredIf(fn () => strtoupper((string) $this->input('currency')) !== 'EUR'),
                 'nullable', 'numeric', 'gt:0', 'max:1000000',
             ],
+            'exchange_rate_date' => [
+                Rule::requiredIf(fn () => strtoupper((string) $this->input('currency')) !== 'EUR'),
+                'nullable', 'date',
+            ],
             'allocation_method' => ['required', Rule::in(LandedCostService::ALLOCATION_METHODS)],
             'goods_receipt_item_ids' => ['nullable', 'array', 'min:1'],
             'goods_receipt_item_ids.*' => ['integer', 'distinct'],

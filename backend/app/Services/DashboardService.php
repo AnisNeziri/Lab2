@@ -13,7 +13,8 @@ use Carbon\CarbonImmutable;
 class DashboardService
 {
     public function __construct(
-        private RedisStoreService $redisStore
+        private RedisStoreService $redisStore,
+        private InventorySnapshotService $inventorySnapshots,
     ) {}
 
     public function getMetrics(int $companyId): array
@@ -233,23 +234,43 @@ class DashboardService
     private function buildMetrics(): array
     {
         $products = Product::with('category')->get();
+        $snapshots = $this->inventorySnapshots->forProducts($products);
+        $snapshot = fn (Product $product): array => $snapshots->get((int) $product->id, [
+            'on_hand' => (float) $product->quantity,
+            'available' => (float) $product->quantity,
+        ]);
 
-        $totalUnits = $products->sum('quantity');
-        $totalValue = $products->sum(fn (Product $p) => $p->quantity * $p->price);
-        $inventoryValue = $products->sum(fn (Product $p) => $p->quantity * ($p->purchase_price ?? $p->price)
+        $totalUnits = $products->sum(fn (Product $p) => $snapshot($p)['on_hand']);
+        $totalValue = $products->sum(fn (Product $p) => $snapshot($p)['on_hand'] * (float) $p->price);
+        $inventoryValue = $products->sum(fn (Product $p) => $snapshot($p)['on_hand'] * (float) ($p->weighted_average_cost ?: $p->purchase_price ?: $p->price)
         );
-        $expectedNetProfit = $products->sum(fn (Product $p) => $p->quantity * (($p->selling_price ?? $p->price) - ($p->purchase_price ?? $p->price))
+        $expectedNetProfit = $products->sum(fn (Product $p) => $snapshot($p)['available'] * ((float) ($p->selling_price ?? $p->price) - (float) ($p->weighted_average_cost ?: $p->purchase_price ?: $p->price))
         );
 
-        $lowStockProducts = $products->filter(fn (Product $p) => $p->quantity <= $p->min_quantity)->sortBy('quantity')->values();
-        $outOfStockProducts = $products->filter(fn (Product $p) => $p->quantity <= 0)->sortBy('name')->values();
+        $asAvailableProduct = function (Product $product) use ($snapshot): Product {
+            $copy = clone $product;
+            $totals = $snapshot($product);
+            // Keep `quantity` for the existing dashboard contract while also
+            // exposing explicit values to newer clients.
+            $copy->setAttribute('quantity', $totals['available']);
+            $copy->setAttribute('available_quantity', $totals['available']);
+            $copy->setAttribute('on_hand_quantity', $totals['on_hand']);
+
+            return $copy;
+        };
+        $lowStockProducts = $products
+            ->filter(fn (Product $p) => $snapshot($p)['available'] > 0 && $snapshot($p)['available'] <= (float) $p->min_quantity)
+            ->map($asAvailableProduct)->sortBy('quantity')->values();
+        $outOfStockProducts = $products
+            ->filter(fn (Product $p) => $snapshot($p)['available'] <= 0)
+            ->map($asAvailableProduct)->sortBy('name')->values();
 
         $recentMovements = StockMovement::with('product.category')->latest()->limit(50)->get();
 
         $categoryValues = $products->groupBy(fn (Product $p) => $p->category->name ?? 'Uncategorized')
             ->map(fn ($group, $name) => [
                 'name' => $name,
-                'value' => round($group->sum(fn ($p) => $p->quantity * $p->price), 2),
+                'value' => round($group->sum(fn ($p) => $snapshot($p)['on_hand'] * (float) $p->price), 2),
             ])->values();
 
         $movementsOverTime = StockMovement::selectRaw('DATE(created_at) as date, type, SUM(quantity) as total_qty')

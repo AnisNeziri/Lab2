@@ -64,7 +64,8 @@ class InventoryFoundationTest extends TestCase
         $item = $session->items->firstOrFail();
         $this->assertSame(10.0, (float) $item->expected_quantity);
 
-        // A later receipt does not rewrite the frozen expectation.
+        // A later receipt makes the first pass stale. Requesting a recount
+        // explicitly refreshes the book quantity before a new count is taken.
         $movements->store($this->movement($product, $warehouse, $binA, 'in', 2));
         $session = $counts->record($session, ['items' => [[
             'count_item_id' => $item->id, 'counted_quantity' => 8, 'notes' => 'First pass',
@@ -78,14 +79,14 @@ class InventoryFoundationTest extends TestCase
 
         $approvedItem = $session->items->firstWhere('id', $item->id);
         $this->assertSame('approved', $session->status);
-        $this->assertSame(10.0, (float) $approvedItem->expected_quantity);
+        $this->assertSame(12.0, (float) $approvedItem->expected_quantity);
         $this->assertSame(9.0, (float) $approvedItem->counted_quantity);
-        $this->assertSame(-1.0, (float) $approvedItem->variance_quantity);
+        $this->assertSame(-3.0, (float) $approvedItem->variance_quantity);
         $this->assertCount(3, $approvedItem->entries);
-        $this->assertSame(11.0, $this->binQuantity($product, $binA));
+        $this->assertSame(9.0, $this->binQuantity($product, $binA));
         $this->assertDatabaseHas('stock_movements', [
             'movement_code' => 'stock_count', 'source_type' => 'inventory_count',
-            'source_id' => $session->id, 'quantity' => 1,
+            'source_id' => $session->id, 'quantity' => 3,
         ]);
     }
 

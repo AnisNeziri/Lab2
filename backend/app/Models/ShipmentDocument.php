@@ -23,5 +23,5 @@ class ShipmentDocument extends Model
     }
 
     public function shipment(): BelongsTo { return $this->belongsTo(Shipment::class); }
-    public function uploader(): BelongsTo { return $this->belongsTo(User::class, 'uploaded_by'); }
+    public function uploader(): BelongsTo { return $this->belongsTo(User::class, 'uploaded_by')->withTrashed(); }
 }

@@ -6,6 +6,7 @@ use App\Traits\BelongsToCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Support\Money;
 
 class Invoice extends Model
 {
@@ -94,7 +95,7 @@ class Invoice extends Model
 
     public function customer(): BelongsTo
     {
-        return $this->belongsTo(Customer::class);
+        return $this->belongsTo(Customer::class)->withTrashed();
     }
 
     public function dailySale(): BelongsTo
@@ -129,22 +130,22 @@ class Invoice extends Model
 
     public function creator(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
     }
 
     public function updater(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'updated_by');
+        return $this->belongsTo(User::class, 'updated_by')->withTrashed();
     }
 
     public function issuer(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'issued_by');
+        return $this->belongsTo(User::class, 'issued_by')->withTrashed();
     }
 
     public function voider(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'voided_by');
+        return $this->belongsTo(User::class, 'voided_by')->withTrashed();
     }
 
     public function getRemainingBalanceAttribute(): float
@@ -152,9 +153,12 @@ class Invoice extends Model
         if ($this->document_type === 'credit_note' || in_array($this->status, ['credited', 'void'], true)) {
             return 0.0;
         }
-        $total = max((float) $this->grand_total, (float) $this->total_amount);
+        // Invoice relations are sometimes intentionally loaded with only a
+        // small column subset. Treat omitted monetary columns as zero rather
+        // than attempting to parse null while serializing the relation.
+        $totalPaid = $this->getAttributeFromArray('total_paid') ?? '0.00';
 
-        return round($total - (float) $this->total_paid, 2);
+        return (float) Money::subtract($this->resolvedTotal(), $totalPaid);
     }
 
     public function getIsPaidAttribute(): bool
@@ -169,9 +173,19 @@ class Invoice extends Model
 
     public function getSignedTotalAttribute(): float
     {
-        $total = max((float) $this->grand_total, (float) $this->total_amount);
+        $total = $this->resolvedTotal();
 
-        return $this->document_type === 'credit_note' ? -$total : $total;
+        return (float) ($this->document_type === 'credit_note' ? Money::subtract('0.00', $total) : $total);
+    }
+
+    private function resolvedTotal(): string
+    {
+        $grandTotal = $this->getAttributeFromArray('grand_total') ?? '0.00';
+        $legacyTotal = $this->getAttributeFromArray('total_amount') ?? '0.00';
+
+        return Money::compare($grandTotal, $legacyTotal) >= 0
+            ? Money::normalize($grandTotal)
+            : Money::normalize($legacyTotal);
     }
 
     protected $appends = ['remaining_balance', 'is_paid', 'due_date', 'signed_total'];

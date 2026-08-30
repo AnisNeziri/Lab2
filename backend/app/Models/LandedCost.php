@@ -14,7 +14,7 @@ class LandedCost extends Model
     protected $fillable = [
         'company_id', 'goods_receipt_id', 'purchase_order_id', 'shipment_id',
         'reference_number', 'cost_type', 'description', 'amount', 'currency',
-        'exchange_rate_to_base', 'base_currency_amount', 'allocation_method',
+        'base_currency', 'exchange_rate_to_base', 'exchange_rate_date', 'base_currency_amount', 'allocation_method',
         'status', 'idempotency_key', 'notes', 'created_by', 'posted_by', 'posted_at',
     ];
 
@@ -23,6 +23,7 @@ class LandedCost extends Model
         return [
             'amount' => 'decimal:6',
             'exchange_rate_to_base' => 'decimal:8',
+            'exchange_rate_date' => 'date:Y-m-d',
             'base_currency_amount' => 'decimal:6',
             'posted_at' => 'datetime',
         ];
@@ -55,11 +56,11 @@ class LandedCost extends Model
 
     public function creator(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
     }
 
     public function poster(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'posted_by');
+        return $this->belongsTo(User::class, 'posted_by')->withTrashed();
     }
 }

@@ -8,6 +8,7 @@ use App\Models\Expense;
 use App\Services\SupplierInvoiceMatchingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class SupplierInvoiceController extends Controller
 {
@@ -37,16 +38,21 @@ class SupplierInvoiceController extends Controller
     public function allocatePayment(Request $request, Expense $supplierInvoice): JsonResponse
     {
         $data = $request->validate([
-            'purchase_order_payment_id' => ['required', 'integer', 'exists:purchase_order_payments,id'],
-            'amount' => ['required', 'numeric', 'min:0.01'],
+            'purchase_order_payment_id' => [
+                'required', 'integer',
+                Rule::exists('purchase_order_payments', 'id')->where('company_id', $request->user()->company_id),
+            ],
+            'amount' => ['required', 'numeric', 'decimal:0,2', 'min:0.01'],
             'reason' => ['nullable', 'string', 'max:1000'],
+            'idempotency_key' => ['required', 'string', 'max:100'],
         ]);
 
         return response()->json($this->matching->allocatePayment(
             $supplierInvoice,
             (int) $data['purchase_order_payment_id'],
-            (float) $data['amount'],
+            $data['amount'],
             $data['reason'] ?? null,
+            $data['idempotency_key'],
         ));
     }
 }

@@ -10,6 +10,7 @@ use App\Models\ShipmentHistory;
 use App\Models\User;
 use App\Support\SafeBroadcast;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 
 class ShipmentAlertService
@@ -73,6 +74,7 @@ class ShipmentAlertService
         ShipmentHistory::create([
             'company_id' => $shipment->company_id,
             'shipment_id' => $shipment->id,
+            'user_id' => Auth::id(),
             'event_type' => $eventType,
             'description' => $description,
             'metadata' => $metadata,

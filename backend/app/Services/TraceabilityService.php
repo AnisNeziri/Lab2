@@ -18,6 +18,11 @@ class TraceabilityService
 {
     public const MODES = ['none', 'batch', 'serial', 'batch_expiry'];
 
+    /** Outbound operations that represent normal fulfilment/picking. */
+    private const EXPIRY_BLOCKED_MOVEMENTS = [
+        'daily_sale', 'invoice_sale', 'transfer_out', 'bin_transfer_out', 'warehouse_pick',
+    ];
+
     /**
      * Apply the trace side of an already validated aggregate stock movement.
      * This must be called inside the same DB transaction as the movement and
@@ -30,6 +35,7 @@ class TraceabilityService
         ?int $locationId,
         string $stockState,
         array $allocations = [],
+        bool $allowExpiredOverride = false,
     ): Collection {
         $mode = $product->tracking_mode ?: 'none';
         if (! in_array($mode, self::MODES, true)) {
@@ -44,6 +50,8 @@ class TraceabilityService
         }
 
         $requestedQuantity = round((float) $movement->quantity, 3);
+        $blocksExpiredStock = ! $allowExpiredOverride && $movement->type === 'out'
+            && in_array($movement->movement_code, self::EXPIRY_BLOCKED_MOVEMENTS, true);
         if ($allocations === [] && $movement->type === 'out' && $mode !== 'serial' && $product->fefo_enabled) {
             $allocations = $this->fefoAllocations(
                 $product,
@@ -51,6 +59,7 @@ class TraceabilityService
                 $locationId,
                 $stockState,
                 $requestedQuantity,
+                ! $blocksExpiredStock,
             );
         }
         if ($allocations === []) {
@@ -60,7 +69,7 @@ class TraceabilityService
             throw ValidationException::withMessages(['trace_allocations' => [$message]]);
         }
 
-        $resolved = collect($allocations)->map(function (array $allocation) use ($product, $movement): array {
+        $resolved = collect($allocations)->map(function (array $allocation) use ($product, $movement, $blocksExpiredStock): array {
             $quantity = round((float) ($allocation['quantity'] ?? 0), 3);
             if ($quantity <= 0) {
                 throw ValidationException::withMessages(['trace_allocations' => ['Every trace allocation quantity must be greater than zero.']]);
@@ -68,6 +77,14 @@ class TraceabilityService
             $lot = $movement->type === 'in'
                 ? $this->resolveInboundIdentity($product, $allocation)
                 : $this->resolveExistingIdentity($product, $allocation);
+
+            if ($blocksExpiredStock && $lot->expiry_at && $lot->expiry_at->lt(now()->startOfDay())) {
+                throw ValidationException::withMessages([
+                    'trace_allocations' => [
+                        "Expired lot {$this->displayIdentity($lot)} cannot be sold, picked, or transferred as normal stock.",
+                    ],
+                ]);
+            }
 
             if (($product->tracking_mode ?: 'none') === 'serial' && abs($quantity - 1.0) >= 0.0005) {
                 throw ValidationException::withMessages(['trace_allocations' => ['Each serial number must represent exactly one base unit.']]);
@@ -153,6 +170,7 @@ class TraceabilityService
         ?int $locationId,
         string $stockState,
         float $quantity,
+        bool $allowExpired = false,
     ): array {
         $remaining = round($quantity, 3);
         $balances = InventoryTraceBalance::withoutGlobalScopes()
@@ -164,6 +182,10 @@ class TraceabilityService
             ->where('inventory_trace_balances.location_key', (int) ($locationId ?? 0))
             ->where('inventory_trace_balances.stock_state', $stockState)
             ->where('inventory_trace_balances.quantity', '>', 0)
+            ->when(! $allowExpired, fn ($query) => $query->where(function ($lotQuery): void {
+                $lotQuery->whereNull('inventory_lots.expiry_at')
+                    ->orWhereDate('inventory_lots.expiry_at', '>=', now()->toDateString());
+            }))
             ->orderByRaw('CASE WHEN inventory_lots.expiry_at IS NULL THEN 1 ELSE 0 END')
             ->orderBy('inventory_lots.expiry_at')
             ->orderBy('inventory_lots.created_at')
@@ -196,7 +218,7 @@ class TraceabilityService
         $days = $withinDays ?? (int) ($product->near_expiry_days ?: 30);
 
         return InventoryLot::query()
-            ->with(['product:id,name,sku,tracking_mode,near_expiry_days', 'balances' => fn ($query) => $query
+            ->with(['product:id,name,sku,tracking_mode,expiration_controlled,near_expiry_days', 'balances' => fn ($query) => $query
                 ->with(['warehouse:id,name,code', 'location:id,name,code,path'])
                 ->where('quantity', '>', 0)
                 ->when($warehouseId, fn ($nested) => $nested->where('warehouse_id', $warehouseId))])
@@ -233,20 +255,27 @@ class TraceabilityService
         $serialNumber = $this->nullableTrim($allocation['serial_number'] ?? null);
         $expiryAt = $this->nullableDate($allocation['expiry_at'] ?? $allocation['expiry_date'] ?? null);
         $manufacturedAt = $this->nullableDate($allocation['manufactured_at'] ?? $allocation['manufacturing_date'] ?? null);
+        $expirationControlled = (bool) $product->expiration_controlled || $mode === 'batch_expiry';
+        if ($expirationControlled && ! $expiryAt && (int) $product->default_shelf_life_days > 0) {
+            $expiryAt = ($manufacturedAt ?: now()->startOfDay())
+                ->copy()
+                ->addDays((int) $product->default_shelf_life_days);
+        }
         if ($mode === 'serial' && ! $serialNumber) {
             throw ValidationException::withMessages(['trace_allocations' => ['A serial number is required for this product.']]);
         }
         if (in_array($mode, ['batch', 'batch_expiry'], true) && ! $lotNumber) {
             throw ValidationException::withMessages(['trace_allocations' => ['A lot/batch number is required for this product.']]);
         }
-        if ($mode === 'batch_expiry' && ! $expiryAt) {
+        if ($expirationControlled && ! $expiryAt) {
             throw ValidationException::withMessages(['trace_allocations' => ['An expiry date is required for this product.']]);
         }
         if ($manufacturedAt && $expiryAt && $expiryAt->lt($manufacturedAt)) {
             throw ValidationException::withMessages(['trace_allocations' => ['Expiry date cannot be before the manufacturing date.']]);
         }
 
-        $identityKey = $this->identityKey($mode, $lotNumber, $serialNumber, $expiryAt?->toDateString());
+        $identityMode = $expirationControlled && $mode === 'batch' ? 'batch_expiry' : $mode;
+        $identityKey = $this->identityKey($identityMode, $lotNumber, $serialNumber, $expiryAt?->toDateString());
         $existing = InventoryLot::withoutGlobalScopes()
             ->where('company_id', $product->company_id)
             ->where('product_id', $product->id)
@@ -295,7 +324,9 @@ class TraceabilityService
             $query->whereKey((int) $allocation['inventory_lot_id']);
         } else {
             $identityKey = $this->identityKey(
-                $product->tracking_mode ?: 'none',
+                ((bool) $product->expiration_controlled && $product->tracking_mode === 'batch')
+                    ? 'batch_expiry'
+                    : ($product->tracking_mode ?: 'none'),
                 $this->nullableTrim($allocation['lot_number'] ?? null),
                 $this->nullableTrim($allocation['serial_number'] ?? null),
                 $this->nullableDate($allocation['expiry_at'] ?? $allocation['expiry_date'] ?? null)?->toDateString(),

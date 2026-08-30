@@ -204,6 +204,11 @@ class WarehouseLayoutService
                     'section' => ['Move stock and remove child locations before deleting this section.'],
                 ]);
             }
+            if ($location && $this->locationHasHistory($location)) {
+                throw ValidationException::withMessages([
+                    'section' => ['This location has inventory history and cannot be deleted. Deactivate it instead.'],
+                ]);
+            }
             if (Product::where('company_id', $section->company_id)->whereIn('location_code', $legacyCodes)->exists()) {
                 throw ValidationException::withMessages(['section' => ['Move products out of this location before deleting it.']]);
             }
@@ -424,12 +429,27 @@ class WarehouseLayoutService
     private function locationHasStock(WarehouseLocation $location): bool
     {
         return WarehouseStock::query()->where('location_id', $location->id)
-            ->where(function ($query) {
-                $query->where('quantity', '>', 0)
-                    ->orWhere('reserved_quantity', '>', 0)
-                    ->orWhere('damaged_quantity', '>', 0)
-                    ->orWhere('quarantine_quantity', '>', 0)
-                    ->orWhere('blocked_quantity', '>', 0);
+            ->where(function ($query): void {
+                foreach (['quantity', 'available_quantity', 'reserved_quantity', 'damaged_quantity', 'quarantine_quantity', 'blocked_quantity'] as $index => $column) {
+                    $index === 0 ? $query->where($column, '!=', 0) : $query->orWhere($column, '!=', 0);
+                }
             })->exists();
+    }
+
+    private function locationHasHistory(WarehouseLocation $location): bool
+    {
+        return DB::table('stock_movements')->where('location_id', $location->id)->exists()
+            || DB::table('goods_receipts')->where('location_id', $location->id)->exists()
+            || DB::table('inventory_trace_balances')->where('location_id', $location->id)->exists()
+            || DB::table('stock_transfers')->where(function ($query) use ($location): void {
+                $query->where('source_location_id', $location->id)
+                    ->orWhere('destination_location_id', $location->id);
+            })->exists()
+            || DB::table('inventory_count_sessions')->where('location_id', $location->id)->exists()
+            || DB::table('inventory_count_items')->where('location_id', $location->id)->exists()
+            || DB::table('inventory_return_items')->where('location_id', $location->id)->exists()
+            || DB::table('daily_sale_items')->where('location_id', $location->id)->exists()
+            || DB::table('invoice_items')->where('location_id', $location->id)->exists()
+            || DB::table('stock_transfer_pick_events')->where('location_id', $location->id)->exists();
     }
 }

@@ -27,12 +27,17 @@ const emptyForm = {
   name: '',
   sku: '',
   barcode: '',
+  alternative_barcodes: [],
+  brand: '',
+  attributes: [],
   description: '',
   quantity: 0,
   quantity_change_reason: '',
   unit: 'pcs',
   default_warehouse_id: '',
   tracking_mode: 'none',
+  expiration_controlled: false,
+  default_shelf_life_days: '',
   near_expiry_days: 30,
   fefo_enabled: true,
   opening_lot_number: '',
@@ -48,7 +53,13 @@ const emptyForm = {
   replenishment_review_days: 14,
   high_stock_threshold: 0,
   weight_kg: '',
+  length_cm: '',
+  width_cm: '',
+  height_cm: '',
   volume_m3: '',
+  country_of_origin: '',
+  hs_code: '',
+  lifecycle_status: 'active',
   location_code: '',
   purchase_price: '',
   selling_price: '',
@@ -69,6 +80,7 @@ function Products() {
   const [categoryFilter, setCategoryFilter] = useState('')
   const [supplierFilter, setSupplierFilter] = useState('')
   const [lowStockOnly, setLowStockOnly] = useState(false)
+  const [lifecycleFilter, setLifecycleFilter] = useState('')
   const [sortBy, setSortBy] = useState('name')
   const [sortDirection, setSortDirection] = useState('asc')
   const [page, setPage] = useState(1)
@@ -137,6 +149,7 @@ function Products() {
       search: search.trim(),
       category_id: categoryFilter,
       supplier_id: supplierFilter,
+      lifecycle_status: lifecycleFilter,
       low_stock: lowStockOnly,
       sort: sortBy,
       direction: sortDirection,
@@ -147,7 +160,7 @@ function Products() {
 
   useEffect(() => {
     setPage(1)
-  }, [search, categoryFilter, supplierFilter, lowStockOnly, sortBy, sortDirection])
+  }, [search, categoryFilter, supplierFilter, lifecycleFilter, lowStockOnly, sortBy, sortDirection])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -155,13 +168,13 @@ function Products() {
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [search, categoryFilter, supplierFilter, lowStockOnly, sortBy, sortDirection, page])
+  }, [search, categoryFilter, supplierFilter, lifecycleFilter, lowStockOnly, sortBy, sortDirection, page])
 
   useEffect(() => {
     const refresh = () => loadProducts(getActiveFilters(page), { silent: true })
     window.addEventListener('database-refresh', refresh)
     return () => window.removeEventListener('database-refresh', refresh)
-  }, [page, search, categoryFilter, supplierFilter, lowStockOnly, sortBy, sortDirection])
+  }, [page, search, categoryFilter, supplierFilter, lifecycleFilter, lowStockOnly, sortBy, sortDirection])
 
   useEffect(() => {
     if (!viewProductId) return undefined
@@ -176,10 +189,17 @@ function Products() {
 
   function handleChange(event) {
     const { name, value, checked, type } = event.target
-    setForm((current) => ({
-      ...current,
-      [name]: type === 'checkbox' ? checked : value,
-    }))
+    setForm((current) => {
+      const next = { ...current, [name]: type === 'checkbox' ? checked : value }
+      if (name === 'tracking_mode') {
+        if (value === 'batch_expiry') next.expiration_controlled = true
+        if (!['batch', 'batch_expiry'].includes(value)) {
+          next.expiration_controlled = false
+          next.default_shelf_life_days = ''
+        }
+      }
+      return next
+    })
   }
 
   function startEdit(product) {
@@ -191,12 +211,19 @@ function Products() {
       name: product.name,
       sku: product.sku || '',
       barcode: product.barcode ?? '',
+      alternative_barcodes: (product.alternative_barcodes || []).map((row) => ({
+        barcode: row.barcode || '', label: row.label || '', is_active: row.is_active !== false,
+      })),
+      brand: product.brand ?? '',
+      attributes: Object.entries(product.attributes || {}).map(([key, value]) => ({ key, value: String(value) })),
       description: product.description ?? '',
       quantity: product.quantity,
       quantity_change_reason: '',
       unit: product.unit ?? 'pcs',
       default_warehouse_id: product.default_warehouse_id ? String(product.default_warehouse_id) : '',
       tracking_mode: product.tracking_mode || 'none',
+      expiration_controlled: Boolean(product.expiration_controlled || product.tracking_mode === 'batch_expiry'),
+      default_shelf_life_days: product.default_shelf_life_days ?? '',
       near_expiry_days: product.near_expiry_days ?? 30,
       fefo_enabled: product.fefo_enabled !== false,
       opening_lot_number: '',
@@ -216,7 +243,13 @@ function Products() {
       replenishment_review_days: product.replenishment_review_days ?? 14,
       high_stock_threshold: product.high_stock_threshold ?? 0,
       weight_kg: product.weight_kg ?? '',
+      length_cm: product.length_cm ?? '',
+      width_cm: product.width_cm ?? '',
+      height_cm: product.height_cm ?? '',
       volume_m3: product.volume_m3 ?? '',
+      country_of_origin: product.country_of_origin ?? '',
+      hs_code: product.hs_code ?? '',
+      lifecycle_status: product.lifecycle_status ?? 'active',
       location_code: product.location_code ?? '',
       purchase_price: product.purchase_price ?? '',
       selling_price: product.selling_price ?? product.price ?? '',
@@ -241,6 +274,7 @@ function Products() {
     setCategoryFilter('')
     setSupplierFilter('')
     setLowStockOnly(false)
+    setLifecycleFilter('')
     setSortBy('name')
     setSortDirection('asc')
     setPage(1)
@@ -253,6 +287,24 @@ function Products() {
         if (rowIndex === index) return { ...row, [field]: value }
         return row
       }),
+    }))
+  }
+
+  function updateAlternativeBarcode(index, field, value) {
+    setForm((current) => ({
+      ...current,
+      alternative_barcodes: current.alternative_barcodes.map((row, rowIndex) => (
+        rowIndex === index ? { ...row, [field]: value } : row
+      )),
+    }))
+  }
+
+  function updateAttribute(index, field, value) {
+    setForm((current) => ({
+      ...current,
+      attributes: current.attributes.map((row, rowIndex) => (
+        rowIndex === index ? { ...row, [field]: value } : row
+      )),
     }))
   }
 
@@ -295,12 +347,13 @@ function Products() {
     const openingQuantity = Number(form.quantity || 0)
     const openingTraceAllocations = []
 
+    const expirationControlled = Boolean(form.expiration_controlled || form.tracking_mode === 'batch_expiry')
     if (creating && openingQuantity > 0 && ['batch', 'batch_expiry'].includes(form.tracking_mode)) {
       if (!form.opening_lot_number.trim()) {
         setFormError(t('productTracking.openingLotRequired'))
         return
       }
-      if (form.tracking_mode === 'batch_expiry' && !form.opening_expiry_at) {
+      if (expirationControlled && !form.opening_expiry_at && !form.default_shelf_life_days) {
         setFormError(t('productTracking.openingExpiryRequired'))
         return
       }
@@ -346,12 +399,21 @@ function Products() {
       name: form.name,
       ...(form.sku.trim() ? { sku: form.sku.trim() } : {}),
       barcode: form.barcode || null,
+      alternative_barcodes: form.alternative_barcodes.filter((row) => row.barcode.trim()).map((row) => ({
+        barcode: row.barcode.trim(), label: row.label.trim() || null, is_active: row.is_active !== false,
+      })),
+      brand: form.brand.trim() || null,
+      attributes: Object.fromEntries(form.attributes
+        .filter((row) => row.key.trim() && row.value.trim())
+        .map((row) => [row.key.trim(), row.value.trim()])),
       description: form.description || null,
       ...(!trackedEdit ? { quantity: openingQuantity } : {}),
       ...(editingId ? { quantity_change_reason: form.quantity_change_reason.trim() || null } : {}),
       unit: form.unit || 'pcs',
       default_warehouse_id: form.default_warehouse_id ? Number(form.default_warehouse_id) : null,
       tracking_mode: form.tracking_mode || 'none',
+      expiration_controlled: expirationControlled,
+      default_shelf_life_days: expirationControlled && form.default_shelf_life_days ? Number(form.default_shelf_life_days) : null,
       near_expiry_days: Number(form.near_expiry_days || 0),
       fefo_enabled: Boolean(form.fefo_enabled),
       ...(creating && openingTraceAllocations.length ? { opening_trace_allocations: openingTraceAllocations } : {}),
@@ -368,7 +430,13 @@ function Products() {
       replenishment_review_days: Number(form.replenishment_review_days || 14),
       high_stock_threshold: Number(form.high_stock_threshold),
       weight_kg: form.weight_kg === '' ? null : Number(form.weight_kg),
+      length_cm: form.length_cm === '' ? null : Number(form.length_cm),
+      width_cm: form.width_cm === '' ? null : Number(form.width_cm),
+      height_cm: form.height_cm === '' ? null : Number(form.height_cm),
       volume_m3: form.volume_m3 === '' ? null : Number(form.volume_m3),
+      country_of_origin: form.country_of_origin.trim().toUpperCase() || null,
+      hs_code: form.hs_code.trim() || null,
+      lifecycle_status: form.lifecycle_status || 'active',
       location_code: form.location_code || null,
       // `price` remains the compatibility field used by existing inventory
       // calculations; the user-facing form exposes only purchase and selling.
@@ -438,6 +506,7 @@ function Products() {
     categoryFilter !== '' ||
     supplierFilter !== '' ||
     lowStockOnly ||
+    lifecycleFilter !== '' ||
     sortBy !== 'name' ||
     sortDirection !== 'asc'
   const editingProduct = editingId ? products.find((product) => product.id === editingId) : null
@@ -445,6 +514,7 @@ function Products() {
   const trackedEdit = Boolean(editingId && form.tracking_mode !== 'none')
   const creating = !editingId
   const openingQuantity = Number(form.quantity || 0)
+  const expirationEnabled = Boolean(form.expiration_controlled || form.tracking_mode === 'batch_expiry')
 
   return (
     <main className="products-page">
@@ -622,11 +692,38 @@ function Products() {
             </label>
           </div>
 
-          <fieldset className="inventory-settings-editor">
-            <div className="inventory-settings-heading">
-              <legend>{t('productTracking.title')}</legend>
-              <small>{t('productTracking.help')}</small>
+          <details className="inventory-settings-editor product-advanced-section">
+            <summary className="inventory-settings-heading">
+              <strong>{t('productMaster.logisticsTitle')}</strong>
+              <small>{t('productMaster.logisticsHelp')}</small>
+            </summary>
+            <div className="inventory-settings-grid inventory-settings-grid-wide">
+              <label>{t('productMaster.brand')}<input name="brand" value={form.brand} onChange={handleChange} /></label>
+              <label>{t('productMaster.primaryBarcode')}<input name="barcode" value={form.barcode} onChange={handleChange} /></label>
+              <label>{t('productMaster.status')}<select name="lifecycle_status" value={form.lifecycle_status} onChange={handleChange}><option value="active">{t('productMaster.active')}</option><option value="discontinued">{t('productMaster.discontinued')}</option></select></label>
+              <label>{t('productMaster.origin')}<input name="country_of_origin" value={form.country_of_origin} onChange={handleChange} maxLength={2} placeholder="XK / CN" /></label>
+              <label>{t('productMaster.hsCode')}<input name="hs_code" value={form.hs_code} onChange={handleChange} /></label>
+              <label>{t('productPlanning.weight')}<input name="weight_kg" type="number" min="0" step="0.000001" value={form.weight_kg} onChange={handleChange} placeholder={t('productPlanning.optional')} /></label>
+              <label>{t('productMaster.length')}<input name="length_cm" type="number" min="0" step="0.001" value={form.length_cm} onChange={handleChange} /></label>
+              <label>{t('productMaster.width')}<input name="width_cm" type="number" min="0" step="0.001" value={form.width_cm} onChange={handleChange} /></label>
+              <label>{t('productMaster.height')}<input name="height_cm" type="number" min="0" step="0.001" value={form.height_cm} onChange={handleChange} /></label>
+              <label>{t('productPlanning.volume')}<input name="volume_m3" type="number" min="0" step="0.000001" value={form.volume_m3} onChange={handleChange} placeholder={t('productMaster.cbmAuto')} /></label>
             </div>
+            <div className="advanced-list-editor">
+              <div className="advanced-list-heading"><strong>{t('productMaster.alternativeBarcodes')}</strong><button type="button" className="secondary" onClick={() => setForm((current) => ({ ...current, alternative_barcodes: [...current.alternative_barcodes, { barcode: '', label: '', is_active: true }] }))}>{t('productMaster.add')}</button></div>
+              {form.alternative_barcodes.map((row, index) => <div className="advanced-list-row" key={`barcode-${index}`}><input aria-label={t('productMaster.alternativeBarcode')} value={row.barcode} onChange={(event) => updateAlternativeBarcode(index, 'barcode', event.target.value)} placeholder={t('productMaster.alternativeBarcode')} required /><input aria-label={t('productMaster.barcodeLabel')} value={row.label} onChange={(event) => updateAlternativeBarcode(index, 'label', event.target.value)} placeholder={t('productMaster.barcodeLabel')} /><button type="button" className="danger" onClick={() => setForm((current) => ({ ...current, alternative_barcodes: current.alternative_barcodes.filter((_, rowIndex) => rowIndex !== index) }))}>{t('common.delete')}</button></div>)}
+            </div>
+            <div className="advanced-list-editor">
+              <div className="advanced-list-heading"><strong>{t('productMaster.attributes')}</strong><button type="button" className="secondary" onClick={() => setForm((current) => ({ ...current, attributes: [...current.attributes, { key: '', value: '' }] }))}>{t('productMaster.add')}</button></div>
+              {form.attributes.map((row, index) => <div className="advanced-list-row" key={`attribute-${index}`}><input aria-label={t('productMaster.attributeName')} value={row.key} onChange={(event) => updateAttribute(index, 'key', event.target.value)} placeholder={t('productMaster.attributeName')} required /><input aria-label={t('productMaster.attributeValue')} value={row.value} onChange={(event) => updateAttribute(index, 'value', event.target.value)} placeholder={t('productMaster.attributeValue')} required /><button type="button" className="danger" onClick={() => setForm((current) => ({ ...current, attributes: current.attributes.filter((_, rowIndex) => rowIndex !== index) }))}>{t('common.delete')}</button></div>)}
+            </div>
+          </details>
+
+          <details className="inventory-settings-editor product-advanced-section">
+            <summary className="inventory-settings-heading">
+              <strong>{t('productTracking.title')}</strong>
+              <small>{t('productTracking.help')}</small>
+            </summary>
 
             <div className="inventory-settings-grid">
               <label>
@@ -647,14 +744,15 @@ function Products() {
 
               {['batch', 'batch_expiry'].includes(form.tracking_mode) ? (
                 <>
-                  <label>
-                    {t('productTracking.nearExpiryDays')}
-                    <input name="near_expiry_days" type="number" min="0" max="3650" step="1" value={form.near_expiry_days} onChange={handleChange} />
-                  </label>
                   <label className="inventory-settings-check">
-                    <input name="fefo_enabled" type="checkbox" checked={form.fefo_enabled} onChange={handleChange} />
-                    <span>{t('productTracking.fefo')}</span>
+                    <input name="expiration_controlled" type="checkbox" checked={expirationEnabled} disabled={form.tracking_mode === 'batch_expiry'} onChange={handleChange} />
+                    <span>{t('productTracking.expirationControlled')}</span>
                   </label>
+                  {expirationEnabled ? <>
+                    <label>{t('productTracking.defaultShelfLife')}<input name="default_shelf_life_days" type="number" min="1" max="36500" step="1" value={form.default_shelf_life_days} onChange={handleChange} placeholder={t('productPlanning.optional')} /></label>
+                    <label>{t('productTracking.nearExpiryDays')}<input name="near_expiry_days" type="number" min="0" max="3650" step="1" value={form.near_expiry_days} onChange={handleChange} /></label>
+                    <label className="inventory-settings-check"><input name="fefo_enabled" type="checkbox" checked={form.fefo_enabled} onChange={handleChange} /><span>{t('productTracking.fefo')}</span></label>
+                  </> : null}
                 </>
               ) : null}
             </div>
@@ -677,7 +775,8 @@ function Products() {
                   </label>
                   <label>
                     {t('productTracking.expiryAt')}
-                    <input name="opening_expiry_at" type="date" value={form.opening_expiry_at} onChange={handleChange} required={form.tracking_mode === 'batch_expiry'} />
+                    <input name="opening_expiry_at" type="date" value={form.opening_expiry_at} onChange={handleChange} required={expirationEnabled && !form.default_shelf_life_days} />
+                    {expirationEnabled && form.default_shelf_life_days ? <small className="field-hint">{t('productTracking.shelfLifeHint')}</small> : null}
                   </label>
                 </div>
               </div>
@@ -697,33 +796,29 @@ function Products() {
                 <small className="field-hint">{t('productTracking.openingSerialsHint').replace('{{count}}', String(openingQuantity))}</small>
               </label>
             ) : null}
-          </fieldset>
+          </details>
 
-          <fieldset className="inventory-settings-editor">
-            <div className="inventory-settings-heading">
-              <legend>{t('productPlanning.title')}</legend>
+          <details className="inventory-settings-editor product-advanced-section">
+            <summary className="inventory-settings-heading">
+              <strong>{t('productPlanning.title')}</strong>
               <small>{t('productPlanning.help')}</small>
-            </div>
+            </summary>
             <div className="inventory-settings-grid inventory-settings-grid-wide">
               <label>{t('productPlanning.safetyStock')}<input name="safety_stock" type="number" min="0" step={isMeterUnit(form.unit) ? '0.001' : '1'} value={form.safety_stock} onChange={handleChange} /></label>
               <label>{t('productPlanning.reorderPoint')}<input name="reorder_point" type="number" min="0" step={isMeterUnit(form.unit) ? '0.001' : '1'} value={form.reorder_point} onChange={handleChange} placeholder={t('productPlanning.automatic')} /></label>
               <label>{t('productPlanning.historyDays')}<input name="replenishment_history_days" type="number" min="1" max="3650" step="1" value={form.replenishment_history_days} onChange={handleChange} required /></label>
               <label>{t('productPlanning.reviewDays')}<input name="replenishment_review_days" type="number" min="1" max="365" step="1" value={form.replenishment_review_days} onChange={handleChange} required /></label>
-              <label>{t('productPlanning.weight')}<input name="weight_kg" type="number" min="0" step="0.000001" value={form.weight_kg} onChange={handleChange} placeholder={t('productPlanning.optional')} /></label>
-              <label>{t('productPlanning.volume')}<input name="volume_m3" type="number" min="0" step="0.000001" value={form.volume_m3} onChange={handleChange} placeholder={t('productPlanning.optional')} /></label>
             </div>
-          </fieldset>
+          </details>
 
-          <fieldset className="unit-conversion-editor">
-            <div className="unit-conversion-heading">
+          <details className="unit-conversion-editor product-advanced-section">
+            <summary className="unit-conversion-heading">
               <div>
-                <legend>{t('productUnits.title')}</legend>
+                <strong>{t('productUnits.title')}</strong>
                 <small>{t('productUnits.help').replace('{unit}', form.unit || 'pcs')}</small>
               </div>
-              <button type="button" className="secondary" onClick={() => setForm((current) => ({ ...current, unit_conversions: [...current.unit_conversions, { code: '', label: '', conversion_mode: 'fixed', factor_to_base: '', is_active: true }] }))}>
-                {t('productUnits.add')}
-              </button>
-            </div>
+            </summary>
+            <button type="button" className="secondary advanced-section-action" onClick={() => setForm((current) => ({ ...current, unit_conversions: [...current.unit_conversions, { code: '', label: '', conversion_mode: 'fixed', factor_to_base: '', is_active: true }] }))}>{t('productUnits.add')}</button>
             {form.unit_conversions.length === 0 ? <p className="field-hint">{t('productUnits.none')}</p> : null}
             {form.unit_conversions.map((row, index) => (
               <div className="unit-conversion-row" key={`${index}-${row.code}`}>
@@ -744,7 +839,7 @@ function Products() {
                 <button type="button" className="danger unit-remove" onClick={() => setForm((current) => ({ ...current, unit_conversions: current.unit_conversions.filter((_, rowIndex) => rowIndex !== index) }))}>{t('common.delete')}</button>
               </div>
             ))}
-          </fieldset>
+          </details>
 
           {editingId && (
             <label>
@@ -833,6 +928,16 @@ function Products() {
             </select>
           </label>
 
+          <label>
+            {t('productMaster.status')}
+            <select value={lifecycleFilter} onChange={(event) => setLifecycleFilter(event.target.value)}>
+              <option value="">{t('productMaster.allCurrent')}</option>
+              <option value="active">{t('productMaster.active')}</option>
+              <option value="discontinued">{t('productMaster.discontinued')}</option>
+              <option value="archived">{t('productMaster.archived')}</option>
+            </select>
+          </label>
+
           <label className="filter-checkbox">
             <input
               type="checkbox"
@@ -891,6 +996,7 @@ function Products() {
                   <th>Category</th>
                   <th>Supplier</th>
                   <th>SKU</th>
+                  <th>{t('productMaster.status')}</th>
                   <th>Section</th>
                   <th>Qty</th>
                   <th>Unit</th>
@@ -906,14 +1012,15 @@ function Products() {
                     <td>{product.category?.name ?? '-'}</td>
                     <td>{product.supplier?.name ?? '-'}</td>
                     <td>{product.sku}</td>
+                    <td><span className={`product-lifecycle product-lifecycle-${product.lifecycle_status || 'active'}`}>{t(`productMaster.${product.lifecycle_status || 'active'}`)}</span></td>
                     <td>{product.location_code || '—'}</td>
                     <td>
                       <StockBadge
-                        quantity={product.quantity}
+                        quantity={product.available_quantity ?? product.quantity}
                         minQuantity={product.min_quantity}
                         highStockThreshold={product.high_stock_threshold}
                       />
-                      <span style={{ marginLeft: 8 }}>{formatQuantity(product.quantity, product.unit)}</span>
+                      <span style={{ marginLeft: 8 }}>{formatQuantity(product.available_quantity ?? product.quantity, product.unit)}</span>
                     </td>
                     <td>{product.unit ?? 'pcs'}</td>
                     <td>{product.min_quantity}</td>

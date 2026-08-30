@@ -163,7 +163,10 @@ class FinanceService
             }
         }
 
-        $purchasePayments = PurchaseOrderPayment::query()->whereBetween('payment_date', [$from, $to])->get();
+        $purchasePayments = PurchaseOrderPayment::query()
+            ->where('status', 'completed')
+            ->whereBetween('payment_date', [$from, $to])
+            ->get();
         // Purchase-order payments are shown separately, but are deliberately
         // excluded from canonical cash-out because the same payment may also
         // be recorded against its supplier expense and PO currencies vary.

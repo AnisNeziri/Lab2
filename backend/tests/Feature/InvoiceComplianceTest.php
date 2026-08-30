@@ -27,10 +27,10 @@ class InvoiceComplianceTest extends TestCase
             ->assertJsonPath('completeness.complete', true)
             ->assertJsonPath('profile.business_registration_number', '811234567');
 
-        InvoiceProfile::withoutGlobalScopes()->create([
+        InvoiceProfile::withoutEvents(fn () => InvoiceProfile::withoutGlobalScopes()->create([
             'company_id' => Company::factory()->create()->id,
             ...$this->profile(['legal_name' => 'Foreign Company', 'business_registration_number' => '819999999']),
-        ]);
+        ]));
 
         $this->getJson('/api/invoice-profile')
             ->assertOk()

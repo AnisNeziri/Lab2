@@ -15,7 +15,7 @@ class UpdateDebtTransactionRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'amount' => ['required', 'numeric', 'min:0.01'],
+            'amount' => ['required', 'numeric', 'decimal:0,2', 'min:0.01'],
             'transaction_date' => ['required', 'date'],
             'due_date' => ['nullable', 'date', 'after_or_equal:transaction_date'],
             'payment_method' => ['nullable', Rule::in(['cash', 'bank_transfer', 'card', 'cheque', 'other'])],

@@ -59,7 +59,7 @@ class DailySaleController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $validated = $this->validatePayload($request);
+        $validated = $this->validatePayload($request, true);
 
         return response()->json($this->dailySales->create($validated), 201);
     }
@@ -151,12 +151,15 @@ class DailySaleController extends Controller
         ]);
     }
 
-    private function validatePayload(Request $request): array
+    private function validatePayload(Request $request, bool $creating = false): array
     {
         return $request->validate([
+            'idempotency_key' => [$creating ? 'nullable' : 'sometimes', 'uuid'],
             'sale_date' => ['required', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'signature_name' => ['nullable', 'string', 'max:255'],
+            'allow_expired_override' => ['nullable', 'boolean'],
+            'expired_override_reason' => ['nullable', 'required_if:allow_expired_override,true', 'string', 'min:5', 'max:1000'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['nullable', 'integer', Rule::exists('products', 'id')->where('company_id', Auth::user()->company_id)],
             'items.*.product_name' => ['required', 'string', 'max:255'],

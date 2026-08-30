@@ -7,9 +7,12 @@ use App\Models\DailySaleItem;
 use App\Models\DailySalesDay;
 use App\Models\StockMovement;
 use App\Models\Product;
+use App\Support\Money;
+use App\Support\RequestFingerprint;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class DailySaleService
@@ -36,13 +39,15 @@ class DailySaleService
             ->with([
                 'items' => fn ($items) => $items->select([
                     'id', 'daily_sale_id', 'company_id', 'line_number', 'product_id',
-                    'product_name', 'unit', 'conversion_mode', 'conversion_factor', 'quantity', 'base_quantity', 'warehouse_id', 'unit_price', 'unit_cost',
+                    'product_name', 'unit', 'conversion_mode', 'conversion_factor', 'quantity', 'base_quantity',
+                    'warehouse_id', 'location_id', 'trace_allocations', 'unit_price', 'unit_cost',
                     'line_total', 'cost_total', 'gross_profit',
                     'created_at', 'updated_at',
                 ])->orderBy('line_number'),
                 'items.product' => fn ($products) => $products->select([
                     'id', 'company_id', 'name', 'unit', 'quantity', 'price',
                     'purchase_price', 'selling_price', 'default_warehouse_id',
+                    'tracking_mode', 'expiration_controlled', 'near_expiry_days', 'fefo_enabled',
                 ]),
                 'creator:id,name',
             ]);
@@ -71,6 +76,22 @@ class DailySaleService
     {
         return DB::transaction(function () use ($data) {
             $user = Auth::user();
+            $key = (string) ($data['idempotency_key'] ?? Str::uuid());
+            $fingerprint = RequestFingerprint::make($data, ['idempotency_key']);
+            // Serialize numbering and retry detection for this company. Stock
+            // itself remains protected by the product/bin row locks.
+            DB::table('companies')->where('id', $user->company_id)->lockForUpdate()->first();
+            $existing = DailySale::query()->where('idempotency_key', $key)->first();
+            if ($existing) {
+                if ($existing->request_fingerprint
+                    && ! hash_equals($existing->request_fingerprint, $fingerprint)) {
+                    throw ValidationException::withMessages([
+                        'idempotency_key' => ['This idempotency key was already used for different sale details.'],
+                    ]);
+                }
+
+                return $existing->load(['items.product', 'creator:id,name']);
+            }
             $items = $this->normalizeItems($data['items'] ?? []);
             $totals = $this->calculateTotals($items);
 
@@ -87,13 +108,21 @@ class DailySaleService
                 'paid_amount' => $totals['amount'],
                 'payment_method' => null,
                 'total_quantity' => $totals['quantity'],
+                'idempotency_key' => $key,
+                'request_fingerprint' => $fingerprint,
                 'created_by' => $user->id,
                 'updated_by' => $user->id,
             ]);
 
             $this->syncItems($sale, $items);
 
-            $this->applyInventory($sale->fresh('items'), 'out', 'Recorded daily sale');
+            $this->applyInventory(
+                $sale->fresh('items'),
+                'out',
+                'Recorded daily sale',
+                (bool) ($data['allow_expired_override'] ?? false),
+                $data['expired_override_reason'] ?? null,
+            );
             $sale->update(['inventory_applied_at' => now()]);
 
             return $sale->fresh(['items.product', 'creator:id,name']);
@@ -102,9 +131,9 @@ class DailySaleService
 
     public function update(DailySale $sale, array $data): DailySale
     {
-        $this->ensureDraft($sale);
-
         return DB::transaction(function () use ($sale, $data) {
+            $sale = DailySale::query()->lockForUpdate()->findOrFail($sale->id);
+            $this->ensureDraft($sale);
             $sale->load('items');
             if ($sale->inventory_applied_at) {
                 $this->applyInventory($sale, 'in', 'Reversed before editing daily sale');
@@ -128,7 +157,13 @@ class DailySaleService
 
             $sale->items()->delete();
             $this->syncItems($sale, $items);
-            $this->applyInventory($sale->fresh('items'), 'out', 'Updated daily sale');
+            $this->applyInventory(
+                $sale->fresh('items'),
+                'out',
+                'Updated daily sale',
+                (bool) ($data['allow_expired_override'] ?? false),
+                $data['expired_override_reason'] ?? null,
+            );
             $sale->update(['inventory_applied_at' => now()]);
 
             return $sale->fresh(['items.product', 'creator:id,name']);
@@ -192,13 +227,13 @@ class DailySaleService
 
     public function destroy(DailySale $sale): void
     {
-        if ($sale->status === 'finalized') {
-            throw ValidationException::withMessages([
-                'status' => ['Finalized daily sales sheets cannot be deleted.'],
-            ]);
-        }
-
         DB::transaction(function () use ($sale) {
+            $sale = DailySale::query()->lockForUpdate()->findOrFail($sale->id);
+            if ($sale->status === 'finalized') {
+                throw ValidationException::withMessages([
+                    'status' => ['Finalized daily sales sheets cannot be deleted.'],
+                ]);
+            }
             $sale->load('items');
             if ($sale->inventory_applied_at) {
                 $this->applyInventory($sale, 'in', 'Deleted daily sale');
@@ -272,7 +307,13 @@ class DailySaleService
         }
     }
 
-    private function applyInventory(DailySale $sale, string $type, string $action): void
+    private function applyInventory(
+        DailySale $sale,
+        string $type,
+        string $action,
+        bool $allowExpiredOverride = false,
+        ?string $expiredOverrideReason = null,
+    ): void
     {
         $quantities = $sale->items
             ->whereNotNull('product_id')
@@ -302,6 +343,8 @@ class DailySaleService
                 'trace_allocations' => $type === 'in'
                     ? $this->movementTrace('daily_sale', $sale->id, 'daily_sale', $group)
                     : $group['trace_allocations'],
+                'allow_expired_override' => $type === 'out' && $allowExpiredOverride,
+                'expired_override_reason' => $type === 'out' ? $expiredOverrideReason : null,
             ];
             if ($type === 'in' && $group['cost_total'] !== null && $group['quantity'] > 0) {
                 $movement['final_unit_cost'] = round($group['cost_total'] / $group['quantity'], 6);
@@ -338,15 +381,15 @@ class DailySaleService
                     'sale',
                 )
                 : ['unit' => $item['unit'] ?? 'pcs', 'inventory_unit' => $item['unit'] ?? 'pcs', 'conversion_mode' => 'none', 'conversion_factor' => null, 'base_quantity' => $quantity];
-            $unitPrice = round((float) ($item['unit_price'] ?? ($product?->selling_price ?? $product?->price ?? 0)), 2);
+            $unitPrice = Money::normalize($item['unit_price'] ?? ($product?->selling_price ?? $product?->price ?? 0));
             $productName = trim($item['product_name'] ?? $product?->name ?? '');
             // `price` is the legacy selling-price field. Falling back to it as
             // a purchase cost would silently report a zero margin, so a missing
             // purchase price remains uncosted and is disclosed by analytics.
             $baseUnitCost = $product ? $this->costing->currentUnitCost($product) : null;
-            $lineTotal = round($quantity * $unitPrice, 2);
-            $costTotal = $baseUnitCost === null ? null : round($resolvedUnit['base_quantity'] * $baseUnitCost, 2);
-            $unitCost = $costTotal === null ? null : round($costTotal / $quantity, 4);
+            $lineTotal = Money::multiply($unitPrice, $quantity);
+            $costTotal = $baseUnitCost === null ? null : Money::multiply($baseUnitCost, $resolvedUnit['base_quantity']);
+            $unitCost = $costTotal === null ? null : Money::divide($costTotal, $quantity, 2);
 
             if ($productName === '') {
                 continue;
@@ -368,7 +411,7 @@ class DailySaleService
                 'unit_cost' => $unitCost,
                 'line_total' => $lineTotal,
                 'cost_total' => $costTotal,
-                'gross_profit' => $costTotal === null ? null : round($lineTotal - $costTotal, 2),
+                'gross_profit' => $costTotal === null ? null : Money::subtract($lineTotal, $costTotal),
             ];
         }
 
@@ -394,7 +437,7 @@ class DailySaleService
     private function calculateTotals(array $items): array
     {
         return [
-            'amount' => round(array_sum(array_column($items, 'line_total')), 2),
+            'amount' => Money::add(...array_column($items, 'line_total')),
             'quantity' => array_sum(array_column($items, 'quantity')),
         ];
     }

@@ -27,6 +27,7 @@ class ReplenishmentService
         $asOf = CarbonImmutable::parse($filters['as_of'] ?? now('Europe/Tirane')->toDateString(), 'Europe/Tirane')->startOfDay();
         $products = Product::query()
             ->with(['warehouseStock', 'supplier:id,name', 'supplierCatalogue' => fn ($query) => $query->where('is_active', true)->with('supplier:id,name')])
+            ->where('lifecycle_status', 'active')
             ->when($filters['product_ids'] ?? null, fn ($query, $ids) => $query->whereIn('id', $ids))
             ->orderBy('name')
             ->get();
@@ -65,7 +66,10 @@ class ReplenishmentService
             $hasBalances = $balances->isNotEmpty();
             $onHand = round($hasBalances ? (float) $balances->sum('quantity') : (float) $product->quantity, 3);
             $reserved = round($hasBalances ? (float) $balances->sum('reserved_quantity') : 0, 3);
-            $available = round($onHand - $reserved, 3);
+            // Available is its own controlled state. Subtracting only
+            // reservations from on-hand incorrectly makes damaged,
+            // quarantined and blocked stock look sellable/reorderable.
+            $available = round($hasBalances ? (float) $balances->sum('available_quantity') : (float) $product->quantity, 3);
             $incoming = $incomingByProduct->get($product->id, ['quantity' => 0.0, 'events' => []]);
             $incomingQuantity = round((float) $incoming['quantity'], 3);
             $projected = round($available + $incomingQuantity, 3);
@@ -154,7 +158,7 @@ class ReplenishmentService
                     'minimum_order_quantity' => $moq,
                     'pack_size' => $packSize,
                     'formula' => [
-                        'available = on_hand - reserved',
+                        'available = sellable warehouse-state balance (excludes reserved, damaged, quarantine and blocked)',
                         'projected = available + confirmed_incoming',
                         'derived_reorder_point = max(minimum_stock, safety_stock + average_daily_usage x lead_time_days)',
                         'recommended = round_up_to_pack(max(target_stock - projected, MOQ)) when projected <= effective_reorder_point',

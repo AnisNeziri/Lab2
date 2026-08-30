@@ -36,6 +36,7 @@ const emptyForm = () => ({
   reference_number: "",
   note: "",
   opening_balance: false,
+  idempotency_key: crypto.randomUUID(),
 });
 
 export default function CustomerDebts() {
@@ -182,7 +183,7 @@ export default function CustomerDebts() {
           reference_number: form.reference_number || null,
           note: form.note || null,
           opening_balance: mode === "debt" ? form.opening_balance : undefined,
-          idempotency_key: crypto.randomUUID(),
+          idempotency_key: form.idempotency_key,
         };
         if (mode === "debt") {
           await createCustomerDebtEntry(selected.id, payload);
@@ -267,6 +268,7 @@ export default function CustomerDebts() {
   };
 
   const statusText = (row) => {
+    if (Number(row.current_credit) > 0) return t("debts.hasCredit");
     if (Number(row.current_debt) <= 0) return t("debts.noDebt");
     if (row.has_overdue_debt) return t("debts.overdue");
     if (row.last_payment_at) return t("debts.partiallyPaid");
@@ -386,9 +388,6 @@ export default function CustomerDebts() {
                     required
                     type="number"
                     min="0.01"
-                    max={
-                      mode === "payment" ? selected?.current_debt : undefined
-                    }
                     step="0.01"
                     value={form.amount}
                     onChange={(e) =>
@@ -714,10 +713,14 @@ export default function CustomerDebts() {
               </form>
             </section>
           )}
-          <section className="stats-grid stats-grid-3">
+          <section className="stats-grid stats-grid-4">
             <article className="stat-card">
               <p className="stat-label">{t("debts.currentDebt")}</p>
               <p className="stat-value">{euro(selected.current_debt)}</p>
+            </article>
+            <article className="stat-card">
+              <p className="stat-label">{t("debts.currentCredit")}</p>
+              <p className="stat-value">{euro(selected.current_credit)}</p>
             </article>
             <article className="stat-card">
               <p className="stat-label">{t("debts.lastPayment")}</p>
@@ -816,6 +819,7 @@ export default function CustomerDebts() {
               <option value="all">{t("debts.all")}</option>
               <option value="active">{t("debts.activeDebt")}</option>
               <option value="paid">{t("debts.noDebt")}</option>
+              <option value="credit">{t("debts.hasCredit")}</option>
               <option value="overdue">{t("debts.overdue")}</option>
             </select>
             <input
@@ -847,6 +851,7 @@ export default function CustomerDebts() {
                   <th>{t("debts.customer")}</th>
                   <th>{t("debts.phone")}</th>
                   <th>{t("debts.currentDebt")}</th>
+                  <th>{t("debts.currentCredit")}</th>
                   <th>{t("debts.lastTransaction")}</th>
                   <th>{t("debts.lastPayment")}</th>
                   <th>{t("debts.status")}</th>
@@ -856,7 +861,7 @@ export default function CustomerDebts() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="7">{t("debts.loading")}</td>
+                    <td colSpan="8">{t("debts.loading")}</td>
                   </tr>
                 ) : rows.length ? (
                   rows.map((row) => (
@@ -868,6 +873,7 @@ export default function CustomerDebts() {
                       </td>
                       <td>{row.phone || "—"}</td>
                       <td>{euro(row.current_debt)}</td>
+                      <td>{euro(row.current_credit)}</td>
                       <td>
                         {dateOnly(row.debt_transactions_max_transaction_date)}
                       </td>
@@ -880,7 +886,7 @@ export default function CustomerDebts() {
                           </button>
                           <button
                             className="danger"
-                            disabled={busy}
+                            disabled={busy || Number(row.current_debt) > 0 || Number(row.current_credit) > 0}
                             onClick={() => removeSheet(row)}
                           >
                             {t("debts.deleteSheet")}
@@ -891,7 +897,7 @@ export default function CustomerDebts() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="7">{t("debts.empty")}</td>
+                    <td colSpan="8">{t("debts.empty")}</td>
                   </tr>
                 )}
               </tbody>

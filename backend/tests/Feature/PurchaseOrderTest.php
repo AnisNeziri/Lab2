@@ -4,10 +4,13 @@ namespace Tests\Feature;
 
 use App\Models\Category;
 use App\Models\Company;
+use App\Models\Expense;
+use App\Models\FinancialAccount;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -37,14 +40,121 @@ class PurchaseOrderTest extends TestCase
     {
         [$supplier, $product] = $this->setupProcurement();
         $orderId = $this->postJson('/api/purchase-orders', $this->payload($supplier, $product, 10, 2500))->assertCreated()->json('id');
+        $cash = FinancialAccount::create($this->tenantAttributes([
+            'type' => 'cash', 'name' => 'Main cash', 'currency' => 'EUR',
+            'opening_balance' => '0.00', 'is_active' => true,
+        ]));
+        $bank = FinancialAccount::create($this->tenantAttributes([
+            'type' => 'bank', 'name' => 'Main bank', 'currency' => 'EUR',
+            'opening_balance' => '0.00', 'is_active' => true,
+        ]));
 
-        $this->postJson("/api/purchase-orders/{$orderId}/payments", $this->payment(6000, 'payment-1'))->assertCreated()->assertJsonPath('remaining_balance', 19000);
-        $this->postJson("/api/purchase-orders/{$orderId}/payments", $this->payment(6000, 'payment-1'))->assertCreated()->assertJsonPath('total_paid', '6000.00');
+        $firstPayment = $this->payment(6000, 'payment-1') + ['financial_account_id' => $cash->id];
+
+        $this->postJson("/api/purchase-orders/{$orderId}/payments", $firstPayment)->assertCreated()->assertJsonPath('remaining_balance', 19000);
+        $this->postJson("/api/purchase-orders/{$orderId}/payments", $firstPayment)->assertCreated()->assertJsonPath('total_paid', '6000.00');
+        $this->postJson("/api/purchase-orders/{$orderId}/payments", [
+            ...$firstPayment,
+            'financial_account_id' => $bank->id,
+        ])->assertUnprocessable()->assertJsonValidationErrors('idempotency_key');
         $this->postJson("/api/purchase-orders/{$orderId}/payments", $this->payment(10000, 'payment-2'))->assertCreated()->assertJsonPath('remaining_balance', 9000);
         $this->postJson("/api/purchase-orders/{$orderId}/payments", $this->payment(9000, 'payment-3'))->assertCreated()->assertJsonPath('payment_status', 'paid');
         $this->postJson("/api/purchase-orders/{$orderId}/payments", $this->payment(1, 'payment-4'))->assertUnprocessable();
 
         $this->assertDatabaseCount('purchase_order_payments', 3);
+        $this->assertDatabaseCount('financial_account_transactions', 1);
+    }
+
+    public function test_payment_reversal_preserves_payment_and_recalculates_order_balance(): void
+    {
+        [$supplier, $product] = $this->setupProcurement();
+        $order = $this->postJson('/api/purchase-orders', $this->payload($supplier, $product, 3, 100))
+            ->assertCreated();
+        $paid = $this->postJson(
+            "/api/purchase-orders/{$order->json('id')}/payments",
+            $this->payment(125, 'reversible-payment'),
+        )->assertCreated()->assertJsonPath('total_paid', '125.00');
+        $paymentId = collect($paid->json('payments'))->firstWhere('idempotency_key', 'reversible-payment')['id'];
+
+        $this->postJson("/api/purchase-order-payments/{$paymentId}/reverse", [
+            'reason' => 'Supplier returned the transfer.',
+        ])->assertOk()
+            ->assertJsonPath('total_paid', '0.00')
+            ->assertJsonPath('remaining_balance', 300);
+
+        $this->assertDatabaseHas('purchase_order_payments', [
+            'id' => $paymentId,
+            'status' => 'reversed',
+            'amount' => '125.00',
+        ]);
+        $this->postJson("/api/purchase-order-payments/{$paymentId}/reverse", [
+            'reason' => 'Duplicate reversal attempt.',
+        ])->assertUnprocessable();
+    }
+
+    public function test_order_line_and_total_use_decimal_money_math(): void
+    {
+        [$supplier, $product] = $this->setupProcurement();
+
+        $this->postJson('/api/purchase-orders', $this->payload($supplier, $product, 3, 0.10))
+            ->assertCreated()
+            ->assertJsonPath('items.0.line_total', '0.30')
+            ->assertJsonPath('total_amount', '0.30')
+            ->assertJsonPath('total_amount_eur', '0.30');
+    }
+
+    public function test_supplier_advance_can_be_partially_allocated_with_retry_safety(): void
+    {
+        [$supplier, $product] = $this->setupProcurement();
+        $order = $this->postJson('/api/purchase-orders', $this->payload($supplier, $product, 3, 100))
+            ->assertCreated();
+        $paid = $this->postJson(
+            "/api/purchase-orders/{$order->json('id')}/payments",
+            $this->payment(100, 'supplier-advance'),
+        )->assertCreated();
+        $paymentId = collect($paid->json('payments'))->firstWhere('idempotency_key', 'supplier-advance')['id'];
+        $expense = Expense::create($this->tenantAttributes([
+            'supplier_id' => $supplier->id,
+            'purchase_order_id' => $order->json('id'),
+            'vendor_name' => $supplier->name,
+            'vendor_key' => hash('sha256', 'supplier'),
+            'document_type' => 'purchase_invoice',
+            'document_number' => 'INV-ADVANCE-1',
+            'document_number_normalized' => 'inv-advance-1',
+            'source_type' => 'domestic',
+            'category' => 'inventory',
+            'invoice_date' => '2026-08-01',
+            'received_date' => '2026-08-01',
+            'currency' => 'EUR',
+            'exchange_rate' => '1.000000',
+            'net_amount' => '80.00',
+            'gross_amount' => '80.00',
+            'net_amount_eur' => '80.00',
+            'gross_amount_eur' => '80.00',
+            'status' => 'posted',
+        ]));
+        $allocation = [
+            'purchase_order_payment_id' => $paymentId,
+            'amount' => '60.00',
+            'reason' => 'Apply part of the supplier advance.',
+            'idempotency_key' => 'allocation-request-1',
+        ];
+
+        $this->postJson("/api/supplier-invoices/{$expense->id}/allocate-payment", $allocation)
+            ->assertOk()->assertJsonPath('remaining_amount', 20);
+        $this->postJson("/api/supplier-invoices/{$expense->id}/allocate-payment", $allocation)
+            ->assertOk()->assertJsonPath('remaining_amount', 20);
+        $this->postJson("/api/supplier-invoices/{$expense->id}/allocate-payment", [
+            ...$allocation,
+            'amount' => '61.00',
+        ])->assertUnprocessable()->assertJsonValidationErrors('idempotency_key');
+
+        $payment = \App\Models\PurchaseOrderPayment::findOrFail($paymentId);
+        $this->assertSame('60.00', $payment->allocated_amount);
+        $this->assertSame('40.00', $payment->unallocated_amount);
+        $this->assertSame('partially_allocated', $payment->allocation_status);
+        $this->assertDatabaseCount('supplier_invoice_payment_allocations', 1);
+        $this->assertDatabaseCount('supplier_payment_allocation_requests', 1);
     }
 
     public function test_edit_cannot_reduce_total_below_existing_payments(): void
@@ -129,8 +239,18 @@ class PurchaseOrderTest extends TestCase
 
         $this->getJson('/api/purchase-orders?payment_status=overdue')->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.payment_status', 'overdue');
 
-        $foreign = PurchaseOrder::withoutGlobalScopes()->create(['company_id' => Company::factory()->create()->id, 'po_number' => 'FOREIGN', 'status' => 'draft', 'total_amount' => 1, 'total_paid' => 0, 'currency' => 'EUR']);
-        $this->getJson("/api/purchase-orders/{$foreign->id}")->assertNotFound();
+        $foreignId = DB::table('purchase_orders')->insertGetId([
+            'company_id' => Company::factory()->create()->id,
+            'po_number' => 'FOREIGN',
+            'status' => 'draft',
+            'total_amount' => '1.00',
+            'total_amount_eur' => '1.00',
+            'total_paid' => '0.00',
+            'currency' => 'EUR',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->getJson("/api/purchase-orders/{$foreignId}")->assertNotFound();
         $this->getJson("/api/purchase-orders/{$orderId}")->assertOk();
     }
 

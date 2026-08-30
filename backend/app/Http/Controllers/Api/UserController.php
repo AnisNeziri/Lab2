@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Company;
+use App\Models\ActivityLog;
 use App\Models\User;
 use App\Repositories\Contracts\UserRepositoryInterface;
 use App\Services\EmailVerificationService;
@@ -89,7 +90,20 @@ class UserController extends Controller
         $this->ensureCompanyAdministrator();
         $this->ensureManageableUser($user);
 
-        $user->forceDelete();
+        $old = $this->formatUser($user);
+        $user->forceFill(['is_active' => false, 'api_token' => null])->save();
+        $user->delete();
+        ActivityLog::create([
+            'company_id' => Auth::user()->company_id,
+            'user_id' => Auth::id(),
+            'action' => 'user.archived',
+            'entity' => 'User',
+            'entity_id' => $user->id,
+            'description' => 'Company user archived; historical attribution preserved.',
+            'old_value' => $old,
+            'new_value' => ['is_active' => false, 'deleted_at' => $user->deleted_at],
+            'ip_address' => request()->ip(),
+        ]);
 
         return response()->json(null, 204);
     }
@@ -99,7 +113,7 @@ class UserController extends Controller
         $admin = Auth::user();
 
         if ($user->company_id !== $admin->company_id) {
-            throw ValidationException::withMessages(['user' => ['This user does not belong to your company.']]);
+            abort(404);
         }
 
         if ($user->id === $admin->id) {

@@ -31,6 +31,7 @@ class Customer extends Model
         'notes',
         'is_active',
         'current_debt',
+        'current_credit',
     ];
 
     protected function casts(): array
@@ -38,6 +39,7 @@ class Customer extends Model
         return [
             'company_id' => 'integer',
             'current_debt' => 'decimal:2',
+            'current_credit' => 'decimal:2',
             'is_active' => 'boolean',
             'is_vat_registered' => 'boolean',
         ];

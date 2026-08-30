@@ -99,7 +99,9 @@ class InventoryController extends Controller
         ]);
         $products = Product::query()
             ->when($validated['product_id'] ?? null, fn ($query, $id) => $query->whereKey($id))
-            ->where('tracking_mode', 'batch_expiry')
+            ->where(fn ($query) => $query
+                ->where('expiration_controlled', true)
+                ->orWhere('tracking_mode', 'batch_expiry'))
             ->get();
         $lots = $products->flatMap(fn (Product $product) => $this->traceability->expiring(
             $product,
@@ -120,12 +122,21 @@ class InventoryController extends Controller
             'quantity' => ['required', 'numeric', 'min:0.001', 'max:1000000000'],
         ]);
         $warehouse = Warehouse::query()->findOrFail($validated['warehouse_id']);
+        $locationId = $this->inventory->resolveLocationId(
+            $product,
+            $warehouse,
+            'out',
+            (float) $validated['quantity'],
+            $validated['stock_state'] ?? 'available',
+            isset($validated['location_id']) ? (int) $validated['location_id'] : null,
+        );
 
         return response()->json([
+            'location_id' => $locationId,
             'allocations' => $this->traceability->fefoAllocations(
                 $product,
                 $warehouse,
-                isset($validated['location_id']) ? (int) $validated['location_id'] : null,
+                $locationId,
                 $validated['stock_state'] ?? 'available',
                 (float) $validated['quantity'],
             ),

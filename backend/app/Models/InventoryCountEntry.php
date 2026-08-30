@@ -21,5 +21,5 @@ class InventoryCountEntry extends Model
     }
 
     public function item(): BelongsTo { return $this->belongsTo(InventoryCountItem::class, 'inventory_count_item_id'); }
-    public function user(): BelongsTo { return $this->belongsTo(User::class, 'entered_by'); }
+    public function user(): BelongsTo { return $this->belongsTo(User::class, 'entered_by')->withTrashed(); }
 }

@@ -34,7 +34,7 @@ class PortableBackupService
         'categories' => ['categories'],
         'suppliers' => ['suppliers'],
         'products' => [
-            'products', 'product_units', 'product_suppliers',
+            'products', 'product_barcodes', 'product_units', 'product_suppliers',
             'product_supplier_price_history',
         ],
         'inventory' => [
@@ -58,6 +58,7 @@ class PortableBackupService
             'invoice_profiles', 'invoice_sequences', 'invoices', 'invoice_items',
             'payment_transactions', 'expenses', 'expense_payments',
             'supplier_invoice_items', 'supplier_invoice_payment_allocations',
+            'supplier_payment_allocation_requests',
             'expense_goods_receipts', 'supplier_match_events',
             'landed_cost_accounting_entries',
             'financial_accounts', 'financial_account_transactions',
@@ -74,7 +75,7 @@ class PortableBackupService
     private const TABLE_ORDER = [
         'users',
         'categories', 'suppliers', 'warehouses', 'warehouse_sections', 'warehouse_locations',
-        'customers', 'customer_debts', 'products', 'product_units',
+        'customers', 'customer_debts', 'products', 'product_barcodes', 'product_units',
         'product_suppliers', 'product_supplier_price_history', 'warehouse_stock',
         'inventory_lots', 'inventory_trace_balances',
         'daily_sales_days', 'daily_sales', 'daily_sale_items',
@@ -82,6 +83,7 @@ class PortableBackupService
         'expenses', 'expense_payments', 'customer_debt_entries', 'customer_debt_transactions',
         'purchase_orders', 'purchase_order_items', 'purchase_order_payments', 'purchase_order_changes',
         'supplier_invoice_payment_allocations',
+        'supplier_payment_allocation_requests',
         'goods_receipts', 'goods_receipt_items',
         'landed_costs', 'landed_cost_allocations', 'landed_cost_accounting_entries',
         'supplier_invoice_items', 'expense_goods_receipts', 'supplier_match_events',
@@ -111,6 +113,7 @@ class PortableBackupService
         'suppliers' => ['company_id', 'name'],
         'warehouse_sections' => ['warehouse_id', 'code'],
         'warehouse_locations' => ['warehouse_id', 'path'],
+        'product_barcodes' => ['company_id', 'barcode'],
         'product_units' => ['product_id', 'code'],
         'product_suppliers' => ['company_id', 'product_id', 'supplier_id'],
         'product_supplier_price_history' => ['product_supplier_id', 'effective_at', 'purchase_price', 'currency'],
@@ -853,6 +856,8 @@ class PortableBackupService
             $keys = filled($values['idempotency_key'] ?? null) ? ['company_id', 'idempotency_key'] : [];
         } elseif ($table === 'purchase_order_payments') {
             $keys = filled($values['idempotency_key'] ?? null) ? ['company_id', 'idempotency_key'] : [];
+        } elseif ($table === 'supplier_payment_allocation_requests') {
+            $keys = filled($values['idempotency_key'] ?? null) ? ['company_id', 'idempotency_key'] : [];
         } elseif ($table === 'landed_costs') {
             $keys = filled($values['idempotency_key'] ?? null) ? ['company_id', 'idempotency_key'] : [];
         } else {
@@ -1011,6 +1016,7 @@ class PortableBackupService
             'payment_transactions' => 'idempotency_key',
             'purchase_order_payments' => 'idempotency_key',
             'expense_payments' => 'idempotency_key',
+            'supplier_payment_allocation_requests' => 'idempotency_key',
         ];
         foreach ($unsafeLedgers as $table => $key) {
             $containsUnkeyedRows = collect($data[$table] ?? [])->contains(fn (array $row) => ! filled($row[$key] ?? null));

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Expense;
 use App\Models\ExpensePayment;
 use App\Models\InvoiceProfile;
+use App\Support\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\QueryException;
@@ -68,7 +69,7 @@ class ExpenseService
     public function find(Expense $expense): Expense
     {
         return $this->decorate($expense->load([
-            'payments' => fn ($q) => $q->orderBy('payment_date')->orderBy('id'),
+            'payments' => fn ($q) => $q->with(['creator:id,name', 'reversedBy:id,name'])->orderBy('payment_date')->orderBy('id'),
             'purchaseOrderPaymentAllocations.payment', 'supplierCredits', 'creator:id,name',
         ]));
     }
@@ -99,13 +100,12 @@ class ExpenseService
             $expense = Expense::query()->lockForUpdate()->findOrFail($expense->id);
             $this->ensureDraft($expense);
             $prepared = $this->prepare($data);
-            $settled = round(
-                (float) $expense->payments()->where('status', 'completed')->sum('amount')
-                + (float) $expense->purchaseOrderPaymentAllocations()->sum('amount')
-                + (float) $expense->supplierCredits()->sum('gross_amount'),
-                2,
+            $settled = Money::add(
+                $expense->payments()->where('status', 'completed')->sum('amount'),
+                $expense->purchaseOrderPaymentAllocations()->sum('amount'),
+                $expense->supplierCredits()->sum('gross_amount'),
             );
-            if ((float) $prepared['gross_amount'] + .001 < $settled) {
+            if (Money::compare($prepared['gross_amount'], $settled) < 0) {
                 throw ValidationException::withMessages([
                     'gross_amount' => ['The expense total cannot be lower than payments, allocated advances, and posted supplier credits.'],
                 ]);
@@ -200,42 +200,46 @@ class ExpenseService
             if ($expense->document_type === 'credit_note') {
                 throw ValidationException::withMessages(['expense' => ['A vendor credit note reduces the payable and cannot receive an outgoing payment.']]);
             }
-            $paymentRate = $expense->currency === 'EUR' ? 1.0 : round((float) ($data['exchange_rate'] ?? 0), 6);
-            if ($expense->currency !== 'EUR' && ($paymentRate <= 0 || empty($data['exchange_rate_date']) || blank($data['exchange_rate_source'] ?? null))) {
+            $paymentRate = Money::normalizeDecimal($expense->currency === 'EUR' ? '1' : ($data['exchange_rate'] ?? '0'), 6);
+            if ($expense->currency !== 'EUR' && (Money::compareDecimal($paymentRate, '0') <= 0 || empty($data['exchange_rate_date']) || blank($data['exchange_rate_source'] ?? null))) {
                 throw ValidationException::withMessages(['exchange_rate' => ['A foreign-currency payment requires its payment-date EUR rate, date and source.']]);
             }
             if (! empty($data['idempotency_key'])) {
                 $existing = ExpensePayment::query()->where('idempotency_key', $data['idempotency_key'])->first();
                 if ($existing) {
-                    if ((int) $existing->expense_id !== (int) $expense->id
-                        || abs((float) $existing->amount - (float) $data['amount']) > 0.001
+                    if ($existing->status !== 'completed'
+                        || (int) $existing->expense_id !== (int) $expense->id
+                        || Money::compare($existing->amount, $data['amount']) !== 0
                         || $existing->payment_date?->toDateString() !== (string) $data['payment_date']
                         || $existing->payment_method !== $data['payment_method']
                         || ($existing->reference_number ?? '') !== ($data['reference_number'] ?? '')
                         || ($existing->note ?? '') !== ($data['note'] ?? '')
-                        || abs((float) $existing->exchange_rate - $paymentRate) > 0.000001
+                        || Money::compareDecimal($existing->exchange_rate, $paymentRate) !== 0
                         || ($existing->exchange_rate_date?->toDateString() ?? '') !== ($data['exchange_rate_date'] ?? '')
-                        || ($existing->exchange_rate_source ?? '') !== ($data['exchange_rate_source'] ?? '')) {
+                        || ($existing->exchange_rate_source ?? '') !== ($data['exchange_rate_source'] ?? '')
+                        || (int) ($existing->financial_account_id ?? 0) !== (int) ($data['financial_account_id'] ?? 0)) {
                         throw ValidationException::withMessages(['idempotency_key' => ['This payment key is already used with different payment details.']]);
                     }
 
                     return $this->find($expense);
                 }
             }
-            $paid = round((float) $expense->payments()->where('status', 'completed')->sum('amount')
-                + (float) $expense->purchaseOrderPaymentAllocations()->sum('amount')
-                + (float) $expense->supplierCredits()->sum('gross_amount'), 2);
-            $remaining = round((float) $expense->gross_amount - $paid, 2);
-            $amount = round((float) $data['amount'], 2);
-            if ($amount <= 0) {
+            $paid = Money::add(
+                $expense->payments()->where('status', 'completed')->sum('amount'),
+                $expense->purchaseOrderPaymentAllocations()->sum('amount'),
+                $expense->supplierCredits()->sum('gross_amount'),
+            );
+            $remaining = Money::maximum('0.00', Money::subtract($expense->gross_amount, $paid));
+            $amount = Money::normalize($data['amount']);
+            if (Money::compare($amount, '0.00') <= 0) {
                 throw ValidationException::withMessages(['amount' => ['Payment amount must be at least 0.01 after currency rounding.']]);
             }
-            if ($amount > $remaining + 0.001) {
+            if (Money::compare($amount, $remaining) > 0) {
                 throw ValidationException::withMessages(['amount' => ['Payment cannot exceed the remaining expense balance.']]);
             }
             $payment = ExpensePayment::create([
                 'company_id' => $expense->company_id, 'expense_id' => $expense->id,
-                'amount' => $amount, 'amount_eur' => round($amount * $paymentRate, 2),
+                'amount' => $amount, 'amount_eur' => Money::multiply($amount, $paymentRate),
                 'exchange_rate' => $paymentRate,
                 'exchange_rate_date' => $expense->currency === 'EUR' ? null : $data['exchange_rate_date'],
                 'exchange_rate_source' => $expense->currency === 'EUR' ? null : trim($data['exchange_rate_source']),
@@ -249,7 +253,7 @@ class ExpenseService
 
             if (! empty($data['financial_account_id'])) {
                 $ledger = $this->accounts->post((int) $data['financial_account_id'], [
-                    'type' => 'outflow', 'amount' => round($amount * $paymentRate, 2),
+                    'type' => 'outflow', 'amount' => Money::multiply($amount, $paymentRate),
                     'transaction_date' => $data['payment_date'], 'source_type' => 'expense_payment',
                     'source_id' => $payment->id, 'counterparty' => $expense->vendor_name,
                     'reference_number' => $data['reference_number'] ?? null,

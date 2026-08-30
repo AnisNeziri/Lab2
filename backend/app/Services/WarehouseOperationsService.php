@@ -109,14 +109,43 @@ class WarehouseOperationsService
 
     public function deleteWarehouse(Warehouse $warehouse): void
     {
-        $hasStock = $warehouse->stock()->where(fn ($query) => $query
-            ->where('quantity', '>', 0)->orWhere('reserved_quantity', '>', 0))->exists();
-        if ($warehouse->is_default || $hasStock || $warehouse->outgoingTransfers()->exists() || $warehouse->incomingTransfers()->exists()) {
-            throw ValidationException::withMessages([
-                'warehouse' => ['A default warehouse or a warehouse with stock/transfer history cannot be deleted. Deactivate it after moving its stock.'],
-            ]);
-        }
-        $warehouse->delete();
+        DB::transaction(function () use ($warehouse): void {
+            $warehouse = Warehouse::query()->lockForUpdate()->findOrFail($warehouse->id);
+            $hasStock = $warehouse->stock()->where(function ($query): void {
+                foreach (['quantity', 'available_quantity', 'reserved_quantity', 'damaged_quantity', 'quarantine_quantity', 'blocked_quantity'] as $index => $column) {
+                    $index === 0 ? $query->where($column, '!=', 0) : $query->orWhere($column, '!=', 0);
+                }
+            })->exists();
+            $hasHistory = DB::table('stock_movements')->where(function ($query) use ($warehouse): void {
+                $query->where('warehouse_id', $warehouse->id)
+                    ->orWhere('source_warehouse_id', $warehouse->id)
+                    ->orWhere('destination_warehouse_id', $warehouse->id);
+            })->exists()
+                || DB::table('purchase_orders')->where('warehouse_id', $warehouse->id)->exists()
+                || DB::table('goods_receipts')->where('warehouse_id', $warehouse->id)->exists()
+                || DB::table('inventory_trace_balances')->where('warehouse_id', $warehouse->id)->exists()
+                || DB::table('inventory_count_sessions')->where('warehouse_id', $warehouse->id)->exists()
+                || DB::table('inventory_return_items')->where('warehouse_id', $warehouse->id)->exists()
+                || DB::table('daily_sale_items')->where('warehouse_id', $warehouse->id)->exists()
+                || DB::table('invoice_items')->where('warehouse_id', $warehouse->id)->exists()
+                || DB::table('shipments')->where('warehouse_id', $warehouse->id)->exists()
+                || DB::table('stock_transfers')->where(function ($query) use ($warehouse): void {
+                    $query->where('source_warehouse_id', $warehouse->id)
+                        ->orWhere('destination_warehouse_id', $warehouse->id);
+                })->exists();
+            $isAssigned = Product::query()->where('default_warehouse_id', $warehouse->id)->exists();
+
+            if ($warehouse->is_default || $hasStock || $hasHistory || $isAssigned) {
+                throw ValidationException::withMessages([
+                    'warehouse' => [
+                        'A default, assigned, stocked, or historically referenced warehouse cannot be deleted. '
+                        .'Move its stock, reassign products, and deactivate it to preserve the audit trail.',
+                    ],
+                ]);
+            }
+
+            $warehouse->delete();
+        });
     }
 
     public function locations(?int $warehouseId = null): array
@@ -238,8 +267,14 @@ class WarehouseOperationsService
             $location->loadMissing('section');
             $legacyCodes = array_filter([$location->path, $location->section?->code]);
             if ($location->children()->exists() || $this->locationHasStock($location)
-                || Product::where('company_id', $location->company_id)->whereIn('location_code', $legacyCodes)->exists()) {
-                throw ValidationException::withMessages(['location' => ['Move stock and remove child locations before deleting this location.']]);
+                || Product::where('company_id', $location->company_id)->whereIn('location_code', $legacyCodes)->exists()
+                || $this->locationHasHistory($location)) {
+                throw ValidationException::withMessages([
+                    'location' => [
+                        'A stocked, assigned, child-containing, or historically referenced location cannot be deleted. '
+                        .'Deactivate it after moving stock so prior receipts, sales, counts, returns, and transfers remain traceable.',
+                    ],
+                ]);
             }
             // Empty balance rows carry no inventory value. Removing them keeps
             // the bin identity key consistent and avoids merging several
@@ -485,6 +520,11 @@ class WarehouseOperationsService
     {
         foreach ($items as $input) {
             $product = Product::query()->findOrFail($input['product_id']);
+            if (($product->lifecycle_status ?? 'active') === 'archived') {
+                throw ValidationException::withMessages([
+                    'items' => ["Archived product {$product->name} cannot be added to a warehouse transfer."],
+                ]);
+            }
             $quantity = round((float) $input['quantity'], 3);
             if ($quantity <= 0) {
                 throw ValidationException::withMessages(['items' => ['Every transfer quantity must be greater than zero.']]);
@@ -635,12 +675,27 @@ class WarehouseOperationsService
     {
         return WarehouseStock::withoutGlobalScopes()
             ->where('location_id', $location->id)
-            ->where(function ($query) {
-                $query->where('quantity', '>', 0)
-                    ->orWhere('reserved_quantity', '>', 0)
-                    ->orWhere('damaged_quantity', '>', 0)
-                    ->orWhere('quarantine_quantity', '>', 0)
-                    ->orWhere('blocked_quantity', '>', 0);
+            ->where(function ($query): void {
+                foreach (['quantity', 'available_quantity', 'reserved_quantity', 'damaged_quantity', 'quarantine_quantity', 'blocked_quantity'] as $index => $column) {
+                    $index === 0 ? $query->where($column, '!=', 0) : $query->orWhere($column, '!=', 0);
+                }
             })->exists();
+    }
+
+    private function locationHasHistory(WarehouseLocation $location): bool
+    {
+        return DB::table('stock_movements')->where('location_id', $location->id)->exists()
+            || DB::table('goods_receipts')->where('location_id', $location->id)->exists()
+            || DB::table('inventory_trace_balances')->where('location_id', $location->id)->exists()
+            || DB::table('stock_transfers')->where(function ($query) use ($location): void {
+                $query->where('source_location_id', $location->id)
+                    ->orWhere('destination_location_id', $location->id);
+            })->exists()
+            || DB::table('inventory_count_sessions')->where('location_id', $location->id)->exists()
+            || DB::table('inventory_count_items')->where('location_id', $location->id)->exists()
+            || DB::table('inventory_return_items')->where('location_id', $location->id)->exists()
+            || DB::table('daily_sale_items')->where('location_id', $location->id)->exists()
+            || DB::table('invoice_items')->where('location_id', $location->id)->exists()
+            || DB::table('stock_transfer_pick_events')->where('location_id', $location->id)->exists();
     }
 }

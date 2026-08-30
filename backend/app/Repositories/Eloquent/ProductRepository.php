@@ -14,14 +14,25 @@ class ProductRepository implements ProductRepositoryInterface
         $sort = $filters['sort'] ?? 'name';
         $direction = $filters['direction'] ?? 'asc';
 
-        $query = Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])->orderBy($sort, $direction);
+        $query = Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])->orderBy($sort, $direction);
+
+        if (! empty($filters['lifecycle_status'])) {
+            $query->where('lifecycle_status', $filters['lifecycle_status']);
+        } elseif (empty($filters['include_archived'])) {
+            $query->where('lifecycle_status', '!=', 'archived');
+        }
 
         if (! empty($filters['search'])) {
             $search = $filters['search'];
             $query->where(function ($builder) use ($search) {
                 $builder->where('name', 'like', "%{$search}%")
                     ->orWhere('sku', 'like', "%{$search}%")
-                    ->orWhere('barcode', 'like', "%{$search}%");
+                    ->orWhere('barcode', 'like', "%{$search}%")
+                    ->orWhere('brand', 'like', "%{$search}%")
+                    ->orWhere('hs_code', 'like', "%{$search}%")
+                    ->orWhereHas('alternativeBarcodes', fn ($barcodes) => $barcodes
+                        ->where('is_active', true)
+                        ->where('barcode', 'like', "%{$search}%"));
             });
         }
 
@@ -38,7 +49,9 @@ class ProductRepository implements ProductRepositoryInterface
         }
 
         if (! empty($filters['low_stock'])) {
-            $query->whereColumn('quantity', '<=', 'min_quantity');
+            $query->whereRaw(
+                'COALESCE((SELECT SUM(ws.available_quantity) FROM warehouse_stock ws WHERE ws.product_id = products.id), products.quantity) <= products.min_quantity'
+            );
         }
 
         if (! empty($filters['location_code'])) {
@@ -50,17 +63,28 @@ class ProductRepository implements ProductRepositoryInterface
 
     public function allWithRelations(): Collection
     {
-        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])->orderBy('name')->get();
+        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])
+            ->where('lifecycle_status', '!=', 'archived')
+            ->orderBy('name')
+            ->get();
     }
 
     public function findBySku(string $sku): ?Product
     {
-        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])->where('sku', $sku)->first();
+        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])
+            ->where('lifecycle_status', '!=', 'archived')
+            ->where(fn ($query) => $query
+                ->where('sku', $sku)
+                ->orWhere('barcode', $sku)
+                ->orWhereHas('alternativeBarcodes', fn ($barcodes) => $barcodes
+                    ->where('is_active', true)
+                    ->where('barcode', $sku)))
+            ->first();
     }
 
     public function findById(int $id): ?Product
     {
-        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])->find($id);
+        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])->find($id);
     }
 
     public function create(array $data): Product
@@ -76,7 +100,7 @@ class ProductRepository implements ProductRepositoryInterface
 
         $product->update($data);
 
-        return $product->fresh(['category', 'supplier', 'supplierCatalogue.supplier', 'defaultWarehouse', 'units', 'warehouseStock.warehouse', 'warehouseStock.location']);
+        return $product->fresh(['category', 'supplier', 'supplierCatalogue.supplier', 'alternativeBarcodes', 'defaultWarehouse', 'units', 'warehouseStock.warehouse', 'warehouseStock.location']);
     }
 
     public function delete(Product $product): void
@@ -86,8 +110,9 @@ class ProductRepository implements ProductRepositoryInterface
 
     public function byLocationCode(string $locationCode, int $companyId): Collection
     {
-        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])
+        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])
             ->where('company_id', $companyId)
+            ->where('lifecycle_status', '!=', 'archived')
             ->where('location_code', $locationCode)
             ->orderBy('name')
             ->get();
@@ -95,12 +120,18 @@ class ProductRepository implements ProductRepositoryInterface
 
     public function searchGlobal(string $term, int $limit = 20): Collection
     {
-        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])
+        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])
+            ->where('lifecycle_status', '!=', 'archived')
             ->where(function ($query) use ($term) {
                 $query->where('name', 'like', "%{$term}%")
                     ->orWhere('sku', 'like', "%{$term}%")
                     ->orWhere('barcode', 'like', "%{$term}%")
-                    ->orWhere('description', 'like', "%{$term}%");
+                    ->orWhere('description', 'like', "%{$term}%")
+                    ->orWhere('brand', 'like', "%{$term}%")
+                    ->orWhere('hs_code', 'like', "%{$term}%")
+                    ->orWhereHas('alternativeBarcodes', fn ($barcodes) => $barcodes
+                        ->where('is_active', true)
+                        ->where('barcode', 'like', "%{$term}%"));
             })
             ->limit($limit)
             ->get();

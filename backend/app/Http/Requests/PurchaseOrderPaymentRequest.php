@@ -15,13 +15,16 @@ class PurchaseOrderPaymentRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'amount' => ['required', 'numeric', 'min:0.01'],
+            'amount' => ['required', 'numeric', 'decimal:0,2', 'min:0.01'],
             'payment_date' => ['required', 'date'],
             'payment_method' => ['required', Rule::in(['cash', 'bank_transfer', 'card', 'cheque', 'other'])],
             'reference_number' => ['nullable', 'string', 'max:255'],
             'note' => ['nullable', 'string', 'max:2000'],
             'idempotency_key' => ['required', 'string', 'max:100'],
-            'financial_account_id' => ['nullable', 'integer', 'exists:financial_accounts,id'],
+            'financial_account_id' => [
+                'nullable', 'integer',
+                Rule::exists('financial_accounts', 'id')->where('company_id', $this->user()?->company_id),
+            ],
             'expense_id' => [
                 'nullable',
                 'integer',

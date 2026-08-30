@@ -54,6 +54,6 @@ class LandedCostAccountingEntry extends Model
 
     public function poster(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'posted_by');
+        return $this->belongsTo(User::class, 'posted_by')->withTrashed();
     }
 }

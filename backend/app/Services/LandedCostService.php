@@ -16,7 +16,12 @@ use Illuminate\Validation\ValidationException;
 
 class LandedCostService
 {
-    public const COST_TYPES = ['freight', 'customs', 'insurance', 'inland_transport', 'handling', 'other'];
+    // Kosovo company ledgers in AIMS are EUR-denominated. The landed-cost
+    // record snapshots this explicitly; it is not a configurable currency
+    // that could diverge from the rest of inventory valuation.
+    public const BASE_CURRENCY = 'EUR';
+
+    public const COST_TYPES = ['freight', 'customs', 'insurance', 'port', 'forwarding', 'inland_transport', 'handling', 'other'];
 
     public const ALLOCATION_METHODS = ['quantity', 'value', 'weight', 'volume', 'manual'];
 
@@ -76,7 +81,7 @@ class LandedCostService
                 }
             }
             $method = $data['allocation_method'];
-            $rate = strtoupper($data['currency']) === 'EUR' ? 1.0 : round((float) $data['exchange_rate_to_base'], 8);
+            $rate = strtoupper($data['currency']) === self::BASE_CURRENCY ? 1.0 : round((float) $data['exchange_rate_to_base'], 8);
             $amount = round((float) $data['amount'], 6);
             $baseAmount = round($amount * $rate, 2);
             if ($baseAmount <= 0) {
@@ -97,7 +102,9 @@ class LandedCostService
                 'description' => $data['description'] ?? null,
                 'amount' => $amount,
                 'currency' => strtoupper($data['currency']),
+                'base_currency' => self::BASE_CURRENCY,
                 'exchange_rate_to_base' => $rate,
+                'exchange_rate_date' => $data['exchange_rate_date'] ?? (strtoupper($data['currency']) === self::BASE_CURRENCY ? now()->toDateString() : null),
                 'base_currency_amount' => $baseAmount,
                 'allocation_method' => $method,
                 'status' => 'draft',

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Support\Money;
 
 class Expense extends Model
 {
@@ -55,17 +56,17 @@ class Expense extends Model
 
     public function creator(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
     }
 
     public function supplier(): BelongsTo
     {
-        return $this->belongsTo(Supplier::class);
+        return $this->belongsTo(Supplier::class)->withTrashed();
     }
 
     public function purchaseOrder(): BelongsTo
     {
-        return $this->belongsTo(PurchaseOrder::class);
+        return $this->belongsTo(PurchaseOrder::class)->withTrashed();
     }
 
     public function supplierInvoiceItems(): HasMany
@@ -102,14 +103,14 @@ class Expense extends Model
 
     public function getPaidAmountAttribute(): float
     {
-        $direct = (float) ($this->attributes['payments_sum_amount']
+        $direct = ($this->attributes['payments_sum_amount']
             ?? $this->payments->where('status', 'completed')->sum('amount'));
-        $advances = (float) ($this->attributes['purchase_order_payment_allocations_sum_amount']
+        $advances = ($this->attributes['purchase_order_payment_allocations_sum_amount']
             ?? ($this->relationLoaded('purchaseOrderPaymentAllocations') ? $this->purchaseOrderPaymentAllocations->sum('amount') : $this->purchaseOrderPaymentAllocations()->sum('amount')));
-        $credits = (float) ($this->attributes['supplier_credits_sum_gross_amount']
+        $credits = ($this->attributes['supplier_credits_sum_gross_amount']
             ?? ($this->relationLoaded('supplierCredits') ? $this->supplierCredits->sum('gross_amount') : $this->supplierCredits()->sum('gross_amount')));
 
-        return round($direct + $advances + $credits, 2);
+        return (float) Money::add($direct, $advances, $credits);
     }
 
     public function getRemainingAmountAttribute(): float
@@ -118,7 +119,7 @@ class Expense extends Model
             return 0.0;
         }
 
-        return max(0, round((float) $this->gross_amount - $this->paid_amount, 2));
+        return (float) Money::maximum('0.00', Money::subtract($this->gross_amount, $this->paid_amount));
     }
 
     public function getPaymentStatusAttribute(): string

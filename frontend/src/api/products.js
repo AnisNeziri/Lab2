@@ -6,6 +6,8 @@ export async function getProducts(filters = {}) {
       search: filters.search,
       category_id: filters.category_id,
       supplier_id: filters.supplier_id,
+      lifecycle_status: filters.lifecycle_status,
+      include_archived: filters.include_archived ? '1' : '',
       low_stock: filters.low_stock ? '1' : '',
       sort: filters.sort,
       direction: filters.direction,

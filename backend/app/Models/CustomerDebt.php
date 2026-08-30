@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Traits\BelongsToCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Support\Money;
 
 class CustomerDebt extends Model
 {
@@ -19,6 +20,6 @@ class CustomerDebt extends Model
 
     public function getBalanceAttribute(): float
     {
-        return round((float) $this->entries()->sum('amount_owed') - (float) $this->entries()->sum('amount_paid'), 2);
+        return (float) Money::subtract($this->entries()->sum('amount_owed'), $this->entries()->sum('amount_paid'));
     }
 }

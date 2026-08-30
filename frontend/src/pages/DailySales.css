@@ -247,6 +247,46 @@
   color: #b91c1c;
 }
 
+.daily-sales-serial-picker {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+  padding: 0.55rem;
+  border: 1px solid #94a3b8;
+  border-radius: 7px;
+  background: #f8fafc;
+}
+
+.daily-sales-serial-picker > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.76rem;
+}
+
+.daily-sales-serial-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 0.3rem;
+  max-height: 150px;
+  overflow: auto;
+}
+
+.daily-sales-serial-options label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: 0.35rem;
+  border-radius: 5px;
+  background: #fff;
+  font-size: 0.75rem;
+}
+
+.daily-sales-serial-options label.is-disabled { opacity: 0.48; }
+.daily-sales-serial-options input { width: auto; min-width: 0; margin-top: 0.12rem; }
+.daily-sales-serial-options span { display: grid; min-width: 0; overflow-wrap: anywhere; }
+.daily-sales-serial-options small { font-size: 0.68rem; }
+
 .daily-sales-line-number {
   width: 48px;
   text-align: center;
@@ -281,12 +321,35 @@
 
 .daily-sale-editor-footer {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 1rem;
   align-items: end;
   padding: 0.85rem;
   border-top: 1px solid #94a3b8;
   background: #f8fafc;
+}
+
+.daily-sales-expired-override {
+  display: grid;
+  align-content: end;
+  gap: 0.35rem;
+  max-width: 310px;
+}
+
+.daily-sales-expired-override > label {
+  display: flex;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 0.45rem;
+  color: #b45309;
+}
+
+.daily-sales-expired-override input[type="checkbox"] { width: auto; }
+.daily-sales-expired-override > input {
+  width: 100%;
+  border: 1px solid #d97706;
+  border-radius: 6px;
+  padding: 0.5rem;
 }
 
 .daily-sale-editor-footer label {
@@ -389,6 +452,24 @@ html[data-theme="dark"] .daily-sale-editor-footer textarea {
   background: #0f172a;
   border-color: #64748b;
   color: #e2e8f0;
+}
+
+html.dark .daily-sales-serial-picker,
+html[data-theme="dark"] .daily-sales-serial-picker {
+  border-color: var(--border-color);
+  background: #111c2f;
+}
+
+html.dark .daily-sales-serial-options label,
+html[data-theme="dark"] .daily-sales-serial-options label {
+  background: #0f172a;
+  color: var(--text-color);
+}
+
+html.dark .daily-sales-expired-override > input,
+html[data-theme="dark"] .daily-sales-expired-override > input {
+  background: #0f172a;
+  color: var(--text-color);
 }
 
 /* Dark theme: keep the paper metaphor without bright white work surfaces. */

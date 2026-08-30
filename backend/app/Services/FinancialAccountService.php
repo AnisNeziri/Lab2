@@ -6,6 +6,7 @@ use App\Models\ActivityLog;
 use App\Models\FinancialAccount;
 use App\Models\FinancialAccountTransaction;
 use App\Models\FinancialAccountTransfer;
+use App\Support\Money;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -79,16 +80,22 @@ class FinancialAccountService
             if (! in_array($type, [...self::INFLOW_TYPES, ...self::OUTFLOW_TYPES], true)) {
                 throw ValidationException::withMessages(['type' => ['The selected money movement type is invalid.']]);
             }
-            $amount = round((float) $data['amount'], 2);
-            if ($amount <= 0) {
+            $amount = Money::normalize($data['amount']);
+            if (Money::compare($amount, '0.00') <= 0) {
                 throw ValidationException::withMessages(['amount' => ['Amount must be greater than zero.']]);
             }
             $key = (string) ($data['idempotency_key'] ?? Str::uuid());
             $existing = FinancialAccountTransaction::query()->where('idempotency_key', $key)->first();
             if ($existing) {
                 $same = (int) $existing->financial_account_id === (int) $locked->id
-                    && $existing->type === $type && abs((float) $existing->amount - $amount) < .005
-                    && (string) $existing->transaction_date?->toDateString() === (string) $data['transaction_date'];
+                    && $existing->status === 'posted'
+                    && $existing->type === $type && Money::compare($existing->amount, $amount) === 0
+                    && (string) $existing->transaction_date?->toDateString() === (string) $data['transaction_date']
+                    && ($existing->source_type ?? 'manual') === ($data['source_type'] ?? 'manual')
+                    && (int) ($existing->source_id ?? 0) === (int) ($data['source_id'] ?? 0)
+                    && ($existing->counterparty ?? '') === ($data['counterparty'] ?? '')
+                    && ($existing->reference_number ?? '') === ($data['reference_number'] ?? '')
+                    && ($existing->description ?? '') === ($data['description'] ?? '');
                 if (! $same) {
                     throw ValidationException::withMessages(['idempotency_key' => ['This key is already used for a different money movement.']]);
                 }
@@ -141,14 +148,14 @@ class FinancialAccountService
             }
             $key = (string) ($data['idempotency_key'] ?? Str::uuid());
             $existing = FinancialAccountTransfer::query()->where('idempotency_key', $key)->first();
-            $amount = round((float) $data['amount'], 2);
-            if ($amount <= 0) {
+            $amount = Money::normalize($data['amount']);
+            if (Money::compare($amount, '0.00') <= 0) {
                 throw ValidationException::withMessages(['amount' => ['Transfer amount must be greater than zero.']]);
             }
             if ($existing) {
                 $same = (int) $existing->source_account_id === (int) $source->id
                     && (int) $existing->destination_account_id === (int) $destination->id
-                    && abs((float) $existing->amount - $amount) < .005
+                    && Money::compare($existing->amount, $amount) === 0
                     && $existing->transfer_date?->toDateString() === (string) $data['transfer_date'];
                 if (! $same) {
                     throw ValidationException::withMessages(['idempotency_key' => ['This key is already used for a different account transfer.']]);
@@ -217,10 +224,10 @@ class FinancialAccountService
 
     public function balance(FinancialAccount $account): float
     {
-        $in = (float) $account->transactions()->where('status', 'posted')->whereIn('type', self::INFLOW_TYPES)->sum('amount');
-        $out = (float) $account->transactions()->where('status', 'posted')->whereIn('type', self::OUTFLOW_TYPES)->sum('amount');
+        $in = $account->transactions()->where('status', 'posted')->whereIn('type', self::INFLOW_TYPES)->sum('amount');
+        $out = $account->transactions()->where('status', 'posted')->whereIn('type', self::OUTFLOW_TYPES)->sum('amount');
 
-        return round((float) $account->opening_balance + $in - $out, 2);
+        return (float) Money::subtract(Money::add($account->opening_balance, $in), $out);
     }
 
     private function decorate(FinancialAccount $account): FinancialAccount
@@ -236,7 +243,7 @@ class FinancialAccountService
             'company_id' => Auth::user()->company_id, 'user_id' => Auth::id(),
             'action' => $action, 'entity' => class_basename($entity), 'entity_id' => $entity->id,
             'description' => $reason ?: str_replace('.', ' ', $action),
-            'old_value' => $old ? json_encode($old) : null, 'new_value' => $new ? json_encode($new) : null,
+            'old_value' => $old ?: null, 'new_value' => $new ?: null,
             'ip_address' => request()?->ip(),
         ]);
     }

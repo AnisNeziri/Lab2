@@ -4,12 +4,13 @@ namespace App\Models;
 
 use App\Traits\BelongsToCompany;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class DailySale extends Model
 {
-    use BelongsToCompany;
+    use BelongsToCompany, SoftDeletes;
 
     protected $fillable = [
         'company_id',
@@ -28,6 +29,8 @@ class DailySale extends Model
         'updated_by',
         'finalized_at',
         'inventory_applied_at',
+        'idempotency_key',
+        'request_fingerprint',
     ];
 
     protected function casts(): array
@@ -49,12 +52,12 @@ class DailySale extends Model
 
     public function creator(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(User::class, 'created_by')->withTrashed();
     }
 
     public function customer(): BelongsTo
     {
-        return $this->belongsTo(Customer::class);
+        return $this->belongsTo(Customer::class)->withTrashed();
     }
 
     public function scopeDraft($query)

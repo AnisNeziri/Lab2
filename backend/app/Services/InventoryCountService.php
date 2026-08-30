@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\InventoryCountEntry;
 use App\Models\InventoryCountItem;
 use App\Models\InventoryCountSession;
+use App\Models\InventoryLot;
 use App\Models\InventoryTraceBalance;
 use App\Models\Product;
 use App\Models\Warehouse;
@@ -130,7 +131,9 @@ class InventoryCountService
                     if (($product->tracking_mode ?: 'none') !== 'none') {
                         continue;
                     }
-                    $this->createItem($session, $product, $locationId, 'available', 0);
+                    foreach ($states as $state) {
+                        $this->createItem($session, $product, $locationId, $state, 0);
+                    }
                 }
             }
 
@@ -204,18 +207,20 @@ class InventoryCountService
                 throw ValidationException::withMessages(['item_ids' => ['One or more count items do not belong to this session.']]);
             }
             foreach ($items as $item) {
+                $currentExpected = $this->currentBalance($session, $item, true);
                 InventoryCountEntry::create([
                     'company_id' => $session->company_id,
                     'inventory_count_item_id' => $item->id,
                     'count_round' => $item->count_round,
                     'entry_type' => 'recount_requested',
                     'counted_quantity' => $item->counted_quantity,
-                    'notes' => $reason,
+                    'notes' => $reason." (book quantity refreshed from {$item->expected_quantity} to {$currentExpected})",
                     'entered_by' => Auth::id(),
                     'entered_at' => now(),
                 ]);
                 $item->update([
                     'count_round' => $item->count_round + 1,
+                    'expected_quantity' => $currentExpected,
                     'counted_quantity' => null,
                     'variance_quantity' => null,
                     'requires_recount' => true,
@@ -254,6 +259,17 @@ class InventoryCountService
                 throw ValidationException::withMessages(['status' => ['Only a submitted count can be approved.']]);
             }
             $items = $session->items()->with('product')->lockForUpdate()->get();
+            foreach ($items as $item) {
+                $current = $this->currentBalance($session, $item, true);
+                if (abs($current - (float) $item->expected_quantity) >= 0.0005) {
+                    throw ValidationException::withMessages([
+                        'items' => [
+                            "Inventory changed after {$session->count_number} froze {$item->product->name}. "
+                            .'Request a recount before approving so the adjustment cannot corrupt live stock.',
+                        ],
+                    ]);
+                }
+            }
             foreach ($items as $item) {
                 $variance = round((float) $item->variance_quantity, 3);
                 if (abs($variance) < 0.0005) {
@@ -331,9 +347,24 @@ class InventoryCountService
 
         $lotId = null;
         if (($product->tracking_mode ?: 'none') !== 'none') {
-            $lotId = ! empty($input['inventory_lot_id'])
-                ? (int) $input['inventory_lot_id']
-                : $this->traceability->resolveIdentityForCount($product, $input['trace'] ?? $input)->id;
+            if (! empty($input['inventory_lot_id'])) {
+                $lotId = InventoryLot::withoutGlobalScopes()
+                    ->where('company_id', $session->company_id)
+                    ->where('product_id', $product->id)
+                    ->whereKey((int) $input['inventory_lot_id'])
+                    ->value('id');
+                if (! $lotId) {
+                    throw ValidationException::withMessages([
+                        'items' => ['The selected lot or serial does not belong to this company and product.'],
+                    ]);
+                }
+            } else {
+                $lotId = $this->traceability->resolveIdentityForCount($product, $input['trace'] ?? $input)->id;
+            }
+        } elseif (! empty($input['inventory_lot_id'])) {
+            throw ValidationException::withMessages([
+                'items' => ['An untracked product cannot reference a lot or serial identity.'],
+            ]);
         }
 
         return $this->createItem($session, $product, $locationId, $state, 0, $lotId);
@@ -364,6 +395,37 @@ class InventoryCountService
                 'requires_recount' => false,
             ],
         );
+    }
+
+    private function currentBalance(
+        InventoryCountSession $session,
+        InventoryCountItem $item,
+        bool $lock = false,
+    ): float {
+        if ($item->inventory_lot_id) {
+            $query = InventoryTraceBalance::withoutGlobalScopes()
+                ->where('company_id', $session->company_id)
+                ->where('inventory_lot_id', $item->inventory_lot_id)
+                ->where('warehouse_id', $session->warehouse_id)
+                ->where('location_key', (int) ($item->location_id ?? 0))
+                ->where('stock_state', $item->stock_state);
+        } else {
+            $query = WarehouseStock::withoutGlobalScopes()
+                ->where('company_id', $session->company_id)
+                ->where('product_id', $item->product_id)
+                ->where('warehouse_id', $session->warehouse_id)
+                ->where('location_key', (int) ($item->location_id ?? 0));
+        }
+
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        if ($item->inventory_lot_id) {
+            return round((float) ($query->value('quantity') ?? 0), 3);
+        }
+
+        return round((float) ($query->value($item->stock_state.'_quantity') ?? 0), 3);
     }
 
     private function nextNumber(int $companyId): string

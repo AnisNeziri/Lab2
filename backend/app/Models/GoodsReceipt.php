@@ -14,6 +14,7 @@ class GoodsReceipt extends Model
     protected $fillable = [
         'company_id', 'purchase_order_id', 'warehouse_id', 'location_id', 'receipt_number',
         'supplier_document_number', 'received_at', 'status', 'notes', 'received_by', 'idempotency_key',
+        'request_fingerprint',
     ];
 
     protected function casts(): array
@@ -21,10 +22,10 @@ class GoodsReceipt extends Model
         return ['received_at' => 'datetime'];
     }
 
-    public function purchaseOrder(): BelongsTo { return $this->belongsTo(PurchaseOrder::class); }
+    public function purchaseOrder(): BelongsTo { return $this->belongsTo(PurchaseOrder::class)->withTrashed(); }
     public function warehouse(): BelongsTo { return $this->belongsTo(Warehouse::class); }
     public function location(): BelongsTo { return $this->belongsTo(WarehouseLocation::class); }
-    public function receiver(): BelongsTo { return $this->belongsTo(User::class, 'received_by'); }
+    public function receiver(): BelongsTo { return $this->belongsTo(User::class, 'received_by')->withTrashed(); }
     public function items(): HasMany { return $this->hasMany(GoodsReceiptItem::class); }
     public function landedCosts(): HasMany { return $this->hasMany(LandedCost::class); }
 }

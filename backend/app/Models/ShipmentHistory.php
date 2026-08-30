@@ -15,6 +15,7 @@ class ShipmentHistory extends Model
     protected $fillable = [
         'company_id',
         'shipment_id',
+        'user_id',
         'event_type',
         'description',
         'metadata',
@@ -32,5 +33,10 @@ class ShipmentHistory extends Model
     public function shipment(): BelongsTo
     {
         return $this->belongsTo(Shipment::class);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class)->withTrashed();
     }
 }

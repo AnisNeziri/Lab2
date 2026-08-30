@@ -26,11 +26,11 @@ class PaymentController extends Controller
     {
         $validated = $request->validate([
             'invoice_id' => ['required', 'integer', Rule::exists('invoices', 'id')->where('company_id', $request->user()->company_id)],
-            'amount' => ['nullable', 'numeric', 'min:0.01'],
+            'amount' => ['nullable', 'numeric', 'decimal:0,2', 'min:0.01'],
             'payment_method' => ['nullable', 'in:card,bank_transfer,cash,cheque,other'],
             'payment_date' => ['nullable', 'date'],
             'reference_number' => ['nullable', 'string', 'max:255'],
-            'idempotency_key' => ['nullable', 'string', 'max:100'],
+            'idempotency_key' => ['required', 'string', 'max:100'],
             'note' => ['nullable', 'string', 'max:500'],
             'financial_account_id' => ['nullable', 'integer', Rule::exists('financial_accounts', 'id')->where('company_id', $request->user()->company_id)],
         ]);

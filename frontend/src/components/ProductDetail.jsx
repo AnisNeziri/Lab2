@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { getProductDetail } from '../api/products'
 import { formatQuantity } from '../utils/formatQuantity'
@@ -60,6 +60,13 @@ function ProductDetail({ productId, onClose }) {
               <dd>{data.product.name}</dd>
               <dt>SKU</dt>
               <dd>{data.product.sku}</dd>
+              <dt>{t('productMaster.status')}</dt>
+              <dd>{t(`productMaster.${data.product.lifecycle_status || 'active'}`)}</dd>
+              <dt>{t('productMaster.primaryBarcode')}</dt>
+              <dd>{data.product.barcode || '—'}</dd>
+              {(data.product.alternative_barcodes || []).length ? <><dt>{t('productMaster.alternativeBarcodes')}</dt><dd>{data.product.alternative_barcodes.filter((row) => row.is_active !== false).map((row) => row.label ? `${row.barcode} (${row.label})` : row.barcode).join(', ') || '—'}</dd></> : null}
+              <dt>{t('productMaster.brand')}</dt>
+              <dd>{data.product.brand || '—'}</dd>
               <dt>Category</dt>
               <dd>{data.product.category?.name ?? '-'}</dd>
               <dt>Supplier</dt>
@@ -78,11 +85,11 @@ function ProductDetail({ productId, onClose }) {
               )}
               <dt>Quantity</dt>
               <dd className={getStockStatus(
-                data.product.quantity,
+                data.product.available_quantity ?? data.product.quantity,
                 data.product.min_quantity,
                 data.product.high_stock_threshold,
               ).key === 'low' ? 'low-stock' : ''}>
-                {formatQuantity(data.product.quantity, data.product.unit)} {data.product.unit ?? 'pcs'}
+                {formatQuantity(data.product.available_quantity ?? data.product.quantity, data.product.unit)} {data.product.unit ?? 'pcs'}
               </dd>
               <dt>Min quantity</dt>
               <dd>{formatQuantity(data.product.min_quantity, data.product.unit)}</dd>
@@ -90,8 +97,12 @@ function ProductDetail({ productId, onClose }) {
               <dd>{Number(data.product.high_stock_threshold) > 0 ? formatQuantity(data.product.high_stock_threshold, data.product.unit) : 'Auto'}</dd>
               <dt>{t('productTracking.mode')}</dt>
               <dd>{t(trackingLabelKeys[data.product.tracking_mode || 'none'] || 'productTracking.none')}</dd>
-              {['batch', 'batch_expiry'].includes(data.product.tracking_mode) ? (
+              {data.product.expiration_controlled || data.product.tracking_mode === 'batch_expiry' ? (
                 <>
+                  <dt>{t('productTracking.expirationControlled')}</dt>
+                  <dd>{t('productTracking.enabled')}</dd>
+                  <dt>{t('productTracking.defaultShelfLife')}</dt>
+                  <dd>{data.product.default_shelf_life_days || '—'}</dd>
                   <dt>{t('productTracking.nearExpiryDays')}</dt>
                   <dd>{data.product.near_expiry_days ?? 30}</dd>
                   <dt>FEFO</dt>
@@ -110,6 +121,16 @@ function ProductDetail({ productId, onClose }) {
               <dd>{data.product.weight_kg == null ? '—' : Number(data.product.weight_kg).toLocaleString()}</dd>
               <dt>{t('productPlanning.volume')}</dt>
               <dd>{data.product.volume_m3 == null ? '—' : Number(data.product.volume_m3).toLocaleString()}</dd>
+              <dt>{t('productMaster.length')}</dt>
+              <dd>{data.product.length_cm ?? '—'}</dd>
+              <dt>{t('productMaster.width')}</dt>
+              <dd>{data.product.width_cm ?? '—'}</dd>
+              <dt>{t('productMaster.height')}</dt>
+              <dd>{data.product.height_cm ?? '—'}</dd>
+              <dt>{t('productMaster.origin')}</dt>
+              <dd>{data.product.country_of_origin || '—'}</dd>
+              <dt>{t('productMaster.hsCode')}</dt>
+              <dd>{data.product.hs_code || '—'}</dd>
               <dt>Purchase price</dt>
               <dd>{data.product.purchase_price != null ? `€${Number(data.product.purchase_price).toFixed(2)}` : '-'}</dd>
               <dt>Selling price</dt>
@@ -120,7 +141,10 @@ function ProductDetail({ productId, onClose }) {
               </dd>
               <dt>Description</dt>
               <dd>{data.product.description || '-'}</dd>
+              {Object.entries(data.product.attributes || {}).map(([key, value]) => <Fragment key={key}><dt>{key}</dt><dd>{String(value)}</dd></Fragment>)}
             </dl>
+
+            {(data.product.supplier_catalogue || []).length ? <><h3>Supplier catalogue</h3><div className="unit-chip-list">{data.product.supplier_catalogue.map((row) => <div className="unit-chip" key={row.id}><strong>{row.supplier?.name || 'Supplier'}{row.is_preferred ? ' ★' : ''}</strong><small>{row.supplier_sku || '—'} · {row.purchase_price ?? '—'} {row.currency || ''}</small><small>MOQ {row.minimum_order_quantity} · pack {row.pack_size} · {row.usual_lead_time_days} days</small></div>)}</div></> : null}
 
             <h3>{t('productUnits.conversions')}</h3>
             <div className="unit-chip-list">

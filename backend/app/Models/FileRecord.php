@@ -20,6 +20,6 @@ class FileRecord extends Model
 
     public function uploader(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'uploaded_by');
+        return $this->belongsTo(User::class, 'uploaded_by')->withTrashed();
     }
 }

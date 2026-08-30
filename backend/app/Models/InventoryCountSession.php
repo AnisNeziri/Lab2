@@ -28,8 +28,8 @@ class InventoryCountSession extends Model
 
     public function warehouse(): BelongsTo { return $this->belongsTo(Warehouse::class); }
     public function location(): BelongsTo { return $this->belongsTo(WarehouseLocation::class); }
-    public function creator(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
-    public function submitter(): BelongsTo { return $this->belongsTo(User::class, 'submitted_by'); }
-    public function approver(): BelongsTo { return $this->belongsTo(User::class, 'approved_by'); }
+    public function creator(): BelongsTo { return $this->belongsTo(User::class, 'created_by')->withTrashed(); }
+    public function submitter(): BelongsTo { return $this->belongsTo(User::class, 'submitted_by')->withTrashed(); }
+    public function approver(): BelongsTo { return $this->belongsTo(User::class, 'approved_by')->withTrashed(); }
     public function items(): HasMany { return $this->hasMany(InventoryCountItem::class); }
 }

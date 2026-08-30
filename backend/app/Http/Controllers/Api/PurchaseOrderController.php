@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PurchaseOrderPaymentRequest;
+use App\Http\Requests\PaymentReversalRequest;
+use App\Models\PurchaseOrderPayment;
 use App\Http\Requests\PurchaseOrderReceiveRequest;
 use App\Http\Requests\PurchaseOrderRequest;
 use App\Http\Requests\PurchaseOrderStatusRequest;
@@ -53,6 +55,11 @@ class PurchaseOrderController extends Controller
     public function pay(PurchaseOrderPaymentRequest $request, PurchaseOrder $purchaseOrder): JsonResponse
     {
         return response()->json($this->orders->pay($purchaseOrder, $request->validated()), 201);
+    }
+
+    public function reversePayment(PaymentReversalRequest $request, PurchaseOrderPayment $payment): JsonResponse
+    {
+        return response()->json($this->orders->reversePayment($payment, $request->validated('reason')));
     }
 
     public function receive(PurchaseOrderReceiveRequest $request, PurchaseOrder $purchaseOrder): JsonResponse
