@@ -6,6 +6,7 @@ const DEFAULTS = {
   theme: 'light',
   language: 'en',
   enable_3d_map: false,
+  base_currency: 'EUR',
 }
 
 function applyTheme(theme) {
@@ -37,12 +38,14 @@ export const useSettingsStore = create(
       async syncFromApi() {
         const data = await getPreferences()
         get().applyPreferences(data.preferences)
+        set({ base_currency: data.company?.base_currency || 'EUR' })
         return data.preferences
       },
 
       async savePreferences(partial) {
         const data = await updatePreferences(partial)
         get().applyPreferences(data.preferences)
+        set({ base_currency: data.company?.base_currency || get().base_currency || 'EUR' })
         return data.preferences
       },
     }),

@@ -23,6 +23,8 @@ class PurchaseOrderReceiveRequest extends FormRequest
             'received_at' => ['nullable', 'date'],
             'supplier_document_number' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'allow_expired_receipt' => ['nullable', 'boolean'],
+            'expired_receipt_reason' => ['nullable', 'required_if:allow_expired_receipt,true', 'string', 'min:5', 'max:1000'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.id' => ['required', 'integer'],
             'items.*.quantity' => ['nullable', 'numeric', 'min:0'],

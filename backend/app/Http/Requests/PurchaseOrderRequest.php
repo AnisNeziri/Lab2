@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Support\CompanyCurrency;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -16,6 +17,7 @@ class PurchaseOrderRequest extends FormRequest
     public function rules(): array
     {
         $companyId = Auth::user()->company_id;
+        $baseCurrency = CompanyCurrency::forCompanyId((int) $companyId);
 
         return [
             'supplier_id' => ['required', 'integer', Rule::exists('suppliers', 'id')->where('company_id', $companyId)],
@@ -23,10 +25,10 @@ class PurchaseOrderRequest extends FormRequest
             'ordered_at' => ['required', 'date'],
             'expected_at' => ['nullable', 'date', 'after_or_equal:ordered_at'],
             'due_at' => ['nullable', 'date', 'after_or_equal:ordered_at'],
-            'currency' => ['required', Rule::in(['EUR', 'USD', 'ALL', 'GBP', 'CNY'])],
-            'exchange_rate' => [Rule::requiredIf(fn () => strtoupper((string) $this->input('currency')) !== 'EUR'), 'nullable', 'numeric', 'gt:0', 'max:1000000'],
-            'exchange_rate_date' => [Rule::requiredIf(fn () => strtoupper((string) $this->input('currency')) !== 'EUR'), 'nullable', 'date'],
-            'exchange_rate_source' => [Rule::requiredIf(fn () => strtoupper((string) $this->input('currency')) !== 'EUR'), 'nullable', 'string', 'max:255'],
+            'currency' => ['required', Rule::in(CompanyCurrency::accepted($baseCurrency))],
+            'exchange_rate' => [Rule::requiredIf(fn () => strtoupper((string) $this->input('currency')) !== $baseCurrency), 'nullable', 'numeric', 'gt:0', 'max:1000000'],
+            'exchange_rate_date' => [Rule::requiredIf(fn () => strtoupper((string) $this->input('currency')) !== $baseCurrency), 'nullable', 'date'],
+            'exchange_rate_source' => [Rule::requiredIf(fn () => strtoupper((string) $this->input('currency')) !== $baseCurrency), 'nullable', 'string', 'max:255'],
             'status' => ['sometimes', Rule::in(['draft', 'confirmed', 'ordered'])],
             'notes' => ['nullable', 'string', 'max:2000'],
             'change_reason' => ['nullable', 'string', 'max:2000'],

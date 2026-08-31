@@ -15,6 +15,7 @@ import { useTranslation } from "../hooks/useTranslation";
 import { useAuthStore } from "../store/authStore";
 import { getAllProducts } from "../api/products";
 import { formatQuantity, isMeterUnit } from "../utils/formatQuantity";
+import { getInventoryQuantity } from "../utils/inventoryQuantity";
 import {
   createDailySale,
   deleteDailySale,
@@ -49,6 +50,25 @@ function baseQuantity(row) {
   if (row.conversion_mode === "variable") return Number(row.actual_base_quantity || 0);
   return Number(row.quantity || 0);
 }
+function warehouseAvailableQuantity(product, warehouseId) {
+  if (!product) return null;
+  if (!warehouseId) return getInventoryQuantity(product, "available");
+
+  const balances = Array.isArray(product.warehouse_stock) ? product.warehouse_stock : null;
+  if (!balances?.length) return getInventoryQuantity(product, "available");
+
+  const matchingBalances = balances.filter(
+    (balance) => String(balance.warehouse_id) === String(warehouseId),
+  );
+  if (!matchingBalances.length) return 0;
+
+  return matchingBalances.reduce(
+    (total, balance) => total + Number(
+      balance.available_quantity ?? balance.available ?? balance.quantity ?? 0,
+    ),
+    0,
+  );
+}
 function emptyRow(index = 1) {
   return {
     key: `row-${Date.now()}-${index}`,
@@ -82,7 +102,7 @@ function mapRow(item) {
     quantity: Number(item.quantity),
     unit_price: Number(item.unit_price),
     line_total: Number(item.line_total),
-    stock_available: item.product?.quantity ?? null,
+    stock_available: item.product ? getInventoryQuantity(item.product, "available") : null,
     inventory_unit: item.product?.unit || item.unit,
     conversion_mode: item.conversion_mode || "none",
     conversion_factor: item.conversion_factor ?? null,
@@ -433,15 +453,12 @@ export default function DailySales() {
       return;
     }
     const defaultWarehouse = product.default_warehouse_id || warehouses.find((warehouse) => warehouse.is_default)?.id || "";
-    const warehouseAvailable = (product.warehouse_stock || [])
-      .filter((balance) => String(balance.warehouse_id) === String(defaultWarehouse))
-      .reduce((total, balance) => total + Number(balance.available_quantity || 0), 0);
     updateRow(key, {
       product_id: product.id,
       product_name: product.name,
       unit: product.unit || "pcs",
       unit_price: defaultSalePrice(product, null),
-      stock_available: defaultWarehouse ? warehouseAvailable : product.quantity,
+      stock_available: warehouseAvailableQuantity(product, defaultWarehouse),
       inventory_unit: product.unit || "pcs",
       conversion_mode: "none",
       conversion_factor: null,
@@ -474,9 +491,7 @@ export default function DailySales() {
   function selectSaleWarehouse(key, warehouseId) {
     const row = rows.find((candidate) => candidate.key === key);
     const product = products.find((candidate) => String(candidate.id) === String(row?.product_id));
-    const available = (product?.warehouse_stock || [])
-      .filter((candidate) => String(candidate.warehouse_id) === String(warehouseId))
-      .reduce((total, balance) => total + Number(balance.available_quantity || 0), 0);
+    const available = warehouseAvailableQuantity(product, warehouseId);
     updateRow(key, {
       warehouse_id: warehouseId,
       stock_available: available,
@@ -850,7 +865,7 @@ export default function DailySales() {
                           </option>
                           {products.map((product) => (
                             <option key={product.id} value={product.id}>
-                              {product.name} ({formatQuantity(product.quantity, product.unit, language)} {product.unit})
+                              {product.name} ({formatQuantity(getInventoryQuantity(product, "available"), product.unit, language)} {product.unit})
                             </option>
                           ))}
                         </select>

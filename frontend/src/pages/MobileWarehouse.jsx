@@ -13,6 +13,7 @@ import {
   receiveWarehouseProduct,
 } from '../api/mobileWarehouse'
 import { useSettingsStore } from '../store/settingsStore'
+import { useAuthStore } from '../store/authStore'
 import { formatQuantity } from '../utils/formatQuantity'
 import './MobileWarehouse.css'
 
@@ -26,7 +27,8 @@ const copy = {
     stock: 'Company stock', available: 'Available', reserved: 'Reserved', incoming: 'Incoming PO', warehouse: 'Warehouse', location: 'Location', quantity: 'Quantity',
     purchaseLine: 'Purchase order line', accepted: 'Accepted', damaged: 'Damaged', rejected: 'Rejected',
     supplierDoc: 'Supplier document', reason: 'Reason', note: 'Note', source: 'Source bin', destination: 'Destination bin',
-    countSession: 'Count session', countItem: 'Count line', reference: 'Reference', lot: 'Lot', serial: 'Serial number', expiry: 'Expiry date',
+    countSession: 'Count session', countItem: 'Count line', reference: 'Reference', lot: 'Lot', serial: 'Serial number', expiry: 'Expiry date', manufacture: 'Manufacture date',
+    expiredReceipt: 'Authorize receipt of already-expired stock', expiredReason: 'Required authorization reason',
     submitReceive: 'Post receipt', submitMove: 'Move stock', submitCount: 'Save count', submitPick: 'Confirm pick',
     received: 'Receipt posted and inventory updated.', moved: 'Stock moved to the destination bin.', counted: 'Count recorded.', picked: 'Pick recorded. The transfer dispatches when every requested line is picked.',
     loading: 'Loading warehouse workspace…', retry: 'Try again', balances: 'Stock by location', openOrders: 'Open receipt lines', pickRequest: 'Transfer pick request', scanLocation: 'Scan bin', traceStock: 'Lot / serial / expiry stock',
@@ -41,7 +43,8 @@ const copy = {
     stock: 'Stoku i kompanisë', available: 'Në dispozicion', reserved: 'Rezervuar', incoming: 'Porosi në ardhje', warehouse: 'Magazina', location: 'Lokacioni', quantity: 'Sasia',
     purchaseLine: 'Rreshti i porosisë', accepted: 'Pranuar', damaged: 'Dëmtuar', rejected: 'Refuzuar',
     supplierDoc: 'Dokumenti i furnizuesit', reason: 'Arsyeja', note: 'Shënim', source: 'Lokacioni burim', destination: 'Lokacioni destinacion',
-    countSession: 'Sesioni i numërimit', countItem: 'Rreshti i numërimit', reference: 'Referenca', lot: 'Loti', serial: 'Numri serik', expiry: 'Data e skadimit',
+    countSession: 'Sesioni i numërimit', countItem: 'Rreshti i numërimit', reference: 'Referenca', lot: 'Loti', serial: 'Numri serik', expiry: 'Data e skadimit', manufacture: 'Data e prodhimit',
+    expiredReceipt: 'Autorizo pranimin e stokut tashmë të skaduar', expiredReason: 'Arsyeja e detyrueshme e autorizimit',
     submitReceive: 'Regjistro pranimin', submitMove: 'Lëviz stokun', submitCount: 'Ruaj numërimin', submitPick: 'Konfirmo nxjerrjen',
     received: 'Pranimi u regjistrua dhe inventari u përditësua.', moved: 'Stoku u lëviz në lokacionin e ri.', counted: 'Numërimi u regjistrua.', picked: 'Nxjerrja u regjistrua. Transferi niset pasi të nxirren të gjithë artikujt.',
     loading: 'Duke ngarkuar magazinën…', retry: 'Provo përsëri', balances: 'Stoku sipas lokacionit', openOrders: 'Rreshtat e hapur për pranim', pickRequest: 'Kërkesa e transferit për nxjerrje', scanLocation: 'Skano lokacionin', traceStock: 'Stoku sipas lotit / serisë / skadimit',
@@ -59,6 +62,8 @@ function Field({ label, children, hint }) {
 
 export default function MobileWarehouse() {
   const language = useSettingsStore((state) => state.language)
+  const permissions = useAuthStore((state) => state.permissions)
+  const canOverrideExpiredReceipt = permissions.includes('inventory.expired.override')
   const text = copy[language] || copy.en
   const searchRef = useRef(null)
   const [online, setOnline] = useState(navigator.onLine)
@@ -122,7 +127,7 @@ export default function MobileWarehouse() {
       source_key: firstMove ? String(firstMove.location_id) : '', destination_location_id: '', quantity: '',
       inventory_count_id: firstCount?.inventory_count_session_id || '', count_item_id: firstCount?.id || '', counted_quantity: '',
       pick_line_id: firstPick?.stock_transfer_item_id || '',
-      reason: '', notes: '', reference: '', inventory_lot_id: '', inventory_lot_ids: [], lot_number: '', serial_number: '', accepted_serial_numbers: '', damaged_serial_numbers: '', expiry_at: '',
+      reason: '', notes: '', reference: '', inventory_lot_id: '', inventory_lot_ids: [], lot_number: '', serial_number: '', accepted_serial_numbers: '', damaged_serial_numbers: '', manufactured_at: '', expiry_at: '', allow_expired_receipt: false, expired_receipt_reason: '',
     })
   }, [])
 
@@ -174,7 +179,7 @@ export default function MobileWarehouse() {
       if (stockState) {
         const field = stockState === 'damaged' ? form.damaged_serial_numbers : form.accepted_serial_numbers
         return [...new Set(String(field || '').split(/[\n,;]+/).map((value) => value.trim()).filter(Boolean))]
-          .map((serial_number) => ({ serial_number, stock_state: stockState, quantity: 1 }))
+          .map((serial_number) => ({ serial_number, stock_state: stockState, manufactured_at: form.manufactured_at || null, expiry_at: form.expiry_at || null, quantity: 1 }))
       }
       return (form.inventory_lot_ids || []).map((inventory_lot_id) => ({ inventory_lot_id: Number(inventory_lot_id), quantity: 1 }))
     }
@@ -183,6 +188,7 @@ export default function MobileWarehouse() {
       ...(existingLot ? { inventory_lot_id: existingLot.id } : {}),
       ...(!existingLot && form.lot_number ? { lot_number: form.lot_number } : {}),
       ...(!existingLot && form.serial_number ? { serial_number: form.serial_number } : {}),
+      ...(!existingLot && form.manufactured_at ? { manufactured_at: form.manufactured_at } : {}),
       ...(!existingLot && form.expiry_at ? { expiry_at: form.expiry_at } : {}),
       ...(stockState ? { stock_state: stockState } : {}),
       quantity: Number(quantity),
@@ -219,6 +225,8 @@ export default function MobileWarehouse() {
       accepted_quantity: Number(form.accepted_quantity || 0), damaged_quantity: Number(form.damaged_quantity || 0),
       rejected_quantity: Number(form.rejected_quantity || 0), supplier_document_number: form.supplier_document_number || null,
       reason: form.reason || 'Mobile warehouse receipt', notes: form.notes || null,
+      allow_expired_receipt: canOverrideExpiredReceipt && Boolean(form.allow_expired_receipt),
+      expired_receipt_reason: canOverrideExpiredReceipt && form.allow_expired_receipt ? form.expired_receipt_reason : null,
       idempotency_key: requestKey(), trace_allocations: trace,
     }), text.received)
   }
@@ -301,6 +309,7 @@ export default function MobileWarehouse() {
           <TraceFields text={text} product={product} result={result} form={form} setForm={setForm} receive />
           <Field label={text.supplierDoc}><input value={form.supplier_document_number || ''} onChange={(e) => setForm({ ...form, supplier_document_number: e.target.value })} /></Field>
           <Field label={text.note}><textarea rows="2" value={form.notes || ''} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
+          {canOverrideExpiredReceipt ? <><label className="mobile-warehouse-field"><span><input type="checkbox" checked={Boolean(form.allow_expired_receipt)} onChange={(e) => setForm({ ...form, allow_expired_receipt: e.target.checked, expired_receipt_reason: e.target.checked ? form.expired_receipt_reason : '' })} /> {text.expiredReceipt}</span></label>{form.allow_expired_receipt ? <Field label={text.expiredReason}><textarea required minLength="5" rows="2" value={form.expired_receipt_reason || ''} onChange={(e) => setForm({ ...form, expired_receipt_reason: e.target.value })} /></Field> : null}</> : null}
         </OperationForm>}
 
         {action === 'move' && <OperationForm onSubmit={submitMove} submit={text.submitMove} busy={busy}>
@@ -344,12 +353,12 @@ function WarehouseLocationFields({ text, form, setForm, warehouses, locations, o
 
 function TraceFields({ text, product, result, form, setForm, receive = false }) {
   if ((product.tracking_mode || 'none') === 'none') return null
-  if (receive && product.tracking_mode === 'serial') return <div className="mobile-warehouse-grid"><Field label={`${text.accepted} · ${text.serial}`} hint="One serial per line"><textarea required={Number(form.accepted_quantity || 0) > 0} rows="4" value={form.accepted_serial_numbers || ''} onChange={(e) => setForm({ ...form, accepted_serial_numbers: e.target.value })} /></Field><Field label={`${text.damaged} · ${text.serial}`} hint="One serial per line"><textarea required={Number(form.damaged_quantity || 0) > 0} rows="4" value={form.damaged_serial_numbers || ''} onChange={(e) => setForm({ ...form, damaged_serial_numbers: e.target.value })} /></Field></div>
+  if (receive && product.tracking_mode === 'serial') return <div className="mobile-warehouse-grid"><Field label={`${text.accepted} · ${text.serial}`} hint="One serial per line"><textarea required={Number(form.accepted_quantity || 0) > 0} rows="4" value={form.accepted_serial_numbers || ''} onChange={(e) => setForm({ ...form, accepted_serial_numbers: e.target.value })} /></Field><Field label={`${text.damaged} · ${text.serial}`} hint="One serial per line"><textarea required={Number(form.damaged_quantity || 0) > 0} rows="4" value={form.damaged_serial_numbers || ''} onChange={(e) => setForm({ ...form, damaged_serial_numbers: e.target.value })} /></Field>{product.expiration_controlled ? <><Field label={text.manufacture}><input type="date" required={Boolean(product.default_shelf_life_days) && product.shelf_life_basis !== 'receipt_date' && !form.expiry_at} value={form.manufactured_at || ''} onChange={(e) => setForm({ ...form, manufactured_at: e.target.value })} /></Field><Field label={text.expiry}><input type="date" required={!product.default_shelf_life_days} value={form.expiry_at || ''} onChange={(e) => setForm({ ...form, expiry_at: e.target.value })} /></Field></> : null}</div>
   const sourceLocation = String(form.source_key || form.location_id || '')
   const lots = (result.lots || []).filter((lot) => !sourceLocation || (lot.balances || []).some((balance) => String(balance.location_id) === sourceLocation && Number(balance.quantity || 0) > 0))
   if (!receive && lots.length) {
     if (product.tracking_mode === 'serial') return <Field label={text.serial} hint={text.trackedHint}><select required multiple size="5" value={(form.inventory_lot_ids || []).map(String)} onChange={(e) => setForm({ ...form, inventory_lot_ids: [...e.target.selectedOptions].map((option) => option.value) })}>{lots.map((lot) => <option key={lot.id} value={lot.id}>{lot.serial_number} · {lot.expiry_at ? String(lot.expiry_at).slice(0, 10) : 'active'}</option>)}</select></Field>
     return <Field label={text.lot} hint={text.trackedHint}><select required value={form.inventory_lot_id || ''} onChange={(e) => setForm({ ...form, inventory_lot_id: e.target.value })}><option value="">—</option>{lots.map((lot) => <option key={lot.id} value={lot.id}>{lot.lot_number} · {formatQuantity(lot.quantity_remaining, product.unit)} {product.unit}{lot.expiry_at ? ` · ${String(lot.expiry_at).slice(0, 10)}` : ''}</option>)}</select></Field>
   }
-  return <div className="mobile-warehouse-grid"><Field label={text.lot} hint={text.trackedHint}><input required value={form.lot_number || ''} onChange={(e) => setForm({ ...form, lot_number: e.target.value })} /></Field><Field label={text.expiry}><input required={product.tracking_mode === 'batch_expiry'} type="date" value={form.expiry_at || ''} onChange={(e) => setForm({ ...form, expiry_at: e.target.value })} /></Field></div>
+  return <div className="mobile-warehouse-grid"><Field label={text.lot} hint={text.trackedHint}><input required value={form.lot_number || ''} onChange={(e) => setForm({ ...form, lot_number: e.target.value })} /></Field>{product.expiration_controlled ? <Field label={text.manufacture}><input type="date" required={Boolean(product.default_shelf_life_days) && product.shelf_life_basis !== 'receipt_date' && !form.expiry_at} value={form.manufactured_at || ''} onChange={(e) => setForm({ ...form, manufactured_at: e.target.value })} /></Field> : null}<Field label={text.expiry}><input required={Boolean(product.expiration_controlled) && !product.default_shelf_life_days} type="date" value={form.expiry_at || ''} onChange={(e) => setForm({ ...form, expiry_at: e.target.value })} /></Field></div>
 }

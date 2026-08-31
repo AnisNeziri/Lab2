@@ -9,7 +9,10 @@ use Illuminate\Validation\ValidationException;
 
 class BinTransferService
 {
-    public function __construct(private readonly StockMovementService $movements) {}
+    public function __construct(
+        private readonly StockMovementService $movements,
+        private readonly InventoryIntegrityService $integrity,
+    ) {}
 
     public function move(array $data): array
     {
@@ -69,6 +72,7 @@ class BinTransferService
                 'trace_allocations' => $traceAllocations,
                 'metadata' => ['source_location_id' => $source->id, 'out_movement_id' => $out->id],
             ]);
+            $this->integrity->assertProductReconciled($product);
 
             return [
                 'out_movement' => $out->fresh([

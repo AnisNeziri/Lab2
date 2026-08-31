@@ -13,14 +13,10 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use App\Support\CompanyCurrency;
 
 class LandedCostService
 {
-    // Kosovo company ledgers in AIMS are EUR-denominated. The landed-cost
-    // record snapshots this explicitly; it is not a configurable currency
-    // that could diverge from the rest of inventory valuation.
-    public const BASE_CURRENCY = 'EUR';
-
     public const COST_TYPES = ['freight', 'customs', 'insurance', 'port', 'forwarding', 'inland_transport', 'handling', 'other'];
 
     public const ALLOCATION_METHODS = ['quantity', 'value', 'weight', 'volume', 'manual'];
@@ -30,7 +26,7 @@ class LandedCostService
     public function list(array $filters): LengthAwarePaginator
     {
         return LandedCost::query()
-            ->with(['goodsReceipt:id,receipt_number', 'purchaseOrder:id,po_number', 'shipment:id,tracking_number', 'creator:id,name', 'poster:id,name'])
+            ->with(['goodsReceipt:id,receipt_number', 'purchaseOrder:id,po_number,total_amount,total_paid,due_at,status', 'shipment:id,tracking_number', 'creator:id,name', 'poster:id,name'])
             ->withSum('allocations', 'allocated_amount')
             ->withSum('accountingEntries as inventory_adjustment_total', 'inventory_adjustment_amount')
             ->withSum('accountingEntries as cogs_adjustment_total', 'cogs_adjustment_amount')
@@ -44,7 +40,7 @@ class LandedCostService
     public function find(LandedCost $landedCost): LandedCost
     {
         return $landedCost->load([
-            'goodsReceipt:id,receipt_number,purchase_order_id', 'purchaseOrder:id,po_number,supplier_id',
+            'goodsReceipt:id,receipt_number,purchase_order_id', 'purchaseOrder:id,po_number,supplier_id,total_amount,total_paid,due_at,status',
             'shipment:id,tracking_number', 'creator:id,name', 'poster:id,name',
             'allocations.goodsReceiptItem:id,goods_receipt_id,product_id,accepted_base_quantity,damaged_base_quantity,base_purchase_unit_cost,landed_cost_allocated,final_inventory_unit_cost',
             'allocations.product:id,name,sku,unit',
@@ -56,6 +52,7 @@ class LandedCostService
     {
         return DB::transaction(function () use ($data) {
             $companyId = (int) Auth::user()->company_id;
+            $baseCurrency = CompanyCurrency::forCompanyId($companyId);
             $existing = LandedCost::withoutGlobalScopes()
                 ->where('company_id', $companyId)
                 ->where('idempotency_key', $data['idempotency_key'])
@@ -81,7 +78,7 @@ class LandedCostService
                 }
             }
             $method = $data['allocation_method'];
-            $rate = strtoupper($data['currency']) === self::BASE_CURRENCY ? 1.0 : round((float) $data['exchange_rate_to_base'], 8);
+            $rate = strtoupper($data['currency']) === $baseCurrency ? 1.0 : round((float) $data['exchange_rate_to_base'], 8);
             $amount = round((float) $data['amount'], 6);
             $baseAmount = round($amount * $rate, 2);
             if ($baseAmount <= 0) {
@@ -102,9 +99,9 @@ class LandedCostService
                 'description' => $data['description'] ?? null,
                 'amount' => $amount,
                 'currency' => strtoupper($data['currency']),
-                'base_currency' => self::BASE_CURRENCY,
+                'base_currency' => $baseCurrency,
                 'exchange_rate_to_base' => $rate,
-                'exchange_rate_date' => $data['exchange_rate_date'] ?? (strtoupper($data['currency']) === self::BASE_CURRENCY ? now()->toDateString() : null),
+                'exchange_rate_date' => $data['exchange_rate_date'] ?? (strtoupper($data['currency']) === $baseCurrency ? now()->toDateString() : null),
                 'base_currency_amount' => $baseAmount,
                 'allocation_method' => $method,
                 'status' => 'draft',

@@ -11,9 +11,17 @@ class InventoryCountSession extends Model
 {
     use BelongsToCompany;
 
+    /**
+     * `frozen_at` is the legacy database column name. Counts do not lock or
+     * freeze live stock; expose the value with snapshot terminology to API
+     * consumers while retaining the old field for backwards compatibility.
+     */
+    protected $appends = ['snapshot_at'];
+
     protected $fillable = [
         'company_id', 'count_number', 'warehouse_id', 'location_id', 'status',
-        'stock_states', 'frozen_at', 'submitted_at', 'approved_at', 'cancelled_at',
+        'stock_states', 'scope_all_products', 'scope_product_ids', 'snapshot_identity_keys',
+        'frozen_at', 'submitted_at', 'approved_at', 'cancelled_at',
         'created_by', 'submitted_by', 'approved_by', 'cancelled_by', 'notes',
         'approval_reason', 'cancellation_reason',
     ];
@@ -21,9 +29,16 @@ class InventoryCountSession extends Model
     protected function casts(): array
     {
         return [
-            'stock_states' => 'array', 'frozen_at' => 'datetime', 'submitted_at' => 'datetime',
+            'stock_states' => 'array', 'scope_all_products' => 'boolean',
+            'scope_product_ids' => 'array', 'snapshot_identity_keys' => 'array',
+            'frozen_at' => 'datetime', 'submitted_at' => 'datetime',
             'approved_at' => 'datetime', 'cancelled_at' => 'datetime',
         ];
+    }
+
+    public function getSnapshotAtAttribute(): mixed
+    {
+        return $this->frozen_at;
     }
 
     public function warehouse(): BelongsTo { return $this->belongsTo(Warehouse::class); }

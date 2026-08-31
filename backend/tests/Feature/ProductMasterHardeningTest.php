@@ -8,6 +8,8 @@ use App\Models\InventoryLot;
 use App\Models\Product;
 use App\Models\ProductSupplier;
 use App\Models\Supplier;
+use App\Models\Warehouse;
+use App\Models\WarehouseLocation;
 use App\Models\WarehouseStock;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -38,6 +40,7 @@ class ProductMasterHardeningTest extends TestCase
             'tracking_mode' => 'batch',
             'expiration_controlled' => true,
             'default_shelf_life_days' => 30,
+            'shelf_life_basis' => 'receipt_date',
             'length_cm' => 10,
             'width_cm' => 20,
             'height_cm' => 30,
@@ -54,8 +57,20 @@ class ProductMasterHardeningTest extends TestCase
             ->assertOk()
             ->assertJsonPath('id', $product->id);
 
+        $warehouse = Warehouse::findOrFail($product->default_warehouse_id);
+        $location = WarehouseLocation::create($this->tenantAttributes([
+            'warehouse_id' => $warehouse->id,
+            'type' => 'bin',
+            'code' => 'MASTER-A-01',
+            'name' => 'Master data test bin',
+            'path' => 'MASTER-A-01',
+            'is_active' => true,
+        ]));
+
         $this->postJson('/api/stock-movements', [
             'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'location_id' => $location->id,
             'type' => 'in',
             'quantity' => 2,
             'reason' => 'Shelf-life receipt',
@@ -155,6 +170,27 @@ class ProductMasterHardeningTest extends TestCase
             'supplier_sku' => 'SUP-CN-1', 'currency' => 'CNY', 'exchange_rate_date' => '2026-08-29',
         ]);
         $this->assertEqualsWithDelta(1.3, (float) $foreignProduct->fresh()->purchase_price, 0.000001);
+
+        $this->apiCompany->update(['base_currency' => 'HUF']);
+        $baseCurrency = $this->csvFile('base-currency.csv', [
+            'Name', 'SKU', 'Category', 'Supplier', 'Supplier SKU', 'Supplier Currency',
+            'Exchange Rate to EUR', 'Exchange Rate Date', 'Quantity', 'Unit',
+            'Min Quantity', 'Purchase Price', 'Selling Price', 'Status',
+        ], [[
+            'Base currency supplied product', 'CSV-HUF', 'CSV products', $supplier->name, 'SUP-HUF-1', 'HUF',
+            '', '', 0, 'pcs', 1, 1250, 1600, 'active',
+        ]]);
+        $this->post('/api/products/import', ['file' => $baseCurrency])
+            ->assertCreated()
+            ->assertJsonPath('status', 'completed');
+        $baseProduct = Product::query()->where('sku', 'CSV-HUF')->firstOrFail();
+        $this->assertDatabaseHas('product_suppliers', [
+            'product_id' => $baseProduct->id,
+            'supplier_id' => $supplier->id,
+            'currency' => 'HUF',
+            'exchange_rate_to_base' => 1,
+            'exchange_rate_date' => null,
+        ]);
 
         $invalid = $this->csvFile('invalid.csv',
             ['name', 'sku', 'category', 'quantity', 'min_quantity', 'price', 'unit'],

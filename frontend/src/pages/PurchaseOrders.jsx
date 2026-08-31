@@ -20,6 +20,7 @@ import { useTranslation } from "../hooks/useTranslation";
 import SuccessAnimation from "../components/SuccessAnimation";
 import { getWarehouses, getWarehouseLocations } from "../api/warehouseOperations";
 import { getFinancialAccounts } from "../api/advancedOperations";
+import { useAuthStore } from "../store/authStore";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const dateOnly = (value) => (value ? String(value).slice(0, 10) : "—");
@@ -88,7 +89,13 @@ const traceAllocationsFor = (line, state) => {
       .split(/[\n,;]+/)
       .map((serial) => serial.trim())
       .filter(Boolean)
-      .map((serial_number) => ({ stock_state: state === "accepted" ? "available" : "damaged", serial_number, quantity: 1 }));
+      .map((serial_number) => ({
+        stock_state: state === "accepted" ? "available" : "damaged",
+        serial_number,
+        manufactured_at: trace.manufactured_at || null,
+        expiry_at: trace.expiry_at || null,
+        quantity: 1,
+      }));
   }
   return [{
     stock_state: state === "accepted" ? "available" : "damaged",
@@ -102,6 +109,8 @@ const traceAllocationsFor = (line, state) => {
 
 export default function PurchaseOrders() {
   const { t } = useTranslation();
+  const permissions = useAuthStore((state) => state.permissions);
+  const canOverrideExpiredReceipt = permissions.includes("inventory.expired.override");
   const [orders, setOrders] = useState([]);
   const [pagination, setPagination] = useState({
     current_page: 1,
@@ -118,7 +127,7 @@ export default function PurchaseOrders() {
   const [payment, setPayment] = useState(emptyPayment());
   const [receipt, setReceipt] = useState([]);
   const [receiptKey, setReceiptKey] = useState("");
-  const [receiptMeta, setReceiptMeta] = useState({ warehouse_id: "", location_id: "", received_at: today(), supplier_document_number: "", notes: "" });
+  const [receiptMeta, setReceiptMeta] = useState({ warehouse_id: "", location_id: "", received_at: today(), supplier_document_number: "", notes: "", allow_expired_receipt: false, expired_receipt_reason: "" });
   const [statusForm, setStatusForm] = useState({
     status: "ordered",
     reason: "",
@@ -317,7 +326,7 @@ export default function PurchaseOrders() {
   };
   const beginReceipt = () => {
     setReceiptKey(crypto.randomUUID());
-    setReceiptMeta({ warehouse_id: selected.warehouse_id ? String(selected.warehouse_id) : String(warehouses.find((warehouse) => warehouse.is_default)?.id || ""), location_id: "", received_at: today(), supplier_document_number: "", notes: "" });
+    setReceiptMeta({ warehouse_id: selected.warehouse_id ? String(selected.warehouse_id) : String(warehouses.find((warehouse) => warehouse.is_default)?.id || ""), location_id: "", received_at: today(), supplier_document_number: "", notes: "", allow_expired_receipt: false, expired_receipt_reason: "" });
     setReceipt(
       selected.items
         .filter((item) => Number(item.remaining_quantity) > 0)
@@ -330,6 +339,9 @@ export default function PurchaseOrders() {
           conversion_mode: item.conversion_mode,
           conversion_factor: item.conversion_factor,
           tracking_mode: item.product?.tracking_mode || "none",
+          expiration_controlled: Boolean(item.product?.expiration_controlled || item.product?.tracking_mode === "batch_expiry"),
+          default_shelf_life_days: item.product?.default_shelf_life_days || null,
+          shelf_life_basis: item.product?.shelf_life_basis || "manufacture_date",
           accepted_quantity: item.remaining_quantity,
           damaged_quantity: 0,
           rejected_quantity: 0,
@@ -466,6 +478,8 @@ export default function PurchaseOrders() {
         received_at: receiptMeta.received_at || null,
         supplier_document_number: receiptMeta.supplier_document_number || null,
         notes: receiptMeta.notes || null,
+        allow_expired_receipt: canOverrideExpiredReceipt && Boolean(receiptMeta.allow_expired_receipt),
+        expired_receipt_reason: canOverrideExpiredReceipt && receiptMeta.allow_expired_receipt ? receiptMeta.expired_receipt_reason.trim() : null,
         items: receipt
           .filter((line) => Number(line.accepted_quantity) + Number(line.damaged_quantity) + Number(line.rejected_quantity) > 0)
           .map((line) => ({
@@ -985,13 +999,19 @@ export default function PurchaseOrders() {
                     <fieldset className="po-receipt-trace" key={state}>
                       <legend>{state === "accepted" ? t("warehouseOps.accepted") : t("warehouseOps.damaged")} · {t("po.traceDetails")}</legend>
                       {line.tracking_mode === "serial" ? (
-                        <label>{t("po.serialNumbers")}<textarea required value={trace.serial_numbers} onChange={(e) => updateTrace("serial_numbers", e.target.value)} placeholder={t("po.serialNumbersHelp")} /><small>{t("po.serialCount", { count: stateQuantity })}</small></label>
+                        <>
+                          <label>{t("po.serialNumbers")}<textarea required value={trace.serial_numbers} onChange={(e) => updateTrace("serial_numbers", e.target.value)} placeholder={t("po.serialNumbersHelp")} /><small>{t("po.serialCount", { count: stateQuantity })}</small></label>
+                          {line.expiration_controlled ? <>
+                            <label>{t("po.manufacturedAt")}<input type="date" value={trace.manufactured_at} required={Boolean(line.default_shelf_life_days) && line.shelf_life_basis === "manufacture_date" && !trace.expiry_at} onChange={(e) => updateTrace("manufactured_at", e.target.value)} /></label>
+                            <label>{t("po.expiryAt")}<input type="date" value={trace.expiry_at} required={!line.default_shelf_life_days} onChange={(e) => updateTrace("expiry_at", e.target.value)} /></label>
+                          </> : null}
+                        </>
                       ) : (
                         <>
                           <label>{t("po.lotNumber")}<input required value={trace.lot_number} onChange={(e) => updateTrace("lot_number", e.target.value)} /></label>
                           <label>{t("po.supplierBatch")}<input value={trace.supplier_batch} onChange={(e) => updateTrace("supplier_batch", e.target.value)} /></label>
-                          <label>{t("po.manufacturedAt")}<input type="date" value={trace.manufactured_at} onChange={(e) => updateTrace("manufactured_at", e.target.value)} /></label>
-                          {line.tracking_mode === "batch_expiry" && <label>{t("po.expiryAt")}<input required type="date" value={trace.expiry_at} onChange={(e) => updateTrace("expiry_at", e.target.value)} /></label>}
+                          <label>{t("po.manufacturedAt")}<input type="date" value={trace.manufactured_at} required={line.expiration_controlled && Boolean(line.default_shelf_life_days) && line.shelf_life_basis === "manufacture_date" && !trace.expiry_at} onChange={(e) => updateTrace("manufactured_at", e.target.value)} /></label>
+                          {line.expiration_controlled && <label>{t("po.expiryAt")}<input required={!line.default_shelf_life_days} type="date" value={trace.expiry_at} onChange={(e) => updateTrace("expiry_at", e.target.value)} /></label>}
                         </>
                       )}
                     </fieldset>
@@ -1000,6 +1020,10 @@ export default function PurchaseOrders() {
               </div>
             ))}
             <label>{t("po.notes")}<textarea value={receiptMeta.notes} onChange={(e) => setReceiptMeta({ ...receiptMeta, notes: e.target.value })} /></label>
+            {canOverrideExpiredReceipt ? <div className="po-expired-receipt-override">
+              <label className="inventory-settings-check"><input type="checkbox" checked={Boolean(receiptMeta.allow_expired_receipt)} onChange={(e) => setReceiptMeta({ ...receiptMeta, allow_expired_receipt: e.target.checked, expired_receipt_reason: e.target.checked ? receiptMeta.expired_receipt_reason : "" })} /><span>{t("po.expiredReceiptOverride")}</span></label>
+              {receiptMeta.allow_expired_receipt ? <label>{t("po.expiredReceiptReason")}<textarea required minLength={5} value={receiptMeta.expired_receipt_reason} onChange={(e) => setReceiptMeta({ ...receiptMeta, expired_receipt_reason: e.target.value })} /></label> : null}
+            </div> : null}
             <div className="form-actions">
               <button disabled={busy || !receipt.length}>
                 {t("po.confirmReceipt")}

@@ -107,6 +107,75 @@ class WarehouseInventoryService
         return $balance->location_id ? (int) $balance->location_id : null;
     }
 
+    /**
+     * Build a locked, location-specific outbound plan. A logical operation may
+     * consume several bins, but every resulting ledger row must still point at
+     * exactly one physical balance.
+     *
+     * @return array<int, array{location_id: int|null, quantity: float}>
+     */
+    public function outboundLocationAllocations(
+        Product $product,
+        Warehouse $warehouse,
+        float $quantity,
+        string $state = 'available',
+        ?int $locationId = null,
+    ): array {
+        $quantity = round($quantity, 3);
+        if ($quantity <= 0) {
+            throw ValidationException::withMessages(['quantity' => ['Quantity must be greater than zero.']]);
+        }
+
+        $column = $this->stateColumn($state);
+
+        // Preserve the established legacy behaviour: an old Product.quantity
+        // balance is seeded as unassigned stock, never silently assigned to a
+        // caller-selected bin.
+        $this->ensureBalance($product, $warehouse, null);
+        if ($locationId !== null) {
+            $this->assertLocation($product, $warehouse, $locationId);
+        }
+
+        $balances = WarehouseStock::withoutGlobalScopes()
+            ->where('company_id', $product->company_id)
+            ->where('warehouse_id', $warehouse->id)
+            ->where('product_id', $product->id)
+            ->when($locationId !== null, fn ($query) => $query->where('location_key', $locationId))
+            ->where($column, '>', 0)
+            ->orderByRaw('CASE WHEN location_id IS NULL THEN 0 ELSE 1 END')
+            ->orderBy('location_key')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        $remaining = $quantity;
+        $allocations = [];
+        foreach ($balances as $balance) {
+            if ($remaining < 0.0005) {
+                break;
+            }
+            $take = round(min($remaining, (float) $balance->{$column}), 3);
+            if ($take <= 0) {
+                continue;
+            }
+            $allocations[] = [
+                'location_id' => $balance->location_id ? (int) $balance->location_id : null,
+                'quantity' => $take,
+            ];
+            $remaining = round($remaining - $take, 3);
+        }
+
+        if ($remaining >= 0.0005) {
+            $available = round($quantity - $remaining, 3);
+            $place = $locationId === null ? $warehouse->name : $warehouse->name.' / selected bin';
+            throw ValidationException::withMessages([
+                'quantity' => ["Insufficient {$state} stock in {$place}. Only {$available} {$product->unit} are available."],
+            ]);
+        }
+
+        return $allocations;
+    }
+
     public function ensureBalance(Product $product, Warehouse|int|null $warehouse = null, ?int $locationId = null): WarehouseStock
     {
         $resolved = $warehouse instanceof Warehouse

@@ -11,7 +11,7 @@ export default function SettingsModal() {
   const navigate = useNavigate()
   const user = useAuthStore((state) => state.user)
   const updateUser = useAuthStore((state) => state.updateUser)
-  const { theme, language, enable_3d_map, savePreferences } = useSettingsStore()
+  const { theme, language, enable_3d_map, base_currency, savePreferences } = useSettingsStore()
   const [isOpen, setIsOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
@@ -100,6 +100,10 @@ export default function SettingsModal() {
     persistPreferences({ theme, language, enable_3d_map: event.target.checked })
   }
 
+  function handleBaseCurrencyChange(event) {
+    persistPreferences({ theme, language, enable_3d_map, base_currency: event.target.value })
+  }
+
   async function handleLicenceActivation() {
     if (!window.aimsDesktop || desktopBusy) return
     setDesktopBusy('licence')
@@ -157,6 +161,16 @@ export default function SettingsModal() {
                   <option value="sq">{t('settings.languageSq')}</option>
                 </select>
               </label>
+
+              {user?.role === 'admin' ? (
+                <label className="settings-modal-field">
+                  <span>{t('settings.baseCurrency')}</span>
+                  <select value={base_currency} onChange={handleBaseCurrencyChange} disabled={saving}>
+                    {['EUR', 'USD', 'ALL', 'GBP', 'CHF', 'CNY'].map((currency) => <option key={currency}>{currency}</option>)}
+                  </select>
+                  <small>{t('settings.baseCurrencyHint')}</small>
+                </label>
+              ) : null}
 
               <div className="settings-modal-row">
                 <div>

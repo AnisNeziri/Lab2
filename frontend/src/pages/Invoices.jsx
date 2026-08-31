@@ -55,6 +55,7 @@ import { getCustomerDebts } from "../api/customerDebts";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAuthStore } from "../store/authStore";
 import { formatQuantity, isMeterUnit } from "../utils/formatQuantity";
+import { getInventoryQuantity } from "../utils/inventoryQuantity";
 import "./Invoices.css";
 
 const todayIso = () => {
@@ -332,7 +333,7 @@ function invoiceFormFromRecord(invoice, profile) {
       vat_rate: validVatRate(item.vat_rate, validTaxTreatment(item.tax_treatment, profile), profile),
       tax_treatment: validTaxTreatment(item.tax_treatment, profile),
       legal_reference: item.tax_legal_reference || item.legal_reference || "",
-      stock_available: item.product?.quantity ?? null,
+      stock_available: item.product ? getInventoryQuantity(item.product, "available") : null,
       inventory_unit: item.product?.unit || item.unit || "pcs",
       conversion_mode: item.conversion_mode || "none",
       conversion_factor: item.conversion_factor ?? null,
@@ -677,7 +678,7 @@ function InvoiceEditor({ open, invoice, profile, products, customers, canSaveCus
       vat_rate: validVatRate(18, taxTreatment, profile),
       tax_treatment: taxTreatment,
       legal_reference: "",
-      stock_available: product.quantity,
+      stock_available: getInventoryQuantity(product, "available"),
       inventory_unit: product.unit || "pcs",
       conversion_mode: "none",
       conversion_factor: null,

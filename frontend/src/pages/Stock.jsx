@@ -9,7 +9,10 @@ import {
   YAxis,
 } from 'recharts'
 import { getAllProducts } from '../api/products'
-import { formatQuantity } from '../utils/formatQuantity'
+import { formatQuantity, isMeterUnit } from '../utils/formatQuantity'
+import { getInventoryQuantity } from '../utils/inventoryQuantity'
+import { getInventoryProduct } from '../api/advancedOperations'
+import { getWarehouses, getWarehouseLocations } from '../api/warehouseOperations'
 import {
   createStockMovement,
   exportStockMovements,
@@ -64,13 +67,30 @@ function movementLabel(code, type) {
 
 const emptyForm = {
   product_id: '',
+  warehouse_id: '',
+  location_id: '',
   type: 'in',
+  stock_state: 'available',
   quantity: 1,
   reason: '',
+  lot_number: '',
+  serial_numbers: '',
+  inventory_lot_id: '',
+  inventory_lot_ids: [],
+  manufactured_at: '',
+  expiry_at: '',
+}
+
+function productStockSummary(product) {
+  const unit = product.unit || 'units'
+  return `${formatQuantity(getInventoryQuantity(product, 'on_hand'), product.unit)} ${unit} on hand; ${formatQuantity(getInventoryQuantity(product, 'available'), product.unit)} ${unit} available`
 }
 
 function Stock() {
   const [products, setProducts] = useState([])
+  const [warehouses, setWarehouses] = useState([])
+  const [locations, setLocations] = useState([])
+  const [inventoryDetail, setInventoryDetail] = useState(null)
   const [movements, setMovements] = useState([])
   const [form, setForm] = useState(emptyForm)
   const [filters, setFilters] = useState({ product_id: '', type: '' })
@@ -86,6 +106,22 @@ function Stock() {
   filtersRef.current = filters
 
   const chartData = useMemo(() => buildChartData(movements), [movements])
+  const selectedProduct = useMemo(
+    () => products.find((product) => String(product.id) === String(form.product_id)),
+    [form.product_id, products],
+  )
+  const activeLocations = useMemo(
+    () => locations.filter((location) => String(location.warehouse_id) === String(form.warehouse_id) && location.is_active !== false),
+    [form.warehouse_id, locations],
+  )
+  const eligibleLots = useMemo(() => (inventoryDetail?.lots || []).map((lot) => ({
+    ...lot,
+    eligible_quantity: (lot.balances || [])
+      .filter((balance) => String(balance.warehouse_id) === String(form.warehouse_id)
+        && String(balance.location_id || '') === String(form.location_id)
+        && String(balance.stock_state || 'available') === String(form.stock_state))
+      .reduce((total, balance) => total + Number(balance.quantity || 0), 0),
+  })).filter((lot) => lot.eligible_quantity > 0), [form.location_id, form.stock_state, form.warehouse_id, inventoryDetail])
 
   const loadMovements = useCallback(async (activeFilters = filtersRef.current) => {
     const movementFilters = {}
@@ -105,13 +141,19 @@ function Stock() {
         setLoading(true)
         setError('')
       }
-      const [productsList, movementsData] = await Promise.all([
+      const [productsList, movementsData, warehouseList] = await Promise.all([
         getAllProducts(),
         loadMovements(activeFilters),
+        getWarehouses(),
       ])
+      const locationLists = await Promise.all((warehouseList || [])
+        .filter((warehouse) => warehouse.is_active !== false)
+        .map((warehouse) => getWarehouseLocations(warehouse.id)))
       if (requestId !== dataRequestRef.current) return
       setProducts(productsList)
       setMovements(movementsData)
+      setWarehouses(warehouseList || [])
+      setLocations(locationLists.flatMap((value) => value?.data || value || []))
     } catch {
       if (!silent && requestId === dataRequestRef.current) {
         setError('Could not load stock data.')
@@ -127,6 +169,23 @@ function Stock() {
     window.addEventListener('database-refresh', refresh)
     return () => window.removeEventListener('database-refresh', refresh)
   }, [loadData])
+
+  useEffect(() => {
+    let current = true
+    if (!form.product_id || !form.warehouse_id || !form.location_id) {
+      setInventoryDetail(null)
+      return () => { current = false }
+    }
+    getInventoryProduct(form.product_id, {
+      warehouse_id: form.warehouse_id,
+      location_id: form.location_id,
+    }).then((value) => {
+      if (current) setInventoryDetail(value)
+    }).catch(() => {
+      if (current) setInventoryDetail(null)
+    })
+    return () => { current = false }
+  }, [form.location_id, form.product_id, form.warehouse_id])
 
   async function applyFilters(event) {
     event.preventDefault()
@@ -155,10 +214,32 @@ function Stock() {
   function handleChange(event) {
     const { name, value } = event.target
     submissionKeyRef.current = null
-    setForm((current) => ({
-      ...current,
-      [name]: value,
-    }))
+    setForm((current) => {
+      const next = { ...current, [name]: value }
+      if (name === 'product_id') {
+        const product = products.find((item) => String(item.id) === String(value))
+        next.warehouse_id = product?.default_warehouse_id
+          ? String(product.default_warehouse_id)
+          : String(warehouses.find((warehouse) => warehouse.is_default && warehouse.is_active !== false)?.id || '')
+        next.location_id = ''
+      }
+      if (['product_id', 'warehouse_id', 'location_id', 'type', 'stock_state'].includes(name)) {
+        next.inventory_lot_id = ''
+        next.inventory_lot_ids = []
+        next.lot_number = ''
+        next.serial_numbers = ''
+        next.manufactured_at = ''
+        next.expiry_at = ''
+      }
+      if (name === 'warehouse_id') next.location_id = ''
+      return next
+    })
+  }
+
+  function handleSerialLotSelection(event) {
+    const selected = [...event.target.selectedOptions].map((option) => option.value)
+    submissionKeyRef.current = null
+    setForm((current) => ({ ...current, inventory_lot_ids: selected, quantity: selected.length }))
   }
 
   function handleFilterChange(event) {
@@ -184,8 +265,14 @@ function Stock() {
       setForm((current) => ({
         ...current,
         product_id: String(product.id),
+        warehouse_id: product.default_warehouse_id
+          ? String(product.default_warehouse_id)
+          : String(warehouses.find((warehouse) => warehouse.is_default && warehouse.is_active !== false)?.id || ''),
+        location_id: '',
+        inventory_lot_id: '',
+        inventory_lot_ids: [],
       }))
-      setLookupMessage(`Selected: ${product.name} (${formatQuantity(product.quantity, product.unit)} ${product.unit || 'units'} in stock)`)
+      setLookupMessage(`Selected: ${product.name} (${productStockSummary(product)})`)
     } catch {
       setLookupMessage('No product found for that SKU.')
     }
@@ -216,12 +303,56 @@ function Stock() {
     try {
       submissionKeyRef.current ||= globalThis.crypto?.randomUUID?.()
         || `stock-${Date.now()}-${Math.random().toString(16).slice(2)}`
+      const mode = selectedProduct?.tracking_mode || 'none'
+      const expirationControlled = Boolean(selectedProduct?.expiration_controlled || mode === 'batch_expiry')
+      let quantity = Number(form.quantity)
+      let traceAllocations = []
+      if (mode === 'serial' && form.type === 'in') {
+        const serials = [...new Set(form.serial_numbers.split(/[\n,;]+/).map((value) => value.trim()).filter(Boolean))]
+        if (!serials.length || serials.length !== quantity) {
+          throw new Error(`Enter exactly ${quantity} unique serial number(s).`)
+        }
+        traceAllocations = serials.map((serial_number) => ({
+          serial_number,
+          manufactured_at: form.manufactured_at || null,
+          expiry_at: form.expiry_at || null,
+          quantity: 1,
+        }))
+      } else if (mode === 'serial' && form.type === 'out') {
+        quantity = form.inventory_lot_ids.length
+        if (!quantity) throw new Error('Select every serial number included in this adjustment.')
+        traceAllocations = form.inventory_lot_ids.map((inventory_lot_id) => ({
+          inventory_lot_id: Number(inventory_lot_id),
+          quantity: 1,
+        }))
+      } else if (mode !== 'none' && form.type === 'in') {
+        if (!form.lot_number.trim()) throw new Error('Enter the lot or batch number.')
+        traceAllocations = [{
+          lot_number: form.lot_number.trim(),
+          manufactured_at: form.manufactured_at || null,
+          expiry_at: form.expiry_at || null,
+          quantity,
+        }]
+      } else if (mode !== 'none') {
+        if (!form.inventory_lot_id) throw new Error('Select the lot or batch included in this adjustment.')
+        traceAllocations = [{ inventory_lot_id: Number(form.inventory_lot_id), quantity }]
+      }
+      if (expirationControlled && form.type === 'in' && !form.expiry_at
+        && (!selectedProduct?.default_shelf_life_days
+          || (selectedProduct?.shelf_life_basis || 'manufacture_date') === 'manufacture_date' && !form.manufactured_at)) {
+        throw new Error('Enter an expiry date, or provide the date required to calculate it.')
+      }
+
       await createStockMovement({
         product_id: Number(form.product_id),
+        warehouse_id: Number(form.warehouse_id),
+        location_id: Number(form.location_id),
         type: form.type,
-        quantity: Number(form.quantity),
+        stock_state: form.stock_state,
+        quantity,
         reason: form.reason.trim(),
         idempotency_key: submissionKeyRef.current,
+        ...(traceAllocations.length ? { trace_allocations: traceAllocations } : {}),
       })
 
       submissionKeyRef.current = null
@@ -246,7 +377,7 @@ function Stock() {
       <section className="card">
         <h2>Adjust stock</h2>
         <p className="card-description">
-          Record stock coming in or going out. Product quantity updates automatically.
+          Record stock coming in or going out. On-hand and available balances update automatically.
         </p>
 
         <form className="sku-lookup-form" onSubmit={handleSkuLookup}>
@@ -273,11 +404,33 @@ function Stock() {
               <option value="">Select a product</option>
               {products.map((product) => (
                 <option key={product.id} value={product.id}>
-                  {product.name} ({product.sku}) - {formatQuantity(product.quantity, product.unit)} {product.unit || 'units'} in stock
+                  {product.name} ({product.sku}) - {productStockSummary(product)}
                 </option>
               ))}
             </select>
           </label>
+
+          <div className="form-row">
+            <label>
+              Warehouse
+              <select name="warehouse_id" value={form.warehouse_id} onChange={handleChange} required>
+                <option value="">Select a warehouse</option>
+                {warehouses.filter((warehouse) => warehouse.is_active !== false).map((warehouse) => (
+                  <option key={warehouse.id} value={warehouse.id}>{warehouse.name} ({warehouse.code})</option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Exact location
+              <select name="location_id" value={form.location_id} onChange={handleChange} required>
+                <option value="">Select a bin or location</option>
+                {activeLocations.map((location) => (
+                  <option key={location.id} value={location.id}>{location.path || location.name}</option>
+                ))}
+              </select>
+            </label>
+          </div>
 
           <div className="form-row">
             <label>
@@ -289,18 +442,80 @@ function Stock() {
             </label>
 
             <label>
+              Stock state
+              <select name="stock_state" value={form.stock_state} onChange={handleChange} required>
+                {['available', 'reserved', 'damaged', 'quarantine', 'blocked'].map((state) => (
+                  <option key={state} value={state}>{state.charAt(0).toUpperCase() + state.slice(1)}</option>
+                ))}
+              </select>
+            </label>
+
+            <label>
               Quantity
               <input
                 name="quantity"
                 type="number"
-                min="0.001"
-                step="0.001"
+                min={isMeterUnit(selectedProduct?.unit) ? '0.001' : '1'}
+                step={isMeterUnit(selectedProduct?.unit) ? '0.001' : '1'}
                 value={form.quantity}
                 onChange={handleChange}
+                readOnly={selectedProduct?.tracking_mode === 'serial' && form.type === 'out'}
                 required
               />
             </label>
           </div>
+
+          {selectedProduct && selectedProduct.tracking_mode !== 'none' && form.type === 'out' ? (
+            selectedProduct.tracking_mode === 'serial' ? (
+              <label>
+                Serial numbers at this location
+                <select multiple size="6" value={form.inventory_lot_ids} onChange={handleSerialLotSelection} required>
+                  {eligibleLots.map((lot) => (
+                    <option key={lot.id} value={lot.id}>{lot.serial_number} {lot.expiry_at ? `· expires ${String(lot.expiry_at).slice(0, 10)}` : ''}</option>
+                  ))}
+                </select>
+                <small>Select every serial included in the adjustment.</small>
+              </label>
+            ) : (
+              <label>
+                Lot or batch at this location
+                <select name="inventory_lot_id" value={form.inventory_lot_id} onChange={handleChange} required>
+                  <option value="">Select a lot</option>
+                  {eligibleLots.map((lot) => (
+                    <option key={lot.id} value={lot.id}>{lot.lot_number} · {formatQuantity(lot.eligible_quantity, selectedProduct.unit)} available {lot.expiry_at ? `· expires ${String(lot.expiry_at).slice(0, 10)}` : ''}</option>
+                  ))}
+                </select>
+              </label>
+            )
+          ) : null}
+
+          {selectedProduct && selectedProduct.tracking_mode !== 'none' && form.type === 'in' ? (
+            <div className="opening-trace-panel">
+              {selectedProduct.tracking_mode === 'serial' ? (
+                <label>
+                  Serial numbers
+                  <textarea name="serial_numbers" rows="5" value={form.serial_numbers} onChange={handleChange} placeholder="One serial per line" required />
+                </label>
+              ) : (
+                <label>
+                  Lot or batch number
+                  <input name="lot_number" value={form.lot_number} onChange={handleChange} required />
+                </label>
+              )}
+              {selectedProduct.expiration_controlled || selectedProduct.tracking_mode === 'batch_expiry' ? (
+                <div className="form-row">
+                  <label>
+                    Manufacture date
+                    <input name="manufactured_at" type="date" value={form.manufactured_at} onChange={handleChange} />
+                  </label>
+                  <label>
+                    Expiry date
+                    <input name="expiry_at" type="date" value={form.expiry_at} onChange={handleChange} />
+                  </label>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <label>
             Reason
@@ -456,8 +671,8 @@ function Stock() {
                 <th>Product</th>
                 <th>Movement</th>
                 <th>Qty</th>
-                <th>Before</th>
-                <th>After</th>
+                <th>Company stock before</th>
+                <th>Company stock after</th>
                 <th>Source</th>
                 <th>User</th>
                 <th>Reason</th>

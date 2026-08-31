@@ -47,10 +47,10 @@ function ActivityLogs() {
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="activity-log-table-card rounded-2xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50">
+          <table className="activity-log-table min-w-full">
+            <thead>
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Timestamp</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Action</th>
@@ -58,7 +58,7 @@ function ActivityLogs() {
                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Description</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-slate-100">
+            <tbody>
               {logs.length === 0 ? (
                 <tr>
                   <td colSpan="4" className="px-6 py-10 text-center text-slate-400">
@@ -67,7 +67,7 @@ function ActivityLogs() {
                 </tr>
               ) : (
                 logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
+                  <tr key={log.id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                       {new Date(log.created_at).toLocaleString()}
                     </td>
@@ -95,7 +95,7 @@ function ActivityLogs() {
 
         {/* Pagination Controls */}
         {totalPages > 1 && (
-          <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex items-center justify-between">
+          <div className="activity-log-pagination px-6 py-4 flex items-center justify-between">
             <button
               onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
               disabled={currentPage === 1}

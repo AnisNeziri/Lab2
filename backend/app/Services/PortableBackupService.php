@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\Company;
 use App\Models\Invoice;
+use App\Models\Product;
+use App\Support\BarcodeIdentity;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -113,7 +115,7 @@ class PortableBackupService
         'suppliers' => ['company_id', 'name'],
         'warehouse_sections' => ['warehouse_id', 'code'],
         'warehouse_locations' => ['warehouse_id', 'path'],
-        'product_barcodes' => ['company_id', 'barcode'],
+        'product_barcodes' => ['company_id', 'barcode_normalized'],
         'product_units' => ['product_id', 'code'],
         'product_suppliers' => ['company_id', 'product_id', 'supplier_id'],
         'product_supplier_price_history' => ['product_supplier_id', 'effective_at', 'purchase_price', 'currency'],
@@ -150,7 +152,10 @@ class PortableBackupService
         'supplier_invoice_payment_allocations' => ['purchase_order_payment_id', 'expense_id'],
     ];
 
-    public function __construct(private readonly InvoiceService $invoices) {}
+    public function __construct(
+        private readonly InvoiceService $invoices,
+        private readonly InventoryIntegrityService $inventoryIntegrity,
+    ) {}
 
     public function moduleCatalog(): array
     {
@@ -276,14 +281,21 @@ class PortableBackupService
         $companyId = (int) $user->company_id;
         $warnings = [];
         $imported = [];
-
-        if ($mode === 'merge') {
-            $this->assertMergeIsSafe($activeData, $companyId);
-        }
+        $restoresWarehouseStock = array_key_exists('warehouse_stock', $activeData);
 
         DB::transaction(function () use (
-            $archive, $modules, $mode, $coreTables, $activeData, $companyId, $user, &$warnings, &$imported
+            $archive, $modules, $mode, $coreTables, $activeData, $companyId, $user,
+            $restoresWarehouseStock, &$warnings, &$imported
         ) {
+            // Serialize every restore for this tenant. This protects merge
+            // safety checks and the full delete/remap/import sequence from a
+            // second restore observing or writing a partial company state.
+            Company::query()->whereKey($companyId)->lockForUpdate()->firstOrFail();
+
+            if ($mode === 'merge') {
+                $this->assertMergeIsSafe($activeData, $companyId);
+            }
+
             if (in_array('company', $modules, true)) {
                 $companyData = $archive['manifest']['company'] ?? [];
                 Company::query()->whereKey($companyId)->update([
@@ -302,6 +314,7 @@ class PortableBackupService
                 $idMap['companies'][(string) $sourceCompanyId] = $companyId;
             }
             $deferred = [];
+            $affectedInventoryProductIds = [];
 
             $importTables = array_keys($activeData);
             foreach ($this->sortTables($importTables) as $table) {
@@ -320,7 +333,26 @@ class PortableBackupService
                         $idMap,
                         $importTables,
                     );
+                    // Product.quantity is a cached, ledger-derived balance.
+                    // A product-master restore has no warehouse evidence with
+                    // which to replace it, so existing balances are preserved
+                    // and new products receive the database's zero default.
+                    if ($table === 'products' && ! $restoresWarehouseStock) {
+                        unset($values['quantity']);
+                    }
                     $targetId = $this->upsertPortableRow($table, $values, $mode, in_array($table, $coreTables, true));
+
+                    if ($restoresWarehouseStock && $table === 'products' && $targetId !== null) {
+                        // Validate every restored product, including a product
+                        // whose archive contains no warehouse row. Otherwise a
+                        // non-zero cached company quantity could bypass the
+                        // reconciliation pass simply because its stock row was
+                        // missing from a damaged archive.
+                        $affectedInventoryProductIds[(int) $targetId] = true;
+                    }
+                    if ($table === 'warehouse_stock' && isset($values['product_id'])) {
+                        $affectedInventoryProductIds[(int) $values['product_id']] = true;
+                    }
 
                     if ($sourceId !== null && $targetId !== null) {
                         $idMap[$table][(string) $sourceId] = $targetId;
@@ -349,6 +381,17 @@ class PortableBackupService
                     ->find($invoiceId);
                 if ($invoice) {
                     $this->invoices->recomputeIntegrityAfterPortableRestore($invoice);
+                }
+            }
+
+            if ($restoresWarehouseStock) {
+                $affectedProductIds = array_keys($affectedInventoryProductIds);
+                sort($affectedProductIds, SORT_NUMERIC);
+                foreach ($affectedProductIds as $productId) {
+                    $product = Product::withoutGlobalScopes()
+                        ->where('company_id', $companyId)
+                        ->findOrFail($productId);
+                    $this->inventoryIntegrity->assertProductReconciled($product, 'inventory');
                 }
             }
         }, 3);
@@ -697,6 +740,19 @@ class PortableBackupService
             $row['company_id'] = $companyId;
         }
 
+        if (in_array($table, ['products', 'product_barcodes'], true)
+            && array_key_exists('barcode', $row)) {
+            $row['barcode'] = BarcodeIdentity::display($row['barcode']);
+            if ($columns->has('barcode_normalized')) {
+                $row['barcode_normalized'] = BarcodeIdentity::normalize($row['barcode']);
+            }
+            if ($table === 'product_barcodes' && $row['barcode'] === null) {
+                throw ValidationException::withMessages([
+                    'file' => 'The backup contains an empty alternative product barcode.',
+                ]);
+            }
+        }
+
         $deferred = [];
         foreach (Schema::getForeignKeys($table) as $foreign) {
             $column = $foreign['columns'][0] ?? null;
@@ -811,6 +867,8 @@ class PortableBackupService
             $existingId = $hasId ? $existing->value('id') : null;
         }
 
+        $this->assertPortableBarcodeIsUnique($table, $values, $existingId ? (int) $existingId : null);
+
         if ($existingId) {
             if ($table === 'invoice_sequences' && isset($values['next_number'])) {
                 $values['next_number'] = max(
@@ -832,6 +890,51 @@ class PortableBackupService
         }
 
         return (int) DB::table($table)->insertGetId($values);
+    }
+
+    private function assertPortableBarcodeIsUnique(string $table, array $values, ?int $existingId): void
+    {
+        if (! in_array($table, ['products', 'product_barcodes'], true)) {
+            return;
+        }
+
+        $companyId = (int) ($values['company_id'] ?? 0);
+        $identity = $values['barcode_normalized'] ?? null;
+        if ($companyId <= 0 || ! filled($identity)) {
+            return;
+        }
+
+        if ($table === 'products') {
+            $sameTableConflict = DB::table('products')
+                ->where('company_id', $companyId)
+                ->where('barcode_normalized', $identity)
+                ->when($existingId, fn ($query) => $query->where('id', '!=', $existingId))
+                ->exists();
+            $crossTableConflict = DB::table('product_barcodes')
+                ->where('company_id', $companyId)
+                ->where('barcode_normalized', $identity)
+                ->exists();
+        } else {
+            $sameTableConflict = DB::table('product_barcodes')
+                ->where('company_id', $companyId)
+                ->where('barcode_normalized', $identity)
+                ->when($existingId, fn ($query) => $query->where('id', '!=', $existingId))
+                ->exists();
+            $existingBelongsToAnotherProduct = $existingId !== null
+                && (int) DB::table('product_barcodes')->where('id', $existingId)->value('product_id')
+                    !== (int) ($values['product_id'] ?? 0);
+            $sameTableConflict = $sameTableConflict || $existingBelongsToAnotherProduct;
+            $crossTableConflict = DB::table('products')
+                ->where('company_id', $companyId)
+                ->where('barcode_normalized', $identity)
+                ->exists();
+        }
+
+        if ($sameTableConflict || $crossTableConflict) {
+            throw ValidationException::withMessages([
+                'file' => 'The backup contains a barcode identity already assigned to another product.',
+            ]);
+        }
     }
 
     private function identityFor(string $table, array $values): array

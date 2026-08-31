@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\ProductSupplier;
 use App\Models\Supplier;
 use App\Repositories\Contracts\CategoryRepositoryInterface;
+use App\Support\CompanyCurrency;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -138,6 +139,7 @@ class ImportService
                     'tracking_mode' => $trackingMode,
                     'expiration_controlled' => $this->csvBoolean($row, $columns, 'expiration_controlled', $trackingMode === 'batch_expiry'),
                     'default_shelf_life_days' => $this->csvNullableInteger($row, $columns, 'default_shelf_life_days'),
+                    'shelf_life_basis' => strtolower(trim((string) $this->csvValue($row, $columns, 'shelf_life_basis'))) ?: 'manufacture_date',
                     'near_expiry_days' => $this->csvInteger($row, $columns, 'near_expiry_days', 30),
                     'fefo_enabled' => $this->csvBoolean($row, $columns, 'fefo_enabled', true),
                     'safety_stock' => $this->csvNumber($row, $columns, 'safety_stock', 0),
@@ -158,7 +160,7 @@ class ImportService
                 if ($supplierColumnPresent) {
                     // Supplier catalogue data is synchronized after the
                     // product so a foreign-currency price is never recorded
-                    // temporarily as an EUR price.
+                    // temporarily as a company-base-currency price.
                     $data['supplier_id'] = null;
                 }
                 if ($existing) {
@@ -311,6 +313,7 @@ class ImportService
             'tracking_mode' => ['tracking_mode'],
             'expiration_controlled' => ['expiration_controlled'],
             'default_shelf_life_days' => ['default_shelf_life_days'],
+            'shelf_life_basis' => ['shelf_life_basis'],
             'near_expiry_days' => ['near_expiry_days'],
             'fefo_enabled' => ['fefo_enabled'],
             'safety_stock' => ['safety_stock'],
@@ -373,6 +376,9 @@ class ImportService
         if ($data['hs_code'] && ! preg_match('/^[A-Za-z0-9. -]{1,32}$/', (string) $data['hs_code'])) {
             throw new \InvalidArgumentException("Row {$rowNumber}: hs_code contains unsupported characters.");
         }
+        if (! in_array($data['shelf_life_basis'], ['manufacture_date', 'receipt_date'], true)) {
+            throw new \InvalidArgumentException("Row {$rowNumber}: shelf_life_basis must be manufacture_date or receipt_date.");
+        }
     }
 
     private function csvJson(array $row, array $columns, string $name, array $default, int $rowNumber): array
@@ -403,34 +409,38 @@ class ImportService
         string $status,
         int $rowNumber,
     ): void {
+        $baseCurrency = CompanyCurrency::forCompanyId((int) $product->company_id);
         $catalogue = ProductSupplier::query()
             ->where('product_id', $product->id)
             ->where('supplier_id', $supplier->id)
             ->first();
         $currency = array_key_exists('supplier_currency', $columns)
             ? strtoupper(trim((string) $this->csvValue($row, $columns, 'supplier_currency')))
-            : ($catalogue?->currency ?? 'EUR');
-        $currency = $currency ?: 'EUR';
-        if (! in_array($currency, ['EUR', 'USD', 'ALL', 'GBP', 'CNY'], true)) {
+            : ($catalogue?->currency ?? $baseCurrency);
+        $currency = $currency ?: $baseCurrency;
+        if (! in_array($currency, CompanyCurrency::accepted($baseCurrency), true)) {
             throw new \InvalidArgumentException("Row {$rowNumber}: unsupported supplier currency '{$currency}'.");
         }
-        $rate = $currency === 'EUR'
+        $rateColumn = array_key_exists('exchange_rate_to_base_currency', $columns)
+            ? 'exchange_rate_to_base_currency'
+            : 'exchange_rate_to_eur';
+        $rate = $currency === $baseCurrency
             ? 1.0
-            : (array_key_exists('exchange_rate_to_eur', $columns)
-                ? $this->csvNullableNumber($row, $columns, 'exchange_rate_to_eur')
+            : (array_key_exists($rateColumn, $columns)
+                ? $this->csvNullableNumber($row, $columns, $rateColumn)
                 : ($catalogue ? (float) $catalogue->exchange_rate_to_base : null));
         $rateDate = array_key_exists('exchange_rate_date', $columns)
             ? (trim((string) $this->csvValue($row, $columns, 'exchange_rate_date')) ?: null)
             : $catalogue?->exchange_rate_date?->toDateString();
-        if ($currency !== 'EUR' && (! $rate || ! $rateDate)) {
-            throw new \InvalidArgumentException("Row {$rowNumber}: a foreign supplier currency requires Exchange Rate to EUR and Exchange Rate Date.");
+        if ($currency !== $baseCurrency && (! $rate || ! $rateDate)) {
+            throw new \InvalidArgumentException("Row {$rowNumber}: a foreign supplier currency requires Exchange Rate to {$baseCurrency} and Exchange Rate Date.");
         }
 
         $active = $status === 'active';
         $values = [
             'currency' => $currency,
             'exchange_rate_to_base' => $rate,
-            'exchange_rate_date' => $currency === 'EUR' ? null : $rateDate,
+            'exchange_rate_date' => $currency === $baseCurrency ? null : $rateDate,
             'is_preferred' => $active,
             'is_active' => $active,
             'price_effective_at' => $rateDate ?: now()->toDateString(),

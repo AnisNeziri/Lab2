@@ -12,6 +12,7 @@ use App\Models\Warehouse;
 use App\Models\WarehouseLocation;
 use App\Models\WarehouseStock;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -62,10 +63,31 @@ class InventoryCountService
                 throw ValidationException::withMessages(['location_id' => ['Select an active location in the count warehouse.']]);
             }
             $states = array_values(array_unique($data['stock_states'] ?? ['available']));
+            $scopeProductIds = collect($data['product_ids'] ?? [])
+                ->map(fn ($id) => (int) $id)->filter()->unique()->sort()->values()->all();
+            $scopeAllProducts = $scopeProductIds === [];
             foreach ($states as $state) {
                 if (! in_array($state, WarehouseInventoryService::STATES, true)) {
                     throw ValidationException::withMessages(['stock_states' => ['One or more stock states are invalid.']]);
                 }
+            }
+
+            // Product creation is serialized on the company row. A complete
+            // warehouse snapshot takes that lock too, then locks products in
+            // the same order used by stock movements before reading bins.
+            if ($scopeAllProducts) {
+                DB::table('companies')->where('id', $companyId)->lockForUpdate()->first();
+            }
+            $snapshotProducts = Product::withoutGlobalScopes()
+                ->where('company_id', $companyId)
+                ->when(! $scopeAllProducts, fn ($query) => $query->whereIn('id', $scopeProductIds))
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+            if (! $scopeAllProducts && $snapshotProducts->count() !== count($scopeProductIds)) {
+                throw ValidationException::withMessages([
+                    'product_ids' => ['One or more selected products do not belong to this company.'],
+                ]);
             }
 
             $session = InventoryCountSession::create([
@@ -75,6 +97,8 @@ class InventoryCountService
                 'location_id' => $locationId,
                 'status' => 'in_progress',
                 'stock_states' => $states,
+                'scope_all_products' => $scopeAllProducts,
+                'scope_product_ids' => $scopeAllProducts ? null : $scopeProductIds,
                 'frozen_at' => now(),
                 'created_by' => Auth::id(),
                 'notes' => $data['notes'] ?? null,
@@ -85,7 +109,7 @@ class InventoryCountService
                 ->where('company_id', $companyId)
                 ->where('warehouse_id', $warehouse->id)
                 ->when($locationId !== null, fn ($query) => $query->where('location_key', $locationId))
-                ->when(! empty($data['product_ids']), fn ($query) => $query->whereIn('product_id', $data['product_ids']))
+                ->when(! $scopeAllProducts, fn ($query) => $query->whereIn('product_id', $scopeProductIds))
                 ->lockForUpdate()
                 ->get();
 
@@ -124,8 +148,8 @@ class InventoryCountService
                 }
             }
 
-            foreach (array_unique($data['product_ids'] ?? []) as $productId) {
-                $product = Product::query()->findOrFail($productId);
+            foreach ($scopeProductIds as $productId) {
+                $product = $snapshotProducts->firstWhere('id', $productId);
                 $alreadyIncluded = $session->items()->where('product_id', $product->id)->exists();
                 if (! $alreadyIncluded) {
                     if (($product->tracking_mode ?: 'none') !== 'none') {
@@ -136,6 +160,17 @@ class InventoryCountService
                     }
                 }
             }
+
+            $session->update([
+                'snapshot_identity_keys' => $session->items()->get([
+                    'product_id', 'location_key', 'lot_key', 'stock_state',
+                ])->map(fn (InventoryCountItem $item) => $this->identityKey(
+                    (int) $item->product_id,
+                    (int) $item->location_key,
+                    (int) $item->lot_key,
+                    (string) $item->stock_state,
+                ))->sort()->values()->all(),
+            ]);
 
             return $this->find($session->fresh());
         });
@@ -202,12 +237,62 @@ class InventoryCountService
             if (! in_array($session->status, ['in_progress', 'submitted', 'recount_required'], true)) {
                 throw ValidationException::withMessages(['status' => ['This count can no longer be sent for recount.']]);
             }
-            $items = $session->items()->whereIn('id', $itemIds)->lockForUpdate()->get();
-            if ($items->count() !== count(array_unique($itemIds))) {
+            $requestedIds = collect($itemIds)->map(fn ($id) => (int) $id)->filter()->unique()->values();
+            $allItems = $session->items()->orderBy('id')->lockForUpdate()->get();
+            if ($allItems->whereIn('id', $requestedIds)->count() !== $requestedIds->count()) {
                 throw ValidationException::withMessages(['item_ids' => ['One or more count items do not belong to this session.']]);
             }
-            foreach ($items as $item) {
-                $currentExpected = $this->currentBalance($session, $item, true);
+
+            $scopeProductIds = $session->scope_all_products
+                ? null
+                : collect($session->scope_product_ids ?: $allItems->pluck('product_id'))
+                    ->map(fn ($id) => (int) $id)->filter()->unique()->sort()->values()->all();
+            if ($session->scope_all_products) {
+                DB::table('companies')->where('id', $session->company_id)->lockForUpdate()->first();
+            }
+            $products = Product::withoutGlobalScopes()
+                ->where('company_id', $session->company_id)
+                ->when($scopeProductIds !== null, fn ($query) => $query->whereIn('id', $scopeProductIds))
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+            $definitions = $this->snapshotDefinitions($session, $products, $scopeProductIds);
+            $existingByKey = $allItems->keyBy(fn (InventoryCountItem $item) => $this->identityKey(
+                (int) $item->product_id,
+                (int) $item->location_key,
+                (int) $item->lot_key,
+                (string) $item->stock_state,
+            ));
+
+            foreach ($definitions as $key => $definition) {
+                if ($existingByKey->has($key)) {
+                    continue;
+                }
+                $newItem = $this->createItem(
+                    $session,
+                    $definition['product'],
+                    $definition['location_id'],
+                    $definition['stock_state'],
+                    $definition['expected_quantity'],
+                    $definition['inventory_lot_id'],
+                );
+                $newItem->update(['requires_recount' => true]);
+                $allItems->push($newItem->fresh());
+                $existingByKey->put($key, $newItem->fresh());
+            }
+
+            foreach ($allItems as $item) {
+                $key = $this->identityKey(
+                    (int) $item->product_id,
+                    (int) $item->location_key,
+                    (int) $item->lot_key,
+                    (string) $item->stock_state,
+                );
+                $currentExpected = round((float) ($definitions->get($key)['expected_quantity'] ?? 0), 3);
+                $scopeChanged = abs($currentExpected - (float) $item->expected_quantity) >= 0.0005;
+                if (! $scopeChanged && ! $requestedIds->contains((int) $item->id)) {
+                    continue;
+                }
                 InventoryCountEntry::create([
                     'company_id' => $session->company_id,
                     'inventory_count_item_id' => $item->id,
@@ -226,7 +311,25 @@ class InventoryCountService
                     'requires_recount' => true,
                 ]);
             }
-            $session->update(['status' => 'recount_required', 'submitted_at' => null, 'submitted_by' => null]);
+
+            $refreshedItems = $session->items()->get();
+            $snapshotKeys = $definitions->keys()->merge(
+                $refreshedItems
+                    ->filter(fn (InventoryCountItem $item) => abs((float) $item->expected_quantity) < 0.0005)
+                    ->map(fn (InventoryCountItem $item) => $this->identityKey(
+                        (int) $item->product_id,
+                        (int) $item->location_key,
+                        (int) $item->lot_key,
+                        (string) $item->stock_state,
+                    )),
+            )->unique()->sort()->values()->all();
+            $session->update([
+                'status' => 'recount_required',
+                'snapshot_identity_keys' => $snapshotKeys,
+                'frozen_at' => now(),
+                'submitted_at' => null,
+                'submitted_by' => null,
+            ]);
 
             return $this->find($session->fresh());
         });
@@ -259,12 +362,32 @@ class InventoryCountService
                 throw ValidationException::withMessages(['status' => ['Only a submitted count can be approved.']]);
             }
             $items = $session->items()->with('product')->lockForUpdate()->get();
+            // Stock movements lock Product before warehouse/bin balances. Use
+            // the same lock order so an approval cannot race a sale, receipt,
+            // transfer, or adjustment while its stale-snapshot check runs.
+            if ($session->scope_all_products) {
+                // Product creation takes this same company lock. Together with
+                // all existing product locks it closes the new-product gap in
+                // a warehouse-wide count while the scope is revalidated.
+                DB::table('companies')->where('id', $session->company_id)->lockForUpdate()->first();
+            }
+            $scopeProductIds = $session->scope_all_products
+                ? null
+                : collect($session->scope_product_ids ?: $items->pluck('product_id'))
+                    ->map(fn ($id) => (int) $id)->filter()->unique()->sort()->values()->all();
+            $lockedProducts = Product::withoutGlobalScopes()
+                ->where('company_id', $session->company_id)
+                ->when($scopeProductIds !== null, fn ($query) => $query->whereIn('id', $scopeProductIds))
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+            $this->assertSnapshotScopeUnchanged($session, $items, $lockedProducts, $scopeProductIds);
             foreach ($items as $item) {
                 $current = $this->currentBalance($session, $item, true);
                 if (abs($current - (float) $item->expected_quantity) >= 0.0005) {
                     throw ValidationException::withMessages([
                         'items' => [
-                            "Inventory changed after {$session->count_number} froze {$item->product->name}. "
+                            "Inventory changed after {$session->count_number} captured its snapshot for {$item->product->name}. "
                             .'Request a recount before approving so the adjustment cannot corrupt live stock.',
                         ],
                     ]);
@@ -292,7 +415,7 @@ class InventoryCountService
                     'idempotency_key' => "inventory-count-{$session->id}-item-{$item->id}",
                     'trace_allocations' => $traceAllocations,
                     'metadata' => [
-                        'frozen_at' => $session->frozen_at?->toIso8601String(),
+                        'snapshot_captured_at' => $session->frozen_at?->toIso8601String(),
                         'expected_quantity' => (float) $item->expected_quantity,
                         'counted_quantity' => (float) $item->counted_quantity,
                         'variance_quantity' => $variance,
@@ -330,6 +453,17 @@ class InventoryCountService
     private function unexpectedItem(InventoryCountSession $session, array $input): InventoryCountItem
     {
         $product = Product::query()->findOrFail($input['product_id'] ?? 0);
+        if (! $session->scope_all_products) {
+            $allowedProductIds = collect($session->scope_product_ids
+                ?: $session->items()->pluck('product_id'))
+                ->map(fn ($id) => (int) $id)
+                ->unique();
+            if (! $allowedProductIds->contains((int) $product->id)) {
+                throw ValidationException::withMessages([
+                    'items' => ['The unexpected product is outside this count scope.'],
+                ]);
+            }
+        }
         $locationId = array_key_exists('location_id', $input)
             ? ($input['location_id'] !== null ? (int) $input['location_id'] : null)
             : $session->location_id;
@@ -397,6 +531,127 @@ class InventoryCountService
         );
     }
 
+    /**
+     * Rebuild the authoritative identities and book quantities inside a
+     * persisted count scope. Product locks are acquired by the caller before
+     * these warehouse and trace rows are locked.
+     *
+     * @param  Collection<int, Product>  $products
+     * @param  array<int, int>|null  $scopeProductIds
+     * @return Collection<string, array{product: Product, location_id: int|null, inventory_lot_id: int|null, stock_state: string, expected_quantity: float}>
+     */
+    private function snapshotDefinitions(
+        InventoryCountSession $session,
+        Collection $products,
+        ?array $scopeProductIds,
+    ): Collection {
+        $states = collect($session->stock_states ?: ['available'])
+            ->map(fn ($state) => (string) $state)->values();
+        $productMap = $products->keyBy('id');
+        $stockRows = WarehouseStock::withoutGlobalScopes()
+            ->where('company_id', $session->company_id)
+            ->where('warehouse_id', $session->warehouse_id)
+            ->when($session->location_id !== null, fn ($query) => $query->where('location_key', (int) $session->location_id))
+            ->when($scopeProductIds !== null, fn ($query) => $query->whereIn('product_id', $scopeProductIds))
+            ->orderBy('product_id')->orderBy('location_key')->lockForUpdate()->get();
+        $traceRows = InventoryTraceBalance::withoutGlobalScopes()
+            ->select('inventory_trace_balances.*', 'inventory_lots.product_id')
+            ->join('inventory_lots', 'inventory_lots.id', '=', 'inventory_trace_balances.inventory_lot_id')
+            ->where('inventory_trace_balances.company_id', $session->company_id)
+            ->where('inventory_trace_balances.warehouse_id', $session->warehouse_id)
+            ->whereIn('inventory_trace_balances.stock_state', $states)
+            ->when($session->location_id !== null, fn ($query) => $query->where('inventory_trace_balances.location_key', (int) $session->location_id))
+            ->when($scopeProductIds !== null, fn ($query) => $query->whereIn('inventory_lots.product_id', $scopeProductIds))
+            ->orderBy('inventory_lots.product_id')
+            ->orderBy('inventory_trace_balances.location_key')
+            ->orderBy('inventory_trace_balances.inventory_lot_id')
+            ->lockForUpdate()->get();
+
+        $definitions = collect();
+        $add = function (
+            Product $product,
+            ?int $locationId,
+            int $locationKey,
+            ?int $lotId,
+            string $state,
+            float $expected,
+        ) use ($definitions): void {
+            $key = $this->identityKey($product->id, $locationKey, (int) ($lotId ?? 0), $state);
+            $definitions->put($key, [
+                'product' => $product,
+                'location_id' => $locationId,
+                'inventory_lot_id' => $lotId,
+                'stock_state' => $state,
+                'expected_quantity' => round($expected, 3),
+            ]);
+        };
+
+        foreach ($stockRows as $stock) {
+            $product = $productMap->get((int) $stock->product_id);
+            if (! $product) {
+                throw ValidationException::withMessages([
+                    'items' => ['A warehouse balance references a product outside this count scope.'],
+                ]);
+            }
+            foreach ($states as $state) {
+                $expected = round((float) $stock->{$state.'_quantity'}, 3);
+                if (($product->tracking_mode ?: 'none') === 'none') {
+                    $add(
+                        $product,
+                        $stock->location_id ? (int) $stock->location_id : null,
+                        (int) $stock->location_key,
+                        null,
+                        $state,
+                        $expected,
+                    );
+                    continue;
+                }
+
+                $matchingTrace = $traceRows->filter(fn (InventoryTraceBalance $trace) =>
+                    (int) $trace->product_id === (int) $product->id
+                    && (int) $trace->location_key === (int) $stock->location_key
+                    && (string) $trace->stock_state === $state
+                );
+                if (abs(round((float) $matchingTrace->sum('quantity'), 3) - $expected) >= 0.0005) {
+                    throw ValidationException::withMessages([
+                        'items' => ["Tracked balances for {$product->name} no longer reconcile with its bin balance."],
+                    ]);
+                }
+                foreach ($matchingTrace as $trace) {
+                    $add(
+                        $product,
+                        $trace->location_id ? (int) $trace->location_id : null,
+                        (int) $trace->location_key,
+                        (int) $trace->inventory_lot_id,
+                        $state,
+                        (float) $trace->quantity,
+                    );
+                }
+            }
+        }
+
+        if ($scopeProductIds !== null) {
+            foreach ($products as $product) {
+                if (($product->tracking_mode ?: 'none') !== 'none'
+                    || $definitions->contains(fn (array $row) => (int) $row['product']->id === (int) $product->id)) {
+                    continue;
+                }
+                foreach ($states as $state) {
+                    $add(
+                        $product,
+                        $session->location_id ? (int) $session->location_id : null,
+                        (int) ($session->location_id ?? 0),
+                        null,
+                        $state,
+                        0,
+                    );
+                }
+            }
+        }
+
+        return $definitions;
+    }
+
     private function currentBalance(
         InventoryCountSession $session,
         InventoryCountItem $item,
@@ -426,6 +681,128 @@ class InventoryCountService
         }
 
         return round((float) ($query->value($item->stock_state.'_quantity') ?? 0), 3);
+    }
+
+    /**
+     * A quantity comparison alone misses a new bin, lot, serial, or product
+     * introduced inside the original count scope. Rebuild the complete set of
+     * physical identities before approval and compare it with the immutable
+     * creation snapshot. Unexpected items counted by the user do not alter the
+     * original snapshot set.
+     *
+     * @param  \Illuminate\Support\Collection<int, InventoryCountItem>  $items
+     * @param  \Illuminate\Support\Collection<int, Product>  $products
+     * @param  array<int, int>|null  $scopeProductIds
+     */
+    private function assertSnapshotScopeUnchanged(
+        InventoryCountSession $session,
+        $items,
+        $products,
+        ?array $scopeProductIds,
+    ): void {
+        $states = collect($session->stock_states ?: ['available'])->map(fn ($state) => (string) $state)->values();
+        $stockRows = WarehouseStock::withoutGlobalScopes()
+            ->where('company_id', $session->company_id)
+            ->where('warehouse_id', $session->warehouse_id)
+            ->when($session->location_id !== null, fn ($query) => $query->where('location_key', (int) $session->location_id))
+            ->when($scopeProductIds !== null, fn ($query) => $query->whereIn('product_id', $scopeProductIds))
+            ->orderBy('product_id')->orderBy('location_key')->lockForUpdate()->get();
+        $traceRows = InventoryTraceBalance::withoutGlobalScopes()
+            ->select('inventory_trace_balances.*', 'inventory_lots.product_id')
+            ->join('inventory_lots', 'inventory_lots.id', '=', 'inventory_trace_balances.inventory_lot_id')
+            ->where('inventory_trace_balances.company_id', $session->company_id)
+            ->where('inventory_trace_balances.warehouse_id', $session->warehouse_id)
+            ->whereIn('inventory_trace_balances.stock_state', $states)
+            ->when($session->location_id !== null, fn ($query) => $query->where('inventory_trace_balances.location_key', (int) $session->location_id))
+            ->when($scopeProductIds !== null, fn ($query) => $query->whereIn('inventory_lots.product_id', $scopeProductIds))
+            ->orderBy('inventory_lots.product_id')
+            ->orderBy('inventory_trace_balances.location_key')
+            ->orderBy('inventory_trace_balances.inventory_lot_id')
+            ->lockForUpdate()->get();
+
+        $productMap = $products->keyBy('id');
+        $currentKeys = collect();
+        foreach ($stockRows as $stock) {
+            $product = $productMap->get((int) $stock->product_id);
+            if (! $product || ($product->tracking_mode ?: 'none') !== 'none') {
+                continue;
+            }
+            foreach ($states as $state) {
+                $currentKeys->push($this->identityKey(
+                    (int) $stock->product_id,
+                    (int) $stock->location_key,
+                    0,
+                    $state,
+                ));
+            }
+        }
+        foreach ($traceRows as $trace) {
+            $currentKeys->push($this->identityKey(
+                (int) $trace->product_id,
+                (int) $trace->location_key,
+                (int) $trace->inventory_lot_id,
+                (string) $trace->stock_state,
+            ));
+        }
+
+        // Explicit zero-stock untracked products receive a zero identity when
+        // the snapshot is created, so reproduce it when no balance exists.
+        if ($scopeProductIds !== null) {
+            foreach ($products as $product) {
+                if (($product->tracking_mode ?: 'none') !== 'none'
+                    || $stockRows->contains(fn (WarehouseStock $row) => (int) $row->product_id === (int) $product->id)) {
+                    continue;
+                }
+                foreach ($states as $state) {
+                    $currentKeys->push($this->identityKey(
+                        (int) $product->id,
+                        (int) ($session->location_id ?? 0),
+                        0,
+                        $state,
+                    ));
+                }
+            }
+        }
+
+        $expectedKeys = collect($session->snapshot_identity_keys
+            ?: $items->map(fn (InventoryCountItem $item) => $this->identityKey(
+                (int) $item->product_id,
+                (int) $item->location_key,
+                (int) $item->lot_key,
+                (string) $item->stock_state,
+            )))->unique()->sort()->values()->all();
+        // A recount retains removed identities as explicit zero book rows so
+        // the counter can confirm that the physical quantity is zero without
+        // deleting prior count-entry history. Their absence from live balance
+        // tables is therefore the expected state, not another scope change.
+        foreach ($items as $item) {
+            if (abs((float) $item->expected_quantity) >= 0.0005) {
+                continue;
+            }
+            $key = $this->identityKey(
+                (int) $item->product_id,
+                (int) $item->location_key,
+                (int) $item->lot_key,
+                (string) $item->stock_state,
+            );
+            if (in_array($key, $expectedKeys, true) && ! $currentKeys->contains($key)) {
+                $currentKeys->push($key);
+            }
+        }
+        $currentKeys = $currentKeys->unique()->sort()->values()->all();
+        if ($expectedKeys !== $currentKeys) {
+            throw ValidationException::withMessages([
+                'items' => [
+                    "Inventory identities inside {$session->count_number} changed after its snapshot was captured. "
+                    .'A product, bin, lot, serial, or stock-state row was added or removed; request a recount before approval.',
+                ],
+            ]);
+        }
+    }
+
+    private function identityKey(int $productId, int $locationKey, int $lotKey, string $state): string
+    {
+        return "product:{$productId}/location:{$locationKey}/lot:{$lotKey}/state:{$state}";
     }
 
     private function nextNumber(int $companyId): string

@@ -13,7 +13,7 @@
     linear-gradient(155deg, #f7fbff, #edf5fc 55%, #f7fbff);
 }
 
-.mobile-warehouse-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; max-width: 1180px; margin: 0 auto 18px; }
+.mobile-warehouse-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; max-width: 1180px; margin: 0 auto 18px; padding: clamp(16px, 2.5vw, 24px); border: 1px solid var(--mw-line); border-radius: 20px; color: var(--mw-ink); background: var(--mw-surface); box-shadow: 0 12px 38px rgba(34, 76, 117, .08); }
 .mobile-warehouse-hero span { color: var(--mw-blue-deep); font-size: .76rem; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
 .mobile-warehouse-hero h1 { margin: 3px 0 5px; font-size: clamp(1.65rem, 5vw, 2.6rem); letter-spacing: -.045em; }
 .mobile-warehouse-hero p { margin: 0; color: var(--mw-muted); }
@@ -92,6 +92,14 @@ html.dark .mobile-warehouse-page, html[data-theme='dark'] .mobile-warehouse-page
   --mw-ink: #e9f4ff; --mw-muted: #9fb2c8; --mw-surface: rgba(12, 29, 49, .94); --mw-line: rgba(127, 177, 226, .18);
   background: radial-gradient(circle at 8% 2%, rgba(22, 135, 248, .2), transparent 28rem), linear-gradient(155deg, #071421, #0b1c2d 52%, #071421);
 }
+html.dark .mobile-warehouse-hero,
+html[data-theme='dark'] .mobile-warehouse-hero { color: var(--mw-ink); }
+html.dark .mobile-warehouse-hero h1,
+html[data-theme='dark'] .mobile-warehouse-hero h1 { color: #f4f9ff; }
+html.dark .mobile-warehouse-hero span,
+html[data-theme='dark'] .mobile-warehouse-hero span { color: #63b7ff; }
+html.dark .mobile-warehouse-hero p,
+html[data-theme='dark'] .mobile-warehouse-hero p { color: #b9cbe0; }
 html.dark .mobile-warehouse-field input, html.dark .mobile-warehouse-field select, html.dark .mobile-warehouse-field textarea,
 html[data-theme='dark'] .mobile-warehouse-field input, html[data-theme='dark'] .mobile-warehouse-field select, html[data-theme='dark'] .mobile-warehouse-field textarea,
 html.dark .mobile-warehouse-matches button, html[data-theme='dark'] .mobile-warehouse-matches button { color: var(--mw-ink); background: #102a43; color-scheme: dark; }

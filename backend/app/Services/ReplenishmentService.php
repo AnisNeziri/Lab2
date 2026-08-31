@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Models\ProductSupplier;
 use App\Models\PurchaseOrder;
 use App\Models\StockMovement;
+use App\Support\CompanyCurrency;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -84,7 +85,7 @@ class ReplenishmentService
                     'product_id' => $product->id,
                     'supplier_id' => $product->supplier_id,
                     'purchase_price' => $product->purchase_price,
-                    'currency' => 'EUR',
+                    'currency' => CompanyCurrency::forCompanyId((int) $product->company_id),
                     'exchange_rate_to_base' => 1,
                     'pack_size' => 1,
                     'minimum_order_quantity' => 0,
@@ -214,6 +215,7 @@ class ReplenishmentService
                 $leadDays = (int) $group->max(fn ($item) => $item['preferred_supplier']['lead_time_days']);
                 $orderedAt = $planning['as_of'];
                 $product = $products->get($first['product_id']);
+                $baseCurrency = CompanyCurrency::forCompanyId((int) $product->company_id);
                 $orders[] = $this->purchaseOrders->create([
                     'supplier_id' => $supplier['supplier_id'],
                     'warehouse_id' => $data['warehouse_id'] ?? $product?->default_warehouse_id,
@@ -221,9 +223,9 @@ class ReplenishmentService
                     'expected_at' => CarbonImmutable::parse($orderedAt)->addDays($leadDays)->toDateString(),
                     'due_at' => null,
                     'currency' => $currency,
-                    'exchange_rate' => $currency === 'EUR' ? 1 : $supplier['exchange_rate_to_base'],
+                    'exchange_rate' => $currency === $baseCurrency ? 1 : $supplier['exchange_rate_to_base'],
                     'exchange_rate_date' => $orderedAt,
-                    'exchange_rate_source' => $currency === 'EUR' ? 'EUR base currency' : 'Supplier catalogue rate used by reviewed replenishment draft',
+                    'exchange_rate_source' => $currency === $baseCurrency ? "{$baseCurrency} base currency" : 'Supplier catalogue rate used by reviewed replenishment draft',
                     'status' => 'draft',
                     'notes' => $data['notes'] ?? 'Draft created from reviewed replenishment suggestions.',
                     'change_reason' => 'Authorized user converted selected replenishment suggestions to a draft purchase order.',

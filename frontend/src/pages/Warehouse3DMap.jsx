@@ -8,6 +8,7 @@ import { apiRequest } from '../api/client'
 import { getWarehouseLayout } from '../api/warehouse'
 import { productMatchesShelf, STANDARD_FLOOR_HEIGHT } from '../lib/warehouseLayout'
 import { buildShelfStockMap, productHealthPercent, sectionsToShelves, sectionsToZones } from '../lib/warehouseStock'
+import { getInventoryQuantity } from '../utils/inventoryQuantity'
 import * as THREE from 'three'
 import './Warehouse3DMap.css'
 
@@ -406,10 +407,15 @@ function PalletStack({ position }) {
   )
 }
 
+function shelfAvailableQuantity(product) {
+  return Number(product?.shelf_available_quantity ?? getInventoryQuantity(product, 'available'))
+}
+
 function ShelfModal({ shelf, products, loading, onClose }) {
-  const totalQty   = products.reduce((s, p) => s + (p.quantity ?? 0), 0)
-  const totalValue = products.reduce((s, p) => s + (p.quantity ?? 0) * parseFloat(p.price ?? 0), 0)
-  const status     = loading ? null : totalQty === 0 ? 'out' : products.some(p => p.quantity <= p.min_quantity) ? 'low' : 'ok'
+  const totalQty   = products.reduce((s, p) => s + shelfAvailableQuantity(p), 0)
+  const totalValue = products.reduce((s, p) => s + shelfAvailableQuantity(p) * parseFloat(p.price ?? 0), 0)
+  const lowStockProducts = products.filter(p => shelfAvailableQuantity(p) <= Number(p.min_quantity ?? 0))
+  const status     = loading ? null : totalQty === 0 ? 'out' : lowStockProducts.length > 0 ? 'low' : 'ok'
   const statusLabel = { ok: 'Healthy', low: 'Low Stock', out: 'Out of Stock', null: '…' }[status]
   const statusColor = { ok: '#22c55e', low: '#fb923c', out: '#ef4444', null: '#94a3b8' }[status]
 
@@ -464,8 +470,9 @@ function ShelfModal({ shelf, products, loading, onClose }) {
             <div style={{ fontSize: 11, color: '#334155', marginTop: 4 }}>Run the seeder or assign location_code in the product form.</div>
           </div>
         ) : products.map(p => {
-          const isLow = p.quantity <= p.min_quantity
-          const isOut = p.quantity === 0
+          const availableQuantity = shelfAvailableQuantity(p)
+          const isLow = availableQuantity <= Number(p.min_quantity ?? 0)
+          const isOut = availableQuantity === 0
           const qColor = isOut ? '#ef4444' : isLow ? '#fb923c' : '#4ade80'
           return (
             <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 70px 70px', gap: 6, alignItems: 'center', padding: '9px 10px', marginBottom: 4, borderRadius: 7, background: '#111827', border: `1px solid ${isOut ? '#ef444422' : isLow ? '#fb923c22' : '#1e293b'}`, transition: 'border-color .2s' }}>
@@ -475,7 +482,7 @@ function ShelfModal({ shelf, products, loading, onClose }) {
               </div>
               <div style={{ color: '#64748b', fontSize: 11, fontFamily: 'monospace' }}>{p.sku}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <span style={{ fontSize: 16, fontWeight: 800, color: qColor }}>{p.quantity}</span>
+                <span style={{ fontSize: 16, fontWeight: 800, color: qColor }}>{availableQuantity}</span>
                 <span style={{ fontSize: 10, color: '#475569' }}>{p.unit ?? 'pcs'}</span>
               </div>
               <div style={{ color: '#94a3b8', fontSize: 13, fontWeight: 600 }}>€{parseFloat(p.price).toFixed(2)}</div>
@@ -485,10 +492,10 @@ function ShelfModal({ shelf, products, loading, onClose }) {
       </div>
 
       {/* Footer — min_quantity warning summary */}
-      {!loading && products.some(p => p.quantity <= p.min_quantity) && (
+      {!loading && lowStockProducts.length > 0 && (
         <div style={{ padding: '10px 16px', background: '#1c0a0a', borderTop: '1px solid #7f1d1d', fontSize: 12, color: '#fca5a5', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>⚠</span>
-          <span>{products.filter(p => p.quantity <= p.min_quantity).length} product(s) below minimum stock level</span>
+          <span>{lowStockProducts.length} product(s) below minimum stock level</span>
         </div>
       )}
     </div>

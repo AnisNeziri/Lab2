@@ -5,6 +5,9 @@ namespace Tests\Feature;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\Supplier;
+use App\Models\Warehouse;
+use App\Models\WarehouseLocation;
+use App\Models\WarehouseStock;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
@@ -62,9 +65,12 @@ class InventoryApiTest extends TestCase
             'min_quantity' => 1,
             'price' => 34.50,
         ]));
+        [$warehouse, $location] = $this->placeLegacyStock($product);
 
         $response = $this->postJson('/api/stock-movements', [
             'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'location_id' => $location->id,
             'type' => 'out',
             'quantity' => 3,
             'reason' => 'Customer sale adjustment',
@@ -217,7 +223,7 @@ class InventoryApiTest extends TestCase
             ->assertJsonStructure(['low_stock_products', 'out_of_stock_products', 'recent_movements', 'category_values', 'movements_over_time']);
     }
 
-    public function test_category_can_be_deleted_when_products_exist(): void
+    public function test_category_cannot_be_deleted_while_products_still_reference_it(): void
     {
         $this->actingAsApiUser('manager');
 
@@ -232,13 +238,15 @@ class InventoryApiTest extends TestCase
             'price' => 8.00,
         ]));
 
-        $this->deleteJson('/api/categories/'.$category->id)->assertNoContent();
+        $this->deleteJson('/api/categories/'.$category->id)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('category');
 
-        $this->assertDatabaseMissing('categories', ['id' => $category->id]);
-        $this->assertNull($product->fresh()->category_id);
+        $this->assertDatabaseHas('categories', ['id' => $category->id]);
+        $this->assertSame($category->id, $product->fresh()->category_id);
     }
 
-    public function test_supplier_can_be_deleted_when_products_exist(): void
+    public function test_supplier_is_archived_without_erasing_product_history(): void
     {
         $this->actingAsApiUser('manager');
 
@@ -260,8 +268,8 @@ class InventoryApiTest extends TestCase
 
         $this->deleteJson('/api/suppliers/'.$supplier->id)->assertNoContent();
 
-        $this->assertDatabaseMissing('suppliers', ['id' => $supplier->id]);
-        $this->assertNull($product->fresh()->supplier_id);
+        $this->assertSoftDeleted('suppliers', ['id' => $supplier->id]);
+        $this->assertSame($supplier->id, $product->fresh()->supplier_id);
     }
 
     public function test_products_can_be_filtered_by_supplier(): void
@@ -354,9 +362,12 @@ class InventoryApiTest extends TestCase
             'min_quantity' => 2,
             'price' => 3.50,
         ]));
+        [$warehouse, $location] = $this->placeLegacyStock($product);
 
         $this->postJson('/api/stock-movements', [
             'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'location_id' => $location->id,
             'type' => 'in',
             'quantity' => 2,
             'reason' => 'Counted delivery',
@@ -365,6 +376,8 @@ class InventoryApiTest extends TestCase
 
         $this->postJson('/api/stock-movements', [
             'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'location_id' => $location->id,
             'type' => 'out',
             'quantity' => 1,
             'reason' => 'Damaged unit',
@@ -392,9 +405,12 @@ class InventoryApiTest extends TestCase
             'min_quantity' => 0,
             'price' => 1,
         ]));
+        [$warehouse, $location] = $this->placeLegacyStock($product);
         $key = (string) Str::uuid();
         $payload = [
             'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'location_id' => $location->id,
             'type' => 'out',
             'quantity' => 2,
             'reason' => 'Count correction',
@@ -413,7 +429,7 @@ class InventoryApiTest extends TestCase
         $this->assertSame(8.0, $product->refresh()->quantity);
     }
 
-    public function test_product_quantity_edit_creates_an_auditable_adjustment(): void
+    public function test_product_quantity_edit_is_rejected_after_opening_stock_exists(): void
     {
         $this->actingAsApiUser();
         $category = Category::create($this->tenantAttributes(['name' => 'Adjustments']));
@@ -430,16 +446,14 @@ class InventoryApiTest extends TestCase
         $this->putJson('/api/products/'.$created->json('id'), [
             'quantity' => 8,
             'quantity_change_reason' => 'Physical recount confirmed three additional units',
-        ])->assertOk()->assertJsonPath('quantity', 8);
+        ])->assertUnprocessable()->assertJsonValidationErrors(['quantity', 'quantity_change_reason']);
 
         $this->assertDatabaseHas('stock_movements', [
             'product_id' => $created->json('id'),
-            'movement_code' => 'manual_adjustment_in',
-            'source_type' => 'product_edit',
-            'quantity' => 3,
-            'quantity_before' => 5,
-            'quantity_after' => 8,
+            'movement_code' => 'opening_balance',
+            'quantity' => 5,
         ]);
+        $this->assertSame(5.0, (float) Product::findOrFail($created->json('id'))->quantity);
     }
 
     public function test_inventory_reconciliation_adds_ledger_history_without_changing_product_balance(): void
@@ -469,6 +483,40 @@ class InventoryApiTest extends TestCase
             'quantity_before' => 0,
             'quantity_after' => 10,
         ]);
+    }
+
+    /** @return array{0: Warehouse, 1: WarehouseLocation} */
+    private function placeLegacyStock(Product $product): array
+    {
+        $warehouse = Warehouse::create($this->tenantAttributes([
+            'name' => 'API adjustment warehouse '.Str::random(5),
+            'code' => 'API-'.Str::upper(Str::random(6)),
+            'is_active' => true,
+            'is_default' => true,
+        ]));
+        $location = WarehouseLocation::create($this->tenantAttributes([
+            'warehouse_id' => $warehouse->id,
+            'type' => 'bin',
+            'code' => 'A-01',
+            'name' => 'API adjustment bin',
+            'path' => 'A-01',
+            'is_active' => true,
+        ]));
+        $product->update(['default_warehouse_id' => $warehouse->id]);
+        WarehouseStock::create($this->tenantAttributes([
+            'warehouse_id' => $warehouse->id,
+            'product_id' => $product->id,
+            'location_id' => $location->id,
+            'location_key' => $location->id,
+            'quantity' => $product->quantity,
+            'available_quantity' => $product->quantity,
+            'reserved_quantity' => 0,
+            'damaged_quantity' => 0,
+            'quarantine_quantity' => 0,
+            'blocked_quantity' => 0,
+        ]));
+
+        return [$warehouse, $location];
     }
 
     public function test_stock_import_uses_the_inventory_ledger_and_supports_meter_decimals(): void

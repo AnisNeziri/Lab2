@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\StockMovement;
 use App\Models\StockMovementTrace;
 use App\Models\Warehouse;
+use App\Models\WarehouseStock;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -23,6 +24,9 @@ class TraceabilityService
         'daily_sale', 'invoice_sale', 'transfer_out', 'bin_transfer_out', 'warehouse_pick',
     ];
 
+    /** Normal supplier receipts; opening/import/reconciliation history remains importable. */
+    private const EXPIRED_RECEIPT_BLOCKED_MOVEMENTS = ['purchase_receipt', 'damage_received'];
+
     /**
      * Apply the trace side of an already validated aggregate stock movement.
      * This must be called inside the same DB transaction as the movement and
@@ -36,6 +40,7 @@ class TraceabilityService
         string $stockState,
         array $allocations = [],
         bool $allowExpiredOverride = false,
+        bool $allowExpiredReceiptOverride = false,
     ): Collection {
         $mode = $product->tracking_mode ?: 'none';
         if (! in_array($mode, self::MODES, true)) {
@@ -52,6 +57,8 @@ class TraceabilityService
         $requestedQuantity = round((float) $movement->quantity, 3);
         $blocksExpiredStock = ! $allowExpiredOverride && $movement->type === 'out'
             && in_array($movement->movement_code, self::EXPIRY_BLOCKED_MOVEMENTS, true);
+        $blocksExpiredReceipt = ! $allowExpiredReceiptOverride && $movement->type === 'in'
+            && in_array($movement->movement_code, self::EXPIRED_RECEIPT_BLOCKED_MOVEMENTS, true);
         if ($allocations === [] && $movement->type === 'out' && $mode !== 'serial' && $product->fefo_enabled) {
             $allocations = $this->fefoAllocations(
                 $product,
@@ -69,19 +76,28 @@ class TraceabilityService
             throw ValidationException::withMessages(['trace_allocations' => [$message]]);
         }
 
-        $resolved = collect($allocations)->map(function (array $allocation) use ($product, $movement, $blocksExpiredStock): array {
+        $resolved = collect($allocations)->map(function (array $allocation) use ($product, $movement, $blocksExpiredStock, $blocksExpiredReceipt): array {
             $quantity = round((float) ($allocation['quantity'] ?? 0), 3);
             if ($quantity <= 0) {
                 throw ValidationException::withMessages(['trace_allocations' => ['Every trace allocation quantity must be greater than zero.']]);
             }
             $lot = $movement->type === 'in'
-                ? $this->resolveInboundIdentity($product, $allocation)
+                ? $this->resolveInboundIdentity($product, $allocation, true, $movement->occurred_at)
                 : $this->resolveExistingIdentity($product, $allocation);
 
             if ($blocksExpiredStock && $lot->expiry_at && $lot->expiry_at->lt(now()->startOfDay())) {
                 throw ValidationException::withMessages([
                     'trace_allocations' => [
                         "Expired lot {$this->displayIdentity($lot)} cannot be sold, picked, or transferred as normal stock.",
+                    ],
+                ]);
+            }
+
+            $receiptDate = ($movement->occurred_at ?: now())->copy()->startOfDay();
+            if ($blocksExpiredReceipt && $lot->expiry_at && $lot->expiry_at->lt($receiptDate)) {
+                throw ValidationException::withMessages([
+                    'trace_allocations' => [
+                        "Expired lot {$this->displayIdentity($lot)} cannot be received as normal stock without an authorized reason.",
                     ],
                 ]);
             }
@@ -213,6 +229,193 @@ class TraceabilityService
         return $allocations;
     }
 
+    /**
+     * Allocate a tracked outbound operation across all eligible bins while
+     * keeping each resulting movement location-specific. Automatic plans are
+     * globally FEFO ordered; explicit lot/serial selections are preserved and
+     * resolved to the bins that actually hold those identities.
+     *
+     * @return array<int, array{location_id: int|null, quantity: float, trace_allocations: array<int, array{inventory_lot_id: int, quantity: float}>}>
+     */
+    public function outboundLocationAllocations(
+        Product $product,
+        Warehouse $warehouse,
+        ?int $locationId,
+        string $stockState,
+        float $quantity,
+        array $allocations = [],
+        bool $allowExpired = false,
+    ): array {
+        if (! in_array($stockState, WarehouseInventoryService::STATES, true)) {
+            throw ValidationException::withMessages(['stock_state' => ['The selected inventory state is invalid.']]);
+        }
+
+        $quantity = round($quantity, 3);
+        if ($quantity <= 0) {
+            throw ValidationException::withMessages(['quantity' => ['Quantity must be greater than zero.']]);
+        }
+
+        $mode = $product->tracking_mode ?: 'none';
+        if ($allocations === []) {
+            if ($mode === 'serial') {
+                throw ValidationException::withMessages(['trace_allocations' => ['Select every serial number for this stock movement.']]);
+            }
+            if (! $product->fefo_enabled) {
+                throw ValidationException::withMessages(['trace_allocations' => ['Enter the lot or batch allocation for this stock movement.']]);
+            }
+        }
+
+        $stateColumn = $stockState.'_quantity';
+        $warehouseBalances = WarehouseStock::withoutGlobalScopes()
+            ->where('company_id', $product->company_id)
+            ->where('product_id', $product->id)
+            ->where('warehouse_id', $warehouse->id)
+            ->when($locationId !== null, fn ($query) => $query->where('location_key', $locationId))
+            ->where($stateColumn, '>', 0)
+            ->orderBy('location_key')->orderBy('id')
+            ->lockForUpdate()->get();
+        $capacity = $warehouseBalances->mapWithKeys(fn (WarehouseStock $balance) => [
+            (int) $balance->location_key => round((float) $balance->{$stateColumn}, 3),
+        ])->all();
+
+        if (round((float) array_sum($capacity), 3) + 0.0005 < $quantity) {
+            throw ValidationException::withMessages([
+                'quantity' => ['Tracked stock across the eligible bins is insufficient for this movement.'],
+            ]);
+        }
+
+        $requests = null;
+        $lotIds = [];
+        if ($allocations !== []) {
+            $requests = collect($allocations)->map(function (array $allocation) use ($product): array {
+                $requested = round((float) ($allocation['quantity'] ?? 0), 3);
+                if ($requested <= 0) {
+                    throw ValidationException::withMessages(['trace_allocations' => ['Every trace allocation quantity must be greater than zero.']]);
+                }
+                $lot = $this->resolveExistingIdentity($product, $allocation);
+
+                return [
+                    'inventory_lot_id' => (int) $lot->id,
+                    'quantity' => $requested,
+                    // Internal callers (mobile picking) may pin a selected
+                    // lot/serial to the scanned bin.
+                    'location_id' => array_key_exists('location_id', $allocation)
+                        ? ($allocation['location_id'] === null ? null : (int) $allocation['location_id'])
+                        : null,
+                    'location_is_explicit' => array_key_exists('location_id', $allocation),
+                ];
+            })->values();
+            $allocated = round((float) $requests->sum('quantity'), 3);
+            if (abs($allocated - $quantity) >= 0.0005) {
+                throw ValidationException::withMessages([
+                    'trace_allocations' => ["Trace allocations total {$allocated}; the movement quantity is {$quantity}."],
+                ]);
+            }
+            $lotIds = $requests->pluck('inventory_lot_id')->unique()->all();
+        }
+
+        $traceBalances = InventoryTraceBalance::withoutGlobalScopes()
+            ->select('inventory_trace_balances.*')
+            ->join('inventory_lots', 'inventory_lots.id', '=', 'inventory_trace_balances.inventory_lot_id')
+            ->where('inventory_trace_balances.company_id', $product->company_id)
+            ->where('inventory_lots.product_id', $product->id)
+            ->where('inventory_trace_balances.warehouse_id', $warehouse->id)
+            ->when($locationId !== null, fn ($query) => $query->where('inventory_trace_balances.location_key', $locationId))
+            ->where('inventory_trace_balances.stock_state', $stockState)
+            ->where('inventory_trace_balances.quantity', '>', 0)
+            ->when($lotIds !== [], fn ($query) => $query->whereIn('inventory_trace_balances.inventory_lot_id', $lotIds))
+            ->when($allocations === [] && ! $allowExpired, fn ($query) => $query->where(function ($lotQuery): void {
+                $lotQuery->whereNull('inventory_lots.expiry_at')
+                    ->orWhereDate('inventory_lots.expiry_at', '>=', now()->toDateString());
+            }))
+            ->orderByRaw('CASE WHEN inventory_lots.expiry_at IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('inventory_lots.expiry_at')
+            ->orderBy('inventory_lots.created_at')
+            ->orderBy('inventory_lots.id')
+            ->orderBy('inventory_trace_balances.location_key')
+            ->orderBy('inventory_trace_balances.id')
+            ->lockForUpdate()->get();
+
+        $plans = [];
+        $traceCapacity = $traceBalances->mapWithKeys(fn (InventoryTraceBalance $balance) => [
+            (int) $balance->id => round((float) $balance->quantity, 3),
+        ])->all();
+        $append = function (InventoryTraceBalance $balance, float $take) use (&$plans, &$capacity, &$traceCapacity): void {
+            $locationKey = (int) $balance->location_key;
+            $key = (string) $locationKey;
+            $plans[$key] ??= [
+                'location_id' => $balance->location_id ? (int) $balance->location_id : null,
+                'quantity' => 0.0,
+                'trace_allocations' => [],
+            ];
+            $plans[$key]['quantity'] = round($plans[$key]['quantity'] + $take, 3);
+            $lotId = (int) $balance->inventory_lot_id;
+            $plans[$key]['trace_allocations'][$lotId] ??= ['inventory_lot_id' => $lotId, 'quantity' => 0.0];
+            $plans[$key]['trace_allocations'][$lotId]['quantity'] = round(
+                $plans[$key]['trace_allocations'][$lotId]['quantity'] + $take,
+                3,
+            );
+            $capacity[$locationKey] = round(($capacity[$locationKey] ?? 0) - $take, 3);
+            $traceCapacity[(int) $balance->id] = round(($traceCapacity[(int) $balance->id] ?? 0) - $take, 3);
+        };
+
+        if ($requests !== null) {
+            foreach ($requests as $request) {
+                $remaining = (float) $request['quantity'];
+                $candidates = $traceBalances
+                    ->where('inventory_lot_id', $request['inventory_lot_id'])
+                    ->when($request['location_is_explicit'], fn ($rows) => $rows->where(
+                        'location_key',
+                        (int) ($request['location_id'] ?? 0),
+                    ));
+                foreach ($candidates as $balance) {
+                    if ($remaining < 0.0005) {
+                        break;
+                    }
+                    $locationCapacity = max(0, (float) ($capacity[(int) $balance->location_key] ?? 0));
+                    $lotCapacity = max(0, (float) ($traceCapacity[(int) $balance->id] ?? 0));
+                    $take = round(min($remaining, $lotCapacity, $locationCapacity), 3);
+                    if ($take <= 0) {
+                        continue;
+                    }
+                    $append($balance, $take);
+                    $remaining = round($remaining - $take, 3);
+                }
+                if ($remaining >= 0.0005) {
+                    throw ValidationException::withMessages([
+                        'trace_allocations' => ['A selected lot or serial does not have enough stock in the eligible bins.'],
+                    ]);
+                }
+            }
+        } else {
+            $remaining = $quantity;
+            foreach ($traceBalances as $balance) {
+                if ($remaining < 0.0005) {
+                    break;
+                }
+                $locationCapacity = max(0, (float) ($capacity[(int) $balance->location_key] ?? 0));
+                $lotCapacity = max(0, (float) ($traceCapacity[(int) $balance->id] ?? 0));
+                $take = round(min($remaining, $lotCapacity, $locationCapacity), 3);
+                if ($take <= 0) {
+                    continue;
+                }
+                $append($balance, $take);
+                $remaining = round($remaining - $take, 3);
+            }
+            if ($remaining >= 0.0005) {
+                throw ValidationException::withMessages([
+                    'trace_allocations' => ['Valid tracked stock across the eligible bins is insufficient for this movement.'],
+                ]);
+            }
+        }
+
+        return collect($plans)->map(function (array $plan): array {
+            $plan['trace_allocations'] = array_values($plan['trace_allocations']);
+
+            return $plan;
+        })->values()->all();
+    }
+
     public function expiring(Product $product, ?int $warehouseId = null, ?int $withinDays = null): Collection
     {
         $days = $withinDays ?? (int) ($product->near_expiry_days ?: 30);
@@ -244,7 +447,12 @@ class TraceabilityService
         return $this->resolveInboundIdentity($product, $trace, false);
     }
 
-    private function resolveInboundIdentity(Product $product, array $allocation, bool $validateActiveSerial = true): InventoryLot
+    private function resolveInboundIdentity(
+        Product $product,
+        array $allocation,
+        bool $validateActiveSerial = true,
+        ?Carbon $receiptDate = null,
+    ): InventoryLot
     {
         if (! empty($allocation['inventory_lot_id'])) {
             return $this->resolveExistingIdentity($product, $allocation);
@@ -257,9 +465,19 @@ class TraceabilityService
         $manufacturedAt = $this->nullableDate($allocation['manufactured_at'] ?? $allocation['manufacturing_date'] ?? null);
         $expirationControlled = (bool) $product->expiration_controlled || $mode === 'batch_expiry';
         if ($expirationControlled && ! $expiryAt && (int) $product->default_shelf_life_days > 0) {
-            $expiryAt = ($manufacturedAt ?: now()->startOfDay())
-                ->copy()
-                ->addDays((int) $product->default_shelf_life_days);
+            $basis = $product->shelf_life_basis ?: 'manufacture_date';
+            if ($basis === 'manufacture_date' && ! $manufacturedAt) {
+                throw ValidationException::withMessages([
+                    'trace_allocations' => ['Enter a manufacture date to derive expiry, or enter an explicit expiry date.'],
+                ]);
+            }
+            if ($basis === 'receipt_date' && ! $receiptDate) {
+                throw ValidationException::withMessages([
+                    'trace_allocations' => ['Enter an explicit expiry date because this operation has no receipt date.'],
+                ]);
+            }
+            $expiryAt = ($basis === 'receipt_date' ? $receiptDate : $manufacturedAt)
+                ->copy()->startOfDay()->addDays((int) $product->default_shelf_life_days);
         }
         if ($mode === 'serial' && ! $serialNumber) {
             throw ValidationException::withMessages(['trace_allocations' => ['A serial number is required for this product.']]);
@@ -282,6 +500,9 @@ class TraceabilityService
             ->where('identity_key', $identityKey)
             ->first();
         if ($existing) {
+            if ($mode === 'serial') {
+                $this->assertSerialDatesPreserved($existing, $manufacturedAt, $expiryAt);
+            }
             if ($validateActiveSerial && $mode === 'serial'
                 && (float) InventoryTraceBalance::withoutGlobalScopes()->where('inventory_lot_id', $existing->id)->sum('quantity') >= 0.0005) {
                 throw ValidationException::withMessages(['trace_allocations' => ["Serial number {$serialNumber} is already active in inventory."]]);
@@ -362,6 +583,20 @@ class TraceabilityService
     private function nullableDate(mixed $value): ?Carbon
     {
         return blank($value) ? null : Carbon::parse($value)->startOfDay();
+    }
+
+    private function assertSerialDatesPreserved(InventoryLot $lot, ?Carbon $manufacturedAt, ?Carbon $expiryAt): void
+    {
+        foreach ([
+            'manufacture date' => [$lot->manufactured_at, $manufacturedAt],
+            'expiry date' => [$lot->expiry_at, $expiryAt],
+        ] as $label => [$stored, $submitted]) {
+            if ($submitted && (! $stored || ! $stored->isSameDay($submitted))) {
+                throw ValidationException::withMessages([
+                    'trace_allocations' => ["The {$label} for serial {$lot->serial_number} cannot differ from its preserved history."],
+                ]);
+            }
+        }
     }
 
     private function displayIdentity(InventoryLot $lot): string

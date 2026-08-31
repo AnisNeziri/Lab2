@@ -24,6 +24,7 @@ import { useAuthStore } from '../store/authStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useTranslation } from '../hooks/useTranslation'
 import { formatQuantity, isMeterUnit } from '../utils/formatQuantity'
+import { getInventoryQuantity } from '../utils/inventoryQuantity'
 import './WarehouseOperations.css'
 
 const warehouseBlank = {
@@ -44,7 +45,7 @@ const requestKey = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${M
 const locatorColors = ['#258cf4', '#7c3aed', '#0891b2', '#059669', '#d97706', '#db2777']
 
 function normalizedBalance(balance) {
-  const available = Number(balance.available_quantity || 0)
+  const available = Number(balance.available_quantity ?? balance.available ?? balance.quantity ?? 0)
   const reserved = Number(balance.reserved_quantity || 0)
   const damaged = Number(balance.damaged_quantity || 0)
   const quarantine = Number(balance.quarantine_quantity || 0)
@@ -175,13 +176,13 @@ export default function WarehouseOperations() {
     })
     return [...options.values()].sort((left, right) => left.name.localeCompare(right.name))
   }, [products])
-  const matchesLocatorFilters = useCallback((product, quantityOverride = null) => {
+  const matchesLocatorFilters = useCallback((product, availableOverride = null) => {
     const categoryId = product.category_id ?? product.category?.id
     const supplierId = product.supplier_id ?? product.supplier?.id
     if (locatorCategoryId && String(categoryId ?? '') !== locatorCategoryId) return false
     if (locatorSupplierId && String(supplierId ?? '') !== locatorSupplierId) return false
     if (locatorLowOnly) {
-      const quantity = Number(quantityOverride ?? product.quantity ?? 0)
+      const quantity = Number(availableOverride ?? getInventoryQuantity(product, 'available'))
       const minimum = Number(product.min_quantity ?? 0)
       if (quantity > minimum) return false
     }
@@ -227,7 +228,7 @@ export default function WarehouseOperations() {
       .filter((balance) => String(balance.warehouse_id) === String(selectedWarehouseId))
       .map((balance) => ({ product, ...normalizedBalance(balance) })))
       .filter((row) => row.total > 0)
-      .filter((row) => matchesLocatorFilters(row.product, row.total))
+      .filter((row) => matchesLocatorFilters(row.product, row.available))
       .filter((row) => !query || [row.product.name, row.product.sku, row.product.barcode, row.location?.path]
         .some((value) => String(value || '').toLocaleLowerCase().includes(query)))
       .sort((left, right) => left.product.name.localeCompare(right.product.name))
@@ -239,10 +240,12 @@ export default function WarehouseOperations() {
   const productFor = (productId) => products.find((product) => String(product.id) === String(productId))
   const sourceAvailable = (product) => {
     if (!product || !transferForm.source_warehouse_id) return null
-    return (product.warehouse_stock || [])
+    const balances = Array.isArray(product.warehouse_stock) ? product.warehouse_stock : null
+    if (!balances?.length) return getInventoryQuantity(product, 'available')
+    return balances
       .filter((balance) => String(balance.warehouse_id) === String(transferForm.source_warehouse_id)
         && (!transferForm.source_location_id || String(balance.location_id || '') === String(transferForm.source_location_id)))
-      .reduce((total, balance) => total + Number(balance.available_quantity || 0), 0)
+      .reduce((total, balance) => total + Number(balance.available_quantity ?? balance.available ?? balance.quantity ?? 0), 0)
   }
 
   async function perform(action, success) {
@@ -421,10 +424,10 @@ export default function WarehouseOperations() {
         {locatorMode === 'product' ? <>
           <div className="stock-locator-product-grid">
             {locatorProducts.map((product) => {
-              const balanceCount = (product.warehouse_stock || []).filter((balance) => Number(balance.quantity || balance.available_quantity || 0) > 0).length
+              const balanceCount = (product.warehouse_stock || []).filter((balance) => Number(balance.quantity ?? balance.available_quantity ?? 0) > 0).length
               return <button key={product.id} type="button" className={String(product.id) === String(locatedProductId) ? 'active' : ''} onClick={() => setLocatedProductId(product.id)}>
                 <span className="stock-locator-product-icon"><PackageCheck size={18} /></span>
-                <span><strong>{product.name}</strong><small>{product.sku || t('warehouseOps.locatorNoSku')} · {formatQuantity(product.quantity, product.unit)} {product.unit}</small></span>
+                <span><strong>{product.name}</strong><small>{product.sku || t('warehouseOps.locatorNoSku')} · {formatQuantity(getInventoryQuantity(product, 'available'), product.unit)} {product.unit}</small></span>
                 <em>{balanceCount}</em>
               </button>
             })}
@@ -519,7 +522,7 @@ export default function WarehouseOperations() {
             const allowsDecimals = isMeterUnit(product?.unit)
             return <div className="transfer-line" key={index}>
               <label className="transfer-product-control"><span>{t('warehouseOps.selectProduct')}</span><select required value={line.product_id} onChange={(event) => setTransferForm((current) => ({ ...current, items: current.items.map((row, rowIndex) => rowIndex === index ? { ...row, product_id: event.target.value, quantity: '' } : row) }))}><option value="">{t('common.select')}</option>{products.map((option) => { const stock = sourceAvailable(option); return <option key={option.id} value={option.id}>{option.name}{stock == null ? '' : ` · ${t('warehouseOps.availableShort')} ${formatQuantity(stock, option.unit)} ${option.unit}`}</option> })}</select>{product && available != null ? <small className={available <= 0 ? 'is-empty' : ''}>{t('warehouseOps.sourceAvailable')}: {formatQuantity(available, product.unit)} {product.unit}</small> : null}</label>
-              <label className="transfer-quantity-control"><span>{t('warehouseOps.quantity')}</span><input required type="number" min={allowsDecimals ? '0.001' : '1'} step={allowsDecimals ? '0.001' : '1'} max={available > 0 ? available : undefined} inputMode="decimal" placeholder="0" value={line.quantity} onChange={(event) => setTransferForm((current) => ({ ...current, items: current.items.map((row, rowIndex) => rowIndex === index ? { ...row, quantity: event.target.value } : row) }))}/></label>
+              <label className="transfer-quantity-control"><span>{t('warehouseOps.quantity')}</span><input required type="number" min={allowsDecimals ? '0.001' : '1'} step={allowsDecimals ? '0.001' : '1'} max={available != null ? available : undefined} inputMode="decimal" placeholder="0" value={line.quantity} onChange={(event) => setTransferForm((current) => ({ ...current, items: current.items.map((row, rowIndex) => rowIndex === index ? { ...row, quantity: event.target.value } : row) }))}/></label>
               {transferForm.items.length > 1 && <button type="button" className="icon-danger transfer-remove-item" aria-label={t('common.delete')} onClick={() => setTransferForm((current) => ({ ...current, items: current.items.filter((_, rowIndex) => rowIndex !== index) }))}><X size={16} /></button>}
             </div>
           })}</div></fieldset>

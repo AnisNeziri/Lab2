@@ -26,6 +26,7 @@ class InventoryReturnService
         private readonly FinancialAccountService $accounts,
         private readonly CustomerDebtService $debts,
         private readonly ExpenseService $expenses,
+        private readonly InventoryIntegrityService $integrity,
     ) {}
 
     public function list(array $filters): LengthAwarePaginator
@@ -196,6 +197,7 @@ class InventoryReturnService
             ]);
             if ($item->condition === 'scrap') {
                 $this->stock->store([...$common, 'type' => 'out', 'movement_code' => 'damage_writeoff', 'idempotency_key' => $return->idempotency_key.'-scrap-'.$item->id]);
+                $this->integrity->assertProductReconciled(Product::query()->findOrFail($item->product_id));
             }
         } else {
             $this->stock->store([...$common, 'type' => 'out', 'movement_code' => 'supplier_return', 'idempotency_key' => $return->idempotency_key.'-stock-'.$item->id]);

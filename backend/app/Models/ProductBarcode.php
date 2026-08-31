@@ -11,7 +11,7 @@ class ProductBarcode extends Model
     use BelongsToCompany;
 
     protected $fillable = [
-        'company_id', 'product_id', 'barcode', 'label', 'is_active',
+        'company_id', 'product_id', 'barcode', 'barcode_normalized', 'label', 'is_active',
     ];
 
     protected function casts(): array

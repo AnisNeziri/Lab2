@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\WarehouseSection;
 use App\Repositories\Contracts\ProductRepositoryInterface;
 use App\Services\ProductService;
+use App\Services\InventorySnapshotService;
 use App\Services\TraceabilityService;
 use App\Services\UnitConversionService;
 use App\Support\SafeBroadcast;
@@ -22,6 +23,7 @@ class ProductController extends Controller
         private ProductService $productService,
         private ProductRepositoryInterface $productRepository,
         private UnitConversionService $unitConversions,
+        private InventorySnapshotService $inventorySnapshots,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -42,7 +44,10 @@ class ProductController extends Controller
         $validated['low_stock'] = $request->boolean('low_stock');
         $validated['include_archived'] = $request->boolean('include_archived');
 
-        return response()->json($this->productService->list($validated, $perPage));
+        $products = $this->productService->list($validated, $perPage);
+        $this->attachInventorySnapshots($products->getCollection());
+
+        return response()->json($products);
     }
 
     public function export()
@@ -61,6 +66,7 @@ class ProductController extends Controller
         if (! $product) {
             return response()->json(['message' => 'Product not found.'], 404);
         }
+        $this->attachInventorySnapshots(collect([$product]));
 
         return response()->json($product);
     }
@@ -92,7 +98,7 @@ class ProductController extends Controller
                 $balance = $product->warehouseStock->first(fn ($row) => (int) $row->warehouse_id === (int) $section->warehouse_id
                     && (int) $row->location_id === (int) $section->warehouse_location_id);
                 if ($balance) {
-                    $product->setAttribute('quantity', (float) $balance->available_quantity);
+                    $product->setAttribute('shelf_available_quantity', (float) $balance->available_quantity);
                 }
             });
 
@@ -129,6 +135,7 @@ class ProductController extends Controller
             'tracking_mode' => ['nullable', Rule::in(TraceabilityService::MODES)],
             'expiration_controlled' => ['nullable', 'boolean'],
             'default_shelf_life_days' => ['nullable', 'integer', 'min:1', 'max:36500'],
+            'shelf_life_basis' => ['nullable', Rule::in(['manufacture_date', 'receipt_date'])],
             'near_expiry_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
             'fefo_enabled' => ['nullable', 'boolean'],
             'quantity' => ['required', 'numeric', 'min:0'],
@@ -192,6 +199,7 @@ class ProductController extends Controller
             ->get();
 
         $product->append('image_url');
+        $this->attachInventorySnapshots(collect([$product]));
 
         return response()->json([
             'product' => $product,
@@ -239,10 +247,11 @@ class ProductController extends Controller
             'tracking_mode' => ['sometimes', Rule::in(TraceabilityService::MODES)],
             'expiration_controlled' => ['sometimes', 'boolean'],
             'default_shelf_life_days' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:36500'],
+            'shelf_life_basis' => ['sometimes', Rule::in(['manufacture_date', 'receipt_date'])],
             'near_expiry_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
             'fefo_enabled' => ['nullable', 'boolean'],
-            'quantity' => ['sometimes', 'required', 'numeric', 'min:0'],
-            'quantity_change_reason' => ['nullable', 'string', 'max:500'],
+            'quantity' => ['prohibited'],
+            'quantity_change_reason' => ['prohibited'],
             'unit' => ['nullable', 'string', 'max:20'],
             'min_quantity' => ['sometimes', 'required', 'numeric', 'min:0'],
             'safety_stock' => ['sometimes', 'nullable', 'numeric', 'min:0'],
@@ -295,6 +304,28 @@ class ProductController extends Controller
                 $this->unitConversions->assertPrecision((float) $data[$field], $unit, $field);
             }
         }
+    }
+
+    private function attachInventorySnapshots(\Illuminate\Support\Collection $products): void
+    {
+        $snapshots = $this->inventorySnapshots->forProducts($products);
+        $products->each(function (Product $product) use ($snapshots): void {
+            $inventory = $snapshots->get((int) $product->id, [
+                'on_hand' => 0.0, 'available' => 0.0, 'reserved' => 0.0,
+                'damaged' => 0.0, 'quarantine' => 0.0, 'blocked' => 0.0,
+                'incoming' => 0.0, 'projected' => 0.0,
+            ]);
+            $product->setAttribute('inventory', $inventory);
+            foreach ($inventory as $name => $quantity) {
+                $attribute = match ($name) {
+                    'on_hand' => 'on_hand_quantity',
+                    'incoming' => 'incoming_quantity',
+                    'projected' => 'projected_quantity',
+                    default => $name.'_quantity',
+                };
+                $product->setAttribute($attribute, $quantity);
+            }
+        });
     }
 
     private function generateSku(int $companyId): string

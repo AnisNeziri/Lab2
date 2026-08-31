@@ -11,6 +11,7 @@ use App\Models\StockTransfer;
 use App\Models\StockTransferItem;
 use App\Models\Warehouse;
 use App\Models\WarehouseStock;
+use App\Support\BarcodeIdentity;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -22,6 +23,7 @@ class MobileWarehouseService
         private readonly BinTransferService $binTransfers,
         private readonly InventoryCountService $counts,
         private readonly WarehouseOperationsService $warehouseOperations,
+        private readonly InventorySnapshotService $inventorySnapshots,
     ) {}
 
     public function bootstrap(): array
@@ -75,11 +77,17 @@ class MobileWarehouseService
     public function lookup(string $code): array
     {
         $code = trim($code);
-        $normalized = mb_strtolower($code);
+        $caseFoldedCode = mb_strtolower($code);
+        $barcodeIdentity = BarcodeIdentity::normalize($code);
         $product = Product::query()
             ->where(fn ($query) => $query
-                ->whereRaw('LOWER(COALESCE(barcode, ?)) = ?', ['', $normalized])
-                ->orWhereRaw('LOWER(COALESCE(sku, ?)) = ?', ['', $normalized]))
+                ->whereRaw('LOWER(COALESCE(barcode, ?)) = ?', ['', $caseFoldedCode])
+                ->orWhereRaw('LOWER(COALESCE(sku, ?)) = ?', ['', $caseFoldedCode])
+                ->when($barcodeIdentity, fn ($identityQuery) => $identityQuery
+                    ->orWhere('barcode_normalized', $barcodeIdentity)
+                    ->orWhereHas('alternativeBarcodes', fn ($barcodes) => $barcodes
+                        ->where('is_active', true)
+                        ->where('barcode_normalized', $barcodeIdentity))))
             ->first();
 
         if (! $product) {
@@ -87,7 +95,17 @@ class MobileWarehouseService
                 ->where(fn ($query) => $query
                     ->where('name', 'like', "%{$code}%")
                     ->orWhere('sku', 'like', "%{$code}%")
-                    ->orWhere('barcode', 'like', "%{$code}%"))
+                    ->orWhere('barcode', 'like', "%{$code}%")
+                    ->when($barcodeIdentity, fn ($barcode) => $barcode
+                        ->orWhere('barcode_normalized', 'like', "%{$barcodeIdentity}%"))
+                    ->orWhereHas('alternativeBarcodes', fn ($barcodes) => $barcodes
+                        ->where('is_active', true)
+                        ->where(function ($barcode) use ($code, $barcodeIdentity): void {
+                            $barcode->where('barcode', 'like', "%{$code}%");
+                            if ($barcodeIdentity) {
+                                $barcode->orWhere('barcode_normalized', 'like', "%{$barcodeIdentity}%");
+                            }
+                        })))
                 ->orderBy('name')->limit(12)
                 ->get(['id', 'name', 'sku', 'barcode', 'unit', 'quantity']);
 
@@ -164,6 +182,7 @@ class MobileWarehouseService
 
         return [
             'product' => $product,
+            'inventory' => $this->inventorySnapshots->forProduct($product),
             'matches' => [],
             'balances' => $balances,
             'lots' => $lots,
@@ -184,6 +203,8 @@ class MobileWarehouseService
             'received_at' => $data['received_at'] ?? now(),
             'reason' => $data['reason'] ?? 'Mobile warehouse receipt',
             'notes' => $data['notes'] ?? null,
+            'allow_expired_receipt' => (bool) ($data['allow_expired_receipt'] ?? false),
+            'expired_receipt_reason' => $data['expired_receipt_reason'] ?? null,
             'idempotency_key' => $data['idempotency_key'],
             'items' => [[
                 'id' => $data['purchase_order_item_id'],
@@ -251,9 +272,6 @@ class MobileWarehouseService
             }
             if ($transfer->source_location_id && (int) $transfer->source_location_id !== (int) $data['location_id']) {
                 throw ValidationException::withMessages(['location_id' => ['The scanned bin does not match the transfer source bin.']]);
-            }
-            if (! $transfer->source_location_id) {
-                $transfer->update(['source_location_id' => $data['location_id']]);
             }
 
             $quantity = round((float) $data['quantity'], 3);

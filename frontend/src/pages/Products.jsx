@@ -10,13 +10,13 @@ import {
   updateProduct,
 } from '../api/products'
 import { importProducts } from '../api/import'
-import StockBadge from '../components/StockBadge'
 import { useAuthStore } from '../store/authStore'
 import { Upload } from 'lucide-react'
 import { getWarehouseSections } from '../api/warehouse'
 import { getWarehouses } from '../api/warehouseOperations'
 import { sectionLocationKey } from '../lib/warehouseLayout'
 import { formatQuantity, isMeterUnit } from '../utils/formatQuantity'
+import { getInventoryQuantity } from '../utils/inventoryQuantity'
 import ProductDetail from '../components/ProductDetail'
 import SuccessAnimation from '../components/SuccessAnimation'
 import { useTranslation } from '../hooks/useTranslation'
@@ -32,12 +32,12 @@ const emptyForm = {
   attributes: [],
   description: '',
   quantity: 0,
-  quantity_change_reason: '',
   unit: 'pcs',
   default_warehouse_id: '',
   tracking_mode: 'none',
   expiration_controlled: false,
   default_shelf_life_days: '',
+  shelf_life_basis: 'manufacture_date',
   near_expiry_days: 30,
   fefo_enabled: true,
   opening_lot_number: '',
@@ -193,7 +193,7 @@ function Products() {
       const next = { ...current, [name]: type === 'checkbox' ? checked : value }
       if (name === 'tracking_mode') {
         if (value === 'batch_expiry') next.expiration_controlled = true
-        if (!['batch', 'batch_expiry'].includes(value)) {
+        if (value === 'none') {
           next.expiration_controlled = false
           next.default_shelf_life_days = ''
         }
@@ -217,13 +217,13 @@ function Products() {
       brand: product.brand ?? '',
       attributes: Object.entries(product.attributes || {}).map(([key, value]) => ({ key, value: String(value) })),
       description: product.description ?? '',
-      quantity: product.quantity,
-      quantity_change_reason: '',
+      quantity: getInventoryQuantity(product, 'on_hand'),
       unit: product.unit ?? 'pcs',
       default_warehouse_id: product.default_warehouse_id ? String(product.default_warehouse_id) : '',
       tracking_mode: product.tracking_mode || 'none',
       expiration_controlled: Boolean(product.expiration_controlled || product.tracking_mode === 'batch_expiry'),
       default_shelf_life_days: product.default_shelf_life_days ?? '',
+      shelf_life_basis: product.shelf_life_basis || 'manufacture_date',
       near_expiry_days: product.near_expiry_days ?? 30,
       fefo_enabled: product.fefo_enabled !== false,
       opening_lot_number: '',
@@ -348,13 +348,19 @@ function Products() {
     const openingTraceAllocations = []
 
     const expirationControlled = Boolean(form.expiration_controlled || form.tracking_mode === 'batch_expiry')
+    if (creating && openingQuantity > 0 && expirationControlled && !form.opening_expiry_at) {
+      if (!form.default_shelf_life_days) {
+        setFormError(t('productTracking.openingExpiryRequired'))
+        return
+      }
+      if (form.shelf_life_basis === 'manufacture_date' && !form.opening_manufactured_at) {
+        setFormError(t('productTracking.openingManufactureRequired'))
+        return
+      }
+    }
     if (creating && openingQuantity > 0 && ['batch', 'batch_expiry'].includes(form.tracking_mode)) {
       if (!form.opening_lot_number.trim()) {
         setFormError(t('productTracking.openingLotRequired'))
-        return
-      }
-      if (expirationControlled && !form.opening_expiry_at && !form.default_shelf_life_days) {
-        setFormError(t('productTracking.openingExpiryRequired'))
         return
       }
       openingTraceAllocations.push({
@@ -387,12 +393,15 @@ function Products() {
         setFormError(t('productTracking.serialUnique'))
         return
       }
-      openingTraceAllocations.push(...serials.map((serial_number) => ({ serial_number, quantity: 1 })))
+      openingTraceAllocations.push(...serials.map((serial_number) => ({
+        serial_number,
+        manufactured_at: form.opening_manufactured_at || null,
+        expiry_at: form.opening_expiry_at || null,
+        quantity: 1,
+      })))
     }
 
     setSaving(true)
-    const trackedEdit = Boolean(editingId && form.tracking_mode !== 'none')
-
     const payload = {
       category_id: Number(form.category_id),
       supplier_id: form.supplier_id ? Number(form.supplier_id) : null,
@@ -407,13 +416,13 @@ function Products() {
         .filter((row) => row.key.trim() && row.value.trim())
         .map((row) => [row.key.trim(), row.value.trim()])),
       description: form.description || null,
-      ...(!trackedEdit ? { quantity: openingQuantity } : {}),
-      ...(editingId ? { quantity_change_reason: form.quantity_change_reason.trim() || null } : {}),
+      ...(creating ? { quantity: openingQuantity } : {}),
       unit: form.unit || 'pcs',
       default_warehouse_id: form.default_warehouse_id ? Number(form.default_warehouse_id) : null,
       tracking_mode: form.tracking_mode || 'none',
       expiration_controlled: expirationControlled,
       default_shelf_life_days: expirationControlled && form.default_shelf_life_days ? Number(form.default_shelf_life_days) : null,
+      shelf_life_basis: form.shelf_life_basis || 'manufacture_date',
       near_expiry_days: Number(form.near_expiry_days || 0),
       fefo_enabled: Boolean(form.fefo_enabled),
       ...(creating && openingTraceAllocations.length ? { opening_trace_allocations: openingTraceAllocations } : {}),
@@ -510,8 +519,7 @@ function Products() {
     sortBy !== 'name' ||
     sortDirection !== 'asc'
   const editingProduct = editingId ? products.find((product) => product.id === editingId) : null
-  const trackingModeLocked = Boolean(editingProduct && Number(editingProduct.quantity) > 0.0005)
-  const trackedEdit = Boolean(editingId && form.tracking_mode !== 'none')
+  const trackingModeLocked = Boolean(editingProduct && getInventoryQuantity(editingProduct, 'on_hand') > 0.0005)
   const creating = !editingId
   const openingQuantity = Number(form.quantity || 0)
   const expirationEnabled = Boolean(form.expiration_controlled || form.tracking_mode === 'batch_expiry')
@@ -611,7 +619,7 @@ function Products() {
 
           <div className="form-row">
             <label>
-              {t('productUnits.openingQuantity')}
+              {editingId ? t('productUnits.currentOnHand') : t('productUnits.openingQuantity')}
               <input
                 name="quantity"
                 type="number"
@@ -619,10 +627,10 @@ function Products() {
                 step={isMeterUnit(form.unit) ? '0.001' : '1'}
                 value={form.quantity}
                 onChange={handleChange}
-                required={!trackedEdit}
-                disabled={trackedEdit}
+                required={!editingId}
+                disabled={Boolean(editingId)}
               />
-              {trackedEdit ? <small className="field-hint">{t('productTracking.trackedQuantityHint')}</small> : null}
+              {editingId ? <small className="field-hint">{t('productTracking.quantityAdjustmentHint')}</small> : null}
             </label>
 
             <label>
@@ -742,7 +750,7 @@ function Products() {
                 {trackingModeLocked ? <small className="field-hint">{t('productTracking.modeLocked')}</small> : null}
               </label>
 
-              {['batch', 'batch_expiry'].includes(form.tracking_mode) ? (
+              {form.tracking_mode !== 'none' ? (
                 <>
                   <label className="inventory-settings-check">
                     <input name="expiration_controlled" type="checkbox" checked={expirationEnabled} disabled={form.tracking_mode === 'batch_expiry'} onChange={handleChange} />
@@ -750,6 +758,7 @@ function Products() {
                   </label>
                   {expirationEnabled ? <>
                     <label>{t('productTracking.defaultShelfLife')}<input name="default_shelf_life_days" type="number" min="1" max="36500" step="1" value={form.default_shelf_life_days} onChange={handleChange} placeholder={t('productPlanning.optional')} /></label>
+                    <label>{t('productTracking.shelfLifeBasis')}<select name="shelf_life_basis" value={form.shelf_life_basis} onChange={handleChange}><option value="manufacture_date">{t('productTracking.shelfLifeManufacture')}</option><option value="receipt_date">{t('productTracking.shelfLifeReceipt')}</option></select></label>
                     <label>{t('productTracking.nearExpiryDays')}<input name="near_expiry_days" type="number" min="0" max="3650" step="1" value={form.near_expiry_days} onChange={handleChange} /></label>
                     <label className="inventory-settings-check"><input name="fefo_enabled" type="checkbox" checked={form.fefo_enabled} onChange={handleChange} /><span>{t('productTracking.fefo')}</span></label>
                   </> : null}
@@ -771,7 +780,7 @@ function Products() {
                   </label>
                   <label>
                     {t('productTracking.manufacturedAt')}
-                    <input name="opening_manufactured_at" type="date" value={form.opening_manufactured_at} onChange={handleChange} />
+                    <input name="opening_manufactured_at" type="date" value={form.opening_manufactured_at} onChange={handleChange} required={expirationEnabled && Boolean(form.default_shelf_life_days) && form.shelf_life_basis === 'manufacture_date' && !form.opening_expiry_at} />
                   </label>
                   <label>
                     {t('productTracking.expiryAt')}
@@ -783,18 +792,24 @@ function Products() {
             ) : null}
 
             {creating && openingQuantity > 0 && form.tracking_mode === 'serial' ? (
-              <label className="opening-serial-field">
-                {t('productTracking.openingSerials')}
-                <textarea
-                  name="opening_serial_numbers"
-                  value={form.opening_serial_numbers}
-                  onChange={handleChange}
-                  rows={5}
-                  required
-                  placeholder={t('productTracking.openingSerialsPlaceholder')}
-                />
-                <small className="field-hint">{t('productTracking.openingSerialsHint').replace('{{count}}', String(openingQuantity))}</small>
-              </label>
+              <div className="opening-trace-panel">
+                <label className="opening-serial-field">
+                  {t('productTracking.openingSerials')}
+                  <textarea
+                    name="opening_serial_numbers"
+                    value={form.opening_serial_numbers}
+                    onChange={handleChange}
+                    rows={5}
+                    required
+                    placeholder={t('productTracking.openingSerialsPlaceholder')}
+                  />
+                  <small className="field-hint">{t('productTracking.openingSerialsHint').replace('{{count}}', String(openingQuantity))}</small>
+                </label>
+                {expirationEnabled ? <div className="inventory-settings-grid">
+                  <label>{t('productTracking.manufacturedAt')}<input name="opening_manufactured_at" type="date" value={form.opening_manufactured_at} onChange={handleChange} required={Boolean(form.default_shelf_life_days) && form.shelf_life_basis === 'manufacture_date' && !form.opening_expiry_at} /></label>
+                  <label>{t('productTracking.expiryAt')}<input name="opening_expiry_at" type="date" value={form.opening_expiry_at} onChange={handleChange} required={!form.default_shelf_life_days} /></label>
+                </div> : null}
+              </div>
             ) : null}
           </details>
 
@@ -840,18 +855,6 @@ function Products() {
               </div>
             ))}
           </details>
-
-          {editingId && (
-            <label>
-              Reason for quantity change <span className="field-optional">(required only when quantity changes)</span>
-              <input
-                name="quantity_change_reason"
-                value={form.quantity_change_reason}
-                onChange={handleChange}
-                placeholder="e.g. Physical recount, damaged stock correction"
-              />
-            </label>
-          )}
 
           {formError && <p className="error">{formError}</p>}
 
@@ -952,7 +955,7 @@ function Products() {
             <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
               <option value="name">Name</option>
               <option value="sku">SKU</option>
-              <option value="quantity">Quantity</option>
+              <option value="quantity">Company-owned stock</option>
               <option value="min_quantity">Min quantity</option>
               <option value="price">Price</option>
             </select>
@@ -998,7 +1001,6 @@ function Products() {
                   <th>SKU</th>
                   <th>{t('productMaster.status')}</th>
                   <th>Section</th>
-                  <th>Qty</th>
                   <th>Unit</th>
                   <th>Min</th>
                   <th>Selling price</th>
@@ -1014,14 +1016,6 @@ function Products() {
                     <td>{product.sku}</td>
                     <td><span className={`product-lifecycle product-lifecycle-${product.lifecycle_status || 'active'}`}>{t(`productMaster.${product.lifecycle_status || 'active'}`)}</span></td>
                     <td>{product.location_code || '—'}</td>
-                    <td>
-                      <StockBadge
-                        quantity={product.available_quantity ?? product.quantity}
-                        minQuantity={product.min_quantity}
-                        highStockThreshold={product.high_stock_threshold}
-                      />
-                      <span style={{ marginLeft: 8 }}>{formatQuantity(product.available_quantity ?? product.quantity, product.unit)}</span>
-                    </td>
                     <td>{product.unit ?? 'pcs'}</td>
                     <td>{product.min_quantity}</td>
                     <td>${Number(product.selling_price ?? product.price ?? 0).toFixed(2)}</td>

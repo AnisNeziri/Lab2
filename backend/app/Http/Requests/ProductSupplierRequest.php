@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Support\CompanyCurrency;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -17,19 +18,20 @@ class ProductSupplierRequest extends FormRequest
     {
         $companyId = Auth::user()->company_id;
         $creating = $this->isMethod('post');
+        $baseCurrency = CompanyCurrency::forCompanyId((int) $companyId);
 
         return [
             'product_id' => [$creating ? 'required' : 'prohibited', 'integer', Rule::exists('products', 'id')->where('company_id', $companyId)],
             'supplier_id' => [$creating ? 'required' : 'prohibited', 'integer', Rule::exists('suppliers', 'id')->where('company_id', $companyId)],
             'supplier_sku' => ['nullable', 'string', 'max:100'],
             'purchase_price' => [$creating ? 'nullable' : 'sometimes', 'nullable', 'numeric', 'min:0', 'max:999999999999'],
-            'currency' => [$creating ? 'required' : 'sometimes', Rule::in(['EUR', 'USD', 'ALL', 'GBP', 'CNY'])],
+            'currency' => [$creating ? 'required' : 'sometimes', Rule::in(CompanyCurrency::accepted($baseCurrency))],
             'exchange_rate_to_base' => [
-                Rule::requiredIf(fn () => $this->filled('currency') && strtoupper((string) $this->input('currency')) !== 'EUR'),
+                Rule::requiredIf(fn () => $this->filled('currency') && strtoupper((string) $this->input('currency')) !== $baseCurrency),
                 'nullable', 'numeric', 'gt:0', 'max:1000000',
             ],
             'exchange_rate_date' => [
-                Rule::requiredIf(fn () => $this->filled('currency') && strtoupper((string) $this->input('currency')) !== 'EUR'),
+                Rule::requiredIf(fn () => $this->filled('currency') && strtoupper((string) $this->input('currency')) !== $baseCurrency),
                 'nullable', 'date',
             ],
             'pack_size' => ['sometimes', 'numeric', 'min:0.001', 'max:999999999999'],

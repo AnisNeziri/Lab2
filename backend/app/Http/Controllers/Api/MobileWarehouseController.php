@@ -42,6 +42,8 @@ class MobileWarehouseController extends Controller
             'received_at' => ['nullable', 'date'],
             'reason' => ['nullable', 'string', 'max:500'],
             'notes' => ['nullable', 'string', 'max:1000'],
+            'allow_expired_receipt' => ['nullable', 'boolean'],
+            'expired_receipt_reason' => ['nullable', 'required_if:allow_expired_receipt,true', 'string', 'min:5', 'max:1000'],
             'idempotency_key' => ['required', 'uuid'],
             'trace_allocations' => ['nullable', 'array', 'max:1000'],
             'trace_allocations.*.stock_state' => ['nullable', Rule::in(['available', 'damaged'])],

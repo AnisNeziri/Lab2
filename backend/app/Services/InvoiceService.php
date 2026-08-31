@@ -564,6 +564,7 @@ class InvoiceService
                 'trace_allocations' => $items->flatMap(fn ($item) => $item->trace_allocations ?? [])->values()->all(),
             ])->sortKeys();
         foreach ($quantities as $group) {
+            $stockKey = "invoice-stock-{$invoice->id}-out-{$group['product_id']}-".($group['warehouse_id'] ?? 'auto').'-'.($group['location_id'] ?? 'unassigned');
             $movement = [
                 'product_id' => $group['product_id'],
                 'warehouse_id' => $group['warehouse_id'],
@@ -574,15 +575,50 @@ class InvoiceService
                 'movement_code' => $type === 'out' ? 'invoice_sale' : 'invoice_credit',
                 'source_type' => 'invoice',
                 'source_id' => $invoice->id,
-                'idempotency_key' => "invoice-stock-{$invoice->id}-{$type}-{$group['product_id']}-".($group['warehouse_id'] ?? 'auto').'-'.($group['location_id'] ?? 'unassigned'),
-                'trace_allocations' => $type === 'in'
-                    ? $this->movementTrace('invoice', $invoice->id, 'invoice_sale', $group)
-                    : $group['trace_allocations'],
+                'idempotency_key' => $type === 'out' ? $stockKey : null,
+                'trace_allocations' => $group['trace_allocations'],
+                'metadata' => $type === 'out' ? [
+                    'inventory_group_key' => $group['product_id'].'|'.($group['warehouse_id'] ?? 0).'|'.($group['location_id'] ?? 0),
+                ] : null,
             ];
-            if ($type === 'in' && $group['cost_total'] !== null && $group['quantity'] > 0) {
-                $movement['final_unit_cost'] = round($group['cost_total'] / $group['quantity'], 6);
+            if ($type === 'out') {
+                $this->stockMovements->storeOutboundAllocated($movement);
+                continue;
             }
-            $this->stockMovements->store($movement);
+
+            $outbound = StockMovement::withoutGlobalScopes()->with('traceLines')
+                ->where('source_type', 'invoice')->where('source_id', $invoice->id)
+                ->where('movement_code', 'invoice_sale')->where('product_id', $group['product_id'])
+                ->where('warehouse_id', $group['warehouse_id'])
+                ->where(function ($query) use ($stockKey): void {
+                    $query->where('idempotency_key', $stockKey)
+                        ->orWhere('idempotency_key', 'like', $stockKey.'-part-%');
+                })->orderBy('id')->get();
+            if ($outbound->isEmpty()) {
+                $outbound = StockMovement::withoutGlobalScopes()->with('traceLines')
+                    ->where('source_type', 'invoice')->where('source_id', $invoice->id)
+                    ->where('movement_code', 'invoice_sale')->where('product_id', $group['product_id'])
+                    ->where('warehouse_id', $group['warehouse_id'])->where('location_id', $group['location_id'])
+                    ->orderBy('id')->get();
+            }
+            if ($outbound->isEmpty() || abs(round((float) $outbound->sum('quantity'), 3) - (float) $group['quantity']) >= 0.0005) {
+                throw ValidationException::withMessages(['items' => ['The issued invoice no longer matches its inventory movements; reconcile it before crediting.']]);
+            }
+            foreach ($outbound as $original) {
+                $this->stockMovements->store([
+                    ...$movement,
+                    'warehouse_id' => $original->warehouse_id,
+                    'location_id' => $original->location_id,
+                    'quantity' => (float) $original->quantity,
+                    'final_unit_cost' => $original->final_unit_cost,
+                    'trace_allocations' => $original->traceLines->map(fn ($line) => [
+                        'inventory_lot_id' => (int) $line->inventory_lot_id,
+                        'quantity' => (float) $line->quantity,
+                    ])->values()->all(),
+                    'idempotency_key' => "invoice-stock-{$invoice->id}-in-{$original->id}",
+                    'metadata' => ['reverses_stock_movement_id' => $original->id],
+                ]);
+            }
         }
     }
 

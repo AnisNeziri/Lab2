@@ -10,9 +10,11 @@ use App\Models\Expense;
 use App\Models\Product;
 use App\Models\ProductSupplier;
 use App\Models\Warehouse;
+use App\Support\CompanyCurrency;
 use App\Support\Money;
 use App\Models\WarehouseLocation;
 use App\Support\RequestFingerprint;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +29,7 @@ class PurchaseOrderService
         private readonly WarehouseLayoutService $warehouseLayout,
         private readonly FinancialAccountService $financialAccounts,
         private readonly SupplierPaymentAllocationService $paymentAllocations,
+        private readonly PermissionService $permissions,
     ) {}
 
     public function list(array $filters): LengthAwarePaginator
@@ -75,7 +78,7 @@ class PurchaseOrderService
     public function find(PurchaseOrder $order): PurchaseOrder
     {
         return $order->load([
-            'supplier', 'warehouse', 'items.product:id,name,sku,unit,tracking_mode', 'items.productSupplier',
+            'supplier', 'warehouse', 'items.product:id,name,sku,unit,tracking_mode,expiration_controlled,default_shelf_life_days,shelf_life_basis', 'items.productSupplier',
             'payments' => fn ($query) => $query
                 ->with(['user:id,name', 'allocations.expense:id,purchase_order_id,document_type,document_number,gross_amount,currency,status'])
                 ->latest('payment_date')->latest('id'),
@@ -85,7 +88,7 @@ class PurchaseOrderService
                 ->withSum('supplierCredits', 'gross_amount')
                 ->latest('invoice_date')->latest('id'),
             'changes' => fn ($query) => $query->with('user:id,name')->latest(),
-            'goodsReceipts' => fn ($query) => $query->with(['warehouse:id,name,code', 'location:id,name,code,path', 'receiver:id,name', 'items.product:id,name,sku,unit,tracking_mode'])->latest('received_at'),
+            'goodsReceipts' => fn ($query) => $query->with(['warehouse:id,name,code', 'location:id,name,code,path', 'receiver:id,name', 'items.product:id,name,sku,unit,tracking_mode,expiration_controlled'])->latest('received_at'),
             'shipments' => fn ($query) => $query->select([
                 'id', 'purchase_order_id', 'tracking_number', 'vessel_name', 'mmsi', 'imo',
                 'status', 'current_lat', 'current_lng', 'position_updated_at', 'archived_at',
@@ -360,6 +363,17 @@ class PurchaseOrderService
                     'status' => ['Only an ordered or partially received Purchase Order can receive products.'],
                 ]);
             }
+            if ($data['allow_expired_receipt'] ?? false) {
+                $reason = trim((string) ($data['expired_receipt_reason'] ?? ''));
+                if (! Auth::user() || ! $this->permissions->roleHasPermission(Auth::user()->role, 'inventory.expired.override')) {
+                    throw new AuthorizationException('You are not authorized to receive expired inventory.');
+                }
+                if (mb_strlen($reason) < 5) {
+                    throw ValidationException::withMessages([
+                        'expired_receipt_reason' => ['Explain why expired stock is being accepted.'],
+                    ]);
+                }
+            }
             $warehouseId = (int) ($data['warehouse_id'] ?? $order->warehouse_id);
             $warehouse = Warehouse::query()->findOrFail($warehouseId);
             if (! empty($data['location_id']) && ! WarehouseLocation::query()
@@ -466,6 +480,9 @@ class PurchaseOrderService
                         'source_type' => 'goods_receipt',
                         'source_id' => $receipt->id,
                         'idempotency_key' => $data['idempotency_key'].'-'.$portion['state'].'-'.$item->id,
+                        'occurred_at' => $receipt->received_at,
+                        'allow_expired_receipt' => (bool) ($data['allow_expired_receipt'] ?? false),
+                        'expired_receipt_reason' => $data['expired_receipt_reason'] ?? null,
                         'base_purchase_unit_cost' => $basePurchaseUnitCost,
                         'landed_cost_unit' => 0,
                         'final_unit_cost' => $basePurchaseUnitCost,
@@ -509,7 +526,14 @@ class PurchaseOrderService
 
             $allReceived = $order->items()->get()->every(fn ($item) => $item->remaining_quantity <= 0);
             $order->update(['status' => $allReceived ? 'received' : 'partially_received', 'received_at' => $allReceived ? now() : null, 'updated_by' => Auth::id()]);
-            $this->audit($order, 'goods_receipt_posted', null, ['receipt_id' => $receipt->id, 'receipt_number' => $receipt->receipt_number, 'warehouse_id' => $warehouse->id, 'items' => $received, 'status' => $order->status], $data['reason'] ?? ($data['notes'] ?? null));
+            $receiptAudit = ['receipt_id' => $receipt->id, 'receipt_number' => $receipt->receipt_number, 'warehouse_id' => $warehouse->id, 'items' => $received, 'status' => $order->status];
+            if ($data['allow_expired_receipt'] ?? false) {
+                $receiptAudit['expired_receipt_override'] = [
+                    'authorized_by' => Auth::id(),
+                    'reason' => trim((string) ($data['expired_receipt_reason'] ?? '')),
+                ];
+            }
+            $this->audit($order, 'goods_receipt_posted', null, $receiptAudit, $data['reason'] ?? ($data['notes'] ?? null));
 
             return $this->find($order->fresh());
         });
@@ -692,15 +716,18 @@ class PurchaseOrderService
     private function currencySnapshot(string $currency, string $total, array $data): array
     {
         $currency = strtoupper($currency);
-        $rate = Money::normalizeDecimal($currency === 'EUR' ? '1' : ($data['exchange_rate'] ?? '0'), 6);
+        $baseCurrency = CompanyCurrency::current();
+        $rate = Money::normalizeDecimal($currency === $baseCurrency ? '1' : ($data['exchange_rate'] ?? '0'), 6);
         if (Money::compareDecimal($rate, '0') <= 0) {
-            throw ValidationException::withMessages(['exchange_rate' => ['Enter the historical conversion rate from the order currency to EUR.']]);
+            throw ValidationException::withMessages(['exchange_rate' => ["Enter the historical conversion rate from the order currency to {$baseCurrency}."]]);
         }
 
         return [
             'exchange_rate' => $rate,
-            'exchange_rate_date' => $data['exchange_rate_date'] ?? ($currency === 'EUR' ? ($data['ordered_at'] ?? now()->toDateString()) : null),
-            'exchange_rate_source' => $data['exchange_rate_source'] ?? ($currency === 'EUR' ? 'EUR base currency' : null),
+            'exchange_rate_date' => $data['exchange_rate_date'] ?? ($currency === $baseCurrency ? ($data['ordered_at'] ?? now()->toDateString()) : null),
+            'exchange_rate_source' => $data['exchange_rate_source'] ?? ($currency === $baseCurrency ? "{$baseCurrency} base currency" : null),
+            // Legacy column name retained for backward compatibility; the
+            // stored value is now the company's base-currency equivalent.
             'total_amount_eur' => Money::multiply($total, $rate),
         ];
     }

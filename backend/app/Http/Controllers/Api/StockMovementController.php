@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StockAdjustmentRequest;
 use App\Services\StockMovementService;
 use App\Services\WarehouseInventoryService;
 use Illuminate\Http\JsonResponse;
@@ -43,28 +44,9 @@ class StockMovementController extends Controller
         return $this->stockService->exportCsv($validated);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(StockAdjustmentRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'product_id' => ['required', 'exists:products,id'],
-            'type' => ['required', 'in:in,out'],
-            'quantity' => ['required', 'numeric', 'min:0.001'],
-            'reason' => ['required', 'string', 'min:3', 'max:255'],
-            'idempotency_key' => ['required', 'uuid'],
-            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
-            'location_id' => ['nullable', 'integer', 'exists:warehouse_locations,id'],
-            'stock_state' => ['nullable', Rule::in(WarehouseInventoryService::STATES)],
-            'allow_expired_override' => ['nullable', 'boolean'],
-            'expired_override_reason' => ['nullable', 'required_if:allow_expired_override,true', 'string', 'min:5', 'max:1000'],
-            'trace_allocations' => ['nullable', 'array', 'max:1000'],
-            'trace_allocations.*.inventory_lot_id' => ['nullable', 'integer', 'exists:inventory_lots,id'],
-            'trace_allocations.*.lot_number' => ['nullable', 'string', 'max:100'],
-            'trace_allocations.*.serial_number' => ['nullable', 'string', 'max:191'],
-            'trace_allocations.*.supplier_batch' => ['nullable', 'string', 'max:100'],
-            'trace_allocations.*.manufactured_at' => ['nullable', 'date'],
-            'trace_allocations.*.expiry_at' => ['nullable', 'date'],
-            'trace_allocations.*.quantity' => ['required', 'numeric', 'min:0.001', 'max:1000000000'],
-        ]);
+        $validated = $request->validated();
 
         $validated['movement_code'] = $validated['type'] === 'in'
             ? 'manual_adjustment_in'

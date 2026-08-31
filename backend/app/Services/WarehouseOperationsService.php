@@ -20,6 +20,7 @@ class WarehouseOperationsService
         private readonly StockMovementService $movements,
         private readonly UnitConversionService $units,
         private readonly WarehouseLayoutService $layout,
+        private readonly InventoryIntegrityService $integrity,
     ) {}
 
     public function warehouses(): array
@@ -111,6 +112,7 @@ class WarehouseOperationsService
     {
         DB::transaction(function () use ($warehouse): void {
             $warehouse = Warehouse::query()->lockForUpdate()->findOrFail($warehouse->id);
+            $this->integrity->assertWarehouseReconciled($warehouse);
             $hasStock = $warehouse->stock()->where(function ($query): void {
                 foreach (['quantity', 'available_quantity', 'reserved_quantity', 'damaged_quantity', 'quarantine_quantity', 'blocked_quantity'] as $index => $column) {
                     $index === 0 ? $query->where($column, '!=', 0) : $query->orWhere($column, '!=', 0);
@@ -370,10 +372,12 @@ class WarehouseOperationsService
             }
             $transfer->load('items.product');
             foreach ($transfer->items as $item) {
-                $this->movements->store([
+                $dispatchPlan = $this->dispatchPlan($transfer, $item);
+                $this->movements->storeOutboundAllocated([
                     'product_id' => $item->product_id,
                     'warehouse_id' => $transfer->source_warehouse_id,
-                    'location_id' => $transfer->source_location_id,
+                    'location_id' => $dispatchPlan['location_id'],
+                    'location_allocations' => $dispatchPlan['location_allocations'],
                     'source_warehouse_id' => $transfer->source_warehouse_id,
                     'destination_warehouse_id' => $transfer->destination_warehouse_id,
                     'type' => 'out',
@@ -385,7 +389,8 @@ class WarehouseOperationsService
                     'source_id' => $transfer->id,
                     'reason' => "Dispatched {$transfer->transfer_number}",
                     'idempotency_key' => $idempotencyKey.'-out-'.$item->id,
-                    'trace_allocations' => $item->trace_allocations ?? [],
+                    'trace_allocations' => $dispatchPlan['trace_allocations'],
+                    'metadata' => ['stock_transfer_item_id' => $item->id],
                 ]);
             }
             $transfer->update([
@@ -394,6 +399,7 @@ class WarehouseOperationsService
                 'dispatched_by' => Auth::id(),
                 'dispatch_idempotency_key' => $idempotencyKey,
             ]);
+            $this->assertTransferIntegrity($transfer);
 
             return $this->findTransfer($transfer->fresh());
         });
@@ -451,6 +457,7 @@ class WarehouseOperationsService
                         'reason' => "Received {$transfer->transfer_number}".($portion['state'] === 'damaged' ? ' as damaged' : ''),
                         'idempotency_key' => $data['idempotency_key'].'-'.$portion['state'].'-'.$item->id,
                         'trace_allocations' => $this->takeTransferTrace($item, $remainingTrace, (float) $portion['quantity']),
+                        'metadata' => ['stock_transfer_item_id' => $item->id],
                     ]);
                 }
                 $item->update([
@@ -473,6 +480,7 @@ class WarehouseOperationsService
                 'received_by' => Auth::id(),
                 'received_at' => now(),
             ]);
+            $this->assertTransferIntegrity($transfer);
 
             return $this->findTransfer($transfer->fresh());
         });
@@ -489,28 +497,38 @@ class WarehouseOperationsService
                 return $this->findTransfer($transfer);
             }
             if ($transfer->status === 'in_transit') {
-                $transfer->load('items');
+                $transfer->load('items.product');
                 foreach ($transfer->items as $item) {
-                    $this->movements->store([
-                        'product_id' => $item->product_id,
-                        'warehouse_id' => $transfer->source_warehouse_id,
-                        'location_id' => $transfer->source_location_id,
-                        'source_warehouse_id' => $transfer->destination_warehouse_id,
-                        'destination_warehouse_id' => $transfer->source_warehouse_id,
-                        'type' => 'in',
-                        'quantity' => (float) $item->quantity,
-                        'stock_state' => 'available',
-                        'affects_company_quantity' => false,
-                        'movement_code' => 'transfer_return',
-                        'source_type' => 'stock_transfer',
-                        'source_id' => $transfer->id,
-                        'reason' => "Cancelled {$transfer->transfer_number}: {$reason}",
-                        'idempotency_key' => 'transfer-cancel-'.$transfer->id.'-'.$item->id,
-                        'trace_allocations' => $this->dispatchedTrace($transfer, $item),
-                    ]);
+                    foreach ($this->transferOutMovements($transfer, $item) as $outbound) {
+                        $this->movements->store([
+                            'product_id' => $item->product_id,
+                            'warehouse_id' => $transfer->source_warehouse_id,
+                            'location_id' => $outbound->location_id,
+                            'source_warehouse_id' => $transfer->destination_warehouse_id,
+                            'destination_warehouse_id' => $transfer->source_warehouse_id,
+                            'type' => 'in',
+                            'quantity' => (float) $outbound->quantity,
+                            'stock_state' => 'available',
+                            'affects_company_quantity' => false,
+                            'movement_code' => 'transfer_return',
+                            'source_type' => 'stock_transfer',
+                            'source_id' => $transfer->id,
+                            'reason' => "Cancelled {$transfer->transfer_number}: {$reason}",
+                            'idempotency_key' => 'transfer-cancel-'.$transfer->id.'-'.$item->id.'-'.$outbound->id,
+                            'trace_allocations' => $outbound->traceLines->map(fn ($line) => [
+                                'inventory_lot_id' => (int) $line->inventory_lot_id,
+                                'quantity' => (float) $line->quantity,
+                            ])->values()->all(),
+                            'metadata' => [
+                                'stock_transfer_item_id' => $item->id,
+                                'reverses_stock_movement_id' => $outbound->id,
+                            ],
+                        ]);
+                    }
                 }
             }
             $transfer->update(['status' => 'cancelled', 'cancelled_at' => now(), 'cancelled_by' => Auth::id(), 'cancellation_reason' => $reason]);
+            $this->assertTransferIntegrity($transfer);
 
             return $this->findTransfer($transfer->fresh());
         });
@@ -543,16 +561,80 @@ class WarehouseOperationsService
         }
     }
 
-    private function dispatchedTrace(StockTransfer $transfer, StockTransferItem $item): array
+    /**
+     * Preserve scanned multi-bin picks when they exist. A normal browser
+     * dispatch without pick events remains eligible for automatic allocation.
+     */
+    private function dispatchPlan(StockTransfer $transfer, StockTransferItem $item): array
     {
-        return StockMovement::withoutGlobalScopes()
+        $events = DB::table('stock_transfer_pick_events')
+            ->where('company_id', $transfer->company_id)
+            ->where('stock_transfer_id', $transfer->id)
+            ->where('stock_transfer_item_id', $item->id)
+            ->orderBy('id')
+            ->get();
+        if ($events->isEmpty()) {
+            return [
+                'location_id' => $transfer->source_location_id,
+                'location_allocations' => [],
+                'trace_allocations' => $item->trace_allocations ?? [],
+            ];
+        }
+
+        $picked = round((float) $events->sum(fn ($event) => (float) $event->quantity), 3);
+        if (abs($picked - (float) $item->quantity) >= 0.0005) {
+            throw ValidationException::withMessages([
+                'items' => ["{$item->product->name} has only {$picked} of {$item->quantity} picked. Complete the pick before dispatch."],
+            ]);
+        }
+
+        $locationAllocations = $events->groupBy('location_id')->map(fn ($rows, $locationId) => [
+            'location_id' => (int) $locationId,
+            'quantity' => round((float) $rows->sum(fn ($event) => (float) $event->quantity), 3),
+        ])->values()->all();
+        $traceAllocations = $events->flatMap(function ($event): array {
+            $trace = is_string($event->trace_allocations)
+                ? json_decode($event->trace_allocations, true)
+                : $event->trace_allocations;
+
+            return collect(is_array($trace) ? $trace : [])->map(fn (array $allocation) => [
+                ...$allocation,
+                'location_id' => (int) $event->location_id,
+            ])->all();
+        })->values()->all();
+
+        return [
+            'location_id' => null,
+            'location_allocations' => $locationAllocations,
+            'trace_allocations' => $traceAllocations ?: ($item->trace_allocations ?? []),
+        ];
+    }
+
+    /** @return \Illuminate\Database\Eloquent\Collection<int, StockMovement> */
+    private function transferOutMovements(StockTransfer $transfer, StockTransferItem $item): \Illuminate\Database\Eloquent\Collection
+    {
+        $movements = StockMovement::withoutGlobalScopes()
             ->with('traceLines')
             ->where('company_id', $transfer->company_id)
             ->where('source_type', 'stock_transfer')
             ->where('source_id', $transfer->id)
             ->where('movement_code', 'transfer_out')
             ->where('product_id', $item->product_id)
-            ->get()
+            ->orderBy('id')
+            ->get();
+        $itemMovements = $movements->filter(fn (StockMovement $movement) =>
+            (int) ($movement->metadata['stock_transfer_item_id'] ?? 0) === (int) $item->id
+        )->values();
+
+        // Backward compatibility for transfers dispatched before movement
+        // metadata identified the line. Transfer requests already enforce one
+        // line per product, so the product fallback is unambiguous.
+        return $itemMovements->isNotEmpty() ? $itemMovements : $movements;
+    }
+
+    private function dispatchedTrace(StockTransfer $transfer, StockTransferItem $item): array
+    {
+        return $this->transferOutMovements($transfer, $item)
             ->flatMap(fn ($movement) => $movement->traceLines)
             ->groupBy('inventory_lot_id')
             ->map(fn ($lines, $lotId) => [
@@ -575,6 +657,7 @@ class WarehouseOperationsService
             ->where('movement_code', 'transfer_in')
             ->where('product_id', $item->product_id)
             ->get()
+            ->filter(fn (StockMovement $movement) => (int) ($movement->metadata['stock_transfer_item_id'] ?? $item->id) === (int) $item->id)
             ->flatMap(fn ($movement) => $movement->traceLines)
             ->groupBy('inventory_lot_id')
             ->map(fn ($lines) => round((float) $lines->sum('quantity'), 3));
@@ -641,6 +724,16 @@ class WarehouseOperationsService
                 ]);
             }
         }
+    }
+
+    private function assertTransferIntegrity(StockTransfer $transfer): void
+    {
+        $productIds = $transfer->items()->pluck('product_id')->unique();
+        Product::withoutGlobalScopes()
+            ->where('company_id', $transfer->company_id)
+            ->whereIn('id', $productIds)
+            ->get()
+            ->each(fn (Product $product) => $this->integrity->assertProductReconciled($product));
     }
 
     private function assertLocationParent(Warehouse $warehouse, ?WarehouseLocation $parent, string $type): void

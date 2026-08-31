@@ -71,9 +71,18 @@ class InventoryWorkflowHardeningTest extends TestCase
             'fefo_enabled' => true,
             'near_expiry_days' => 30,
         ]);
+        $location = WarehouseLocation::create($this->tenantAttributes([
+            'warehouse_id' => $warehouse->id,
+            'type' => 'bin',
+            'code' => 'EXP-01',
+            'name' => 'Expired inventory bin',
+            'path' => 'EXP-01',
+            'is_active' => true,
+        ]));
         $inbound = $this->postJson('/api/stock-movements', [
             'product_id' => $product->id,
             'warehouse_id' => $warehouse->id,
+            'location_id' => $location->id,
             'type' => 'in',
             'quantity' => 2,
             'reason' => 'Opening expired test lot',
@@ -154,7 +163,7 @@ class InventoryWorkflowHardeningTest extends TestCase
         $this->assertDatabaseCount('inventory_returns', 1);
     }
 
-    public function test_counts_freeze_live_stock_cover_each_selected_state_and_reject_foreign_lots(): void
+    public function test_counts_snapshot_live_stock_cover_each_selected_state_and_reject_foreign_lots(): void
     {
         $this->seed(RolePermissionSeeder::class);
         $company = \App\Models\Company::factory()->create();
@@ -176,6 +185,21 @@ class InventoryWorkflowHardeningTest extends TestCase
             'product_ids' => [$product->id],
         ]);
         $this->assertEqualsCanonicalizing(['damaged', 'quarantine'], $scoped->items->pluck('stock_state')->all());
+        $outsideScope = Product::create([
+            'company_id' => $company->id, 'default_warehouse_id' => $warehouse->id,
+            'name' => 'Outside count scope', 'sku' => 'COUNT-OUTSIDE-SCOPE', 'quantity' => 0,
+            'unit' => 'pcs', 'price' => 4,
+        ]);
+        try {
+            $counts->record($scoped, ['items' => [[
+                'product_id' => $outsideScope->id,
+                'stock_state' => 'damaged',
+                'counted_quantity' => 1,
+            ]]]);
+            $this->fail('An unexpected product outside the persisted count scope was accepted.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('items', $exception->errors());
+        }
 
         $movements = app(StockMovementService::class);
         $movements->store($this->movement($product, $warehouse, 5));
@@ -335,8 +359,8 @@ class InventoryWorkflowHardeningTest extends TestCase
             'quantity' => $quantity,
             'stock_state' => 'available',
             'reason' => 'Count test movement',
-            'movement_code' => 'manual_adjustment_in',
-            'source_type' => 'test',
+            'movement_code' => 'import_adjustment_in',
+            'source_type' => 'workflow_test',
             'idempotency_key' => (string) Str::uuid(),
         ];
     }

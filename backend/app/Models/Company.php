@@ -14,6 +14,7 @@ class Company extends Model
     protected $fillable = [
         'name',
         'address',
+        'base_currency',
     ];
 
     public function users(): HasMany

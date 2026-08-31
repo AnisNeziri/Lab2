@@ -17,6 +17,9 @@ class SetupDesktopCommand extends Command
         $this->call('migrate', ['--force' => true]);
         $this->call('db:seed', ['--class' => RolePermissionSeeder::class, '--force' => true]);
         $this->call('db:seed', ['--class' => DesktopSuperadminSeeder::class, '--force' => true]);
+        // Desktop installations do not rely on an external scheduler. Run a
+        // durable catch-up every time AIMS starts after migrations are ready.
+        $this->call('inventory:sync-expiry-alerts');
 
         return self::SUCCESS;
     }

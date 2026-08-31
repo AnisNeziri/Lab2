@@ -4,6 +4,7 @@ namespace App\Repositories\Eloquent;
 
 use App\Models\Product;
 use App\Repositories\Contracts\ProductRepositoryInterface;
+use App\Support\BarcodeIdentity;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -24,15 +25,22 @@ class ProductRepository implements ProductRepositoryInterface
 
         if (! empty($filters['search'])) {
             $search = $filters['search'];
-            $query->where(function ($builder) use ($search) {
+            $barcodeIdentity = BarcodeIdentity::normalize($search);
+            $query->where(function ($builder) use ($search, $barcodeIdentity) {
                 $builder->where('name', 'like', "%{$search}%")
                     ->orWhere('sku', 'like', "%{$search}%")
                     ->orWhere('barcode', 'like', "%{$search}%")
+                    ->when($barcodeIdentity, fn ($barcode) => $barcode->orWhere('barcode_normalized', 'like', "%{$barcodeIdentity}%"))
                     ->orWhere('brand', 'like', "%{$search}%")
                     ->orWhere('hs_code', 'like', "%{$search}%")
                     ->orWhereHas('alternativeBarcodes', fn ($barcodes) => $barcodes
                         ->where('is_active', true)
-                        ->where('barcode', 'like', "%{$search}%"));
+                        ->where(function ($barcode) use ($search, $barcodeIdentity) {
+                            $barcode->where('barcode', 'like', "%{$search}%");
+                            if ($barcodeIdentity) {
+                                $barcode->orWhere('barcode_normalized', 'like', "%{$barcodeIdentity}%");
+                            }
+                        }));
             });
         }
 
@@ -71,14 +79,17 @@ class ProductRepository implements ProductRepositoryInterface
 
     public function findBySku(string $sku): ?Product
     {
+        $barcodeIdentity = BarcodeIdentity::normalize($sku);
+
         return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])
             ->where('lifecycle_status', '!=', 'archived')
             ->where(fn ($query) => $query
                 ->where('sku', $sku)
-                ->orWhere('barcode', $sku)
-                ->orWhereHas('alternativeBarcodes', fn ($barcodes) => $barcodes
-                    ->where('is_active', true)
-                    ->where('barcode', $sku)))
+                ->when($barcodeIdentity, fn ($identityQuery) => $identityQuery
+                    ->orWhere('barcode_normalized', $barcodeIdentity)
+                    ->orWhereHas('alternativeBarcodes', fn ($barcodes) => $barcodes
+                        ->where('is_active', true)
+                        ->where('barcode_normalized', $barcodeIdentity))))
             ->first();
     }
 
@@ -120,18 +131,27 @@ class ProductRepository implements ProductRepositoryInterface
 
     public function searchGlobal(string $term, int $limit = 20): Collection
     {
+        $barcodeIdentity = BarcodeIdentity::normalize($term);
+
         return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])
             ->where('lifecycle_status', '!=', 'archived')
-            ->where(function ($query) use ($term) {
+            ->where(function ($query) use ($term, $barcodeIdentity) {
                 $query->where('name', 'like', "%{$term}%")
                     ->orWhere('sku', 'like', "%{$term}%")
                     ->orWhere('barcode', 'like', "%{$term}%")
+                    ->when($barcodeIdentity, fn ($barcode) => $barcode
+                        ->orWhere('barcode_normalized', 'like', "%{$barcodeIdentity}%"))
                     ->orWhere('description', 'like', "%{$term}%")
                     ->orWhere('brand', 'like', "%{$term}%")
                     ->orWhere('hs_code', 'like', "%{$term}%")
                     ->orWhereHas('alternativeBarcodes', fn ($barcodes) => $barcodes
                         ->where('is_active', true)
-                        ->where('barcode', 'like', "%{$term}%"));
+                        ->where(function ($barcode) use ($term, $barcodeIdentity): void {
+                            $barcode->where('barcode', 'like', "%{$term}%");
+                            if ($barcodeIdentity) {
+                                $barcode->orWhere('barcode_normalized', 'like', "%{$barcodeIdentity}%");
+                            }
+                        }));
             })
             ->limit($limit)
             ->get();

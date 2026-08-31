@@ -315,6 +315,12 @@ class DailySaleService
         ?string $expiredOverrideReason = null,
     ): void
     {
+        $inventoryRevision = $type === 'out'
+            ? 1 + (int) StockMovement::withoutGlobalScopes()
+                ->where('source_type', 'daily_sale')->where('source_id', $sale->id)
+                ->where('movement_code', 'daily_sale')->get()
+                ->max(fn (StockMovement $movement) => (int) ($movement->metadata['inventory_revision'] ?? 0))
+            : null;
         $quantities = $sale->items
             ->whereNotNull('product_id')
             ->groupBy(fn ($item) => $item->product_id.'|'.($item->warehouse_id ?? 0).'|'.($item->location_id ?? 0))
@@ -330,6 +336,8 @@ class DailySaleService
             ]);
 
         foreach ($quantities as $group) {
+            $groupKey = $group['product_id'].'|'.($group['warehouse_id'] ?? 0).'|'.($group['location_id'] ?? 0);
+            $stockKey = "daily-sale-stock-{$sale->id}-rev-{$inventoryRevision}-{$group['product_id']}-".($group['warehouse_id'] ?? 'auto').'-'.($group['location_id'] ?? 'auto');
             $movement = [
                 'product_id' => $group['product_id'],
                 'warehouse_id' => $group['warehouse_id'],
@@ -340,16 +348,39 @@ class DailySaleService
                 'movement_code' => $type === 'out' ? 'daily_sale' : 'daily_sale_reversal',
                 'source_type' => 'daily_sale',
                 'source_id' => $sale->id,
-                'trace_allocations' => $type === 'in'
-                    ? $this->movementTrace('daily_sale', $sale->id, 'daily_sale', $group)
-                    : $group['trace_allocations'],
+                'trace_allocations' => $group['trace_allocations'],
                 'allow_expired_override' => $type === 'out' && $allowExpiredOverride,
                 'expired_override_reason' => $type === 'out' ? $expiredOverrideReason : null,
+                'idempotency_key' => $type === 'out' ? $stockKey : null,
+                'metadata' => $type === 'out' ? [
+                    'inventory_revision' => $inventoryRevision,
+                    'inventory_group_key' => $groupKey,
+                ] : null,
             ];
-            if ($type === 'in' && $group['cost_total'] !== null && $group['quantity'] > 0) {
-                $movement['final_unit_cost'] = round($group['cost_total'] / $group['quantity'], 6);
+            if ($type === 'out') {
+                $this->stockMovements->storeOutboundAllocated($movement);
+                continue;
             }
-            $this->stockMovements->store($movement);
+
+            $outbound = $this->outboundMovementsForGroup('daily_sale', $sale->id, 'daily_sale', 'daily_sale_reversal', $group, $groupKey);
+            if ($outbound->isEmpty() || abs(round((float) $outbound->sum('quantity'), 3) - (float) $group['quantity']) >= 0.0005) {
+                throw ValidationException::withMessages(['items' => ['The saved sale no longer matches its inventory movements; reconcile it before reversal.']]);
+            }
+            foreach ($outbound as $original) {
+                $this->stockMovements->store([
+                    ...$movement,
+                    'warehouse_id' => $original->warehouse_id,
+                    'location_id' => $original->location_id,
+                    'quantity' => (float) $original->quantity,
+                    'final_unit_cost' => $original->final_unit_cost,
+                    'trace_allocations' => $original->traceLines->map(fn ($line) => [
+                        'inventory_lot_id' => (int) $line->inventory_lot_id,
+                        'quantity' => (float) $line->quantity,
+                    ])->values()->all(),
+                    'idempotency_key' => "daily-sale-stock-{$sale->id}-in-{$original->id}",
+                    'metadata' => ['reverses_stock_movement_id' => $original->id],
+                ]);
+            }
         }
     }
 
@@ -432,6 +463,39 @@ class DailySaleService
                 'inventory_lot_id' => (int) $lotId,
                 'quantity' => round((float) $lines->sum('quantity'), 3),
             ])->values()->all();
+    }
+
+    private function outboundMovementsForGroup(
+        string $sourceType,
+        int $sourceId,
+        string $movementCode,
+        string $reversalCode,
+        array $group,
+        string $groupKey,
+    ): \Illuminate\Database\Eloquent\Collection {
+        $outbound = StockMovement::withoutGlobalScopes()->with('traceLines')
+            ->where('source_type', $sourceType)->where('source_id', $sourceId)
+            ->where('movement_code', $movementCode)->where('product_id', $group['product_id'])
+            ->where('warehouse_id', $group['warehouse_id'])
+            ->orderBy('id')->get();
+        $reversals = StockMovement::withoutGlobalScopes()
+            ->where('source_type', $sourceType)->where('source_id', $sourceId)
+            ->where('movement_code', $reversalCode)->get();
+        $reversedIds = $reversals->pluck('metadata')->map(fn ($metadata) => (int) ($metadata['reverses_stock_movement_id'] ?? 0))->filter();
+        $active = $outbound->reject(fn (StockMovement $movement) => $reversedIds->contains((int) $movement->id));
+        $keyed = $active->filter(fn (StockMovement $movement) => ($movement->metadata['inventory_group_key'] ?? null) === $groupKey)->values();
+        if ($keyed->isNotEmpty()) {
+            return new \Illuminate\Database\Eloquent\Collection($keyed->all());
+        }
+
+        $lastLegacyReversalId = (int) $reversals->filter(fn (StockMovement $movement) => empty($movement->metadata['reverses_stock_movement_id']))->max('id');
+        $legacy = $active->filter(fn (StockMovement $movement) =>
+            empty($movement->metadata['inventory_group_key'])
+            && (int) $movement->id > $lastLegacyReversalId
+            && (int) ($movement->location_id ?? 0) === (int) ($group['location_id'] ?? 0)
+        )->values();
+
+        return new \Illuminate\Database\Eloquent\Collection($legacy->all());
     }
 
     private function calculateTotals(array $items): array

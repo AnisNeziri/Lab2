@@ -10,6 +10,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use App\Support\CompanyCurrency;
 
 class SupplierCatalogueService
 {
@@ -34,7 +35,7 @@ class SupplierCatalogueService
                 throw ValidationException::withMessages(['supplier_id' => ['This supplier is already in the product catalogue.']]);
             }
 
-            $values = $this->normalizedValues($data);
+            $values = $this->normalizedValues($data, null, CompanyCurrency::forCompanyId((int) $product->company_id));
             $willBeActive = (bool) ($values['is_active'] ?? true);
             $makePreferred = $willBeActive && (
                 (bool) ($values['is_preferred'] ?? false)
@@ -75,7 +76,7 @@ class SupplierCatalogueService
             $oldCurrency = $catalogue->currency;
             $oldRate = $catalogue->exchange_rate_to_base;
             $oldRateDate = $catalogue->exchange_rate_date?->toDateString();
-            $values = $this->normalizedValues($data, $catalogue);
+            $values = $this->normalizedValues($data, $catalogue, CompanyCurrency::forCompanyId((int) $product->company_id));
 
             if (($values['is_active'] ?? $catalogue->is_active) || ($values['is_preferred'] ?? $catalogue->is_preferred)) {
                 $this->assertProductMayBeReplenished($product);
@@ -214,14 +215,15 @@ class SupplierCatalogueService
         ];
     }
 
-    private function normalizedValues(array $data, ?ProductSupplier $existing = null): array
+    private function normalizedValues(array $data, ?ProductSupplier $existing = null, ?string $baseCurrency = null): array
     {
-        $currency = strtoupper((string) ($data['currency'] ?? $existing?->currency ?? 'EUR'));
-        $rate = $currency === 'EUR'
+        $baseCurrency = CompanyCurrency::normalize($baseCurrency);
+        $currency = strtoupper((string) ($data['currency'] ?? $existing?->currency ?? $baseCurrency));
+        $rate = $currency === $baseCurrency
             ? 1.0
             : round((float) ($data['exchange_rate_to_base'] ?? $existing?->exchange_rate_to_base ?? 0), 8);
         if ($rate <= 0) {
-            throw ValidationException::withMessages(['exchange_rate_to_base' => ['Enter a positive conversion rate from the supplier currency to EUR.']]);
+            throw ValidationException::withMessages(['exchange_rate_to_base' => ["Enter a positive conversion rate from the supplier currency to {$baseCurrency}."]]);
         }
 
         $keys = [
@@ -237,7 +239,7 @@ class SupplierCatalogueService
         }
         $values['currency'] = $currency;
         $values['exchange_rate_to_base'] = $rate;
-        $values['exchange_rate_date'] = $currency === 'EUR'
+        $values['exchange_rate_date'] = $currency === $baseCurrency
             ? null
             : ($data['exchange_rate_date'] ?? $existing?->exchange_rate_date?->toDateString());
         if (! $existing) {

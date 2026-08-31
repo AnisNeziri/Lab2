@@ -49,7 +49,7 @@ class InventoryFoundationTest extends TestCase
         $this->assertDatabaseHas('stock_movements', ['movement_code' => 'bin_transfer_in', 'location_id' => $binB->id]);
     }
 
-    public function test_count_freezes_expected_quantity_preserves_recounts_and_posts_only_the_approved_variance(): void
+    public function test_count_snapshots_expected_quantity_preserves_recounts_and_posts_only_the_approved_variance(): void
     {
         [$product, $warehouse, $binA] = $this->inventoryContext();
         $movements = app(StockMovementService::class);
@@ -87,6 +87,62 @@ class InventoryFoundationTest extends TestCase
         $this->assertDatabaseHas('stock_movements', [
             'movement_code' => 'stock_count', 'source_type' => 'inventory_count',
             'source_id' => $session->id, 'quantity' => 3,
+        ]);
+    }
+
+    public function test_count_approval_rejects_a_new_bin_identity_and_recount_refreshes_the_scope(): void
+    {
+        [$product, $warehouse, $binA, $binB] = $this->inventoryContext();
+        $movements = app(StockMovementService::class);
+        $movements->store($this->movement($product, $warehouse, $binA, 'in', 10));
+
+        $counts = app(InventoryCountService::class);
+        $session = $counts->create([
+            'warehouse_id' => $warehouse->id,
+            'stock_states' => ['available'],
+        ]);
+        $item = $session->items->sole();
+        $session = $counts->record($session, ['items' => [[
+            'count_item_id' => $item->id,
+            'counted_quantity' => 10,
+        ]]]);
+        $session = $counts->submit($session);
+
+        // The original bin still contains ten, but the warehouse now has a
+        // second identity which was outside the immutable count snapshot.
+        $movements->store($this->movement($product, $warehouse, $binB, 'in', 2));
+
+        try {
+            $counts->approve($session, 'Approve stale count');
+            $this->fail('A count with a new bin identity was approved.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('items', $exception->errors());
+        }
+
+        $this->assertSame('submitted', $session->fresh()->status);
+        $this->assertSame(12.0, (float) $product->fresh()->quantity);
+        $this->assertDatabaseMissing('stock_movements', [
+            'movement_code' => 'stock_count',
+            'source_type' => 'inventory_count',
+            'source_id' => $session->id,
+        ]);
+
+        $session = $counts->requestRecount($session, [$item->id], 'Refresh the changed warehouse scope');
+        $this->assertCount(2, $session->items);
+        $this->assertCount(2, $session->snapshot_identity_keys);
+        $session = $counts->record($session, ['items' => $session->items->map(fn ($countItem) => [
+            'count_item_id' => $countItem->id,
+            'counted_quantity' => (float) $countItem->expected_quantity,
+        ])->all()]);
+        $session = $counts->submit($session);
+        $session = $counts->approve($session, 'Refreshed scope counted and confirmed');
+
+        $this->assertSame('approved', $session->status);
+        $this->assertSame(12.0, (float) $product->fresh()->quantity);
+        $this->assertDatabaseMissing('stock_movements', [
+            'movement_code' => 'stock_count',
+            'source_type' => 'inventory_count',
+            'source_id' => $session->id,
         ]);
     }
 
@@ -167,8 +223,8 @@ class InventoryFoundationTest extends TestCase
             'product_id' => $product->id, 'warehouse_id' => $warehouse->id,
             'location_id' => $location->id, 'type' => $type, 'quantity' => $quantity,
             'stock_state' => 'available', 'reason' => 'Foundation test movement',
-            'movement_code' => $type === 'in' ? 'manual_adjustment_in' : 'manual_adjustment_out',
-            'source_type' => 'test', 'idempotency_key' => (string) Str::uuid(),
+            'movement_code' => $type === 'in' ? 'import_adjustment_in' : 'legacy_stock_out',
+            'source_type' => 'foundation_test', 'idempotency_key' => (string) Str::uuid(),
             'trace_allocations' => $traceAllocations,
         ];
     }
