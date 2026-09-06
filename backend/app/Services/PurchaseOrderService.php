@@ -30,6 +30,9 @@ class PurchaseOrderService
         private readonly FinancialAccountService $financialAccounts,
         private readonly SupplierPaymentAllocationService $paymentAllocations,
         private readonly PermissionService $permissions,
+        private readonly ApprovalService $approvals,
+        private readonly BusinessEventService $events,
+        private readonly QualityManagementService $quality,
     ) {}
 
     public function list(array $filters): LengthAwarePaginator
@@ -100,6 +103,8 @@ class PurchaseOrderService
     {
         return DB::transaction(function () use ($data) {
             $total = $this->total($data['items']);
+            $protectedStatus = in_array($data['status'] ?? 'draft', ['confirmed', 'ordered'], true);
+            $approvalRequired = $protectedStatus && $this->approvals->isRequired('purchase_order', $total);
             $money = $this->currencySnapshot($data['currency'], $total, $data);
             $warehouseId = $data['warehouse_id'] ?? Warehouse::query()->where('is_default', true)->value('id') ?? $this->warehouseLayout->getOrCreatePrimaryWarehouse((int) Auth::user()->company_id)->id;
             $order = PurchaseOrder::create([
@@ -107,7 +112,7 @@ class PurchaseOrderService
                 'supplier_id' => $data['supplier_id'],
                 'warehouse_id' => $warehouseId,
                 'po_number' => $this->nextNumber(),
-                'status' => $data['status'] ?? 'draft',
+                'status' => $approvalRequired ? 'draft' : ($data['status'] ?? 'draft'),
                 'total_amount' => $total,
                 'total_amount_eur' => $money['total_amount_eur'],
                 'total_paid' => 0,
@@ -124,6 +129,16 @@ class PurchaseOrderService
             ]);
             $this->syncItems($order, $data['items']);
             $this->audit($order, 'created', null, $this->snapshot($order->fresh('items')), $data['change_reason'] ?? null);
+            if ($approvalRequired) {
+                $this->approvals->requestIfRequired('purchase_order', $order->id, 'purchase_order', $total, $order->currency, ['po_number' => $order->po_number, 'requested_status' => $data['status']]);
+            }
+            if (! $approvalRequired && in_array($order->status, ['confirmed', 'ordered'], true)) {
+                $this->events->record(
+                    $order->status === 'ordered' ? 'purchase_order.ordered' : 'purchase_order.approved',
+                    $order, $order->po_number, ['supplier_id' => $order->supplier_id, 'total' => $order->total_amount, 'currency' => $order->currency],
+                    "po:{$order->id}:status:{$order->status}",
+                );
+            }
 
             return $this->find($order->fresh());
         });
@@ -148,6 +163,8 @@ class PurchaseOrderService
                 $this->assertStatusTransition($order->status, $data['status']);
             }
             $total = $this->total($data['items']);
+            $protectedStatus = ! $hasExistingReceipts && in_array($data['status'] ?? '', ['confirmed', 'ordered'], true);
+            $approvalRequired = $protectedStatus && $this->approvals->isRequired('purchase_order', $total);
             $money = $this->currencySnapshot($data['currency'], $total, $data);
             if (Money::compare($total, $order->total_paid) < 0) {
                 throw ValidationException::withMessages(['items' => ['The new order total cannot be lower than the amount already paid.']]);
@@ -158,7 +175,7 @@ class PurchaseOrderService
                 'warehouse_id' => $data['warehouse_id'] ?? $order->warehouse_id,
                 // Receipt history owns the operational state. A generic edit
                 // must not roll a received order back to draft/ordered.
-                'status' => $hasExistingReceipts ? $order->status : ($data['status'] ?? $order->status),
+                'status' => $hasExistingReceipts ? $order->status : ($approvalRequired ? 'draft' : ($data['status'] ?? $order->status)),
                 'total_amount' => $total,
                 'total_amount_eur' => $money['total_amount_eur'],
                 'currency' => $data['currency'],
@@ -182,6 +199,13 @@ class PurchaseOrderService
                 ]);
             }
             $new = $this->snapshot($order->fresh('items'));
+            $materialChange = $old['supplier_id'] !== $new['supplier_id'] || $old['currency'] !== $new['currency'] || $old['total_amount'] !== $new['total_amount'] || $old['items'] !== $new['items'];
+            if ($materialChange) {
+                $this->approvals->invalidate('purchase_order', $order->id, 'purchase_order', 'Purchase order commercial details changed; approval must be renewed.');
+            }
+            if ($approvalRequired) {
+                $this->approvals->requestIfRequired('purchase_order', $order->id, 'purchase_order', $total, $order->currency, ['po_number' => $order->po_number, 'requested_status' => $data['status']]);
+            }
             $this->audit($order, 'updated', $old, $new, $data['change_reason'] ?? null);
 
             return $this->find($order->fresh());
@@ -269,6 +293,10 @@ class PurchaseOrderService
                 );
             }
             $this->audit($order, 'payment_recorded', ['total_paid' => $before], ['total_paid' => Money::normalize($order->total_paid), 'amount' => $amount], $data['note'] ?? null);
+            $this->events->record('supplier.payment_recorded', $payment, $order->po_number, [
+                'purchase_order_id' => $order->id, 'supplier_id' => $order->supplier_id,
+                'amount' => $amount, 'currency' => $order->currency,
+            ], "supplier-payment:{$payment->id}:completed");
 
             return $this->find($order->fresh());
         });
@@ -399,8 +427,10 @@ class PurchaseOrderService
                 'idempotency_key' => $data['idempotency_key'],
                 'request_fingerprint' => $requestFingerprint,
             ]);
-            $order->load('items.product');
+            $order->load(['items.product.category', 'items.product.supplier']);
             $received = [];
+            $hasAvailableReceipt = false;
+            $hasQualityHold = false;
             foreach ($data['items'] as $input) {
                 $item = $order->items->firstWhere('id', (int) $input['id']);
                 if (! $item) {
@@ -453,16 +483,21 @@ class PurchaseOrderService
                 $basePurchaseUnitCost = $inventoryBaseQuantity > 0
                     ? Money::divide($basePurchaseCost, $inventoryBaseQuantity, 6)
                     : null;
+                $qualityConfig = $this->quality->modeForProduct($item->product, $order->supplier_id);
+                $requiresQuality = $qualityConfig['mode'] === 'required' && $inventoryBaseQuantity > 0;
+                $portions = $requiresQuality
+                    ? [['quantity' => $inventoryBaseQuantity, 'state' => 'quarantine', 'code' => 'purchase_receipt']]
+                    : [
+                        ['quantity' => $acceptedBase, 'state' => 'available', 'code' => 'purchase_receipt'],
+                        ['quantity' => $damagedBase, 'state' => 'damaged', 'code' => 'damage_received'],
+                    ];
                 $costedMovements = [];
-                foreach ([
-                    ['quantity' => $acceptedBase, 'state' => 'available', 'code' => 'purchase_receipt'],
-                    ['quantity' => $damagedBase, 'state' => 'damaged', 'code' => 'damage_received'],
-                ] as $portion) {
+                foreach ($portions as $portion) {
                     if ($portion['quantity'] <= 0) {
                         continue;
                     }
                     $portionTraceAllocations = collect($input['trace_allocations'] ?? [])
-                        ->where('stock_state', $portion['state'])
+                        ->when(! $requiresQuality, fn ($rows) => $rows->where('stock_state', $portion['state']))
                         ->map(function (array $allocation): array {
                             unset($allocation['stock_state']);
 
@@ -493,7 +528,7 @@ class PurchaseOrderService
                     'received_quantity' => round((float) $item->received_quantity + $quantity, 3),
                     'received_base_quantity' => round((float) $item->received_base_quantity + $acceptedBase + $damagedBase, 3),
                 ]);
-                $receipt->items()->create([
+                $receiptItem = $receipt->items()->create([
                     'purchase_order_item_id' => $item->id,
                     'product_id' => $item->product_id,
                     'ordered_unit' => $item->unit,
@@ -516,7 +551,20 @@ class PurchaseOrderService
                     'weighted_average_cost_before' => collect($costedMovements)->first()?->weighted_average_cost_before,
                     'weighted_average_cost_after' => collect($costedMovements)->last()?->weighted_average_cost_after,
                     'notes' => $input['notes'] ?? null,
+                    'quality_inspection_mode_snapshot' => $qualityConfig['mode'],
                 ]);
+                if ($requiresQuality) {
+                    $this->quality->createForReceiptItem($receiptItem, [
+                        'quality_inspection_template_id' => $qualityConfig['template_id'],
+                        'received_quantity' => $inventoryBaseQuantity,
+                        'inspected_quantity' => $inventoryBaseQuantity,
+                        'inspection_scope' => 'whole_receipt',
+                        'notes' => 'Automatically created because incoming inspection is required.',
+                    ], true);
+                    $hasQualityHold = true;
+                } else {
+                    $hasAvailableReceipt = $hasAvailableReceipt || $acceptedBase > 0;
+                }
                 $received[] = ['item_id' => $item->id, 'accepted' => $accepted, 'damaged' => $damaged, 'rejected' => $rejected, 'base_quantity' => $acceptedBase + $damagedBase];
             }
 
@@ -534,6 +582,18 @@ class PurchaseOrderService
                 ];
             }
             $this->audit($order, 'goods_receipt_posted', null, $receiptAudit, $data['reason'] ?? ($data['notes'] ?? null));
+            $eventData = ['purchase_order_id' => $order->id, 'warehouse_id' => $warehouse->id, 'items' => $received];
+            $this->events->record('goods_receipt.completed', $receipt, $receipt->receipt_number, $eventData, "goods-receipt:{$receipt->id}:completed");
+            $this->events->record('inventory.received', $receipt, $receipt->receipt_number, $eventData, "goods-receipt:{$receipt->id}:inventory-received");
+            if ($hasAvailableReceipt) {
+                $this->events->record('inventory.available', $receipt, $receipt->receipt_number, $eventData, "goods-receipt:{$receipt->id}:inventory-available");
+            }
+            if ($hasQualityHold) {
+                $this->events->record('inventory.quarantined', $receipt, $receipt->receipt_number, $eventData, "goods-receipt:{$receipt->id}:quality-hold");
+            }
+            if ($allReceived) {
+                $this->events->record('purchase_order.received', $order, $order->po_number, ['goods_receipt_id' => $receipt->id], "po:{$order->id}:received");
+            }
 
             return $this->find($order->fresh());
         });
@@ -541,6 +601,12 @@ class PurchaseOrderService
 
     public function changeStatus(PurchaseOrder $order, string $status, ?string $reason): PurchaseOrder
     {
+        if (in_array($status, ['confirmed', 'ordered'], true) && $this->approvals->isRequired('purchase_order', (string) $order->total_amount)) {
+            $approval = $this->approvals->requestIfRequired('purchase_order', $order->id, 'purchase_order', (string) $order->total_amount, $order->currency, ['po_number' => $order->po_number, 'requested_status' => $status]);
+            if ($approval?->status !== 'approved') {
+                throw ValidationException::withMessages(['status' => ['Purchase Order approval is required before confirmation or ordering.']]);
+            }
+        }
         return DB::transaction(function () use ($order, $status, $reason) {
             $order = PurchaseOrder::query()->lockForUpdate()->findOrFail($order->id);
             if ($status === $order->status) {
@@ -550,6 +616,13 @@ class PurchaseOrderService
             $old = $order->status;
             $order->update(['status' => $status, 'updated_by' => Auth::id()]);
             $this->audit($order, 'status_changed', ['status' => $old], ['status' => $status], $reason);
+            if (in_array($status, ['confirmed', 'ordered'], true)) {
+                $this->events->record(
+                    $status === 'ordered' ? 'purchase_order.ordered' : 'purchase_order.approved',
+                    $order, $order->po_number, ['supplier_id' => $order->supplier_id, 'total' => $order->total_amount, 'currency' => $order->currency],
+                    "po:{$order->id}:status:{$status}",
+                );
+            }
 
             return $this->find($order->fresh());
         });

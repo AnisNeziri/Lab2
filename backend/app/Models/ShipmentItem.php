@@ -12,12 +12,17 @@ class ShipmentItem extends Model
 
     protected $fillable = [
         'company_id', 'shipment_id', 'shipment_container_id', 'purchase_order_item_id',
-        'product_id', 'description', 'unit', 'quantity', 'base_quantity',
+        'product_id', 'description', 'unit', 'quantity', 'planned_quantity',
+        'loaded_quantity', 'base_quantity', 'unit_cbm', 'unit_weight_kg',
     ];
 
     protected function casts(): array
     {
-        return ['quantity' => 'decimal:3', 'base_quantity' => 'decimal:3'];
+        return [
+            'quantity' => 'decimal:3', 'planned_quantity' => 'decimal:3',
+            'loaded_quantity' => 'decimal:3', 'base_quantity' => 'decimal:3',
+            'unit_cbm' => 'decimal:6', 'unit_weight_kg' => 'decimal:6',
+        ];
     }
 
     public function shipment(): BelongsTo { return $this->belongsTo(Shipment::class); }

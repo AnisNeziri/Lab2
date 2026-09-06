@@ -22,6 +22,7 @@ import {
   Warehouse,
   ScanLine,
   Boxes,
+  Radar,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import NotificationCenter from "./NotificationCenter";
@@ -98,6 +99,7 @@ export default function Sidebar({
           { id: "products", label: t("nav.products"), icon: Package },
           { id: "stock", label: t("nav.stock"), icon: TrendingUp },
           ...(permissions.includes("inventory.view") ? [{ id: "operations-center", label: t("nav.operationsCenter"), icon: Boxes }] : []),
+          ...(permissions.includes("quality.view") ? [{ id: "quality", label: t("nav.quality"), icon: ShieldCheck }] : []),
           ...(permissions.includes("transfers.view") ? [{ id: "warehouse-operations", label: t("nav.warehouseOperations"), icon: Warehouse }] : []),
           ...(permissions.includes("warehouse_mobile.use") ? [{ id: "warehouse-mobile", label: t("nav.mobileWarehouse"), icon: ScanLine }] : []),
           { id: "suppliers", label: t("nav.suppliers"), icon: Truck },
@@ -117,6 +119,7 @@ export default function Sidebar({
         label: t("nav.group.orders"),
         items: [
           { id: "purchase-orders", label: "Purchase Orders", icon: Truck },
+          ...(permissions.includes("procurement.view") ? [{ id: "procurement", label: "Procurement", icon: ClipboardList }] : []),
         ],
       },
       {
@@ -131,6 +134,7 @@ export default function Sidebar({
         id: "shipments",
         label: t("nav.group.shipments"),
         items: [
+          ...(permissions.includes("control_tower.view") ? [{ id: "control-tower", label: t("nav.controlTower"), icon: Radar }] : []),
           { id: "shipments/global-map", label: t("nav.globalMap"), icon: Globe },
           { id: "shipments/my-shipments", label: t("nav.myShipments"), icon: Ship },
           { id: "shipments/alerts", label: t("nav.shipmentAlerts"), icon: Bell },

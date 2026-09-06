@@ -6,6 +6,9 @@ import {
   getSuppliers,
   updateSupplier,
 } from '../api/suppliers'
+import { getSupplierScorecard } from '../api/quality'
+import './QualityManagement.css'
+import './SupplierScorecard.css'
 
 const emptyForm = {
   name: '',
@@ -22,6 +25,7 @@ function Suppliers() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
+  const [scorecard, setScorecard] = useState(null)
 
   async function loadSuppliers() {
     try {
@@ -119,6 +123,15 @@ function Suppliers() {
     }
   }
 
+  async function openScorecard(supplier) {
+    try {
+      setFormError('')
+      setScorecard(await getSupplierScorecard(supplier.id))
+    } catch (error) {
+      setFormError(error.message || 'Could not load supplier performance.')
+    }
+  }
+
   return (
     <main className="suppliers-page">
       <section className="card">
@@ -193,6 +206,9 @@ function Suppliers() {
                   <td>{supplier.address ?? '—'}</td>
                   <td>{supplier.products_count ?? 0}</td>
                   <td className="actions">
+                    <button type="button" className="secondary" onClick={() => openScorecard(supplier)}>
+                      Scorecard
+                    </button>
                     <button type="button" className="secondary" onClick={() => startEdit(supplier)}>
                       Edit
                     </button>
@@ -212,6 +228,31 @@ function Suppliers() {
           </table>
         )}
       </section>
+      {scorecard && (
+        <div className="quality-modal-backdrop">
+          <section className="quality-modal supplier-scorecard">
+            <button type="button" className="quality-close" onClick={() => setScorecard(null)}>×</button>
+            <span className="scorecard-eyebrow">Supplier Performance</span>
+            <h2>{scorecard.supplier_name}</h2>
+            <div className="scorecard-overall"><strong>{scorecard.overall_score ?? '—'}</strong><span>{scorecard.overall_score == null ? 'Insufficient data' : 'Overall score / 100'}</span></div>
+            <div className="quality-metrics scorecard-categories">
+              {Object.entries(scorecard.category_scores || {}).map(([name, item]) => <article className="quality-metric" key={name}><span>{name}</span><strong>{item.score ?? '—'}</strong></article>)}
+            </div>
+            <div className="scorecard-details">
+              <p><span>Total spend</span><strong>€{scorecard.delivery.total_purchased_value}</strong></p>
+              <p><span>Purchase Orders</span><strong>{scorecard.delivery.purchase_orders}</strong></p>
+              <p><span>On-time delivery</span><strong>{scorecard.delivery.on_time_delivery_percent == null ? '—' : `${scorecard.delivery.on_time_delivery_percent}%`}</strong></p>
+              <p><span>Average delay</span><strong>{scorecard.delivery.average_days_late ?? '—'} days</strong></p>
+              <p><span>Defect rate</span><strong>{scorecard.quality.defect_rate == null ? '—' : `${scorecard.quality.defect_rate}%`}</strong></p>
+              <p><span>Acceptance rate</span><strong>{scorecard.quality.acceptance_percent == null ? '—' : `${scorecard.quality.acceptance_percent}%`}</strong></p>
+              <p><span>Claims / returns</span><strong>{scorecard.quality.claim_count} / {scorecard.quality.return_quantity}</strong></p>
+              <p><span>RFQ response</span><strong>{scorecard.commercial.quote_response_rate == null ? '—' : `${scorecard.commercial.quote_response_rate}%`}</strong></p>
+              <p><span>Historical price movement</span><strong>{scorecard.commercial.historical_price_movement_percent == null ? '—' : `${scorecard.commercial.historical_price_movement_percent}%`}</strong></p>
+            </div>
+            <ul>{scorecard.explanation?.map((line) => <li key={line}>{line}</li>)}</ul>
+          </section>
+        </div>
+      )}
     </main>
   )
 }

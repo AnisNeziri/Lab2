@@ -394,6 +394,28 @@ class InventoryLedgerInvariantTest extends TestCase
         $this->assertSame(10.0, $after['projected']);
     }
 
+    public function test_atp_does_not_promise_undated_or_future_purchase_order_stock_early(): void
+    {
+        [$product, $warehouse, , , , $supplier] = $this->inventoryContext();
+        $expectedAt = now('Europe/Tirane')->addDays(2)->toDateString();
+        $this->postJson('/api/purchase-orders', [
+            ...$this->purchaseOrderPayload($supplier, $warehouse, $product, 10),
+            'expected_at' => $expectedAt,
+        ])->assertCreated();
+
+        $snapshots = app(InventorySnapshotService::class);
+        $today = $snapshots->forProduct($product->fresh(), now('Europe/Tirane')->toDateString());
+        $arrivalDay = $snapshots->forProduct($product->fresh(), $expectedAt);
+
+        $this->assertSame(10.0, $today['incoming']);
+        $this->assertSame(0.0, $today['expected_incoming_by_as_of']);
+        $this->assertSame(0.0, $today['available_to_promise_by_as_of']);
+        $this->assertSame(10.0, $arrivalDay['expected_incoming_by_as_of']);
+        $this->assertSame(10.0, $arrivalDay['available_to_promise_by_as_of']);
+        $this->assertSame(0.0, $arrivalDay['committed_outgoing']);
+        $this->assertNotEmpty($arrivalDay['commitment_limitations']);
+    }
+
     public function test_barcode_identity_is_trimmed_case_folded_and_unique_across_primary_and_alternative_codes(): void
     {
         [, $warehouse, , , $category] = $this->inventoryContext();

@@ -157,7 +157,10 @@ class AuthTest extends TestCase
         $this->deleteJson("/api/users/{$user->id}")
             ->assertNoContent();
 
-        $this->assertDatabaseMissing('users', ['id' => $user->id]);
+        // Users are archived rather than physically erased so invoices,
+        // movements and activity history retain a valid actor reference.
+        $this->assertSoftDeleted('users', ['id' => $user->id]);
+        $this->assertDatabaseHas('users', ['id' => $user->id, 'is_active' => false]);
     }
 
     public function test_admin_cannot_remove_self(): void

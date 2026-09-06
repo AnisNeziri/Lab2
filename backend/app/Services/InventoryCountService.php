@@ -25,6 +25,7 @@ class InventoryCountService
         private readonly StockMovementService $movements,
         private readonly TraceabilityService $traceability,
         private readonly UnitConversionService $units,
+        private readonly BusinessEventService $events,
     ) {}
 
     public function list(array $filters): LengthAwarePaginator
@@ -429,6 +430,10 @@ class InventoryCountService
                 'approved_by' => Auth::id(),
                 'approval_reason' => $reason,
             ]);
+            $this->events->record('inventory.count_approved', $session, $session->count_number, [
+                'warehouse_id' => $session->warehouse_id, 'location_id' => $session->location_id,
+                'item_count' => $items->count(),
+            ], "inventory-count:{$session->id}:approved");
 
             return $this->find($session->fresh());
         });

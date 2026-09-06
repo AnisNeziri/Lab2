@@ -21,7 +21,10 @@ class LandedCostService
 
     public const ALLOCATION_METHODS = ['quantity', 'value', 'weight', 'volume', 'manual'];
 
-    public function __construct(private readonly InventoryCostingService $costing) {}
+    public function __construct(
+        private readonly InventoryCostingService $costing,
+        private readonly BusinessEventService $events,
+    ) {}
 
     public function list(array $filters): LengthAwarePaginator
     {
@@ -211,6 +214,13 @@ class LandedCostService
                 'posted_by' => Auth::id(),
                 'posted_at' => $postedAt,
             ]);
+            $this->events->record('landed_cost.finalized', $landedCost, $landedCost->reference_number, [
+                'goods_receipt_id' => $landedCost->goods_receipt_id,
+                'purchase_order_id' => $landedCost->purchase_order_id,
+                'shipment_id' => $landedCost->shipment_id,
+                'base_currency_amount' => $landedCost->base_currency_amount,
+                'base_currency' => $landedCost->base_currency,
+            ], "landed-cost:{$landedCost->id}:finalized");
 
             return $this->find($landedCost->fresh());
         });

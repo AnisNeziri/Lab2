@@ -476,7 +476,6 @@ class DailySaleService
         $outbound = StockMovement::withoutGlobalScopes()->with('traceLines')
             ->where('source_type', $sourceType)->where('source_id', $sourceId)
             ->where('movement_code', $movementCode)->where('product_id', $group['product_id'])
-            ->where('warehouse_id', $group['warehouse_id'])
             ->orderBy('id')->get();
         $reversals = StockMovement::withoutGlobalScopes()
             ->where('source_type', $sourceType)->where('source_id', $sourceId)

@@ -1,0 +1,8 @@
+.supplier-scorecard { width: min(760px, 100%); }
+.scorecard-eyebrow { color: var(--primary-color, #258cf4); font-size: .75rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.scorecard-overall { display: flex; align-items: center; gap: 1rem; margin: 1rem 0; padding: 1rem; border-radius: 16px; background: linear-gradient(135deg, color-mix(in srgb, var(--primary-color, #258cf4) 18%, var(--card-bg, #fff)), var(--card-bg, #fff)); border: 1px solid var(--border-color); }
+.scorecard-overall strong { font-size: 2.5rem; }
+.scorecard-overall span, .scorecard-details span { color: var(--text-muted, #64748b); }
+.scorecard-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .4rem 1.25rem; margin-top: 1rem; }
+.scorecard-details p { display: flex; justify-content: space-between; gap: 1rem; padding: .55rem 0; border-bottom: 1px solid var(--border-color); }
+@media (max-width: 620px) { .scorecard-details { grid-template-columns: 1fr; } }

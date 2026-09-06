@@ -16,6 +16,7 @@ class GoodsReceiptItem extends Model
         'base_purchase_cost', 'base_purchase_unit_cost', 'landed_cost_allocated',
         'landed_cost_unit', 'final_inventory_unit_cost', 'weighted_average_cost_before',
         'weighted_average_cost_after', 'notes',
+        'quality_inspection_mode_snapshot', 'quality_inspection_id',
     ];
 
     protected function casts(): array
@@ -36,4 +37,5 @@ class GoodsReceiptItem extends Model
     public function purchaseOrderItem(): BelongsTo { return $this->belongsTo(PurchaseOrderItem::class); }
     public function product(): BelongsTo { return $this->belongsTo(Product::class); }
     public function landedCostAllocations(): HasMany { return $this->hasMany(LandedCostAllocation::class); }
+    public function qualityInspection(): BelongsTo { return $this->belongsTo(QualityInspection::class); }
 }

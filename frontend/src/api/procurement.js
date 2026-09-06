@@ -1,0 +1,14 @@
+import { apiRequest, buildApiUrl } from "./client";
+const json = (method, body) => ({ method, body: JSON.stringify(body) });
+export const getPurchaseRequests = () => apiRequest(buildApiUrl("/purchase-requests", { per_page: 50 }));
+export const createPurchaseRequest = (body) => apiRequest("/purchase-requests", json("POST", body));
+export const submitPurchaseRequest = (id) => apiRequest(`/purchase-requests/${id}/submit`, json("POST", {}));
+export const getPurchaseRequest = (id) => apiRequest(`/purchase-requests/${id}`);
+export const createRfq = (purchaseRequestId, body) => apiRequest(`/purchase-requests/${purchaseRequestId}/rfqs`, json("POST", body));
+export const issueRfq = (id) => apiRequest(`/rfqs/${id}/issue`, json("POST", {}));
+export const getRfqComparison = (id) => apiRequest(`/rfqs/${id}/comparison`);
+export const createSupplierQuote = (id, body) => apiRequest(`/rfqs/${id}/quotes`, json("POST", body));
+export const awardRfq = (id, body) => apiRequest(`/rfqs/${id}/award`, json("POST", body));
+export const convertAwards = (id, body) => apiRequest(`/rfqs/${id}/convert`, json("POST", body));
+export const getPendingApprovals = () => apiRequest("/approvals/pending");
+export const decideApproval = (id, body) => apiRequest(`/approvals/${id}/decision`, json("POST", body));

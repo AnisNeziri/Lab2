@@ -14,6 +14,7 @@ use App\Services\PurchaseOrderService;
 use App\Services\ReplenishmentService;
 use App\Services\StockMovementService;
 use App\Services\SupplierCatalogueService;
+use App\Services\SupplierPerformanceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
@@ -112,7 +113,7 @@ class InventoryCostingAndSupplyPlanningTest extends TestCase
         }
     }
 
-    public function test_supplier_catalogue_preserves_price_history_and_reports_delivery_performance(): void
+    public function test_supplier_catalogue_preserves_price_history_and_uses_authoritative_supplier_scorecard(): void
     {
         [$supplier, $category] = $this->setupCompany();
         $product = $this->product($category, 'SUP-001', 0, null);
@@ -150,13 +151,13 @@ class InventoryCostingAndSupplyPlanningTest extends TestCase
             'received_at' => '2026-08-28',
             'idempotency_key' => (string) Str::uuid(),
         ]);
-        $performance = $catalogueService->performance($supplier);
-        $this->assertSame(1, $performance['late_deliveries']);
-        $this->assertSame(0, $performance['on_time_deliveries']);
-        $this->assertEqualsWithDelta(13, $performance['average_lead_time_days'], 0.1);
-        $this->assertEqualsWithDelta(5, $performance['ordered_base_quantity'], 0.001);
-        $this->assertEqualsWithDelta(5, $performance['received_base_quantity'], 0.001);
-        $this->assertEqualsWithDelta(60, $performance['purchase_value_eur'], 0.01);
+        $performance = app(SupplierPerformanceService::class)->scorecard($supplier);
+        $this->assertEqualsWithDelta(0, $performance['delivery']['on_time_delivery_percent'], 0.1);
+        $this->assertEqualsWithDelta(13, $performance['delivery']['average_lead_time_days'], 0.1);
+        $this->assertEqualsWithDelta(5, $performance['delivery']['quantity_ordered'], 0.001);
+        $this->assertEqualsWithDelta(5, $performance['delivery']['quantity_received'], 0.001);
+        $this->assertEqualsWithDelta(60, $performance['delivery']['total_purchased_value'], 0.01);
+        $this->assertEqualsWithDelta(20, $performance['commercial']['historical_price_movement_percent'], 0.1);
     }
 
     public function test_replenishment_explains_the_formula_and_only_creates_drafts_on_explicit_action(): void

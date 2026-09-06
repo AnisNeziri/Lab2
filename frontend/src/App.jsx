@@ -39,9 +39,12 @@ const WarehouseOperations = lazy(() => import("./pages/WarehouseOperations"));
 const ShipmentsGlobalMap = lazy(() => import("./pages/shipment/GlobalMap"));
 const MyShipments = lazy(() => import("./pages/shipment/MyShipments"));
 const ShipmentAlerts = lazy(() => import("./pages/shipment/ShipmentAlerts"));
+const SupplyChainControlTower = lazy(() => import("./pages/SupplyChainControlTower"));
 const DailySales = lazy(() => import("./pages/DailySales"));
 const Superadmin = lazy(() => import("./pages/Superadmin"));
 const PurchaseOrders = lazy(() => import("./pages/PurchaseOrders"));
+const Procurement = lazy(() => import("./pages/Procurement"));
+const QualityManagement = lazy(() => import("./pages/QualityManagement"));
 const CustomerDebts = lazy(() => import("./pages/CustomerDebts"));
 const Invoices = lazy(() => import("./pages/Invoices"));
 const FinanceCenter = lazy(() => import("./pages/FinanceCenter"));
@@ -509,6 +512,8 @@ function AppRoutes() {
               </Suspense>
             }
           />
+          <Route path="/procurement" element={<PermissionRoute permission="procurement.view"><Suspense fallback={<PageLoader />}><Procurement /></Suspense></PermissionRoute>} />
+          <Route path="/quality" element={<PermissionRoute permission="quality.view"><Suspense fallback={<PageLoader />}><QualityManagement /></Suspense></PermissionRoute>} />
           <Route
             path="/customer-debts"
             element={
@@ -535,6 +540,26 @@ function AppRoutes() {
               <Suspense fallback={<PageLoader />}>
                 <ShipmentsGlobalMap />
               </Suspense>
+            }
+          />
+          <Route
+            path="/control-tower"
+            element={
+              <PermissionRoute permission="control_tower.view">
+                <Suspense fallback={<PageLoader />}>
+                  <SupplyChainControlTower />
+                </Suspense>
+              </PermissionRoute>
+            }
+          />
+          <Route
+            path="/control-tower/:shipmentId"
+            element={
+              <PermissionRoute permission="control_tower.view">
+                <Suspense fallback={<PageLoader />}>
+                  <SupplyChainControlTower />
+                </Suspense>
+              </PermissionRoute>
             }
           />
           <Route

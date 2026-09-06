@@ -21,6 +21,7 @@ class WarehouseOperationsService
         private readonly UnitConversionService $units,
         private readonly WarehouseLayoutService $layout,
         private readonly InventoryIntegrityService $integrity,
+        private readonly BusinessEventService $events,
     ) {}
 
     public function warehouses(): array
@@ -400,6 +401,10 @@ class WarehouseOperationsService
                 'dispatch_idempotency_key' => $idempotencyKey,
             ]);
             $this->assertTransferIntegrity($transfer);
+            $this->events->record('inventory.transferred', $transfer, $transfer->transfer_number, [
+                'stage' => 'dispatched', 'source_warehouse_id' => $transfer->source_warehouse_id,
+                'destination_warehouse_id' => $transfer->destination_warehouse_id,
+            ], "stock-transfer:{$transfer->id}:dispatched");
 
             return $this->findTransfer($transfer->fresh());
         });
@@ -481,6 +486,11 @@ class WarehouseOperationsService
                 'received_at' => now(),
             ]);
             $this->assertTransferIntegrity($transfer);
+            $this->events->record('inventory.transferred', $transfer, $transfer->transfer_number, [
+                'stage' => $complete ? 'received' : 'partially_received',
+                'source_warehouse_id' => $transfer->source_warehouse_id,
+                'destination_warehouse_id' => $transfer->destination_warehouse_id,
+            ], "stock-transfer:{$transfer->id}:receipt:{$data['idempotency_key']}");
 
             return $this->findTransfer($transfer->fresh());
         });

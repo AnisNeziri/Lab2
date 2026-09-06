@@ -21,11 +21,18 @@ class Supplier extends Model
         'is_active',
         'created_by',
         'updated_by',
+        'quality_inspection_mode',
+        'quality_inspection_template_id',
     ];
 
     protected function casts(): array
     {
         return ['company_id' => 'integer', 'is_active' => 'boolean'];
+    }
+
+    public function qualityInspectionTemplate(): BelongsTo
+    {
+        return $this->belongsTo(QualityInspectionTemplate::class);
     }
 
     public function products(): HasMany

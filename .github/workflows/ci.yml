@@ -1,0 +1,110 @@
+name: AIMS CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    name: Backend tests (SQLite portable path)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, dom, fileinfo, pdo_sqlite, sqlite3
+          coverage: none
+      - uses: actions/cache@v4
+        with:
+          path: backend/vendor
+          key: ${{ runner.os }}-php-${{ hashFiles('backend/composer.lock') }}
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: cp .env.example .env
+      - run: php artisan key:generate --force
+      - run: php artisan migrate:fresh --database=sqlite --force
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: database/database.sqlite
+          CACHE_STORE: array
+          SESSION_DRIVER: array
+          QUEUE_CONNECTION: sync
+      - run: php artisan test
+
+  frontend-build:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  backend-mariadb-migrations:
+    name: Backend migrations (MariaDB server path)
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MYSQL_DATABASE: aims_ci
+          MYSQL_USER: aims
+          MYSQL_PASSWORD: aims
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, dom, fileinfo, pdo_mysql
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: cp .env.example .env
+      - run: php artisan key:generate --force
+      - run: php artisan migrate:fresh --force
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: aims_ci
+          DB_USERNAME: aims
+          DB_PASSWORD: aims
+          CACHE_STORE: array
+          SESSION_DRIVER: array
+          QUEUE_CONNECTION: sync
+      - run: php artisan test
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: aims_ci
+          DB_USERNAME: aims
+          DB_PASSWORD: aims
+          CACHE_STORE: array
+          SESSION_DRIVER: array
+          QUEUE_CONNECTION: sync

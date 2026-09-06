@@ -59,6 +59,8 @@ class Product extends Model
         'vat_rate',
         'tax_treatment',
         'tax_legal_reference',
+        'quality_inspection_mode',
+        'quality_inspection_template_id',
     ];
 
     protected function casts(): array
@@ -106,6 +108,11 @@ class Product extends Model
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(Supplier::class)->withTrashed();
+    }
+
+    public function qualityInspectionTemplate(): BelongsTo
+    {
+        return $this->belongsTo(QualityInspectionTemplate::class);
     }
 
     public function defaultWarehouse(): BelongsTo

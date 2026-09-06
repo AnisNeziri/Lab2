@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\CustomerCreditOverrideRequest;
 use App\Http\Requests\CustomerDebtEntryRequest;
 use App\Http\Requests\CustomerDebtPaymentRequest;
 use App\Http\Requests\CustomerRequest;
@@ -10,15 +11,18 @@ use App\Http\Requests\ReverseDebtTransactionRequest;
 use App\Http\Requests\UpdateDebtTransactionRequest;
 use App\Models\Customer;
 use App\Models\CustomerDebtTransaction;
+use App\Models\ApprovalRequest;
+use App\Services\CustomerCreditService;
 use App\Services\CustomerDebtService;
 use App\Support\Money;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CustomerController extends Controller
 {
-    public function __construct(private readonly CustomerDebtService $debts) {}
+    public function __construct(private readonly CustomerDebtService $debts, private readonly CustomerCreditService $credit) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -87,7 +91,18 @@ class CustomerController extends Controller
 
     public function update(CustomerRequest $request, Customer $customer): JsonResponse
     {
-        $customer->update($request->validated());
+        $data = $request->validated();
+        if (($data['credit_status'] ?? $customer->credit_status) === 'blocked') {
+            if ($customer->credit_status !== 'blocked') {
+                $data['credit_hold_at'] = now();
+                $data['credit_hold_by'] = $request->user()->id;
+            }
+        } elseif (array_key_exists('credit_status', $data) && $customer->credit_status === 'blocked') {
+            $data['credit_hold_at'] = null;
+            $data['credit_hold_by'] = null;
+            $data['credit_hold_reason'] = $data['credit_hold_reason'] ?? null;
+        }
+        $customer->update($data);
 
         return response()->json($customer->fresh());
     }
@@ -122,6 +137,7 @@ class CustomerController extends Controller
             'last_payment_at' => $transactions->where('type', 'payment')->max('transaction_date')?->toDateString(),
             'last_debt_at' => $transactions->whereIn('type', ['debt_added', 'opening_balance', 'positive_adjustment'])->max('transaction_date')?->toDateString(),
         ]);
+        $customer->setAttribute('credit_summary', $this->credit->exposure($customer));
 
         return response()->json($customer);
     }
@@ -131,6 +147,28 @@ class CustomerController extends Controller
         $type = $request->boolean('opening_balance') ? 'opening_balance' : 'debt_added';
 
         return response()->json($this->debts->addDebt($customer, $request->validated(), $type), 201);
+    }
+
+    public function requestCreditOverride(CustomerCreditOverrideRequest $request, Customer $customer): JsonResponse
+    {
+        $type = $request->boolean('opening_balance') ? 'opening_balance' : 'debt_added';
+        $approval = $this->debts->requestCreditOverride($customer, $request->validated(), $type);
+        $created = $approval->wasRecentlyCreated;
+        $approval->setAttribute('duplicate', ! $created);
+
+        return response()->json($approval->load('decisions'), $created ? 201 : 200);
+    }
+
+    public function creditOverrideStatus(Customer $customer, ApprovalRequest $approvalRequest): JsonResponse
+    {
+        abort_unless(
+            $approvalRequest->entity_type === \App\Services\ApprovalService::CUSTOMER_CREDIT_OVERRIDE
+                && $approvalRequest->rule_type === \App\Services\ApprovalService::CUSTOMER_CREDIT_OVERRIDE
+                && (int) $approvalRequest->entity_id === (int) $customer->id,
+            404,
+        );
+
+        return response()->json($approvalRequest->load('decisions'));
     }
 
     public function payment(CustomerDebtPaymentRequest $request, Customer $customer): JsonResponse
@@ -166,6 +204,182 @@ class CustomerController extends Controller
             'overdue_debt' => (float) (clone $overdue)->sum('current_debt'),
             'overdue_customers' => (clone $overdue)->count(),
         ]);
+    }
+
+    public function creditReport(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'filter' => ['nullable', 'in:all,blocked,over_limit,overdue,90_plus'],
+            'blocked' => ['nullable', 'boolean'],
+            'over_limit' => ['nullable', 'boolean'],
+            'overdue' => ['nullable', 'boolean'],
+            'overdue_90_plus' => ['nullable', 'boolean'],
+            'sort' => ['nullable', 'in:exposure_desc,exposure_asc,utilization_desc,utilization_asc,overdue_desc,overdue_asc'],
+            'sort_by' => ['nullable', 'in:customer,exposure,utilization,overdue'],
+            'sort_direction' => ['nullable', 'in:asc,desc'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'page' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        foreach (['blocked', 'over_limit', 'overdue', 'overdue_90_plus'] as $booleanFilter) {
+            if ($request->has($booleanFilter)) {
+                $validated[$booleanFilter] = $request->boolean($booleanFilter);
+            }
+        }
+
+        $customers = Customer::query()->orderBy('name')->get();
+
+        $rows = $customers->map(fn (Customer $customer): array => $this->creditReportRow($customer));
+        $summary = $this->creditReportSummary($rows);
+        $filtered = $this->filterCreditReport($rows, $validated);
+        [$sortBy, $direction] = $this->creditReportSort($validated);
+        $sorted = $this->sortCreditReport($filtered, $sortBy, $direction)->values();
+
+        $page = $validated['page'] ?? 1;
+        $perPage = $validated['per_page'] ?? 20;
+        $total = $sorted->count();
+
+        return response()->json([
+            'data' => $sorted->forPage($page, $perPage)->values(),
+            'current_page' => $page,
+            'per_page' => $perPage,
+            'total' => $total,
+            'last_page' => max(1, (int) ceil($total / $perPage)),
+            'summary' => $summary,
+        ]);
+    }
+
+    private function creditReportRow(Customer $customer): array
+    {
+        $credit = $this->credit->exposure($customer);
+        $isBlocked = strtolower((string) $customer->credit_status) === 'blocked';
+        $isOverLimit = $credit['credit_limit'] !== null
+            && Money::compare($credit['total_exposure'], $credit['credit_limit']) > 0;
+        $status = $isBlocked
+            ? 'BLOCKED'
+            : ($isOverLimit
+                ? 'OVER LIMIT'
+                : (strtolower((string) $customer->credit_status) === 'warning' ? 'WARNING' : 'NORMAL'));
+
+        return [
+            'customer_id' => $customer->id,
+            'customer' => $customer->name,
+            'business_name' => $customer->business_name,
+            'debt' => $credit['current_debt'],
+            'advance' => $credit['advance'],
+            'exposure' => $credit['total_exposure'],
+            'overdue' => $credit['overdue'],
+            'overdue_90_plus' => $credit['aging']['90_plus'],
+            'credit_limit' => $credit['credit_limit'],
+            'available_credit' => $credit['available_credit'],
+            'utilization_percent' => $credit['utilization_percent'],
+            'credit_status' => $customer->credit_status,
+            'status' => $status,
+            'oldest_overdue_date' => $credit['oldest_overdue_date'],
+            'aging' => $credit['aging'],
+        ];
+    }
+
+    private function creditReportSummary(Collection $rows): array
+    {
+        return [
+            'total_receivables' => $rows->reduce(
+                fn (string $total, array $row): string => Money::add($total, $row['debt']),
+                '0.00'
+            ),
+            'total_overdue' => $rows->reduce(
+                fn (string $total, array $row): string => Money::add($total, $row['overdue']),
+                '0.00'
+            ),
+            'total_90_plus' => $rows->reduce(
+                fn (string $total, array $row): string => Money::add($total, $row['overdue_90_plus']),
+                '0.00'
+            ),
+            'total_advances' => $rows->reduce(
+                fn (string $total, array $row): string => Money::add($total, $row['advance']),
+                '0.00'
+            ),
+        ];
+    }
+
+    private function filterCreditReport(Collection $rows, array $validated): Collection
+    {
+        $filter = $validated['filter'] ?? 'all';
+
+        return $rows->filter(function (array $row) use ($validated, $filter): bool {
+            if ($search = $validated['search'] ?? null) {
+                $haystack = strtolower($row['customer'].' '.($row['business_name'] ?? ''));
+                if (! str_contains($haystack, strtolower($search))) {
+                    return false;
+                }
+            }
+
+            $isBlocked = $row['status'] === 'BLOCKED';
+            $isOverLimit = $row['credit_limit'] !== null
+                && Money::compare($row['exposure'], $row['credit_limit']) > 0;
+            $isOverdue = Money::compare($row['overdue'], '0.00') > 0;
+            $isNinetyPlus = Money::compare($row['overdue_90_plus'], '0.00') > 0;
+
+            if ($filter === 'blocked' && ! $isBlocked
+                || $filter === 'over_limit' && ! $isOverLimit
+                || $filter === 'overdue' && ! $isOverdue
+                || $filter === '90_plus' && ! $isNinetyPlus) {
+                return false;
+            }
+
+            return ! (($validated['blocked'] ?? false) && ! $isBlocked)
+                && ! (($validated['over_limit'] ?? false) && ! $isOverLimit)
+                && ! (($validated['overdue'] ?? false) && ! $isOverdue)
+                && ! (($validated['overdue_90_plus'] ?? false) && ! $isNinetyPlus);
+        });
+    }
+
+    private function creditReportSort(array $validated): array
+    {
+        if ($sort = $validated['sort'] ?? null) {
+            [$sortBy, $direction] = explode('_', $sort, 2);
+
+            return [$sortBy, $direction];
+        }
+
+        return [$validated['sort_by'] ?? 'exposure', $validated['sort_direction'] ?? 'desc'];
+    }
+
+    private function sortCreditReport(Collection $rows, string $sortBy, string $direction): Collection
+    {
+        return $rows->sort(function (array $left, array $right) use ($sortBy, $direction): int {
+            $leftValue = match ($sortBy) {
+                'customer' => $left['customer'],
+                'utilization' => $left['utilization_percent'],
+                'overdue' => $left['overdue'],
+                default => $left['exposure'],
+            };
+            $rightValue = match ($sortBy) {
+                'customer' => $right['customer'],
+                'utilization' => $right['utilization_percent'],
+                'overdue' => $right['overdue'],
+                default => $right['exposure'],
+            };
+
+            if ($leftValue === null || $rightValue === null) {
+                $comparison = $leftValue === $rightValue ? 0 : ($leftValue === null ? 1 : -1);
+            } elseif ($sortBy === 'customer') {
+                $comparison = strcasecmp((string) $leftValue, (string) $rightValue);
+            } elseif ($sortBy === 'utilization') {
+                $comparison = $leftValue <=> $rightValue;
+            } else {
+                $comparison = Money::compare($leftValue, $rightValue);
+            }
+
+            if ($comparison !== 0) {
+                return $leftValue === null || $rightValue === null
+                    ? $comparison
+                    : ($direction === 'desc' ? -$comparison : $comparison);
+            }
+
+            return strcasecmp($left['customer'], $right['customer']);
+        });
     }
 
     public function statement(Request $request, Customer $customer): StreamedResponse

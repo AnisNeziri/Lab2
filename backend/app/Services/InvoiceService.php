@@ -589,7 +589,6 @@ class InvoiceService
             $outbound = StockMovement::withoutGlobalScopes()->with('traceLines')
                 ->where('source_type', 'invoice')->where('source_id', $invoice->id)
                 ->where('movement_code', 'invoice_sale')->where('product_id', $group['product_id'])
-                ->where('warehouse_id', $group['warehouse_id'])
                 ->where(function ($query) use ($stockKey): void {
                     $query->where('idempotency_key', $stockKey)
                         ->orWhere('idempotency_key', 'like', $stockKey.'-part-%');

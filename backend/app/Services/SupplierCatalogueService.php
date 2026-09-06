@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\Product;
 use App\Models\ProductSupplier;
-use App\Models\PurchaseOrder;
 use App\Models\Supplier;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
@@ -132,87 +131,6 @@ class SupplierCatalogueService
             ->orderByRaw('purchase_price IS NULL')
             ->orderBy('purchase_price')
             ->first();
-    }
-
-    public function performance(Supplier $supplier): array
-    {
-        $orders = PurchaseOrder::query()
-            ->with(['items', 'goodsReceipts:id,purchase_order_id,received_at'])
-            ->where('supplier_id', $supplier->id)
-            ->whereNotIn('status', ['draft', 'cancelled'])
-            ->oldest('ordered_at')
-            ->oldest('id')
-            ->get();
-
-        $ordered = 0.0;
-        $received = 0.0;
-        $shortages = 0.0;
-        $overDeliveries = 0.0;
-        $deliveryLeadDays = [];
-        $onTime = 0;
-        $late = 0;
-        $assessedDeliveries = 0;
-        $purchaseValue = 0.0;
-        $lastPrices = [];
-        $observedPriceChanges = 0;
-
-        foreach ($orders as $order) {
-            $purchaseValue += (float) ($order->total_amount_eur ?? ((float) $order->total_amount * (float) ($order->exchange_rate ?: 1)));
-            foreach ($order->items as $item) {
-                $orderedQuantity = (float) ($item->base_quantity ?? $item->quantity);
-                $receivedQuantity = (float) ($item->received_base_quantity ?? $item->received_quantity);
-                $ordered += $orderedQuantity;
-                $received += $receivedQuantity;
-                if (in_array($order->status, ['received', 'completed'], true)) {
-                    $shortages += max(0, $orderedQuantity - $receivedQuantity);
-                    $overDeliveries += max(0, $receivedQuantity - $orderedQuantity);
-                }
-
-                $priceKey = ($item->product_id ?? 'custom').'|'.mb_strtolower((string) $item->unit).'|'.$order->currency;
-                $price = round((float) $item->unit_price, 6);
-                if (array_key_exists($priceKey, $lastPrices) && abs($lastPrices[$priceKey] - $price) > 0.0000005) {
-                    $observedPriceChanges++;
-                }
-                $lastPrices[$priceKey] = $price;
-            }
-
-            foreach ($order->goodsReceipts as $receipt) {
-                if ($order->ordered_at) {
-                    $deliveryLeadDays[] = $order->ordered_at->startOfDay()->diffInDays($receipt->received_at->startOfDay());
-                }
-                if ($order->expected_at) {
-                    $assessedDeliveries++;
-                    if ($receipt->received_at->toDateString() <= $order->expected_at->toDateString()) {
-                        $onTime++;
-                    } else {
-                        $late++;
-                    }
-                }
-            }
-        }
-
-        $catalogue = ProductSupplier::query()->where('supplier_id', $supplier->id)->get();
-        $cataloguePriceEntries = $catalogue->sum(fn ($item) => $item->priceHistory()->count());
-
-        return [
-            'supplier_id' => $supplier->id,
-            'supplier_name' => $supplier->name,
-            'purchase_order_count' => $orders->count(),
-            'delivery_count' => $orders->sum(fn ($order) => $order->goodsReceipts->count()),
-            'average_lead_time_days' => $deliveryLeadDays === [] ? null : round(array_sum($deliveryLeadDays) / count($deliveryLeadDays), 1),
-            'on_time_delivery_rate' => $assessedDeliveries === 0 ? null : round($onTime * 100 / $assessedDeliveries, 1),
-            'on_time_deliveries' => $onTime,
-            'late_deliveries' => $late,
-            'ordered_base_quantity' => round($ordered, 3),
-            'received_base_quantity' => round($received, 3),
-            'fill_rate' => $ordered <= 0 ? null : round(min(100, $received * 100 / $ordered), 1),
-            'shortage_base_quantity' => round($shortages, 3),
-            'over_delivery_base_quantity' => round($overDeliveries, 3),
-            'purchase_value_eur' => round($purchaseValue, 2),
-            'observed_po_price_changes' => $observedPriceChanges,
-            'catalogue_price_changes' => max(0, $cataloguePriceEntries - $catalogue->whereNotNull('purchase_price')->count()),
-            'active_catalogue_products' => $catalogue->where('is_active', true)->count(),
-        ];
     }
 
     private function normalizedValues(array $data, ?ProductSupplier $existing = null, ?string $baseCurrency = null): array

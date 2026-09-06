@@ -13,10 +13,17 @@ class Category extends Model
     protected $fillable = [
         'company_id',
         'name',
+        'quality_inspection_mode',
+        'quality_inspection_template_id',
     ];
 
     public function products(): HasMany
     {
         return $this->hasMany(Product::class);
+    }
+
+    public function qualityInspectionTemplate(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(QualityInspectionTemplate::class);
     }
 }

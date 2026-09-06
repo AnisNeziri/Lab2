@@ -4,6 +4,7 @@ namespace App\Services\Tracking;
 
 use App\Models\PurchaseOrder;
 use App\Models\Shipment;
+use App\Services\BusinessEventService;
 use Carbon\Carbon;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
@@ -21,6 +22,7 @@ class MyShipmentTrackingService
         private readonly ShipmentAlertService $alertService,
         private readonly GeoCalculator $geo,
         private readonly VesselLookupService $vesselLookup,
+        private readonly BusinessEventService $events,
     ) {}
 
     public function trackByNumber(array $data, int $companyId): Shipment
@@ -86,7 +88,12 @@ class MyShipmentTrackingService
 
             $this->alertService->logHistory($shipment, 'registered', 'Shipment added to tracking list.');
 
-            return $this->refresh($shipment);
+            $shipment = $this->refresh($shipment);
+            $this->events->record('shipment.created', $shipment, $shipment->tracking_number, [
+                'purchase_order_id' => $shipment->purchase_order_id, 'transport_mode' => $shipment->transport_mode,
+            ], "shipment:{$shipment->id}:created");
+
+            return $shipment;
         });
     }
 
@@ -201,6 +208,9 @@ class MyShipmentTrackingService
             if ($hasPosition) {
                 $this->alertService->notifyOnce($shipment->fresh(), 'vessel_position_available');
             }
+            $this->events->record('shipment.created', $shipment, $shipment->tracking_number, [
+                'purchase_order_id' => $shipment->purchase_order_id, 'transport_mode' => 'sea', 'mmsi' => $shipment->mmsi,
+            ], "shipment:{$shipment->id}:created");
 
             return $shipment->fresh(['purchaseOrder', 'warehouse', 'supplier', 'histories']);
         });

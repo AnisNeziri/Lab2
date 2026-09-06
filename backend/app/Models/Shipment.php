@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Traits\BelongsToCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Shipment extends Model
@@ -101,6 +102,13 @@ class Shipment extends Model
         return $this->belongsTo(PurchaseOrder::class)->withTrashed();
     }
 
+    public function purchaseOrders(): BelongsToMany
+    {
+        return $this->belongsToMany(PurchaseOrder::class, 'shipment_purchase_orders')
+            ->withPivot('company_id')
+            ->withTimestamps();
+    }
+
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class);
@@ -129,6 +137,16 @@ class Shipment extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(ShipmentDocument::class);
+    }
+
+    public function milestones(): HasMany
+    {
+        return $this->hasMany(ShipmentMilestone::class);
+    }
+
+    public function operationalExceptions(): HasMany
+    {
+        return $this->hasMany(OperationalException::class);
     }
 
     public function scopeActive($query)

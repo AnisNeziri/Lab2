@@ -28,4 +28,5 @@ class GoodsReceipt extends Model
     public function receiver(): BelongsTo { return $this->belongsTo(User::class, 'received_by')->withTrashed(); }
     public function items(): HasMany { return $this->hasMany(GoodsReceiptItem::class); }
     public function landedCosts(): HasMany { return $this->hasMany(LandedCost::class); }
+    public function qualityInspections(): HasMany { return $this->hasMany(QualityInspection::class); }
 }

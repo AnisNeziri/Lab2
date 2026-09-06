@@ -22,6 +22,7 @@ class UpdateDebtTransactionRequest extends FormRequest
             'reference_number' => ['nullable', 'string', 'max:255'],
             'note' => ['nullable', 'string', 'max:2000'],
             'reason' => ['required', 'string', 'min:5', 'max:2000'],
+            'approval_request_id' => ['nullable', 'integer', 'min:1'],
         ];
     }
 }

@@ -1,0 +1,25 @@
+import { apiRequest, buildApiUrl, authenticatedFetch, parseApiResponse } from './client'
+
+export const getQualityDashboard = (params = {}) => apiRequest(buildApiUrl('/quality/dashboard', params), {}, 'Could not load quality overview')
+export const getInspections = (params = {}) => apiRequest(buildApiUrl('/quality/inspections', params), {}, 'Could not load inspections')
+export const getInspectionSources = () => apiRequest('/quality/sources', {}, 'Could not load receipt lines')
+export const getInspection = (id) => apiRequest(`/quality/inspections/${id}`, {}, 'Could not load inspection')
+export const createInspection = (payload) => apiRequest('/quality/inspections', { method: 'POST', body: JSON.stringify(payload) }, 'Could not create inspection')
+export const finalizeInspection = (id, payload) => apiRequest(`/quality/inspections/${id}/finalize`, { method: 'POST', body: JSON.stringify(payload) }, 'Could not finalize inspection')
+export const correctInspection = (id, reason) => apiRequest(`/quality/inspections/${id}/corrections`, { method: 'POST', body: JSON.stringify({ reason }) }, 'Could not create correction')
+export const addDefect = (id, payload) => apiRequest(`/quality/inspections/${id}/defects`, { method: 'POST', body: JSON.stringify(payload) }, 'Could not record defect')
+export const getQualityTemplates = () => apiRequest('/quality/templates', {}, 'Could not load checklists')
+export const saveQualityTemplate = (payload) => apiRequest('/quality/templates', { method: 'POST', body: JSON.stringify(payload) }, 'Could not save checklist')
+export const getDefectCategories = () => apiRequest('/quality/defect-categories', {}, 'Could not load defect categories')
+export const saveDefectCategory = (payload) => apiRequest('/quality/defect-categories', { method: 'POST', body: JSON.stringify(payload) }, 'Could not save defect category')
+export const configureQuality = (payload) => apiRequest('/quality/configuration', { method: 'PUT', body: JSON.stringify(payload) }, 'Could not save quality configuration')
+export const getSupplierClaims = (params = {}) => apiRequest(buildApiUrl('/quality/claims', params), {}, 'Could not load supplier claims')
+export const createSupplierClaim = (payload) => apiRequest('/quality/claims', { method: 'POST', body: JSON.stringify(payload) }, 'Could not create supplier claim')
+export const resolveSupplierClaim = (id, payload) => apiRequest(`/quality/claims/${id}/resolve`, { method: 'POST', body: JSON.stringify(payload) }, 'Could not resolve supplier claim')
+export const getSupplierScorecard = (id) => apiRequest(`/quality/suppliers/${id}/scorecard`, {}, 'Could not load supplier scorecard')
+export const uploadQualityAttachment = (formData) => apiRequest('/quality/attachments', { method: 'POST', body: formData }, 'Could not upload evidence')
+export async function downloadQualityAttachment(item) {
+  const response = await authenticatedFetch(buildApiUrl(`/quality/attachments/${item.id}`))
+  if (!response.ok) return parseApiResponse(response, 'Could not download evidence')
+  const link = document.createElement('a'); link.href = URL.createObjectURL(await response.blob()); link.download = item.filename; link.click(); URL.revokeObjectURL(link.href)
+}

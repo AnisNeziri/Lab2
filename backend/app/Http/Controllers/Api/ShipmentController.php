@@ -140,8 +140,10 @@ class ShipmentController extends Controller
     public function show(Shipment $shipment): JsonResponse
     {
         return response()->json($shipment->load([
-            'purchaseOrder.supplier', 'purchaseOrder.items.product:id,name,sku,unit', 'warehouse', 'supplier', 'histories',
-            'containers.items.product:id,name,sku,unit', 'items.product:id,name,sku,unit',
+            'purchaseOrder.supplier', 'purchaseOrder.items.product:id,name,sku,unit,weight_kg,volume_m3',
+            'purchaseOrders.supplier', 'purchaseOrders.items.product:id,name,sku,unit,weight_kg,volume_m3',
+            'warehouse', 'supplier', 'histories', 'containers.purchaseOrders',
+            'containers.items.product:id,name,sku,unit,weight_kg,volume_m3', 'items.product:id,name,sku,unit,weight_kg,volume_m3',
             'items.purchaseOrderItem:id,purchase_order_id,product_id,description,unit,quantity,received_quantity',
             'documents' => fn ($query) => $query->with('uploader:id,name')->latest(),
         ]));

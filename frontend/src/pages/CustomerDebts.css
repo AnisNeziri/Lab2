@@ -1,0 +1,349 @@
+.customer-credit-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.customer-credit-title h2 {
+  margin: 0;
+}
+
+.credit-state-badge,
+.credit-approval-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.3rem 0.62rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.035em;
+  white-space: nowrap;
+}
+
+.credit-state-badge.normal,
+.credit-approval-badge.approved {
+  color: #047857;
+  border-color: #a7f3d0;
+  background: #ecfdf5;
+}
+
+.credit-state-badge.warning,
+.credit-approval-badge.pending {
+  color: #92400e;
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.credit-state-badge.over_limit,
+.credit-state-badge.blocked,
+.credit-approval-badge.rejected,
+.credit-approval-badge.cancelled {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.customer-debt-status {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--text-muted, #64748b);
+}
+
+.credit-policy-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.7rem;
+  margin: 1.15rem 0;
+  padding: 0.85rem;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 12px;
+  background: var(--surface-soft, #f8fafc);
+}
+
+.credit-policy-strip > div {
+  display: grid;
+  gap: 0.22rem;
+}
+
+.credit-policy-strip small,
+.credit-block-metrics small {
+  color: var(--text-muted, #64748b);
+}
+
+.credit-policy-strip .credit-hold-reason {
+  grid-column: 1 / -1;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border-color, #e2e8f0);
+  color: #b91c1c;
+}
+
+.credit-metrics-grid,
+.credit-report-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.credit-metrics-grid .stat-card,
+.credit-report-summary .stat-card {
+  padding: 0.9rem;
+  box-shadow: none;
+}
+
+.credit-metrics-grid .stat-label,
+.credit-report-summary .stat-label {
+  margin: 0 0 0.35rem;
+}
+
+.credit-metrics-grid .stat-value,
+.credit-report-summary .stat-value {
+  margin: 0;
+  font-size: 1.12rem;
+}
+
+.credit-aging-section {
+  margin: 1.25rem 0;
+  padding: 1rem;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 12px;
+}
+
+.credit-aging-section .section-header {
+  margin-bottom: 0.8rem;
+}
+
+.credit-aging-section h3,
+.credit-aging-section small {
+  margin: 0;
+}
+
+.credit-aging-section small {
+  color: var(--text-muted, #64748b);
+}
+
+.credit-aging-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(105px, 1fr));
+  gap: 0.6rem;
+}
+
+.credit-aging-grid article {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.75rem;
+  border-radius: 9px;
+  background: var(--surface-soft, #f8fafc);
+}
+
+.credit-aging-grid span {
+  color: var(--text-muted, #64748b);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.credit-aging-grid article.is-danger {
+  color: #b91c1c;
+  background: #fef2f2;
+}
+
+.credit-ledger-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem 1.4rem;
+  margin-bottom: 1rem;
+  color: var(--text-muted, #64748b);
+}
+
+.credit-ledger-dates strong {
+  color: var(--text-color, #0f172a);
+}
+
+.credit-block-panel {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #fca5a5;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--card-bg, #fff) 92%, #ef4444);
+}
+
+.credit-block-panel > header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  color: #b91c1c;
+}
+
+.credit-block-panel h4,
+.credit-block-panel p {
+  margin: 0;
+}
+
+.credit-block-panel p {
+  margin-top: 0.2rem;
+}
+
+.credit-block-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 0.65rem;
+}
+
+.credit-block-metrics > span {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.7rem;
+  border-radius: 9px;
+  background: var(--card-bg, #fff);
+}
+
+.credit-approval-state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.credit-approval-state small {
+  color: var(--text-muted, #64748b);
+}
+
+.credit-override-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.credit-override-form label,
+.credit-report-toolbar label {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--text-color, #334155);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.credit-override-form textarea {
+  min-height: 80px;
+}
+
+.credit-block-panel > button,
+.credit-report-section .section-header button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  gap: 0.42rem;
+}
+
+.credit-report-section {
+  min-width: 0;
+}
+
+.credit-report-summary {
+  margin-bottom: 1rem;
+}
+
+.credit-report-toolbar {
+  grid-template-columns: repeat(2, minmax(200px, 280px));
+  justify-content: start;
+}
+
+.credit-report-table {
+  overflow-x: auto;
+}
+
+.credit-report-table table {
+  min-width: 1220px;
+}
+
+.credit-report-customer {
+  display: block;
+  padding: 0;
+  border: 0;
+  color: var(--primary-color, #0f766e);
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  font-weight: 800;
+  text-align: left;
+}
+
+.credit-report-customer:hover {
+  text-decoration: underline;
+  transform: none;
+}
+
+.credit-report-customer + small {
+  display: block;
+  margin-top: 0.2rem;
+}
+
+html.dark .credit-state-badge.normal,
+html[data-theme="dark"] .credit-state-badge.normal,
+html.dark .credit-approval-badge.approved,
+html[data-theme="dark"] .credit-approval-badge.approved {
+  color: #6ee7b7;
+  border-color: #065f46;
+  background: rgba(6, 95, 70, 0.24);
+}
+
+html.dark .credit-state-badge.warning,
+html[data-theme="dark"] .credit-state-badge.warning,
+html.dark .credit-approval-badge.pending,
+html[data-theme="dark"] .credit-approval-badge.pending {
+  color: #fcd34d;
+  border-color: #92400e;
+  background: rgba(146, 64, 14, 0.24);
+}
+
+html.dark .credit-state-badge.over_limit,
+html.dark .credit-state-badge.blocked,
+html.dark .credit-approval-badge.rejected,
+html.dark .credit-approval-badge.cancelled,
+html[data-theme="dark"] .credit-state-badge.over_limit,
+html[data-theme="dark"] .credit-state-badge.blocked,
+html[data-theme="dark"] .credit-approval-badge.rejected,
+html[data-theme="dark"] .credit-approval-badge.cancelled {
+  color: #fca5a5;
+  border-color: #991b1b;
+  background: rgba(153, 27, 27, 0.24);
+}
+
+html.dark .credit-policy-strip .credit-hold-reason,
+html[data-theme="dark"] .credit-policy-strip .credit-hold-reason,
+html.dark .credit-block-panel > header,
+html[data-theme="dark"] .credit-block-panel > header,
+html.dark .credit-aging-grid article.is-danger,
+html[data-theme="dark"] .credit-aging-grid article.is-danger {
+  color: #fca5a5;
+}
+
+html.dark .credit-aging-grid article.is-danger,
+html[data-theme="dark"] .credit-aging-grid article.is-danger {
+  background: rgba(153, 27, 27, 0.18);
+}
+
+@media (max-width: 760px) {
+  .credit-aging-grid {
+    grid-template-columns: repeat(2, minmax(110px, 1fr));
+  }
+
+  .credit-report-toolbar {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  .credit-block-panel,
+  .credit-report-toolbar,
+  .credit-report-section .pagination,
+  .credit-report-section .section-header button {
+    display: none !important;
+  }
+}

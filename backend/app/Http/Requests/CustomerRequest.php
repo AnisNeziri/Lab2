@@ -34,6 +34,10 @@ class CustomerRequest extends FormRequest
             'tax_number' => ['nullable', 'string', 'max:100'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'is_active' => ['sometimes', 'boolean'],
+            'credit_limit' => ['nullable', 'numeric', 'decimal:0,2', 'min:0'],
+            'payment_terms_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
+            'credit_status' => ['sometimes', Rule::in(['normal', 'warning', 'blocked'])],
+            'credit_hold_reason' => ['nullable', 'string', 'max:2000', Rule::requiredIf(fn () => $this->input('credit_status') === 'blocked')],
         ];
     }
 }

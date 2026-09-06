@@ -21,6 +21,12 @@ class CustomerDebtEntryRequest extends FormRequest
             'note' => ['nullable', 'string', 'max:2000'],
             'opening_balance' => ['sometimes', 'boolean'],
             'idempotency_key' => ['required', 'string', 'max:100'],
+            'approval_request_id' => ['nullable', 'integer', 'min:1'],
+            'source_entity' => ['nullable', 'string', 'max:120'],
+            'source_reference' => ['nullable', 'string', 'max:255'],
+            'source' => ['nullable', 'array'],
+            'source.entity_type' => ['required_with:source', 'string', 'max:120'],
+            'source.reference' => ['required_with:source', 'string', 'max:255'],
         ];
     }
 }

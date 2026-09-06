@@ -71,11 +71,18 @@ class PortableBackupService
             'shipments', 'shipment_histories', 'shipment_containers',
             'shipment_items', 'shipment_documents',
         ],
+        'quality' => [
+            'quality_inspection_templates', 'quality_checklist_items', 'quality_defect_categories',
+            'quality_inspections', 'quality_inspection_results', 'quality_defects',
+            'supplier_claims', 'supplier_claim_items', 'supplier_claim_defects',
+            'quality_attachments', 'supplier_score_settings',
+        ],
     ];
 
     /** Tables must be inserted in this order and removed in reverse order. */
     private const TABLE_ORDER = [
         'users',
+        'quality_inspection_templates', 'quality_checklist_items', 'quality_defect_categories', 'supplier_score_settings',
         'categories', 'suppliers', 'warehouses', 'warehouse_sections', 'warehouse_locations',
         'customers', 'customer_debts', 'products', 'product_barcodes', 'product_units',
         'product_suppliers', 'product_supplier_price_history', 'warehouse_stock',
@@ -87,11 +94,13 @@ class PortableBackupService
         'supplier_invoice_payment_allocations',
         'supplier_payment_allocation_requests',
         'goods_receipts', 'goods_receipt_items',
+        'quality_inspections', 'quality_inspection_results', 'quality_defects',
         'landed_costs', 'landed_cost_allocations', 'landed_cost_accounting_entries',
         'supplier_invoice_items', 'expense_goods_receipts', 'supplier_match_events',
         'stock_transfers', 'stock_transfer_items', 'stock_transfer_pick_events', 'stock_transfer_receipts', 'stock_movements',
         'stock_movement_traces', 'inventory_count_sessions', 'inventory_count_items', 'inventory_count_entries',
         'inventory_returns', 'inventory_return_items', 'inventory_return_events',
+        'supplier_claims', 'supplier_claim_items', 'supplier_claim_defects', 'quality_attachments',
         'shipments', 'shipment_histories', 'shipment_containers', 'shipment_items', 'shipment_documents',
         'financial_account_transfers', 'financial_account_transactions',
         'bank_statements', 'bank_statement_rows', 'bank_reconciliation_events',
@@ -108,6 +117,10 @@ class PortableBackupService
         'stock_transfer_items' => ['stock_transfer_id', 'stock_transfers'],
         'inventory_return_items' => ['inventory_return_id', 'inventory_returns'],
         'expense_goods_receipts' => ['expense_id', 'expenses'],
+        'quality_checklist_items' => ['quality_inspection_template_id', 'quality_inspection_templates'],
+        'quality_inspection_results' => ['quality_inspection_id', 'quality_inspections'],
+        'supplier_claim_items' => ['supplier_claim_id', 'supplier_claims'],
+        'supplier_claim_defects' => ['supplier_claim_id', 'supplier_claims'],
     ];
 
     private const IDENTITY_COLUMNS = [
@@ -150,6 +163,11 @@ class PortableBackupService
         'expense_goods_receipts' => ['expense_id', 'goods_receipt_id'],
         'supplier_match_events' => ['expense_id', 'action', 'created_at'],
         'supplier_invoice_payment_allocations' => ['purchase_order_payment_id', 'expense_id'],
+        'quality_inspection_templates' => ['company_id', 'name'],
+        'quality_defect_categories' => ['company_id', 'name'],
+        'quality_inspections' => ['company_id', 'inspection_number'],
+        'supplier_claims' => ['company_id', 'claim_number'],
+        'supplier_score_settings' => ['company_id'],
     ];
 
     public function __construct(

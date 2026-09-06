@@ -7,12 +7,16 @@ use App\Http\Requests\ProductSupplierRequest;
 use App\Models\ProductSupplier;
 use App\Models\Supplier;
 use App\Services\SupplierCatalogueService;
+use App\Services\SupplierPerformanceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ProductSupplierController extends Controller
 {
-    public function __construct(private readonly SupplierCatalogueService $catalogue) {}
+    public function __construct(
+        private readonly SupplierCatalogueService $catalogue,
+        private readonly SupplierPerformanceService $supplierPerformance,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -56,6 +60,8 @@ class ProductSupplierController extends Controller
 
     public function supplierPerformance(Supplier $supplier): JsonResponse
     {
-        return response()->json($this->catalogue->performance($supplier));
+        // Keep the established endpoint for compatibility, but use the single
+        // authoritative scorecard instead of maintaining a second calculation.
+        return response()->json($this->supplierPerformance->scorecard($supplier));
     }
 }

@@ -2,6 +2,10 @@
 
 return [
 
+    'ecb' => [
+        'daily_url' => env('ECB_DAILY_URL', 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Third Party Services

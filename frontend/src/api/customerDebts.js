@@ -1,7 +1,29 @@
 import { apiRequest, authenticatedFetch, buildApiUrl } from "./client";
+
+async function customerCreditRequest(path, options, fallbackMessage) {
+  const response = await authenticatedFetch(buildApiUrl(path), options);
+  const contentType = response.headers.get("content-type") || "";
+  const payload = contentType.includes("application/json")
+    ? await response.json()
+    : null;
+
+  if (!response.ok) {
+    const error = new Error(payload?.message || fallbackMessage);
+    error.code = payload?.code;
+    error.errors = payload?.errors;
+    error.creditControl = payload?.credit_control;
+    error.payload = payload;
+    throw error;
+  }
+
+  return payload;
+}
+
 export const getCustomerDebts = (params = {}) =>
   apiRequest(buildApiUrl("/customers", params));
 export const getDebtSummary = () => apiRequest("/customers/debts/summary");
+export const getCustomerCreditReport = (params = {}) =>
+  apiRequest(buildApiUrl("/customers/credit-report", params));
 export const getCustomerDebt = (id) => apiRequest(`/customers/${id}`);
 export const createCustomer = (payload) =>
   apiRequest("/customers", { method: "POST", body: JSON.stringify(payload) });
@@ -13,10 +35,21 @@ export const updateCustomer = (id, payload) =>
 export const deleteCustomerDebtSheet = (id) =>
   apiRequest(`/customers/${id}`, { method: "DELETE" });
 export const createCustomerDebtEntry = (id, payload) =>
-  apiRequest(`/customers/${id}/debts`, {
+  customerCreditRequest(`/customers/${id}/debts`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  }, "Could not add the debt entry.");
+export const requestCustomerCreditOverride = (id, payload) =>
+  apiRequest(`/customers/${id}/credit-overrides`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
+export const getCustomerCreditOverrideStatus = (customerId, approvalId) =>
+  apiRequest(`/customers/${customerId}/credit-overrides/${approvalId}`);
 export const recordCustomerDebtPayment = (id, payload) =>
   apiRequest(`/customers/${id}/payments`, {
     method: "POST",
