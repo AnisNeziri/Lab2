@@ -78,19 +78,21 @@ class ShipmentLogisticsService
 
     public function addDocument(Shipment $shipment, string $type, UploadedFile $file): ShipmentDocument
     {
-        $contents = $file->get();
-
+        return DB::transaction(function()use($shipment,$type,$file){
+        $version=app(DocumentEvidenceService::class)->store($file,'Other',[['shipment',$shipment->id]]);
         return ShipmentDocument::create([
             'company_id' => $shipment->company_id,
             'shipment_id' => $shipment->id,
             'document_type' => $type,
-            'filename' => $file->getClientOriginalName(),
-            'mime_type' => $file->getMimeType() ?: 'application/octet-stream',
-            'file_size' => strlen($contents),
-            'sha256' => hash('sha256', $contents),
-            'file_data' => base64_encode($contents),
+            'filename' => $version->filename,
+            'mime_type' => $version->mime_type,
+            'file_size' => $version->size,
+            'sha256' => $version->checksum,
+            'file_data' => '',
+            'document_version_id'=>$version->id,
             'uploaded_by' => Auth::id(),
         ]);
+        });
     }
 
     public function deleteDocument(Shipment $shipment, ShipmentDocument $document): void

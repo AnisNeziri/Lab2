@@ -3,7 +3,14 @@
 namespace Tests\Feature;
 
 use App\Models\Company;
+use App\Models\BackupRun;
 use App\Models\Product;
+use App\Models\PurchaseRequest;
+use App\Models\PurchaseRequestItem;
+use App\Models\Rfq;
+use App\Models\RfqSupplier;
+use App\Models\SupplierQuote;
+use App\Models\SupplierQuoteItem;
 use App\Models\User;
 use App\Services\PortableBackupService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -16,6 +23,38 @@ use Tests\TestCase;
 class PortableBackupTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_backup_execution_history_records_verified_success_and_safe_failure(): void
+    {
+        $this->actingAsApiUser('admin');
+        $passphrase = 'history-secret-passphrase';
+        $backup = $this->postJson('/api/backup/export', [
+            'modules' => ['products'],
+            'passphrase' => $passphrase,
+        ])->assertOk()->getContent();
+
+        $completed = BackupRun::query()->where('operation', 'export')->latest('id')->firstOrFail();
+        $this->assertSame('completed', $completed->status);
+        $this->assertSame('checksum_created', $completed->verification_result);
+        $this->assertGreaterThan(0, $completed->size_bytes);
+        $this->assertSame(['products'], $completed->modules);
+
+        $file = UploadedFile::fake()->createWithContent('wrong-password.aimsbackup', $backup);
+        $this->post('/api/backup/import', [
+            'file' => $file,
+            'passphrase' => 'another-valid-passphrase',
+        ])->assertUnprocessable();
+
+        $failed = BackupRun::query()->where('operation', 'restore')->latest('id')->firstOrFail();
+        $this->assertSame('failed', $failed->status);
+        $this->assertNotNull($failed->completed_at);
+        $this->assertStringNotContainsString($passphrase, (string) $failed->error_summary);
+        $this->assertStringNotContainsString('another-valid-passphrase', (string) $failed->error_summary);
+
+        $this->getJson('/api/system-integrity')->assertOk()
+            ->assertJsonPath('backup_history.0.status', 'failed')
+            ->assertJsonPath('backup_history.1.status', 'completed');
+    }
 
     public function test_selective_plain_service_export_is_tenant_safe_and_contains_no_auth_data(): void
     {
@@ -111,6 +150,37 @@ class PortableBackupTest extends TestCase
             'passphrase' => 'correct-secure-passphrase',
         ])->assertUnprocessable();
         $this->assertSame(0, DB::table('products')->where('company_id', $targetCompany->id)->count());
+    }
+
+    public function test_procurement_backup_restores_request_rfq_quote_relationships_without_provider_secrets(): void
+    {
+        $this->actingAsApiUser('admin');
+        $user = User::query()->where('company_id', $this->apiCompany->id)->firstOrFail();
+        $product = $this->makeProduct($this->apiCompany, 'PROC-BACKUP', 'Procurement backup product');
+        $request = PurchaseRequest::create($this->tenantAttributes([
+            'request_number' => 'PR-BACKUP-1', 'status' => 'approved', 'requested_by' => $user->id,
+            'requested_at' => now(), 'required_by' => now()->addWeek(), 'estimated_total' => 100, 'currency' => 'EUR',
+        ]));
+        $requestItem = PurchaseRequestItem::create(['purchase_request_id' => $request->id, 'product_id' => $product->id, 'description' => $product->name, 'unit' => 'pcs', 'quantity' => 10, 'estimated_unit_price' => 10]);
+        $rfq = Rfq::create($this->tenantAttributes(['purchase_request_id' => $request->id, 'rfq_number' => 'RFQ-BACKUP-1', 'status' => 'issued', 'issued_at' => now(), 'created_by' => $user->id]));
+        RfqSupplier::create(['rfq_id' => $rfq->id, 'supplier_id' => $product->supplier_id, 'sent_at' => now(), 'status' => 'quoted']);
+        $quote = SupplierQuote::create($this->tenantAttributes(['rfq_id' => $rfq->id, 'supplier_id' => $product->supplier_id, 'revision' => 1, 'status' => 'received', 'currency' => 'EUR', 'exchange_rate' => 1, 'created_by' => $user->id]));
+        SupplierQuoteItem::create(['supplier_quote_id' => $quote->id, 'purchase_request_item_id' => $requestItem->id, 'offered_quantity' => 10, 'unit_price' => 9.50]);
+
+        $backup = $this->postJson('/api/backup/export', ['modules' => ['procurement'], 'passphrase' => 'procurement-backup-passphrase'])->assertOk()->getContent();
+        $this->assertStringNotContainsString('integration_providers', $backup);
+        $this->assertStringNotContainsString('webhook_endpoints', $backup);
+
+        $target = $this->switchToNewCompany();
+        $file = UploadedFile::fake()->createWithContent('procurement.aimsbackup', $backup);
+        $this->post('/api/backup/import', ['file' => $file, 'passphrase' => 'procurement-backup-passphrase', 'mode' => 'merge'])->assertOk();
+
+        $restoredRequest = DB::table('purchase_requests')->where('company_id', $target->id)->where('request_number', 'PR-BACKUP-1')->first();
+        $restoredRfq = DB::table('rfqs')->where('company_id', $target->id)->where('rfq_number', 'RFQ-BACKUP-1')->first();
+        $this->assertNotNull($restoredRequest);
+        $this->assertSame((int) $restoredRequest->id, (int) $restoredRfq->purchase_request_id);
+        $this->assertDatabaseHas('purchase_request_items', ['purchase_request_id' => $restoredRequest->id, 'description' => 'Procurement backup product']);
+        $this->assertDatabaseHas('supplier_quotes', ['company_id' => $target->id, 'rfq_id' => $restoredRfq->id, 'revision' => 1]);
     }
 
     public function test_partial_replace_is_blocked_but_full_replace_restores_business_data(): void

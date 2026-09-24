@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\ActivityLogController;
+use App\Http\Controllers\Api\AimsCapabilityController;
 use App\Http\Controllers\Api\ApprovalController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BankReconciliationController;
@@ -11,6 +12,7 @@ use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DailySaleController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\EmailVerificationController;
+use App\Http\Controllers\Api\EntityContextController;
 use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\ExportController;
 use App\Http\Controllers\Api\FinanceController;
@@ -33,6 +35,7 @@ use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductSupplierController;
 use App\Http\Controllers\Api\QualityController;
+use App\Http\Controllers\Api\AccountingController;
 use App\Http\Controllers\Api\ProcurementController;
 use App\Http\Controllers\Api\PurchaseOrderController;
 use App\Http\Controllers\Api\ReplenishmentController;
@@ -46,6 +49,7 @@ use App\Http\Controllers\Api\SuperadminController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\SupplierInvoiceController;
 use App\Http\Controllers\Api\SystemController;
+use App\Http\Controllers\Api\SystemIntegrityController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WarehouseController;
 use App\Http\Controllers\Api\WarehouseLayoutController;
@@ -55,6 +59,47 @@ use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
 Broadcast::routes(['middleware' => ['auth.token']]);
+
+Route::prefix('order-api/v1')->middleware('throttle:60,1')->group(function(){
+    Route::get('/portal',[\App\Http\Controllers\Api\OrderHubController::class,'portal'])->middleware('order.channel:orders:read');
+    $controller=\App\Http\Controllers\Api\OrderHubController::class;
+    Route::post('orders',[$controller,'publicCreate'])->middleware('order.channel:orders:create');
+    Route::get('orders/{id}',[$controller,'publicShow'])->middleware('order.channel:orders:read');
+    Route::post('orders/{id}/cancel',[$controller,'publicCancel'])->middleware('order.channel:orders:cancel');
+    Route::get('catalog',[$controller,'publicCatalog'])->middleware('order.channel:catalog:read');
+    Route::get('availability',[$controller,'publicAvailability'])->middleware('order.channel:availability:read');
+    Route::post('webhook',[$controller,'webhook'])->middleware('order.channel:orders:create');
+    Route::get('tracking/{token}',[$controller,'tracking']);
+});
+
+Route::prefix('order-hub')->middleware(['auth.token','password.changed','company.context','permission:fulfillment.view'])->group(function(){
+    Route::get('/lookups',[\App\Http\Controllers\Api\OrderHubController::class,'lookups']);
+    Route::get('/overview',[\App\Http\Controllers\Api\OrderHubController::class,'overview']);
+    Route::get('/export',[\App\Http\Controllers\Api\OrderHubController::class,'export']);
+    Route::post('/bulk',[\App\Http\Controllers\Api\OrderHubController::class,'bulk'])->middleware('permission:fulfillment.manage');
+    $controller=\App\Http\Controllers\Api\OrderHubController::class;
+    Route::get('/',[$controller,'index']); Route::get('/intakes/{intake}',[$controller,'show']);
+    Route::get('/report',[$controller,'report']);Route::get('/presets',[$controller,'presets']);Route::post('/presets',[$controller,'savePreset']);Route::delete('/presets/{preset}',[$controller,'deletePreset']);
+    Route::get('/channels',[$controller,'channels']);
+    Route::get('/channels/{channel}/mappings',[$controller,'mappings']);
+    Route::middleware('permission:fulfillment.manage')->group(function()use($controller){
+        Route::post('/orders',[$controller,'manual']);
+        Route::post('/imports/preview',[$controller,'previewImport']);Route::post('/channels/{channel}/imports',[$controller,'commitImport']);
+        Route::post('/channels',[$controller,'channel']);Route::put('/channels/{channel}',[$controller,'channel']);
+        Route::post('/channels/{channel}/mappings',[$controller,'mapping']);
+        Route::post('/channels/{channel}/orders',[$controller,'store']);
+        Route::put('/intakes/{intake}',[$controller,'resolve']);
+        Route::post('/intakes/{intake}/reorder',[$controller,'reorder']);
+        Route::post('/intakes/{intake}/ready',[$controller,'ready']);
+        Route::post('/intakes/{intake}/invoice',[$controller,'invoice']);
+        Route::post('/intakes/{intake}/payment',[$controller,'payment']);
+        Route::post('/intakes/{intake}/{action}',[$controller,'action']);
+    });
+    Route::middleware('permission:integrations.manage')->group(function()use($controller){
+        Route::get('/channels/{channel}/keys',[$controller,'keys']);Route::post('/channels/{channel}/keys',[$controller,'key']);
+        Route::delete('/channels/{channel}/keys/{key}',[$controller,'revoke']);
+    });
+});
 
 Route::get('/status', function () {
     return response()->json([
@@ -84,11 +129,11 @@ Route::middleware('auth.token')->group(function () {
 
     Route::middleware('password.changed')->group(function () {
         Route::middleware('company.context')->group(function () {
-            Route::get('/dashboard', [DashboardController::class, 'index']);
-            Route::get('/dashboard/sales-analytics', [DashboardController::class, 'salesAnalytics']);
-            Route::get('/dashboard/activity-feed', [DashboardController::class, 'activityFeed']);
-            Route::get('/dashboard/low-stock-alerts', [DashboardController::class, 'lowStockAlerts']);
-            Route::get('/reports', [ReportController::class, 'index']);
+            Route::get('/dashboard', [DashboardController::class, 'index'])->middleware('permission:dashboard.view');
+            Route::get('/dashboard/sales-analytics', [DashboardController::class, 'salesAnalytics'])->middleware('permission:dashboard.view');
+            Route::get('/dashboard/activity-feed', [DashboardController::class, 'activityFeed'])->middleware('permission:dashboard.view');
+            Route::get('/dashboard/low-stock-alerts', [DashboardController::class, 'lowStockAlerts'])->middleware('permission:dashboard.view');
+            Route::get('/reports', [ReportController::class, 'index'])->middleware('permission:reports.view');
             Route::get('/settings/preferences', [SettingsController::class, 'show']);
             Route::put('/settings/preferences', [SettingsController::class, 'update']);
 
@@ -136,7 +181,32 @@ Route::middleware('auth.token')->group(function () {
             Route::delete('/webhooks/{webhookEndpoint}', [WebhookController::class, 'destroy'])->middleware('permission:integrations.manage');
             Route::get('/webhooks/{webhookEndpoint}/deliveries', [WebhookController::class, 'deliveries'])->middleware('permission:integrations.manage');
 
+            Route::get('/fulfillment/queues', [\App\Http\Controllers\Api\FulfillmentController::class, 'queues'])->middleware('permission:fulfillment.view');
+            Route::get('/documents/config', [\App\Http\Controllers\Api\DocumentController::class, 'config']);
+            Route::post('/documents/import-legacy', [\App\Http\Controllers\Api\DocumentController::class, 'legacy']);
+            Route::get('/document-legacy', [\App\Http\Controllers\Api\DocumentController::class, 'legacyIndex']);
+            Route::put('/documents/config', [\App\Http\Controllers\Api\DocumentController::class, 'configure']);
+            Route::get('/document-entities/{type}', [\App\Http\Controllers\Api\DocumentController::class, 'entities']);
+            Route::get('/document-requirements/{type}/{id}', [\App\Http\Controllers\Api\DocumentController::class, 'requirements']);
+            Route::get('/documents', [\App\Http\Controllers\Api\DocumentController::class, 'index']);
+            Route::post('/documents', [\App\Http\Controllers\Api\DocumentController::class, 'store']);
+            Route::get('/documents/{document}', [\App\Http\Controllers\Api\DocumentController::class, 'show'])->whereNumber('document');
+            Route::put('/documents/{document}', [\App\Http\Controllers\Api\DocumentController::class, 'update'])->whereNumber('document');
+            Route::post('/documents/{document}/versions', [\App\Http\Controllers\Api\DocumentController::class, 'version'])->whereNumber('document');
+            Route::get('/documents/{document}/versions/{version}/file', [\App\Http\Controllers\Api\DocumentController::class, 'download'])->whereNumber(['document','version']);
+            Route::post('/documents/{document}/{action}', [\App\Http\Controllers\Api\DocumentController::class, 'action'])->whereNumber('document');
+            Route::post('/fulfillment/waves', [\App\Http\Controllers\Api\FulfillmentController::class, 'wave'])->middleware('permission:fulfillment.manage');
+            Route::get('/sales-orders', [\App\Http\Controllers\Api\FulfillmentController::class, 'index'])->middleware('permission:fulfillment.view');
+            Route::post('/sales-orders', [\App\Http\Controllers\Api\FulfillmentController::class, 'store'])->middleware('permission:fulfillment.manage');
+            Route::get('/sales-orders/{salesOrder}', [\App\Http\Controllers\Api\FulfillmentController::class, 'show'])->middleware('permission:fulfillment.view');
+            Route::get('/sales-orders/{salesOrder}/packing-slip', [\App\Http\Controllers\Api\FulfillmentController::class, 'slip'])->middleware('permission:fulfillment.view');
+            Route::post('/sales-orders/{salesOrder}/{action}', [\App\Http\Controllers\Api\FulfillmentController::class, 'action'])->middleware('permission:fulfillment.view');
+            Route::get('/sales-order-items/{salesOrderItem}/candidates', [\App\Http\Controllers\Api\FulfillmentController::class, 'candidates'])->middleware('permission:fulfillment.manage');
             Route::get('/search', [SearchController::class, 'index'])->middleware('permission:dashboard.view');
+            Route::get('/entity-context/{type}/{id}', [EntityContextController::class, 'show'])->middleware('permission:dashboard.view');
+            Route::get('/system-integrity', [SystemIntegrityController::class, 'show'])->middleware('permission:system_integrity.view');
+            Route::get('/capabilities', [AimsCapabilityController::class, 'index']);
+            Route::post('/capabilities/{tool}/execute', [AimsCapabilityController::class, 'execute'])->middleware('throttle:60,1');
 
             Route::get('/notifications', [NotificationController::class, 'index']);
             Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead']);
@@ -149,8 +219,8 @@ Route::middleware('auth.token')->group(function () {
             Route::post('/backup/export', [ExportController::class, 'backup'])->middleware(['role:admin', 'permission:export.execute']);
             Route::post('/backup/import', [ImportController::class, 'backup'])->middleware(['role:admin', 'permission:import.execute']);
 
-            Route::get('/stock-movements/export', [StockMovementController::class, 'export']);
-            Route::get('/stock-movements', [StockMovementController::class, 'index']);
+            Route::get('/stock-movements/export', [StockMovementController::class, 'export'])->middleware(['permission:inventory.view', 'permission:export.execute']);
+            Route::get('/stock-movements', [StockMovementController::class, 'index'])->middleware('permission:inventory.view');
             Route::post('/stock-movements', [StockMovementController::class, 'store'])->middleware('permission:stock.manage');
 
             Route::get('/inventory/locator', [InventoryController::class, 'locator'])->middleware('permission:inventory.view');
@@ -246,10 +316,41 @@ Route::middleware('auth.token')->group(function () {
             Route::get('/quality/attachments/{qualityAttachment}', [QualityController::class, 'download'])->middleware('permission:quality.view');
             Route::get('/quality/suppliers/{supplier}/scorecard', [QualityController::class, 'scorecard'])->middleware('permission:supplier_performance.view');
             Route::put('/quality/score-weights', [QualityController::class, 'scoreWeights'])->middleware('permission:quality.templates.manage');
+            Route::prefix('accounting')->group(function () {
+                Route::post('/initialize', [AccountingController::class, 'initialize'])->middleware('permission:accounting.settings.manage');
+                Route::get('/overview', [AccountingController::class, 'overview'])->middleware('permission:accounting.reports.view');
+                Route::get('/accounts', [AccountingController::class, 'accounts'])->middleware('permission:accounting.journal.view');
+                Route::post('/accounts', [AccountingController::class, 'storeAccount'])->middleware('permission:accounting.accounts.manage');
+                Route::put('/accounts/{account}', [AccountingController::class, 'updateAccount'])->middleware('permission:accounting.accounts.manage');
+                Route::delete('/accounts/{account}', [AccountingController::class, 'archiveAccount'])->middleware('permission:accounting.accounts.manage');
+                Route::get('/mappings', [AccountingController::class, 'mappings'])->middleware('permission:accounting.settings.manage');
+                Route::put('/mappings', [AccountingController::class, 'saveMappings'])->middleware('permission:accounting.settings.manage');
+                Route::get('/controls', [AccountingController::class, 'controls'])->middleware('permission:accounting.settings.manage');
+                Route::put('/controls', [AccountingController::class, 'saveControls'])->middleware('permission:accounting.settings.manage');
+                Route::get('/periods', [AccountingController::class, 'periods'])->middleware('permission:accounting.periods.manage');
+                Route::post('/periods', [AccountingController::class, 'storePeriod'])->middleware('permission:accounting.periods.manage');
+                Route::put('/periods/{period}/status', [AccountingController::class, 'periodStatus'])->middleware('permission:accounting.periods.manage');
+                Route::get('/periods/{period}/readiness', [AccountingController::class, 'periodReadiness'])->middleware('permission:accounting.periods.manage');
+                Route::get('/journals', [AccountingController::class, 'journals'])->middleware('permission:accounting.journal.view');
+                Route::post('/journals', [AccountingController::class, 'storeJournal'])->middleware('permission:accounting.journal.create');
+                Route::get('/journals/{journal}', [AccountingController::class, 'journal'])->middleware('permission:accounting.journal.view');
+                Route::post('/journals/{journal}/post', [AccountingController::class, 'postJournal'])->middleware('permission:accounting.journal.post');
+                Route::post('/journals/{journal}/reverse', [AccountingController::class, 'reverseJournal'])->middleware('permission:accounting.journal.reverse');
+                Route::get('/trial-balance', [AccountingController::class, 'trialBalance'])->middleware('permission:accounting.reports.view');
+                Route::get('/profit-loss', [AccountingController::class, 'profitLoss'])->middleware('permission:accounting.reports.view');
+                Route::get('/balance-sheet', [AccountingController::class, 'balanceSheet'])->middleware('permission:accounting.reports.view');
+                Route::get('/cash-flow', [AccountingController::class, 'cashFlow'])->middleware('permission:accounting.reports.view');
+                Route::get('/integrity', [AccountingController::class, 'integrity'])->middleware('permission:accounting.integrity.view');
+                Route::get('/reconciliation', [AccountingController::class, 'reconciliation'])->middleware('permission:accounting.integrity.view');
+                Route::post('/exceptions/{exception}/retry', [AccountingController::class, 'retryException'])->middleware('permission:accounting.integrity.retry');
+                Route::get('/opening', [AccountingController::class, 'openingSetup'])->middleware('permission:accounting.settings.manage');
+                Route::post('/opening/finalize', [AccountingController::class, 'finalizeOpening'])->middleware('permission:accounting.settings.manage');
+            });
             Route::get('/landed-costs', [LandedCostController::class, 'index'])->middleware('permission:landed_costs.manage');
             Route::post('/landed-costs', [LandedCostController::class, 'store'])->middleware('permission:landed_costs.manage');
             Route::get('/landed-costs/{landedCost}', [LandedCostController::class, 'show'])->middleware('permission:landed_costs.manage');
             Route::post('/landed-costs/{landedCost}/post', [LandedCostController::class, 'post'])->middleware('permission:landed_costs.manage');
+            Route::post('/landed-costs/{landedCost}/reverse', [LandedCostController::class, 'reverse'])->middleware('permission:landed_costs.manage');
             Route::delete('/landed-costs/{landedCost}', [LandedCostController::class, 'destroy'])->middleware('permission:landed_costs.manage');
             Route::get('/replenishment', [ReplenishmentController::class, 'index'])->middleware('permission:replenishment.view');
             Route::post('/replenishment/draft-purchase-orders', [ReplenishmentController::class, 'createDraftPurchaseOrders'])->middleware('permission:replenishment.manage');
@@ -356,6 +457,7 @@ Route::middleware('auth.token')->group(function () {
             Route::post('/supplier-invoices/{supplierInvoice}/approve', [SupplierInvoiceController::class, 'approve'])->middleware('permission:supplier_invoices.approve');
 
             Route::get('/finance/accounts', [FinancialAccountController::class, 'index'])->middleware('permission:financial_accounts.view');
+            Route::get('/finance/posting-accounts', [FinancialAccountController::class, 'postingAccounts'])->middleware('permission:financial_accounts.adjust');
             Route::post('/finance/accounts', [FinancialAccountController::class, 'store'])->middleware('permission:financial_accounts.manage');
             Route::put('/finance/accounts/{financialAccount}', [FinancialAccountController::class, 'update'])->middleware('permission:financial_accounts.manage');
             Route::get('/finance/accounts/{financialAccount}/transactions', [FinancialAccountController::class, 'transactions'])->middleware('permission:financial_accounts.view');

@@ -1,3 +1,4 @@
+import { useUiText } from '../hooks/useUiText'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Area,
@@ -34,6 +35,8 @@ function buildChartData(movements) {
 }
 
 function MovementTooltip({ active, payload, label }) {
+ const tx = useUiText()
+
   if (!active || !payload?.length) return null
   const fmt = (d) => {
     if (!d || d === 'unknown') return d
@@ -53,7 +56,7 @@ function MovementTooltip({ active, payload, label }) {
       <p style={{ color: '#94a3b8', marginBottom: 6, fontWeight: 600 }}>{fmt(label)}</p>
       {payload.map((entry) => (
         <p key={entry.dataKey} style={{ color: entry.color, margin: '2px 0' }}>
-          {entry.dataKey === 'in' ? '▲ Inbound' : '▼ Outbound'}: {entry.dataKey === 'out' ? '-' : '+'}{entry.value}
+          {entry.dataKey === 'in' ? tx("▲ Inbound") : tx("▼ Outbound")}: {entry.dataKey === 'out' ? '-' : '+'}{entry.value}
         </p>
       ))}
     </div>
@@ -87,6 +90,8 @@ function productStockSummary(product) {
 }
 
 function Stock() {
+ const tx = useUiText()
+
   const [products, setProducts] = useState([])
   const [warehouses, setWarehouses] = useState([])
   const [locations, setLocations] = useState([])
@@ -375,33 +380,25 @@ function Stock() {
   return (
     <main className="stock-page">
       <section className="card">
-        <h2>Adjust stock</h2>
-        <p className="card-description">
-          Record stock coming in or going out. On-hand and available balances update automatically.
-        </p>
+        <h2>{tx("Adjust stock")}</h2>
+        <p className="card-description"> {tx("Record stock coming in or going out. On-hand and available balances update automatically.")} </p>
 
         <form className="sku-lookup-form" onSubmit={handleSkuLookup}>
-          <label>
-            Find by SKU
-            <div className="form-row">
+          <label> {tx("Find by SKU")} <div className="form-row">
               <input
                 value={skuLookup}
                 onChange={(event) => setSkuLookup(event.target.value)}
-                placeholder="e.g. ELEC-001"
+                placeholder={tx("e.g. ELEC-001")}
               />
-              <button type="submit" className="secondary">
-                Find product
-              </button>
+              <button type="submit" className="secondary"> {tx("Find product")} </button>
             </div>
           </label>
           {lookupMessage && <p className="lookup-message">{lookupMessage}</p>}
         </form>
 
         <form className="stock-form" onSubmit={handleSubmit}>
-          <label>
-            Product
-            <select name="product_id" value={form.product_id} onChange={handleChange} required>
-              <option value="">Select a product</option>
+          <label> {tx("Product")} <select name="product_id" value={form.product_id} onChange={handleChange} required>
+              <option value="">{tx("Select a product")}</option>
               {products.map((product) => (
                 <option key={product.id} value={product.id}>
                   {product.name} ({product.sku}) - {productStockSummary(product)}
@@ -411,20 +408,16 @@ function Stock() {
           </label>
 
           <div className="form-row">
-            <label>
-              Warehouse
-              <select name="warehouse_id" value={form.warehouse_id} onChange={handleChange} required>
-                <option value="">Select a warehouse</option>
+            <label> {tx("Warehouse")} <select name="warehouse_id" value={form.warehouse_id} onChange={handleChange} required>
+                <option value="">{tx("Select a warehouse")}</option>
                 {warehouses.filter((warehouse) => warehouse.is_active !== false).map((warehouse) => (
                   <option key={warehouse.id} value={warehouse.id}>{warehouse.name} ({warehouse.code})</option>
                 ))}
               </select>
             </label>
 
-            <label>
-              Exact location
-              <select name="location_id" value={form.location_id} onChange={handleChange} required>
-                <option value="">Select a bin or location</option>
+            <label> {tx("Exact location")} <select name="location_id" value={form.location_id} onChange={handleChange} required>
+                <option value="">{tx("Select a bin or location")}</option>
                 {activeLocations.map((location) => (
                   <option key={location.id} value={location.id}>{location.path || location.name}</option>
                 ))}
@@ -433,26 +426,20 @@ function Stock() {
           </div>
 
           <div className="form-row">
-            <label>
-              Type
-              <select name="type" value={form.type} onChange={handleChange} required>
-                <option value="in">Stock in</option>
-                <option value="out">Stock out</option>
+            <label> {tx("Type")} <select name="type" value={form.type} onChange={handleChange} required>
+                <option value="in">{tx("Stock in")}</option>
+                <option value="out">{tx("Stock out")}</option>
               </select>
             </label>
 
-            <label>
-              Stock state
-              <select name="stock_state" value={form.stock_state} onChange={handleChange} required>
+            <label> {tx("Stock state")} <select name="stock_state" value={form.stock_state} onChange={handleChange} required>
                 {['available', 'reserved', 'damaged', 'quarantine', 'blocked'].map((state) => (
                   <option key={state} value={state}>{state.charAt(0).toUpperCase() + state.slice(1)}</option>
                 ))}
               </select>
             </label>
 
-            <label>
-              Quantity
-              <input
+            <label> {tx("Quantity")} <input
                 name="quantity"
                 type="number"
                 min={isMeterUnit(selectedProduct?.unit) ? '0.001' : '1'}
@@ -467,22 +454,18 @@ function Stock() {
 
           {selectedProduct && selectedProduct.tracking_mode !== 'none' && form.type === 'out' ? (
             selectedProduct.tracking_mode === 'serial' ? (
-              <label>
-                Serial numbers at this location
-                <select multiple size="6" value={form.inventory_lot_ids} onChange={handleSerialLotSelection} required>
+              <label> {tx("Serial numbers at this location")} <select multiple size="6" value={form.inventory_lot_ids} onChange={handleSerialLotSelection} required>
                   {eligibleLots.map((lot) => (
                     <option key={lot.id} value={lot.id}>{lot.serial_number} {lot.expiry_at ? `· expires ${String(lot.expiry_at).slice(0, 10)}` : ''}</option>
                   ))}
                 </select>
-                <small>Select every serial included in the adjustment.</small>
+                <small>{tx("Select every serial included in the adjustment.")}</small>
               </label>
             ) : (
-              <label>
-                Lot or batch at this location
-                <select name="inventory_lot_id" value={form.inventory_lot_id} onChange={handleChange} required>
-                  <option value="">Select a lot</option>
+              <label> {tx("Lot or batch at this location")} <select name="inventory_lot_id" value={form.inventory_lot_id} onChange={handleChange} required>
+                  <option value="">{tx("Select a lot")}</option>
                   {eligibleLots.map((lot) => (
-                    <option key={lot.id} value={lot.id}>{lot.lot_number} · {formatQuantity(lot.eligible_quantity, selectedProduct.unit)} available {lot.expiry_at ? `· expires ${String(lot.expiry_at).slice(0, 10)}` : ''}</option>
+                    <option key={lot.id} value={lot.id}>{lot.lot_number} · {formatQuantity(lot.eligible_quantity, selectedProduct.unit)} {tx("available")} {lot.expiry_at ? `· expires ${String(lot.expiry_at).slice(0, 10)}` : ''}</option>
                   ))}
                 </select>
               </label>
@@ -492,38 +475,28 @@ function Stock() {
           {selectedProduct && selectedProduct.tracking_mode !== 'none' && form.type === 'in' ? (
             <div className="opening-trace-panel">
               {selectedProduct.tracking_mode === 'serial' ? (
-                <label>
-                  Serial numbers
-                  <textarea name="serial_numbers" rows="5" value={form.serial_numbers} onChange={handleChange} placeholder="One serial per line" required />
+                <label> {tx("Serial numbers")} <textarea name="serial_numbers" rows="5" value={form.serial_numbers} onChange={handleChange} placeholder={tx("One serial per line")} required />
                 </label>
               ) : (
-                <label>
-                  Lot or batch number
-                  <input name="lot_number" value={form.lot_number} onChange={handleChange} required />
+                <label> {tx("Lot or batch number")} <input name="lot_number" value={form.lot_number} onChange={handleChange} required />
                 </label>
               )}
               {selectedProduct.expiration_controlled || selectedProduct.tracking_mode === 'batch_expiry' ? (
                 <div className="form-row">
-                  <label>
-                    Manufacture date
-                    <input name="manufactured_at" type="date" value={form.manufactured_at} onChange={handleChange} />
+                  <label> {tx("Manufacture date")} <input name="manufactured_at" type="date" value={form.manufactured_at} onChange={handleChange} />
                   </label>
-                  <label>
-                    Expiry date
-                    <input name="expiry_at" type="date" value={form.expiry_at} onChange={handleChange} />
+                  <label> {tx("Expiry date")} <input name="expiry_at" type="date" value={form.expiry_at} onChange={handleChange} />
                   </label>
                 </div>
               ) : null}
             </div>
           ) : null}
 
-          <label>
-            Reason
-            <input
+          <label> {tx("Reason")} <input
               name="reason"
               value={form.reason}
               onChange={handleChange}
-              placeholder="e.g. New delivery, sold to customer"
+              placeholder={tx("e.g. New delivery, sold to customer")}
               minLength="3"
               required
             />
@@ -531,31 +504,29 @@ function Stock() {
 
           {formError && <p className="error">{formError}</p>}
 
-          <button type="submit">Record movement</button>
+          <button type="submit">{tx("Record movement")}</button>
         </form>
       </section>
 
       <section className="card">
         <div className="section-header">
-          <h2>Recent movements</h2>
+          <h2>{tx("Recent movements")}</h2>
           <div className="section-header-actions">
-            {!loading && <p className="result-count">{movements.length} record(s)</p>}
+            {!loading && <p className="result-count">{movements.length} {tx("record(s)")}</p>}
             <button
               type="button"
               className="secondary"
               onClick={handleExport}
               disabled={exporting || loading}
             >
-              {exporting ? 'Exporting...' : 'Export CSV'}
+              {exporting ? tx("Exporting...") : tx("Export CSV")}
             </button>
           </div>
         </div>
 
         <form className="filter-form" onSubmit={applyFilters}>
-          <label>
-            Product
-            <select name="product_id" value={filters.product_id} onChange={handleFilterChange}>
-              <option value="">All products</option>
+          <label> {tx("Product")} <select name="product_id" value={filters.product_id} onChange={handleFilterChange}>
+              <option value="">{tx("All products")}</option>
               {products.map((product) => (
                 <option key={product.id} value={product.id}>
                   {product.name}
@@ -564,38 +535,28 @@ function Stock() {
             </select>
           </label>
 
-          <label>
-            Type
-            <select name="type" value={filters.type} onChange={handleFilterChange}>
-              <option value="">All types</option>
-              <option value="in">Stock in</option>
-              <option value="out">Stock out</option>
+          <label> {tx("Type")} <select name="type" value={filters.type} onChange={handleFilterChange}>
+              <option value="">{tx("All types")}</option>
+              <option value="in">{tx("Stock in")}</option>
+              <option value="out">{tx("Stock out")}</option>
             </select>
           </label>
 
           <div className="form-actions">
-            <button type="submit">Apply filters</button>
-            <button type="button" className="secondary" onClick={clearFilters}>
-              Clear
-            </button>
+            <button type="submit">{tx("Apply filters")}</button>
+            <button type="button" className="secondary" onClick={clearFilters}> {tx("Clear")} </button>
           </div>
         </form>
 
         {chartData.length > 0 && (
           <div style={{ marginBottom: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 12 }}>
-              <p style={{ fontSize: 13, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
-                Movement Trends
-              </p>
+              <p style={{ fontSize: 13, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}> {tx("Movement Trends")} </p>
               <div style={{ display: 'flex', gap: 16 }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
-                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />
-                  Stock In
-                </span>
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} /> {tx("Stock In")} </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#64748b' }}>
-                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#d97706', display: 'inline-block' }} />
-                  Stock Out
-                </span>
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#d97706', display: 'inline-block' }} /> {tx("Stock Out")} </span>
               </div>
             </div>
             <ResponsiveContainer width="100%" height={250}>
@@ -656,26 +617,27 @@ function Stock() {
           </div>
         )}
 
-        {loading && <p>Loading stock history...</p>}
+        {loading && <p>{tx("Loading stock history...")}</p>}
         {error && <p className="error">{error}</p>}
 
         {!loading && !error && movements.length === 0 && (
-          <p>No stock movements recorded yet.</p>
+          <p>{tx("No stock movements recorded yet.")}</p>
         )}
 
         {!loading && movements.length > 0 && (
+          <div className="table-wrap">
           <table className="product-table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Product</th>
-                <th>Movement</th>
-                <th>Qty</th>
-                <th>Company stock before</th>
-                <th>Company stock after</th>
-                <th>Source</th>
-                <th>User</th>
-                <th>Reason</th>
+                <th>{tx("Date")}</th>
+                <th>{tx("Product")}</th>
+                <th>{tx("Movement")}</th>
+                <th>{tx("Qty")}</th>
+                <th>{tx("Company stock before")}</th>
+                <th>{tx("Company stock after")}</th>
+                <th>{tx("Source")}</th>
+                <th>{tx("User")}</th>
+                <th>{tx("Reason")}</th>
               </tr>
             </thead>
             <tbody>
@@ -698,6 +660,7 @@ function Stock() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
     </main>

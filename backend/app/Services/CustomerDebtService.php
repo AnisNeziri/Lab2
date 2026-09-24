@@ -21,6 +21,7 @@ class CustomerDebtService
         private readonly CustomerCreditService $credit,
         private readonly ApprovalService $approvals,
         private readonly BusinessEventService $events,
+        private readonly AccountingService $accounting,
     ) {}
 
     private const INCREASE_TYPES = ['debt_added', 'positive_adjustment', 'opening_balance'];
@@ -100,10 +101,29 @@ class CustomerDebtService
             }
 
             $transaction = $this->record($locked, $data, $type, true);
+            $this->accounting->postCustomerDebt($transaction);
             if ($approval) {
                 $this->approvals->consumeCustomerCreditOverride($approval, $transaction);
             }
 
+            return $transaction;
+        });
+    }
+
+    /** Internal fulfillment boundary: the order lock and exact order credit approval remain authoritative. */
+    public function addFulfillmentDebt(\App\Models\SalesOrder $order, \App\Models\OutboundDispatch $dispatch): CustomerDebtTransaction
+    {
+        return DB::transaction(function() use($order,$dispatch){
+            $locked=\App\Models\SalesOrder::query()->lockForUpdate()->findOrFail($order->id);
+            if($dispatch->sales_order_id!==$locked->id)throw ValidationException::withMessages(['dispatch'=>['Dispatch does not belong to this order.']]);
+            if($dispatch->customer_debt_transaction_id)return CustomerDebtTransaction::query()->findOrFail($dispatch->customer_debt_transaction_id);
+            app(OutboundCreditService::class)->authorize($locked);
+            $customer=Customer::query()->lockForUpdate()->findOrFail($locked->customer_id);
+            $data=$this->applyPaymentTerms($customer,['amount'=>$dispatch->total_amount,'transaction_date'=>now()->toDateString(),'source'=>'manual','reference_number'=>$dispatch->reference,'note'=>'Fulfilled order '.$locked->order_number,'idempotency_key'=>'fulfillment-debt-'.$dispatch->id,'metadata'=>['sales_order_id'=>$locked->id,'outbound_dispatch_id'=>$dispatch->id]]);
+            $transaction=$this->record($customer,$data,'debt_added',true);
+            $this->accounting->postCustomerDebt($transaction);
+            $locked->update(['committed_amount'=>Money::maximum('0',Money::subtract($locked->committed_amount,$dispatch->total_amount))]);
+            $dispatch->update(['customer_debt_transaction_id'=>$transaction->id]);
             return $transaction;
         });
     }
@@ -165,6 +185,7 @@ class CustomerDebtService
                     'financial_account_transaction_id' => $ledger->id,
                 ]);
             }
+            $this->accounting->postCustomerDebt($transaction->fresh());
             $this->events->record('customer.payment_received', $transaction, $transaction->reference_number, [
                 'customer_id' => $customer->id, 'amount' => $transaction->amount,
                 'transaction_date' => $transaction->transaction_date?->toDateString(),
@@ -493,6 +514,7 @@ class CustomerDebtService
                 $this->accounts->reverse($ledger, 'Customer debt transaction reversal: '.$reason);
             }
         }
+        $this->accounting->reverseSource('customer_credit', 'customer-debt:'.$transaction->id, now('Europe/Tirane')->toDateString(), $reason);
 
         return $reversal;
     }

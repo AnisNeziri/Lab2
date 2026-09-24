@@ -13,6 +13,8 @@ use Illuminate\Validation\ValidationException;
 
 class SupplierPaymentAllocationService
 {
+    public function __construct(private readonly OperationalAccountingService $operationalAccounting) {}
+
     public function allocate(
         PurchaseOrderPayment $payment,
         Expense $expense,
@@ -97,7 +99,7 @@ class SupplierPaymentAllocationService
                     && Money::compare($allAllocations->first()->amount, $payment->amount) === 0
                     ? $expense->id : null,
             ]);
-            DB::table('supplier_payment_allocation_requests')->insert([
+            $requestId = DB::table('supplier_payment_allocation_requests')->insertGetId([
                 'company_id' => $expense->company_id,
                 'supplier_invoice_payment_allocation_id' => $allocation->id,
                 'purchase_order_payment_id' => $payment->id,
@@ -110,6 +112,10 @@ class SupplierPaymentAllocationService
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+            $this->operationalAccounting->postSupplierAdvanceApplication(
+                $allocation->fresh(['payment', 'expense']),
+                'supplier-allocation:'.$requestId,
+            );
             SupplierMatchEvent::create([
                 'company_id' => $expense->company_id, 'expense_id' => $expense->id,
                 'action' => 'purchase_order_payment_allocated', 'old_values' => null,

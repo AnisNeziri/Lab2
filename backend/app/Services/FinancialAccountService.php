@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ActivityLog;
+use App\Models\AccountingAccount;
 use App\Models\FinancialAccount;
 use App\Models\FinancialAccountTransaction;
 use App\Models\FinancialAccountTransfer;
@@ -15,6 +16,7 @@ use Illuminate\Validation\ValidationException;
 
 class FinancialAccountService
 {
+    public function __construct(private readonly AccountingService $accounting) {}
     private const INFLOW_TYPES = ['inflow', 'transfer_in', 'adjustment_in', 'refund_in'];
     private const OUTFLOW_TYPES = ['outflow', 'transfer_out', 'adjustment_out', 'refund_out'];
 
@@ -22,6 +24,18 @@ class FinancialAccountService
     {
         return FinancialAccount::query()->withCount('transactions')->orderByDesc('is_active')->orderBy('name')
             ->get()->map(fn (FinancialAccount $account) => $this->decorate($account))->all();
+    }
+
+    public function postingAccounts(): array
+    {
+        $this->accounting->initialize();
+
+        return AccountingAccount::query()
+            ->where('is_active', true)
+            ->where('is_posting', true)
+            ->orderBy('code')
+            ->get(['id', 'code', 'name', 'type'])
+            ->all();
     }
 
     public function createAccount(array $data): FinancialAccount
@@ -32,6 +46,8 @@ class FinancialAccountService
                 'company_id' => Auth::user()->company_id,
                 'currency' => strtoupper($data['currency'] ?? 'EUR'),
             ]);
+            $this->accounting->ensureFinancialAccount($account);
+            $this->accounting->postFinancialOpening($account);
             $this->audit('financial_account.created', $account, null, $account->toArray());
 
             return $this->decorate($account);
@@ -112,6 +128,9 @@ class FinancialAccountService
                 'type' => $type,
                 'amount' => $amount,
                 'currency' => $locked->currency,
+                'exchange_rate' => $data['exchange_rate'] ?? ($locked->currency === \App\Support\CompanyCurrency::forCompanyId($locked->company_id) ? 1 : null),
+                'exchange_rate_date' => $data['exchange_rate_date'] ?? null,
+                'exchange_rate_source' => $data['exchange_rate_source'] ?? null,
                 'transaction_date' => $data['transaction_date'],
                 'source_type' => $data['source_type'] ?? 'manual',
                 'source_id' => $data['source_id'] ?? null,
@@ -123,6 +142,12 @@ class FinancialAccountService
                 'idempotency_key' => $key,
                 'created_by' => Auth::id(),
             ]);
+            if (array_key_exists('counter_accounting_account_id', $data) || ($data['source_type'] ?? 'manual') === 'manual') {
+                $this->accounting->postFinancialTransaction(
+                    $transaction->load('account'),
+                    isset($data['counter_accounting_account_id']) ? (int) $data['counter_accounting_account_id'] : null,
+                );
+            }
             $this->audit('financial_transaction.posted', $transaction, null, $transaction->toArray());
 
             return $transaction->load(['account:id,name,type,currency', 'creator:id,name']);
@@ -183,6 +208,7 @@ class FinancialAccountService
                 'idempotency_key' => $key.'-in',
             ]);
             $out->update(['related_transaction_id' => $in->id]);
+            $this->accounting->postFinancialTransfer($transfer, $source, $destination);
 
             return $transfer->load(['sourceAccount', 'destinationAccount']);
         });
@@ -216,6 +242,11 @@ class FinancialAccountService
                     'reversal_reason' => trim($reason),
                 ]);
                 $this->audit('financial_transaction.reversed', $target, $old, $target->fresh()->toArray(), $reason);
+            }
+            if ($locked->source_type === 'financial_account_transfer') {
+                $this->accounting->reverseSource('banking', 'financial-transfer:'.$locked->source_id, now()->toDateString(), $reason);
+            } elseif ($locked->journal_entry_id) {
+                $this->accounting->reverseSource('banking', 'financial-transaction:'.$locked->id, now()->toDateString(), $reason);
             }
 
             return $locked->fresh('account');

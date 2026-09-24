@@ -15,6 +15,8 @@ class FinancialAccountTransaction extends Model
         'transaction_date', 'source_type', 'source_id', 'related_transaction_id',
         'counterparty', 'reference_number', 'description', 'status', 'idempotency_key',
         'created_by', 'reversed_at', 'reversed_by', 'reversal_reason',
+        'journal_entry_id',
+        'exchange_rate', 'exchange_rate_date', 'exchange_rate_source',
     ];
 
     protected function casts(): array
@@ -22,6 +24,8 @@ class FinancialAccountTransaction extends Model
         return [
             'amount' => 'decimal:2', 'transaction_date' => 'date:Y-m-d',
             'source_id' => 'integer', 'reversed_at' => 'datetime',
+            'journal_entry_id' => 'integer',
+            'exchange_rate' => 'decimal:8', 'exchange_rate_date' => 'date',
         ];
     }
 
@@ -43,5 +47,10 @@ class FinancialAccountTransaction extends Model
     public function reversedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reversed_by')->withTrashed();
+    }
+
+    public function journalEntry(): BelongsTo
+    {
+        return $this->belongsTo(JournalEntry::class);
     }
 }

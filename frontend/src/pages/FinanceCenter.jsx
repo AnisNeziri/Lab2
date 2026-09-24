@@ -1,6 +1,7 @@
+import EntityDocuments from '../components/EntityDocuments'
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   BadgeEuro,
@@ -33,6 +34,7 @@ import {
   downloadVatBooks,
   getCashFlow,
   getExpenses,
+  getExpense,
   getFinanceOverview,
   getReceivablesAging,
   getVatBooks,
@@ -320,6 +322,7 @@ function ExpenseModal({ open, expense, onClose, onSaved, t }) {
           <div><span className="finance-eyebrow">{t("finance.expenseBook")}</span><h2 id="finance-expense-title">{expense ? t("finance.editExpense") : t("finance.newExpense")}</h2><p>{t("finance.expenseHint")}</p></div>
           <button type="button" className="icon-button" onClick={onClose} disabled={busy} aria-label={t("common.cancel")}><X size={20} /></button>
         </header>
+        <EntityDocuments entityType="expense" entityId={expense?.id}/>
         <form onSubmit={submit}>
           {error ? <div className="finance-alert is-error" role="alert"><AlertTriangle size={16} />{error}</div> : null}
           <fieldset>
@@ -524,6 +527,14 @@ export default function FinanceCenter() {
   const [reversalExpense, setReversalExpense] = useState(null);
   const [actionBusy, setActionBusy] = useState("");
   const requestRef = useRef(0);
+  const [documentParams] = useSearchParams();
+  const linkedExpenseId = documentParams.get('expense');
+  useEffect(() => {
+    if (!linkedExpenseId) return;
+    let active = true;
+    getExpense(linkedExpenseId).then(expense => { if(active){setTab('expenses');setExpenseModal({open:true,expense});} }).catch(err => {if(active)setError(err.message);});
+    return () => { active = false; };
+  }, [linkedExpenseId]);
 
   const money = useCallback((value) => {
     if (value === null || value === undefined || value === "") return "—";

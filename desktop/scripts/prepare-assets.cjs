@@ -97,6 +97,8 @@ function includeBackendSource(source) {
   const isDirectory = fs.lstatSync(normalizedSource).isDirectory()
 
   if (parts.includes('.git') || filename === '.env' || filename.startsWith('.env.')) return false
+  if (/\.(?:sqlite|sqlite3|db|sql)(?:-(?:wal|shm))?$/i.test(filename)) return false
+  if (parts[0].toLowerCase() === 'public' && parts[1]?.toLowerCase() === 'storage') return false
   if (parts[0].toLowerCase() === 'tests' || parts[0].toLowerCase() === 'tmp') return false
   if (filename === '.phpunit.result.cache') return false
 

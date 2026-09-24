@@ -110,6 +110,7 @@ export async function parseApiResponse(response, fallbackMessage) {
     const error = new Error(payload?.message ?? fallbackMessage)
     error.errors = payload?.errors
     error.code = payload?.code
+    error.requestId = payload?.request_id || response.headers.get('x-request-id') || null
     throw error
   }
 

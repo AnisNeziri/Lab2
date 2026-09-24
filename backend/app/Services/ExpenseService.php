@@ -17,7 +17,7 @@ use Illuminate\Validation\ValidationException;
 
 class ExpenseService
 {
-    public function __construct(private readonly FinancialAccountService $accounts) {}
+    public function __construct(private readonly FinancialAccountService $accounts, private readonly AccountingService $accounting) {}
 
     public function list(array $filters): LengthAwarePaginator
     {
@@ -161,6 +161,7 @@ class ExpenseService
                 'retention_until' => CarbonImmutable::create($expense->invoice_date->year + 10, 12, 31)->toDateString(),
                 'updated_by' => Auth::id(),
             ]);
+            $this->accounting->postExpense($expense->fresh());
 
             return $this->find($expense->fresh());
         });
@@ -185,6 +186,7 @@ class ExpenseService
                 'status' => 'reversed', 'reversed_at' => now(), 'reversed_by' => Auth::id(),
                 'reversal_reason' => trim($reason), 'updated_by' => Auth::id(),
             ]);
+            $this->accounting->reverseSource('supplier_accounting', 'expense:'.$expense->id, now()->toDateString(), $reason);
 
             return $this->find($expense->fresh());
         });
@@ -262,6 +264,7 @@ class ExpenseService
                 ]);
                 $payment->update(['financial_account_transaction_id' => $ledger->id]);
             }
+            $this->accounting->postExpensePayment($payment->fresh('expense'));
 
             return $this->find($expense->fresh());
         });
@@ -286,6 +289,7 @@ class ExpenseService
                     $this->accounts->reverse($ledger, 'Expense payment reversal: '.trim($reason));
                 }
             }
+            $this->accounting->reverseSource('supplier_accounting', 'expense-payment:'.$payment->id, now()->toDateString(), $reason);
 
             return $this->find($expense->fresh());
         });
@@ -300,15 +304,16 @@ class ExpenseService
         }
         $filename = preg_replace('/[\x00-\x1F\x7F]+/', '', basename($file->getClientOriginalName()));
         $filename = substr($filename ?: 'expense-proof', 0, 200);
-        return DB::transaction(function () use ($expense, $data, $mime, $filename) {
+        return DB::transaction(function () use ($expense, $file, $data, $mime, $filename) {
             $expense = Expense::query()->lockForUpdate()->findOrFail($expense->id);
             if ($expense->status === 'reversed' || ($expense->status === 'posted' && $expense->has_attachment)) {
                 throw ValidationException::withMessages(['proof' => ['Posted proof is immutable; reverse the record instead of replacing it.']]);
             }
+            $version=app(DocumentEvidenceService::class)->store($file,'Payment Evidence',[['expense',$expense->id]]);
             $expense->update([
                 'proof_filename' => $filename, 'proof_mime' => $mime,
                 'proof_size' => strlen($data), 'proof_sha256' => hash('sha256', $data),
-                'proof_data' => $data, 'updated_by' => Auth::id(),
+                'proof_data' => null, 'document_version_id'=>$version->id, 'updated_by' => Auth::id(),
             ]);
 
             return $this->find($expense->fresh());
@@ -322,7 +327,7 @@ class ExpenseService
             $this->ensureDraft($expense);
             $expense->update([
                 'proof_filename' => null, 'proof_mime' => null, 'proof_size' => null,
-                'proof_sha256' => null, 'proof_data' => null, 'updated_by' => Auth::id(),
+                'proof_sha256' => null, 'proof_data' => null, 'document_version_id'=>null, 'updated_by' => Auth::id(),
             ]);
 
             return $this->find($expense->fresh());

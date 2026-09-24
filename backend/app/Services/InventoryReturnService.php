@@ -27,6 +27,7 @@ class InventoryReturnService
         private readonly CustomerDebtService $debts,
         private readonly ExpenseService $expenses,
         private readonly InventoryIntegrityService $integrity,
+        private readonly OperationalAccountingService $operationalAccounting,
     ) {}
 
     public function list(array $filters): LengthAwarePaginator
@@ -152,6 +153,10 @@ class InventoryReturnService
             }
             $this->processFinancialResolution($locked);
             $locked->update(['status' => 'completed', 'completed_at' => now(), 'completed_by' => Auth::id()]);
+            if ($locked->type==='customer' && $locked->daily_sale_id) {
+                $invoice=\App\Models\Invoice::where('daily_sale_id',$locked->daily_sale_id)->where('document_type','invoice')->whereNotNull('issued_at')->where('status','!=','void')->first();
+                if($invoice)app(InvoiceService::class)->creditOrderReturn($invoice,$locked);
+            }
             $this->event($locked, 'completed', $old, $locked->fresh()->toArray());
             return $this->show($locked->fresh());
         });
@@ -236,6 +241,7 @@ class InventoryReturnService
                 'idempotency_key' => $return->idempotency_key.'-refund',
             ]);
             $return->update(['financial_account_transaction_id' => $transaction->id]);
+            $this->operationalAccounting->postInventoryReturnRefund($return->fresh());
             return;
         }
         if ($return->financial_resolution === 'debt_credit') {

@@ -10,6 +10,24 @@ use Illuminate\Support\Collection;
 
 class InventorySnapshotService
 {
+    /** Earliest scheduled availability for demand, using the same ATP snapshot.
+     * Undated and overdue, unreceived purchase orders are not firm promises. */
+    public function expectedAvailabilityDate(array $snapshot, mixed $quantity, mixed $ownUnreserved = 0): ?string
+    {
+        $q=fn($v)=>\App\Support\Money::normalizeDecimal($v,3);
+        $required=\Brick\Math\BigDecimal::of($q($quantity));
+        $other=\Brick\Math\BigDecimal::of($q($snapshot['committed_outgoing']??0))->minus($q($ownUnreserved));
+        if($other->isLessThan(0))$other=\Brick\Math\BigDecimal::of('0');
+        $available=\Brick\Math\BigDecimal::of($q($snapshot['available']??0))->minus($other);
+        $today=now('Europe/Tirane')->toDateString();
+        if($required->isLessThanOrEqualTo(0)||$available->isGreaterThanOrEqualTo($required))return $today;
+        foreach($snapshot['incoming_schedule']??[] as $receipt){
+            if(empty($receipt['expected_at'])||$receipt['expected_at']<$today)continue;
+            $available=$available->plus($q($receipt['quantity']));
+            if($available->isGreaterThanOrEqualTo($required))return $receipt['expected_at'];
+        }
+        return null;
+    }
     private const INCOMING_PURCHASE_ORDER_STATUSES = ['confirmed', 'ordered', 'partially_received'];
 
     /**
@@ -78,7 +96,9 @@ class InventorySnapshotService
                 ];
             });
 
-        return $products->mapWithKeys(function (Product $product) use ($balances, $incoming, $planningDate): array {
+        $demand=\App\Models\SalesOrderItem::query()->whereIn('product_id',$productIds)->whereHas('order',fn($q)=>$q->whereNotNull('confirmed_at')->whereNotIn('status',['cancelled','delivered']))
+            ->selectRaw('product_id, SUM(base_quantity - dispatched_quantity - reserved_quantity) as unreserved')->groupBy('product_id')->pluck('unreserved','product_id');
+        return $products->mapWithKeys(function (Product $product) use ($balances, $incoming, $planningDate, $demand): array {
             $balance = $balances->get($product->id);
             $legacyQuantity = round((float) $product->quantity, 3);
             $available = round((float) ($balance?->available ?? $legacyQuantity), 3);
@@ -88,11 +108,9 @@ class InventorySnapshotService
                 ->filter(fn (array $event) => $event['expected_at'] !== null
                     && CarbonImmutable::parse($event['expected_at'], 'Europe/Tirane')->lessThanOrEqualTo($planningDate))
                 ->sum('quantity'), 3);
-            // AIMS has no open sales-order commitment model yet. Issued
-            // invoices and daily sales already reduce physical stock, so they
-            // must not be counted again here. Expose the zero explicitly so
-            // future sales-order commitments have a stable ATP contract.
-            $committedOutgoing = 0.0;
+            // Reserved stock is already excluded from available. Only outstanding
+            // unreserved order demand is subtracted here; issued sales are not counted twice.
+            $committedOutgoing = max(0.0, (float) $demand->get($product->id,0));
 
             return [(int) $product->id => [
                 'on_hand' => round((float) ($balance?->on_hand ?? $legacyQuantity), 3),
@@ -109,7 +127,7 @@ class InventorySnapshotService
                 'expected_incoming_by_as_of' => $incomingByPlanningDate,
                 'available_to_promise_by_as_of' => round(max(0, $available + $incomingByPlanningDate - $committedOutgoing), 3),
                 'incoming_schedule' => $incomingPlan['schedule'],
-                'commitment_limitations' => 'Open customer-order commitments are not modelled in AIMS yet; issued sales already reduce stock and are not counted twice.',
+                'commitment_limitations' => 'ATP subtracts confirmed unreserved demand; reserved and dispatched quantities are already excluded from available stock.',
             ]];
         });
     }

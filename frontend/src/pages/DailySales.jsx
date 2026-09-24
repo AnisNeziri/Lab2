@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import AimsLogo from "../components/AimsLogo";
+import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from "../hooks/useTranslation";
 import { useAuthStore } from "../store/authStore";
 import { getAllProducts } from "../api/products";
@@ -132,7 +133,9 @@ export default function DailySales() {
   const { t, language } = useTranslation();
   const user = useAuthStore((state) => state.user);
   const permissions = useAuthStore((state) => state.permissions);
-  const [date, setDate] = useState(todayIso());
+  const [params] = useSearchParams();
+  const [date, setDate] = useState(/^\d{4}-\d{2}-\d{2}$/.test(params.get('date')||'')?params.get('date'):todayIso());
+  const [source, setSource] = useState('');
   const [sales, setSales] = useState([]);
   const [products, setProducts] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
@@ -683,6 +686,8 @@ export default function DailySales() {
           />
         </label>
         <div className="daily-sales-toolbar-actions">
+          <label>{language==='sq'?'Burimi':'Source'}<select value={source} onChange={e=>setSource(e.target.value)}><option value="">{language==='sq'?'Të gjitha':'All'}</option><option value="manual">{language==='sq'?'Manuale':'Manual'}</option><option value="order">{language==='sq'?'Porositë':'Orders'}</option></select></label>
+          {permissions.includes('fulfillment.manage')&&<Link to="/order-hub?new=1">{language==='sq'?'Krijo porosi':'Create order'}</Link>}
           <button type="button" onClick={startNewSale} disabled={saving}>
             <Plus size={17} /> {t("dailySales.addSale")}
           </button>
@@ -1060,8 +1065,9 @@ export default function DailySales() {
 
         {loading ? (
           <p className="daily-sales-empty">{t("common.loading")}</p>
-        ) : sales.length ? (
+        ) : sales.some(sale=>!source||(source==='order'?!!sale.outbound_dispatch:!sale.outbound_dispatch)) ? (
           sales
+            .filter(sale=>!source||(source==='order'?!!sale.outbound_dispatch:!sale.outbound_dispatch))
             .filter((sale) => sale.id !== editorId)
             .map((sale, index) => (
               <section className="daily-sale-entry" key={sale.id}>
@@ -1080,7 +1086,8 @@ export default function DailySales() {
                     </small>
                   </div>
                   <div className="daily-sale-entry-actions no-print">
-                    {sale.status === "draft" ? (
+                    {sale.outbound_dispatch?.order?.intake&&<Link to={`/order-hub?intake=${sale.outbound_dispatch.order.intake.id}`}>{language==='sq'?'Porosia':'Order'} {sale.outbound_dispatch.order.order_number}</Link>}
+                    {sale.status === "draft" && !sale.outbound_dispatch ? (
                       <>
                         <button
                           type="button"

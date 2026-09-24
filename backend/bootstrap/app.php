@@ -5,6 +5,7 @@ use App\Http\Middleware\CheckPermission;
 use App\Http\Middleware\CheckRole;
 use App\Http\Middleware\EnsureCompanyContext;
 use App\Http\Middleware\EnsurePasswordChanged;
+use App\Http\Middleware\RequestCorrelationId;
 use App\Jobs\RefreshVesselFleetCacheJob;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\QueryException;
@@ -21,7 +22,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->append(RequestCorrelationId::class);
         $middleware->alias([
+            'order.channel' => \App\Http\Middleware\AuthenticateOrderChannel::class,
             'auth.token' => AuthenticateApiToken::class,
             'role' => CheckRole::class,
             'permission' => CheckPermission::class,
@@ -45,6 +48,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
             return response()->json([
                 'message' => 'The request could not be completed. Please try again.',
+                'request_id' => $request->attributes->get('request_id'),
             ], 500);
         });
     })->create();

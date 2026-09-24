@@ -24,6 +24,7 @@ class LandedCostService
     public function __construct(
         private readonly InventoryCostingService $costing,
         private readonly BusinessEventService $events,
+        private readonly OperationalAccountingService $operationalAccounting,
     ) {}
 
     public function list(array $filters): LengthAwarePaginator
@@ -214,6 +215,7 @@ class LandedCostService
                 'posted_by' => Auth::id(),
                 'posted_at' => $postedAt,
             ]);
+            $this->operationalAccounting->postLandedCost($landedCost->fresh('accountingEntries'));
             $this->events->record('landed_cost.finalized', $landedCost, $landedCost->reference_number, [
                 'goods_receipt_id' => $landedCost->goods_receipt_id,
                 'purchase_order_id' => $landedCost->purchase_order_id,
@@ -234,6 +236,59 @@ class LandedCostService
                 throw ValidationException::withMessages(['status' => ['Posted landed costs are permanent valuation history and cannot be deleted.']]);
             }
             $locked->delete();
+        });
+    }
+
+    public function reverse(LandedCost $landedCost, string $reason): LandedCost
+    {
+        return DB::transaction(function () use ($landedCost, $reason) {
+            $locked = LandedCost::query()->lockForUpdate()->findOrFail($landedCost->id);
+            if ($locked->status === 'reversed') {
+                return $this->find($locked);
+            }
+            if ($locked->status !== 'posted') {
+                throw ValidationException::withMessages(['status' => ['Only a posted landed cost can be reversed.']]);
+            }
+
+            $originalInventory = 0.0;
+            $currentInventory = 0.0;
+            foreach ($locked->allocations()->with('accountingEntry')->orderBy('id')->lockForUpdate()->get() as $allocation) {
+                $entry = $allocation->accountingEntry;
+                if (! $entry) {
+                    throw ValidationException::withMessages(['accounting' => ['The original landed-cost valuation evidence is incomplete.']]);
+                }
+                $receiptItem = GoodsReceiptItem::query()->lockForUpdate()->findOrFail($allocation->goods_receipt_item_id);
+                $product = Product::query()->lockForUpdate()->findOrFail($allocation->product_id);
+                $split = $this->recognitionSplit($receiptItem, $product, (float) $allocation->allocated_amount);
+                $inventoryAmount = (float) $split['inventory_adjustment_amount'];
+                $this->costing->applyLandedCostAdjustment($product, -$inventoryAmount);
+
+                $remainingLanded = round(max(0, (float) $receiptItem->landed_cost_allocated - (float) $allocation->allocated_amount), 6);
+                $quantity = $this->inventoryQuantity($receiptItem);
+                $remainingUnit = $quantity > 0 ? round($remainingLanded / $quantity, 6) : 0;
+                $receiptItem->update([
+                    'landed_cost_allocated' => $remainingLanded,
+                    'landed_cost_unit' => $remainingUnit,
+                    'final_inventory_unit_cost' => $receiptItem->base_purchase_unit_cost === null
+                        ? null : round((float) $receiptItem->base_purchase_unit_cost + $remainingUnit, 6),
+                ]);
+                $originalInventory += (float) $entry->inventory_adjustment_amount;
+                $currentInventory += $inventoryAmount;
+            }
+
+            $date = now()->toDateString();
+            $this->operationalAccounting->reverseLandedCost(
+                $locked, $reason, $date, (string) round($currentInventory - $originalInventory, 6),
+            );
+            $locked->update([
+                'status' => 'reversed', 'reversed_by' => Auth::id(),
+                'reversed_at' => now(), 'reversal_reason' => $reason,
+            ]);
+            $this->events->record('landed_cost.reversed', $locked, $locked->reference_number, [
+                'reason' => $reason, 'inventory_amount_removed' => round($currentInventory, 6),
+            ], 'landed-cost:'.$locked->id.':reversed');
+
+            return $this->find($locked->fresh());
         });
     }
 

@@ -1,6 +1,7 @@
 import { apiRequest, buildApiUrl } from "./client";
 const json = (method, body) => ({ method, body: JSON.stringify(body) });
-export const getPurchaseRequests = () => apiRequest(buildApiUrl("/purchase-requests", { per_page: 50 }));
+export const getPurchaseRequests = (page = 1) => apiRequest(buildApiUrl("/purchase-requests", { per_page: 50, page }));
+export const updatePurchaseRequest = (id, body) => apiRequest(`/purchase-requests/${id}`, json("PUT", body));
 export const createPurchaseRequest = (body) => apiRequest("/purchase-requests", json("POST", body));
 export const submitPurchaseRequest = (id) => apiRequest(`/purchase-requests/${id}/submit`, json("POST", {}));
 export const getPurchaseRequest = (id) => apiRequest(`/purchase-requests/${id}`);

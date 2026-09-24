@@ -226,11 +226,23 @@ class ApprovalService
                     });
             })
             ->latest('requested_at')
-            ->get();
+            ->get()->filter(function($request){
+                if($request->entity_type!=='document_version')return true;
+                $documents=app(DocumentService::class);if(!$documents->can('documents.review')||!$documents->can('documents.view'))return false;
+                return $documents->visibleQuery()->whereHas('versions',fn($v)=>$v->where('id',$request->entity_id))->exists();
+            })->values();
     }
 
     public function decide(ApprovalRequest $request, string $decision, ?string $comment): ApprovalRequest
     {
+        if ($request->entity_type === 'document_version') {
+            $documents=app(DocumentService::class);
+            $documents->permit('documents.review');
+            $documents->permit('approvals.decide');
+            $version=\App\Models\DocumentVersion::query()->findOrFail($request->entity_id);
+            $document=$documents->document($version->document_id);
+            abort_unless($document->current_version === $version->version && $document->status !== 'archived',422,'Only the current, unarchived document version can be reviewed.');
+        }
         return DB::transaction(function () use ($request, $decision, $comment) {
             $user = Auth::user();
             $request = ApprovalRequest::withoutGlobalScopes()
@@ -270,6 +282,14 @@ class ApprovalService
                 'snapshot' => $request->only(['entity_type', 'entity_id', 'rule_type', 'requested_amount', 'currency', 'context']),
             ]);
             $this->audit($request, 'approval.'.$decision, 'Approval '.$decision.'.');
+
+            if ($request->entity_type === 'document_version') {
+                $v=\App\Models\DocumentVersion::findOrFail($request->entity_id);
+                $d=\App\Models\Document::whereKey($v->document_id)->lockForUpdate()->firstOrFail();
+                abort_unless((int)$d->current_version===(int)$v->version && $d->status!=='archived',422,'The document version changed before this decision.');
+                $d->update(['status'=>$decision==='cancelled'?'draft':$decision]);
+                app(DocumentService::class)->event($d,$decision,['version'=>$v->version,'approver'=>$user->id,'comment'=>$comment]);
+            }
 
             return $request->fresh('decisions');
         });

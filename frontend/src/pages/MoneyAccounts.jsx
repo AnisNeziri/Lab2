@@ -1,3 +1,4 @@
+import { useUiText } from '../hooks/useUiText'
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeftRight, Banknote, Landmark, RefreshCw, Search, Upload } from "lucide-react";
 import {
@@ -6,6 +7,7 @@ import {
   getBankStatement,
   getBankStatements,
   getFinancialAccounts,
+  getFinancialPostingAccounts,
   getFinancialTransactions,
   ignoreBankRow,
   importBankStatement,
@@ -37,6 +39,8 @@ const copy = {
     reason: "Reason / description", counterparty: "Counterparty", reference: "Reference",
     from: "From", to: "To", notes: "Notes", description: "Description", status: "Status",
     action: "Action", transaction: "System transaction", ignoredReason: "Reviewed bank line without a matching ledger transaction",
+    classification: "Accounting category", classificationHint: "Required so this cash movement is posted to the correct ledger account.",
+    exchangeRate: "Exchange rate to company currency", exchangeRateDate: "Rate date", exchangeRateSource: "Rate source",
     reopenedReason: "Reopened for review", operationFailed: "The operation could not be completed.",
   },
   sq: {
@@ -57,6 +61,8 @@ const copy = {
     reason: "Arsyeja / përshkrimi", counterparty: "Pala tjetër", reference: "Referenca",
     from: "Nga", to: "Te", notes: "Shënime", description: "Përshkrimi", status: "Statusi",
     action: "Veprimi", transaction: "Transaksioni në sistem", ignoredReason: "Rresht bankar i shqyrtuar pa transaksion përkatës në sistem",
+    classification: "Kategoria kontabël", classificationHint: "Kërkohet që kjo lëvizje parash të regjistrohet në llogarinë e saktë kontabël.",
+    exchangeRate: "Kursi në valutën e kompanisë", exchangeRateDate: "Data e kursit", exchangeRateSource: "Burimi i kursit",
     reopenedReason: "Rihapur për shqyrtim", operationFailed: "Veprimi nuk mund të përfundohej.",
   },
 };
@@ -95,7 +101,10 @@ function formatMoney(value, currency, language) {
 }
 
 export default function MoneyAccounts() {
+ const tx = useUiText()
+
   const language = useSettingsStore((state) => state.language);
+  const baseCurrency = useSettingsStore((state) => state.base_currency || "EUR");
   const permissions = useAuthStore((state) => state.permissions);
   const t = copy[language] || copy.en;
   const canManageAccounts = permissions.includes("financial_accounts.manage");
@@ -106,6 +115,7 @@ export default function MoneyAccounts() {
   const [accounts, setAccounts] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [transactions, setTransactions] = useState([]);
+  const [postingAccounts, setPostingAccounts] = useState([]);
   const [statements, setStatements] = useState([]);
   const [statement, setStatement] = useState(null);
   const [tab, setTab] = useState("accounts");
@@ -127,6 +137,8 @@ export default function MoneyAccounts() {
       setSelectedId((current) => nextAccounts.some((item) => Number(item.id) === Number(current)) ? current : nextAccounts[0]?.id || null);
       if (canViewReconciliation) setStatements(rows(await getBankStatements()));
       else setStatements([]);
+      if (canAdjustAccounts) setPostingAccounts(rows(await getFinancialPostingAccounts()));
+      else setPostingAccounts([]);
       setTransactionRevision((value) => value + 1);
       setFailed(false);
     } catch (error) {
@@ -135,7 +147,7 @@ export default function MoneyAccounts() {
     } finally {
       setBusy(false);
     }
-  }, [canViewReconciliation, t.operationFailed]);
+  }, [canAdjustAccounts, canViewReconciliation, t.operationFailed]);
 
   useEffect(() => { reload(); }, [reload]);
   useEffect(() => {
@@ -168,7 +180,7 @@ export default function MoneyAccounts() {
 
   return <div className="money-page">
     <header className="money-hero">
-      <div><p>AIMS FINANCE</p><h1>{t.title}</h1><span>{t.sub}</span></div>
+      <div><p>{tx("AIMS FINANCE")}</p><h1>{t.title}</h1><span>{t.sub}</span></div>
       <button type="button" className="secondary" disabled={busy} onClick={reload}><RefreshCw size={16} /> {t.refresh}</button>
     </header>
     <nav className="money-tabs" aria-label={t.title}>
@@ -178,14 +190,16 @@ export default function MoneyAccounts() {
     {notice && <p role={failed ? "alert" : "status"} className={`money-notice ${failed ? "error" : ""}`}>{notice}</p>}
     {busy && !accounts.length ? <p>{t.loading}</p> : null}
     {tab === "accounts"
-      ? <Accounts accounts={accounts} selected={selected} setSelectedId={setSelectedId} transactions={transactions} run={run} busy={busy} t={t} language={language} canManage={canManageAccounts} canAdjust={canAdjustAccounts} />
+      ? <Accounts accounts={accounts} postingAccounts={postingAccounts} baseCurrency={baseCurrency} selected={selected} setSelectedId={setSelectedId} transactions={transactions} run={run} busy={busy} t={t} language={language} canManage={canManageAccounts} canAdjust={canAdjustAccounts} />
       : <Statements accounts={accounts} statements={statements} selectedStatement={statement} setStatement={setStatement} run={run} busy={busy} t={t} language={language} canManage={canManageReconciliation} canConfirm={canConfirmReconciliation} />}
   </div>;
 }
 
-function Accounts({ accounts, selected, setSelectedId, transactions, run, busy, t, language, canManage, canAdjust }) {
+function Accounts({ accounts, postingAccounts, baseCurrency, selected, setSelectedId, transactions, run, busy, t, language, canManage, canAdjust }) {
+ const tx = useUiText()
+
   const initialAccount = () => ({ type: "cashbox", name: "", currency: "EUR", opening_balance: "0", opening_date: today(), bank_name: "", account_number: "" });
-  const initialMovement = () => ({ type: "inflow", amount: "", transaction_date: today(), counterparty: "", reference_number: "", description: "" });
+  const initialMovement = () => ({ type: "inflow", amount: "", transaction_date: today(), counterparty: "", reference_number: "", description: "", counter_accounting_account_id: "", exchange_rate: "", exchange_rate_date: today(), exchange_rate_source: "" });
   const initialTransfer = () => ({ source_account_id: "", destination_account_id: "", amount: "", transfer_date: today(), reference_number: "", notes: "" });
   const [form, setForm] = useState(initialAccount);
   const [movement, setMovement] = useState(initialMovement);
@@ -200,7 +214,17 @@ function Accounts({ accounts, selected, setSelectedId, transactions, run, busy, 
   };
   const createMovement = async (event) => {
     event.preventDefault();
-    const result = await run(() => postFinancialTransaction(selected.id, { ...movement, amount: Number(movement.amount), idempotency_key: uuid() }), t.movementSaved);
+    const foreign = selected.currency !== baseCurrency;
+    const payload = {
+      ...movement,
+      amount: Number(movement.amount),
+      counter_accounting_account_id: Number(movement.counter_accounting_account_id),
+      exchange_rate: foreign ? Number(movement.exchange_rate) : 1,
+      exchange_rate_date: foreign ? movement.exchange_rate_date : null,
+      exchange_rate_source: foreign ? movement.exchange_rate_source : null,
+      idempotency_key: uuid(),
+    };
+    const result = await run(() => postFinancialTransaction(selected.id, payload), t.movementSaved);
     if (result) setMovement(initialMovement());
   };
   const createTransfer = async (event) => {
@@ -221,7 +245,7 @@ function Accounts({ accounts, selected, setSelectedId, transactions, run, busy, 
       {canManage && <aside className="money-panel"><h2>{t.newAccount}</h2><form onSubmit={createAccount}>
         <Field label={t.type}><select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value })}><option value="cashbox">{t.cash}</option><option value="bank">{t.bank}</option></select></Field>
         <Field label={t.name}><input required maxLength={120} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Field>
-        {form.type === "bank" && <><Field label="Bank"><input maxLength={255} value={form.bank_name} onChange={(event) => setForm({ ...form, bank_name: event.target.value })} /></Field><Field label="IBAN / Account"><input maxLength={100} value={form.account_number} onChange={(event) => setForm({ ...form, account_number: event.target.value })} /></Field></>}
+        {form.type === "bank" && <><Field label={tx("Bank")}><input maxLength={255} value={form.bank_name} onChange={(event) => setForm({ ...form, bank_name: event.target.value })} /></Field><Field label={tx("IBAN / Account")}><input maxLength={100} value={form.account_number} onChange={(event) => setForm({ ...form, account_number: event.target.value })} /></Field></>}
         <Field label={t.openingBalance}><input type="number" step="0.01" value={form.opening_balance} onChange={(event) => setForm({ ...form, opening_balance: event.target.value })} /></Field>
         <button disabled={busy}>{t.save}</button>
       </form></aside>}
@@ -233,6 +257,12 @@ function Accounts({ accounts, selected, setSelectedId, transactions, run, busy, 
           <Field label={t.counterparty}><input maxLength={255} value={movement.counterparty} onChange={(event) => setMovement({ ...movement, counterparty: event.target.value })} /></Field>
           <Field label={t.reference}><input maxLength={255} value={movement.reference_number} onChange={(event) => setMovement({ ...movement, reference_number: event.target.value })} /></Field>
           <Field label={t.reason}><input required={movement.type.startsWith("adjustment")} maxLength={2000} value={movement.description} onChange={(event) => setMovement({ ...movement, description: event.target.value })} /></Field>
+          <Field label={t.classification} hint={t.classificationHint}><select required value={movement.counter_accounting_account_id} onChange={(event) => setMovement({ ...movement, counter_accounting_account_id: event.target.value })}><option value="">—</option>{postingAccounts.map((account) => <option key={account.id} value={account.id}>{account.code} · {account.name}</option>)}</select></Field>
+          {selected.currency !== baseCurrency && <>
+            <Field label={t.exchangeRate}><input required type="number" min="0.00000001" step="0.00000001" value={movement.exchange_rate} onChange={(event) => setMovement({ ...movement, exchange_rate: event.target.value })} /></Field>
+            <Field label={t.exchangeRateDate}><input required type="date" value={movement.exchange_rate_date} onChange={(event) => setMovement({ ...movement, exchange_rate_date: event.target.value })} /></Field>
+            <Field label={t.exchangeRateSource}><input required maxLength={255} value={movement.exchange_rate_source} onChange={(event) => setMovement({ ...movement, exchange_rate_source: event.target.value })} /></Field>
+          </>}
           <button disabled={busy}>{t.save}</button>
         </form>}</section>}
         {canManage && accounts.length > 1 && <section className="money-panel"><h2><ArrowLeftRight size={18} /> {t.transfer}</h2><form className="money-inline-form" onSubmit={createTransfer}>

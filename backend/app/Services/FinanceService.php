@@ -137,7 +137,8 @@ class FinanceService
             }
         }
 
-        $dailySales = DailySale::query()->finalized()->whereBetween('sale_date', [$from, $to])->get();
+        $dailySales = DailySale::query()->finalized()->whereBetween('sale_date', [$from, $to])
+            ->whereDoesntHave('outboundDispatch.order', fn ($order) => $order->where('payment_type', '!=', 'cash'))->get();
         // Daily Sales can contain the same transactions later represented by
         // invoices. Until that linkage is immutable, disclose their receipts
         // separately instead of inflating the canonical cash-in KPI.
@@ -206,6 +207,7 @@ class FinanceService
         $date = CarbonImmutable::parse($asOf)->startOfDay();
         $rows = collect();
         $invoices = Invoice::query()->with(['payments', 'creditNotes'])
+            ->whereNull('daily_sale_id')
             ->where('document_type', 'invoice')->whereNotNull('issued_at')
             ->whereDate('invoice_date', '<=', $asOf)->get();
         foreach ($invoices as $invoice) {

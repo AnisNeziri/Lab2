@@ -30,6 +30,7 @@ export const getLandedCosts = (filters = {}) => apiRequest(buildApiUrl("/landed-
 export const getLandedCost = (id) => apiRequest(`/landed-costs/${id}`);
 export const createLandedCost = (payload) => apiRequest("/landed-costs", json("POST", payload));
 export const postLandedCost = (id) => apiRequest(`/landed-costs/${id}/post`, { method: "POST" });
+export const reverseLandedCost = (id, reason) => apiRequest(`/landed-costs/${id}/reverse`, json("POST", { reason }));
 export const deleteLandedCost = (id) => apiRequest(`/landed-costs/${id}`, { method: "DELETE" });
 
 export const getInventoryReturns = (filters = {}) => apiRequest(buildApiUrl("/inventory-returns", filters));
@@ -49,6 +50,7 @@ export const approveSupplierInvoice = (id, reason = null) => apiRequest(`/suppli
 export const allocateSupplierInvoicePayment = (id, payload) => apiRequest(`/supplier-invoices/${id}/allocate-payment`, json("POST", payload));
 
 export const getFinancialAccounts = () => apiRequest("/finance/accounts");
+export const getFinancialPostingAccounts = () => apiRequest("/finance/posting-accounts");
 export const createFinancialAccount = (payload) => apiRequest("/finance/accounts", json("POST", payload));
 export const updateFinancialAccount = (id, payload) => apiRequest(`/finance/accounts/${id}`, json("PUT", payload));
 export const getFinancialTransactions = (id, filters = {}) => apiRequest(buildApiUrl(`/finance/accounts/${id}/transactions`, filters));

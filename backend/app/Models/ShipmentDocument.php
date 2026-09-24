@@ -11,7 +11,7 @@ class ShipmentDocument extends Model
     use BelongsToCompany;
 
     protected $fillable = [
-        'company_id', 'shipment_id', 'document_type', 'filename', 'mime_type',
+        'document_version_id', 'company_id', 'shipment_id', 'document_type', 'filename', 'mime_type',
         'file_size', 'sha256', 'file_data', 'uploaded_by',
     ];
 

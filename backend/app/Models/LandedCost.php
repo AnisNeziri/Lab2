@@ -16,6 +16,7 @@ class LandedCost extends Model
         'reference_number', 'cost_type', 'description', 'amount', 'currency',
         'base_currency', 'exchange_rate_to_base', 'exchange_rate_date', 'base_currency_amount', 'allocation_method',
         'status', 'idempotency_key', 'notes', 'created_by', 'posted_by', 'posted_at',
+        'reversed_by', 'reversed_at', 'reversal_reason',
     ];
 
     protected function casts(): array
@@ -26,6 +27,7 @@ class LandedCost extends Model
             'exchange_rate_date' => 'date:Y-m-d',
             'base_currency_amount' => 'decimal:6',
             'posted_at' => 'datetime',
+            'reversed_at' => 'datetime',
         ];
     }
 

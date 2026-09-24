@@ -1,3 +1,4 @@
+import EntityDocuments from '../components/EntityDocuments'
 import {
   useCallback,
   useEffect,
@@ -7,7 +8,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   AlertTriangle,
   BadgeCheck,
@@ -1384,9 +1385,10 @@ function statusKey(invoice) {
     ? "issued"
     : rawStatus;
   const total = Number(invoice?.grand_total ?? invoice?.total_amount ?? 0);
-  const paid = Number(invoice?.total_paid || 0);
-  const remaining = Number(invoice?.remaining_balance ?? Math.max(0, total - paid));
+  const paid = Number(invoice?.source_settlement?.settled ?? invoice?.total_paid ?? 0);
+  const remaining = Number(invoice?.source_settlement?.outstanding ?? invoice?.remaining_balance ?? Math.max(0, total - paid));
   let paymentStatus = String(invoice?.payment_status || "").toLowerCase();
+  if (invoice?.source_settlement) paymentStatus = remaining <= 0 ? 'paid' : (paid > 0 ? 'partially_paid' : 'unpaid');
   if (!paymentStatus && ["unpaid", "partially_paid", "paid", "overdue"].includes(rawStatus)) {
     paymentStatus = rawStatus;
   }
@@ -1424,19 +1426,20 @@ function InvoiceDetail({ invoice, profile, open, onClose, onEdit, onIssue, onPay
   const buyer = buyerSnapshot(invoice);
   const seller = invoice.company_snapshot || invoice.seller_snapshot || profile;
   const total = Number(invoice.total_amount ?? invoice.grand_total ?? 0);
-  const paid = Number(invoice.total_paid || 0);
-  const remaining = Number(invoice.remaining_balance ?? Math.max(0, total - paid));
+  const paid = Number(invoice.source_settlement?.settled ?? invoice.total_paid ?? 0);
+  const remaining = Number(invoice.source_settlement?.outstanding ?? invoice.remaining_balance ?? Math.max(0, total - paid));
   const { documentStatus, documentType } = statusKey(invoice);
   const isCreditNote = documentType === "credit_note";
   const signedMoney = (value) => money(isCreditNote ? -Math.abs(Number(value || 0)) : Number(value || 0));
   const isDraft = documentStatus === "draft";
   const terminal = documentType === "credit_note"
     || ["void", "voided", "cancelled", "credited", "credit_note"].includes(documentStatus);
-  const canCredit = documentType === "invoice" && documentStatus === "issued" && paid <= 0;
+  const canCredit = !invoice.daily_sale_id && documentType === "invoice" && documentStatus === "issued" && paid <= 0;
 
   return (
     <Modal open={open} title={invoice.invoice_number || t("invoice.draftInvoice")} description={buyer.name} onClose={onClose} drawer>
-      <div className="invoice-detail">
+      <div className="invoice-detail"><EntityDocuments entityType="invoice" entityId={invoice.id}/>
+        {invoice.daily_sale?.outbound_dispatch?.order?.intake&&<p><Link to={`/order-hub?intake=${invoice.daily_sale.outbound_dispatch.order.intake.id}`}>{language==='sq'?'Porosia burimore':'Source order'} {invoice.daily_sale.outbound_dispatch.order.order_number}</Link> · {invoice.daily_sale.sale_number}</p>}
         <div className="invoice-detail-status"><StatusPills invoice={invoice} t={t} /></div>
         {actionError ? <div className="invoice-alert is-error" role="alert"><AlertTriangle size={16} />{actionError}</div> : null}
         <div className="invoice-detail-parties">
@@ -1485,7 +1488,7 @@ function InvoiceDetail({ invoice, profile, open, onClose, onEdit, onIssue, onPay
             <div><dt>{t("invoice.discountTotal")}</dt><dd>{signedMoney(invoice.discount_total || 0)}</dd></div>
             <div><dt>{t("invoice.vatTotal")}</dt><dd>{signedMoney(invoice.vat_total || 0)}</dd></div>
             <div className="grand-total"><dt>{t("invoice.grandTotal")}</dt><dd>{money(invoice.signed_total ?? (isCreditNote ? -total : total))}</dd></div>
-            <div><dt>{t("invoice.paid")}</dt><dd>{money(paid)}</dd></div>
+            <div><dt>{invoice.source_settlement?.basis === 'customer_ledger' ? (language === 'sq' ? 'Shlyer përmes regjistrit të klientit' : 'Settled through customer ledger') : t("invoice.paid")}</dt><dd>{money(paid)}</dd></div>
             <div className="remaining-total"><dt>{t("invoice.remaining")}</dt><dd>{money(remaining)}</dd></div>
           </dl>
         </div>
@@ -1501,6 +1504,7 @@ function InvoiceDetail({ invoice, profile, open, onClose, onEdit, onIssue, onPay
               const canReverse = canProcessPayments && paymentStatus === "completed" && !payment.reversed_at && !terminal;
               return (
                 <div className={`invoice-payment-entry is-${paymentStatus}`} key={payment.id}>
+                  <EntityDocuments compact entityType="payment" entityId={payment.id}/>
                   <span>
                     <Banknote size={15} />
                     <strong>{money(payment.amount)}</strong>
@@ -1528,7 +1532,7 @@ function InvoiceDetail({ invoice, profile, open, onClose, onEdit, onIssue, onPay
         <footer className="invoice-detail-actions">
           {isDraft ? <button type="button" className="secondary" onClick={onEdit}><Pencil size={16} />{t("invoice.editDraft")}</button> : null}
           {isDraft ? <button type="button" onClick={onIssue} disabled={Boolean(busy)}>{busy === "issue" ? <LoaderCircle className="is-spinning" size={16} /> : <FileCheck2 size={16} />}{t("invoice.issueInvoice")}</button> : null}
-          {canProcessPayments && !isDraft && !terminal && remaining > 0 ? <button type="button" onClick={onPayment}><Banknote size={16} />{t("invoice.recordPayment")}</button> : null}
+          {canProcessPayments && !invoice.daily_sale_id && !isDraft && !terminal && remaining > 0 ? <button type="button" onClick={onPayment}><Banknote size={16} />{t("invoice.recordPayment")}</button> : null}
           {!isDraft ? <button type="button" className="secondary" onClick={onPdf} disabled={Boolean(busy)}>{busy === `pdf-${invoice.id}` ? <LoaderCircle className="is-spinning" size={16} /> : <Download size={16} />}{t("invoice.downloadPdf")}</button> : null}
           {!isDraft ? <button type="button" className="secondary" onClick={onExcel} disabled={Boolean(busy)}>{busy === `excel-${invoice.id}` ? <LoaderCircle className="is-spinning" size={16} /> : <FileSpreadsheet size={16} />}{t("invoice.downloadExcel")}</button> : null}
           {canCredit ? <button type="button" className="secondary" onClick={() => onReason("credit")}><FilePenLine size={16} />{t("invoice.creditNote")}</button> : null}
@@ -1944,7 +1948,7 @@ export default function Invoices() {
                 const buyer = buyerSnapshot(invoice);
                 const total = Number(invoice.total_amount ?? invoice.grand_total ?? 0);
                 const displayedTotal = Number(invoice.signed_total ?? total);
-                const remaining = Number(invoice.remaining_balance ?? Math.max(0, total - Number(invoice.total_paid || 0)));
+                const remaining = Number(invoice.source_settlement?.outstanding ?? invoice.remaining_balance ?? Math.max(0, total - Number(invoice.total_paid || 0)));
                 return (
                   <tr key={invoice.id}>
                     <td><strong className="invoice-number">{invoice.invoice_number || t("invoice.draftInvoice")}</strong>{invoice.original_invoice_id ? <small>{t("invoice.correctionDocument")}</small> : null}</td>

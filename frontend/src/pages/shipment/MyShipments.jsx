@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { ShipmentRouteMap } from '../../components/tracking/GlobalVesselMap'
 import ShipmentsPageIntro from '../../components/ShipmentsPageIntro'
+import EntityDocuments from '../../components/EntityDocuments'
 import { useTranslation } from '../../hooks/useTranslation'
 import {
   archiveShipment,
@@ -301,6 +302,7 @@ export default function MyShipments() {
   return (
     <div className="page">
       <ShipmentsPageIntro message={t('shipments.networkLoading')} />
+      {selected&&<EntityDocuments entityType="shipment" entityId={selected.id}/>}
       <div className="shipments-toolbar no-print">
         <div className="shipments-view-tabs">
           <button type="button" className={view === 'active' ? 'active' : ''} onClick={() => switchView('active')}>

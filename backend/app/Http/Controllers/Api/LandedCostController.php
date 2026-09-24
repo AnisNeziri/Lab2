@@ -16,7 +16,7 @@ class LandedCostController extends Controller
     public function index(Request $request): JsonResponse
     {
         $filters = $request->validate([
-            'status' => ['nullable', 'in:draft,posted'],
+            'status' => ['nullable', 'in:draft,posted,reversed'],
             'goods_receipt_id' => ['nullable', 'integer'],
             'shipment_id' => ['nullable', 'integer'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -45,5 +45,12 @@ class LandedCostController extends Controller
         $this->landedCosts->deleteDraft($landedCost);
 
         return response()->json(null, 204);
+    }
+
+    public function reverse(Request $request, LandedCost $landedCost): JsonResponse
+    {
+        $data = $request->validate(['reason' => ['required', 'string', 'min:5', 'max:2000']]);
+
+        return response()->json($this->landedCosts->reverse($landedCost, $data['reason']));
     }
 }

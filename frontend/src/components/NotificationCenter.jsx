@@ -3,8 +3,10 @@ import { createPortal } from 'react-dom'
 import { Bell, X, AlertTriangle, Package, Trash2 } from 'lucide-react'
 import { clearNotifications, getNotifications, markNotificationRead, markAllNotificationsRead } from '../api/notifications'
 import { useNotificationStore } from '../store/notificationStore'
+import { useSettingsStore } from '../store/settingsStore'
 
 export default function NotificationCenter({ onNavigate }) {
+  const language=useSettingsStore(state=>state.language)
   const notifications = useNotificationStore((state) => state.notifications)
   const unreadCount = useNotificationStore((state) => state.unreadCount)
   const setNotifications = useNotificationStore((state) => state.setNotifications)
@@ -122,7 +124,10 @@ export default function NotificationCenter({ onNavigate }) {
     handleMarkAsRead(notification.id)
     const data = notification.data || {}
     let path = '/dashboard'
-    if (data.shipment_id) path = `/shipments/my-shipments?shipment=${data.shipment_id}`
+    if (data.order_intake_id) path = `/order-hub?intake=${data.order_intake_id}`
+    else if (data.document_id) path = `/documents?document=${data.document_id}`
+    else if (data.sales_order_id) path = `/fulfillment?order=${data.sales_order_id}`
+    else if (data.shipment_id) path = `/shipments/my-shipments?shipment=${data.shipment_id}`
     else if (data.invoice_id) path = `/invoices?invoice=${data.invoice_id}`
     else if (data.product_id) path = '/stock'
     onNavigate?.(path)
@@ -172,7 +177,7 @@ export default function NotificationCenter({ onNavigate }) {
                       <AlertTriangle size={18} />
                     </div>
                     <div className="notification-content">
-                      <p className="notification-title">{notification.title}</p>
+                      <p className="notification-title">{notification.data?.[`title_${language}`]||notification.title}</p>
                       <p className="notification-message">{notification.message}</p>
                       <p className="notification-time">
                         {new Date(notification.created_at).toLocaleTimeString()}

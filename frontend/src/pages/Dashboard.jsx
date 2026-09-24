@@ -1,3 +1,5 @@
+import { useUiText } from '../hooks/useUiText'
+import OrdersOverview from '../components/OrdersOverview'
 import { useEffect, useState, useCallback, useRef, createContext, useContext, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getDashboard, getSalesAnalytics } from '../api/dashboard'
@@ -145,6 +147,8 @@ function ChartTip({ active, payload, label }) {
 }
 
 function FeedItem({ item, isNew }) {
+ const tx = useUiText()
+
   const c = useDashColors()
   const actionColor = {
     create: c.green, update: c.cyan, delete: c.red,
@@ -157,7 +161,7 @@ function FeedItem({ item, isNew }) {
       background: isNew ? `${actionColor}0d` : 'transparent',
       border: `1px solid ${isNew ? actionColor + '33' : 'transparent'}`,
       transition: 'all .4s ease',
-      animation: isNew ? 'slideIn .35s ease' : 'none',
+      animation: isNew ? "slideIn .35s ease" : 'none',
     }}>
       <div style={{ width: 8, height: 8, borderRadius: '50%', background: actionColor, marginTop: 5, flexShrink: 0, boxShadow: `0 0 6px ${actionColor}` }} />
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -175,6 +179,8 @@ function FeedItem({ item, isNew }) {
 }
 
 function AlertCard({ product }) {
+ const tx = useUiText()
+
   const navigate = useNavigate()
   const c = useDashColors()
   const pct = product.min_quantity > 0
@@ -192,12 +198,12 @@ function AlertCard({ product }) {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
         <div>
           <div style={{ fontSize: 13, fontWeight: 700, color: c.text }}>{product.name}</div>
-          <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>{product.sku} · min {fmt(product.min_quantity)}</div>
+          <div style={{ fontSize: 11, color: c.muted, marginTop: 2 }}>{product.sku} {tx("· min")} {fmt(product.min_quantity)}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
           <Flame size={13} color={color} />
           <span style={{ fontSize: 16, fontWeight: 800, color }}>{fmt(product.quantity)}</span>
-          <span style={{ fontSize: 11, color: c.muted }}>left</span>
+          <span style={{ fontSize: 11, color: c.muted }}>{tx("left")}</span>
         </div>
       </div>
       <div style={{ background: c.border, borderRadius: 99, height: 5, overflow: 'hidden' }}>
@@ -208,13 +214,11 @@ function AlertCard({ product }) {
         }} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-        <span style={{ fontSize: 10, color: c.muted }}>{pct}% of minimum</span>
+        <span style={{ fontSize: 10, color: c.muted }}>{pct}{tx("% of minimum")}</span>
         <button
           onClick={() => navigate('/stock')}
           style={{ fontSize: 11, color, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, padding: 0 }}
-        >
-          + Restock →
-        </button>
+        > {tx("+ Restock →")} </button>
       </div>
     </div>
   )
@@ -313,6 +317,8 @@ function QuickActions() {
 }
 
 export default function Dashboard() {
+ const tx = useUiText()
+
   const navigate = useNavigate()
   const { t, language } = useTranslation()
   const theme = useSettingsStore((state) => state.theme)
@@ -543,20 +549,16 @@ export default function Dashboard() {
   if (loading) return (
     <DashboardColorsContext.Provider value={palette}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: palette.bg, color: palette.muted, gap: 12, fontSize: 14 }}>
-        <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
-        Loading dashboard...
-      </div>
+        <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} /> {tx("Loading dashboard...")} </div>
     </DashboardColorsContext.Provider>
   )
 
   if (!data) return (
     <DashboardColorsContext.Provider value={palette}>
       <div style={{ padding: 32, color: palette.text, background: palette.bg, minHeight: '100vh' }}>
-        <h2>Dashboard unavailable</h2>
+        <h2>{tx("Dashboard unavailable")}</h2>
         <p style={{ color: palette.muted }}>{dashboardError || 'No inventory data was returned.'}</p>
-        <button type="button" onClick={() => { setLoading(true); loadDashboard() }}>
-          Try again
-        </button>
+        <button type="button" onClick={() => { setLoading(true); loadDashboard() }}> {tx("Try again")} </button>
       </div>
     </DashboardColorsContext.Provider>
   )
@@ -575,6 +577,7 @@ export default function Dashboard() {
   return (
     <DashboardColorsContext.Provider value={palette}>
     <div className="dashboard-page" style={{ background: palette.bg, minHeight: '100vh', width: '100%', boxSizing: 'border-box', color: palette.text, fontFamily: 'system-ui,sans-serif' }}>
+      <OrdersOverview />
       <style>{`
         @keyframes spin    { to { transform:rotate(360deg) } }
         @keyframes pulse   { 0%,100%{opacity:1}50%{opacity:.35} }
@@ -604,7 +607,7 @@ export default function Dashboard() {
             <strong>{liveEvent.title}</strong>
             <span>{liveEvent.detail}</span>
           </div>
-          <button type="button" aria-label="Dismiss update" onClick={() => setLiveEvent(null)}>×</button>
+          <button type="button" aria-label={tx("Dismiss update")} onClick={() => setLiveEvent(null)}>×</button>
         </div>
       ) : null}
 
@@ -616,9 +619,8 @@ export default function Dashboard() {
         padding: '12px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <div>
-          <div className="dashboard-heading" style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.02em' }}>Dashboard</div>
-          <div style={{ fontSize: 11, color: palette.muted, marginTop: 1 }}>
-            Welcome back, <span style={{ color: palette.cyan }}>{user?.name}</span>
+          <h1 className="dashboard-heading" style={{ margin: 0, fontSize: 18, fontWeight: 800, letterSpacing: '-0.02em' }}>{t('nav.dashboard')}</h1>
+          <div style={{ fontSize: 11, color: palette.muted, marginTop: 1 }}> {tx("Welcome back,")} <span style={{ color: palette.cyan }}>{user?.name}</span>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -639,12 +641,10 @@ export default function Dashboard() {
             <span>{t('dashboard.autoRefresh')}</span>
           </div>
           <button className="dashboard-refresh-button" onClick={() => { loadDashboard(); loadFeed(); loadAlerts(); loadSalesAnalytics() }} style={{ background: `${palette.cyan}15`, border: `1px solid ${palette.cyan}44`, borderRadius: 8, padding: '7px 14px', color: palette.cyan, fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <RefreshCw size={13} />Refresh
-          </button>
+            <RefreshCw size={13} />{tx("Refresh")} </button>
           {enable3dMap ? (
             <button onClick={() => navigate('/warehouse-3d')} style={{ background: `${palette.indigo}15`, border: `1px solid ${palette.indigo}44`, borderRadius: 8, padding: '7px 14px', color: palette.indigo, fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Boxes size={13} />3D Map
-            </button>
+              <Boxes size={13} />{tx("3D Map")} </button>
           ) : null}
         </div>
       </div>
@@ -652,18 +652,18 @@ export default function Dashboard() {
       <div style={{ width: '100%', boxSizing: 'border-box', padding: '24px 28px', maxWidth: 1600, margin: '0 auto' }}>
 
         <div className="dashboard-kpi-grid" style={{ gap: 16, marginBottom: 24 }}>
-          <KpiCard icon={DollarSign}  label="Total Stock Value"        value={fmtMoney(totalValue)}             color={palette.green}  glow sub={`${fmt(totalProds)} SKUs tracked`} />
-          <KpiCard icon={TrendingUp}  label="Inventory Turnover Rate"  value={turnover ? `${turnover}×` : '—'} color={palette.cyan} sub="Inventory cycles / period" />
-          <KpiCard icon={Boxes}       label="Warehouse Sections"        value={`${sectionChart.length || 0} active`} color={palette.purple} glow sub={sectionChart.length ? 'Stock spread across layout' : 'Configure layout to assign products'} />
-          <KpiCard icon={ShieldCheck} label="Fulfillment Accuracy Rate" value={`${accuracy}%`}                 color={palette.indigo}     glow={accuracy < 85} sub={lowCnt > 0 ? `${lowCnt} item${lowCnt !== 1 ? 's' : ''} need attention` : 'All stock healthy'} />
+          <KpiCard icon={DollarSign}  label={tx("Total Stock Value")}        value={fmtMoney(totalValue)}             color={palette.green}  glow sub={`${fmt(totalProds)} SKUs tracked`} />
+          <KpiCard icon={TrendingUp}  label={tx("Inventory Turnover Rate")}  value={turnover ? `${turnover}×` : '—'} color={palette.cyan} sub="Inventory cycles / period" />
+          <KpiCard icon={Boxes}       label={tx("Warehouse Sections")}        value={`${sectionChart.length || 0} active`} color={palette.purple} glow sub={sectionChart.length ? tx("Stock spread across layout") : tx("Configure layout to assign products")} />
+          <KpiCard icon={ShieldCheck} label={tx("Fulfillment Accuracy Rate")} value={`${accuracy}%`}                 color={palette.indigo}     glow={accuracy < 85} sub={lowCnt > 0 ? `${lowCnt} item${lowCnt !== 1 ? 's' : ''} need attention` : tx("All stock healthy")} />
         </div>
 
         <div className="dashboard-analytics-grid" style={{ gap: 16, marginBottom: 24 }}>
 
           {/* Inbound vs Outbound */}
-          <ChartCard title="Inbound vs Outbound Movements" icon={Activity} color={palette.cyan}>
+          <ChartCard title={tx("Inbound vs Outbound Movements")} icon={Activity} color={palette.cyan}>
             {movementChart.length === 0 ? (
-              <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: palette.muted, fontSize: 13 }}>No movement data yet</div>
+              <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: palette.muted, fontSize: 13 }}>{tx("No movement data yet")}</div>
             ) : (
               <ResponsiveContainer width="100%" height={220}>
                 <AreaChart data={movementChart} margin={chartMargin}>
@@ -689,9 +689,9 @@ export default function Dashboard() {
           </ChartCard>
 
           {/* Category bar chart */}
-          <ChartCard title="Top Selling Categories" icon={BarChart3} color={palette.indigo}>
+          <ChartCard title={tx("Top Selling Categories")} icon={BarChart3} color={palette.indigo}>
             {categoryChart.length === 0 ? (
-              <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: palette.muted, fontSize: 13 }}>No category data</div>
+              <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: palette.muted, fontSize: 13 }}>{tx("No category data")}</div>
             ) : (
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={categoryChart} barCategoryGap="28%" margin={chartMargin}>
@@ -708,7 +708,7 @@ export default function Dashboard() {
           </ChartCard>
 
           {/* Zone donut */}
-          <ChartCard title="Stock by Section" icon={Boxes} color={palette.purple}>
+          <ChartCard title={tx("Stock by Section")} icon={Boxes} color={palette.purple}>
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie data={zoneData} cx="50%" cy="45%" innerRadius={48} outerRadius={72} dataKey="value" paddingAngle={2} stroke="none">
@@ -763,7 +763,7 @@ export default function Dashboard() {
               {t('dashboard.salesUncosted', {
                 amount: fmtMoney(salesAnalytics.uncosted_revenue),
                 coverage: Number(salesAnalytics.cost_coverage_percent ?? 0).toLocaleString(
-                  language === 'sq' ? 'sq-AL' : 'en-US',
+                  language === 'sq' ? "sq-AL" : "en-US",
                   { maximumFractionDigits: 1 },
                 ),
               })}
@@ -805,12 +805,10 @@ export default function Dashboard() {
 
           {/* Activity feed */}
           <div className="dashboard-motion-card" style={{ background: palette.card, border: `1px solid ${palette.border}`, borderRadius: 14, padding: '20px 22px' }}>
-            <SectionTitle icon={Clock} color={palette.cyan} badge={feed.length}>Live Activity Feed</SectionTitle>
+            <SectionTitle icon={Clock} color={palette.cyan} badge={feed.length}>{tx("Live Activity Feed")}</SectionTitle>
             <div style={{ overflowY: 'auto', maxHeight: 360, display: 'flex', flexDirection: 'column', gap: 2 }}>
               {feed.length === 0 ? (
-                <div style={{ textAlign: 'center', color: palette.muted, padding: '40px 0', fontSize: 13 }}>
-                  No activity yet. Actions appear here in real-time.
-                </div>
+                <div style={{ textAlign: 'center', color: palette.muted, padding: '40px 0', fontSize: 13 }}> {tx("No activity yet. Actions appear here in real-time.")} </div>
               ) : feed.map((item, i) => (
                 <FeedItem
                   key={`feed-${item._rid ?? item.id ?? 'event'}-${item.ts ?? item.created_at ?? 'time'}-${i}`}
@@ -823,12 +821,12 @@ export default function Dashboard() {
 
           {/* Alerts */}
           <div className="dashboard-motion-card" style={{ background: palette.card, border: `1px solid ${palette.border}`, borderRadius: 14, padding: '20px 22px' }}>
-            <SectionTitle icon={AlertTriangle} color={palette.amber} badge={uniqueAlerts.length > 0 ? uniqueAlerts.length : undefined}>Critical Alerts</SectionTitle>
+            <SectionTitle icon={AlertTriangle} color={palette.amber} badge={uniqueAlerts.length > 0 ? uniqueAlerts.length : undefined}>{tx("Critical Alerts")}</SectionTitle>
             <div style={{ overflowY: 'auto', maxHeight: 360 }}>
               {uniqueAlerts.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '40px 0' }}>
                   <ShieldCheck size={28} color={palette.green} style={{ margin: '0 auto 10px', display: 'block' }} />
-                  <div style={{ fontSize: 13, color: palette.muted }}>All stock levels healthy</div>
+                  <div style={{ fontSize: 13, color: palette.muted }}>{tx("All stock levels healthy")}</div>
                 </div>
               ) : uniqueAlerts.map(p => <AlertCard key={`alert-${String(p.id)}`} product={p} />)}
             </div>

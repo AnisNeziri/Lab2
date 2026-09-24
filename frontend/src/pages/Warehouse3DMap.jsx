@@ -1,3 +1,4 @@
+import { useUiText } from '../hooks/useUiText'
 import { useRef, useState, useEffect, useMemo, useCallback } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls, Html, Float } from '@react-three/drei'
@@ -5,9 +6,11 @@ import { useAuthStore } from '../store/authStore'
 import { useNavigate } from 'react-router-dom'
 import { getEcho } from '../lib/echo'
 import { apiRequest } from '../api/client'
+import { getAllProducts } from '../api/products'
+import { useDialog } from '../hooks/useDialog'
 import { getWarehouseLayout } from '../api/warehouse'
 import { productMatchesShelf, STANDARD_FLOOR_HEIGHT } from '../lib/warehouseLayout'
-import { buildShelfStockMap, productHealthPercent, sectionsToShelves, sectionsToZones } from '../lib/warehouseStock'
+import { buildShelfStockMap, sectionsToShelves, sectionsToZones } from '../lib/warehouseStock'
 import { getInventoryQuantity } from '../utils/inventoryQuantity'
 import * as THREE from 'three'
 import './Warehouse3DMap.css'
@@ -78,7 +81,7 @@ function ShelfBoxGrid({ y, stockLevel }) {
 
   // How many of the 10 slots to fill
   const fillCount = useMemo(() => {
-    if (stockLevel === null) return 8          // unknown → mostly full
+    if (stockLevel === null) return 0          // no stock data: do not imply a full shelf
     if (stockLevel === 0)    return 0          // out of stock → empty
     if (stockLevel < 50) return 3
     if (stockLevel < 100) return 6
@@ -122,6 +125,8 @@ function LedStrip({ stockLevel, heatmap, activityScore }) {
 }
 
 function ShelfUnit({ shelf, stockLevel, heatmap, activityScore, onClick }) {
+ const tx = useUiText()
+
   const [hovered, setHovered] = useState(false)
   const groupRef  = useRef()
   const scaleRef  = useRef(1)
@@ -143,15 +148,15 @@ function ShelfUnit({ shelf, stockLevel, heatmap, activityScore, onClick }) {
     groupRef.current.scale.setScalar(scaleRef.current)
   })
 
-  const statusLabel = stockLevel === null  ? '— Units'
-    : stockLevel === 0  ? '✕ Out of Stock'
-    : stockLevel < 10   ? `⚠ ${stockLevel} Units Left`
-    : stockLevel < 20   ? `⚡ ${stockLevel} Units Left`
-    : `${stockLevel} Units`
+  // stockLevel is a health percentage, not a physical unit quantity.
+  const statusLabel = stockLevel === null ? '—'
+    : stockLevel === 0 ? tx('Out of Stock')
+    : stockLevel < 100 ? tx('Low Stock')
+    : tx('Healthy')
 
   const statusColor = stockLevel === null ? '#94a3b8'
     : stockLevel === 0  ? '#ef4444'
-    : stockLevel < 20   ? '#fb923c'
+    : stockLevel < 100  ? '#fb923c'
     : '#4ade80'
 
   return (
@@ -180,8 +185,7 @@ function ShelfUnit({ shelf, stockLevel, heatmap, activityScore, onClick }) {
             whiteSpace: 'nowrap', pointerEvents: 'none',
             boxShadow: `0 0 14px ${statusColor}44`,
             fontFamily: 'monospace',
-          }}>
-            Shelf {shelf.id}: {statusLabel}
+          }}> {tx("Shelf")} {shelf.id}: {tx(statusLabel)}
           </div>
         </Html>
       )}
@@ -265,6 +269,8 @@ function Forklift({ position = [0, 0, 0], rotation = [0, 0, 0] }) {
 }
 
 function DeliveryTruck({ position = [0, 0, 0], rotation = [0, 0, 0] }) {
+ const tx = useUiText()
+
   const white  = <meshStandardMaterial color="#e2e8f0" roughness={0.5} metalness={0.3} />
   const gray   = <meshStandardMaterial color="#475569" roughness={0.55} metalness={0.4} />
   const black  = <meshStandardMaterial color="#0f172a" roughness={0.8} metalness={0.2} />
@@ -295,9 +301,7 @@ function DeliveryTruck({ position = [0, 0, 0], rotation = [0, 0, 0] }) {
       <mesh position={[-1.4, 1.8, 6.55]}><boxGeometry args={[0.3, 0.22, 0.04]} />{red}</mesh>
       {/* AIMS branding */}
       <Html position={[1.82, 2.8, 2.5]} rotation={[0, Math.PI / 2, 0]} center distanceFactor={12} style={{ pointerEvents: 'none' }} zIndexRange={[0, 0]}>
-        <div style={{ color: '#6366f1', fontSize: '16px', fontWeight: 900, letterSpacing: '0.15em', textShadow: '0 0 10px #6366f1', fontFamily: 'monospace', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
-          AIMS LOGISTICS
-        </div>
+        <div style={{ color: '#6366f1', fontSize: '16px', fontWeight: 900, letterSpacing: '0.15em', textShadow: '0 0 10px #6366f1', fontFamily: 'monospace', pointerEvents: 'none', whiteSpace: 'nowrap' }}> {tx("AIMS LOGISTICS")} </div>
       </Html>
       <pointLight position={[0, 1.6, -4.2]} color="#fffbeb" intensity={8} distance={7} decay={2} />
     </group>
@@ -305,6 +309,8 @@ function DeliveryTruck({ position = [0, 0, 0], rotation = [0, 0, 0] }) {
 }
 
 function AGV({ position = [0, 0, 0], rotation = [0, 0, 0], withBox = false, label = 'AGV' }) {
+ const tx = useUiText()
+
   const bodyRef  = useRef()
   const glowRef  = useRef()
 
@@ -352,8 +358,7 @@ function AGV({ position = [0, 0, 0], rotation = [0, 0, 0], withBox = false, labe
       {/* label */}
       <Html position={[0, 1.1, 0]} center distanceFactor={10} style={{ pointerEvents: 'none' }} zIndexRange={[0, 0]}>
         <div style={{ background: 'rgba(6,182,212,0.15)', border: '1px solid #06b6d4', color: '#67e8f9', fontSize: '10px', fontWeight: 700, padding: '1px 7px', borderRadius: 4, whiteSpace: 'nowrap', pointerEvents: 'none', fontFamily: 'monospace', textShadow: '0 0 6px #06b6d4' }}>
-          {label}: Delivering
-        </div>
+          {label}{tx(": Delivering")} </div>
       </Html>
       <pointLight position={[0, 0.3, 0]} color="#06b6d4" intensity={4} distance={4} decay={2} />
     </group>
@@ -412,6 +417,9 @@ function shelfAvailableQuantity(product) {
 }
 
 function ShelfModal({ shelf, products, loading, onClose }) {
+ const tx = useUiText()
+ const dialogRef=useDialog(onClose)
+
   const totalQty   = products.reduce((s, p) => s + shelfAvailableQuantity(p), 0)
   const totalValue = products.reduce((s, p) => s + shelfAvailableQuantity(p) * parseFloat(p.price ?? 0), 0)
   const lowStockProducts = products.filter(p => shelfAvailableQuantity(p) <= Number(p.min_quantity ?? 0))
@@ -420,7 +428,7 @@ function ShelfModal({ shelf, products, loading, onClose }) {
   const statusColor = { ok: '#22c55e', low: '#fb923c', out: '#ef4444', null: '#94a3b8' }[status]
 
   return (
-    <div style={{ position: 'fixed', inset: '0 0 0 auto', width: 400, background: '#0a0f1e', borderLeft: '1px solid #1e293b', zIndex: 100, display: 'flex', flexDirection: 'column', boxShadow: '-12px 0 48px rgba(0,0,0,0.8)' }}>
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={`${tx('Shelf')} ${shelf.id}`} style={{ position: 'fixed', inset: '0 0 0 auto', width: 'min(440px, 100vw)', background: '#0a0f1e', borderLeft: '1px solid #1e293b', zIndex: 100, display: 'flex', flexDirection: 'column', boxShadow: '-12px 0 48px rgba(0,0,0,0.8)' }}>
 
       {/* Header */}
       <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid #1e293b', borderLeft: `3px solid ${shelf.zoneColor}` }}>
@@ -429,12 +437,12 @@ function ShelfModal({ shelf, products, loading, onClose }) {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <span style={{ fontSize: 24, fontWeight: 800, color: 'white', fontFamily: 'monospace' }}>Shelf {shelf.id}</span>
+            <span style={{ fontSize: 24, fontWeight: 800, color: 'white', fontFamily: 'monospace' }}>{tx("Shelf")} {shelf.id}</span>
             <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 700, color: statusColor, background: `${statusColor}18`, border: `1px solid ${statusColor}44`, padding: '2px 10px', borderRadius: 20 }}>
-              {statusLabel}
+              {tx(statusLabel)}
             </span>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#475569', fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: '4px 8px', borderRadius: 6 }}>×</button>
+          <button aria-label={tx('Close')} onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 22, cursor: 'pointer', lineHeight: 1, padding: '4px 8px', borderRadius: 6 }}>×</button>
         </div>
       </div>
 
@@ -446,7 +454,7 @@ function ShelfModal({ shelf, products, loading, onClose }) {
           { label: 'Value (€)',   value: loading ? '…' : `€${totalValue.toFixed(0)}`, color: '#a78bfa' },
         ].map(({ label, value, color }) => (
           <div key={label} style={{ background: '#111827', borderRadius: 8, padding: '10px 12px', textAlign: 'center', border: '1px solid #1e293b' }}>
-            <div style={{ fontSize: 10, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>{label}</div>
+            <div style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>{tx(label)}</div>
             <div style={{ fontSize: 20, fontWeight: 800, color }}>{value}</div>
           </div>
         ))}
@@ -457,17 +465,17 @@ function ShelfModal({ shelf, products, loading, onClose }) {
         {/* Table header */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 70px 70px', gap: 6, padding: '0 10px 8px', borderBottom: '1px solid #1e293b', marginBottom: 6 }}>
           {['Product', 'SKU', 'Qty', 'Price'].map(h => (
-            <div key={h} style={{ fontSize: 10, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>{h}</div>
+            <div key={h} style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>{tx(h)}</div>
           ))}
         </div>
 
         {loading ? (
-          <div style={{ textAlign: 'center', color: '#475569', padding: '32px 0', fontSize: 13 }}>Fetching products…</div>
+          <div style={{ textAlign: 'center', color: '#94a3b8', padding: '32px 0', fontSize: 13 }}>{tx("Fetching products…")}</div>
         ) : products.length === 0 ? (
-          <div style={{ textAlign: 'center', color: '#334155', padding: '32px 0' }}>
+          <div style={{ textAlign: 'center', color: '#94a3b8', padding: '32px 0' }}>
             <div style={{ fontSize: 32, marginBottom: 8 }}>📦</div>
-            <div style={{ fontSize: 13, color: '#475569' }}>No products assigned to shelf {shelf.id} yet.</div>
-            <div style={{ fontSize: 11, color: '#334155', marginTop: 4 }}>Run the seeder or assign location_code in the product form.</div>
+            <div style={{ fontSize: 13, color: '#94a3b8' }}>{tx("No products assigned to shelf")} {shelf.id} {tx("yet.")}</div>
+            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>{tx("Assign products to this location in Warehouses & Transfers.")}</div>
           </div>
         ) : products.map(p => {
           const availableQuantity = shelfAvailableQuantity(p)
@@ -478,12 +486,12 @@ function ShelfModal({ shelf, products, loading, onClose }) {
             <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 70px 70px', gap: 6, alignItems: 'center', padding: '9px 10px', marginBottom: 4, borderRadius: 7, background: '#111827', border: `1px solid ${isOut ? '#ef444422' : isLow ? '#fb923c22' : '#1e293b'}`, transition: 'border-color .2s' }}>
               <div>
                 <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, lineHeight: 1.3 }}>{p.name}</div>
-                {p.category?.name && <div style={{ color: '#475569', fontSize: 10, marginTop: 2 }}>{p.category.name}</div>}
+                {p.category?.name && <div style={{ color: '#94a3b8', fontSize: 10, marginTop: 2 }}>{p.category.name}</div>}
               </div>
               <div style={{ color: '#64748b', fontSize: 11, fontFamily: 'monospace' }}>{p.sku}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                 <span style={{ fontSize: 16, fontWeight: 800, color: qColor }}>{availableQuantity}</span>
-                <span style={{ fontSize: 10, color: '#475569' }}>{p.unit ?? 'pcs'}</span>
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>{p.unit ?? 'pcs'}</span>
               </div>
               <div style={{ color: '#94a3b8', fontSize: 13, fontWeight: 600 }}>€{parseFloat(p.price).toFixed(2)}</div>
             </div>
@@ -495,7 +503,7 @@ function ShelfModal({ shelf, products, loading, onClose }) {
       {!loading && lowStockProducts.length > 0 && (
         <div style={{ padding: '10px 16px', background: '#1c0a0a', borderTop: '1px solid #7f1d1d', fontSize: 12, color: '#fca5a5', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>⚠</span>
-          <span>{lowStockProducts.length} product(s) below minimum stock level</span>
+          <span>{lowStockProducts.length} {tx("product(s) below minimum stock level")}</span>
         </div>
       )}
     </div>
@@ -503,8 +511,11 @@ function ShelfModal({ shelf, products, loading, onClose }) {
 }
 
 export default function Warehouse3DMap() {
+ const tx = useUiText()
+
   const { token, user } = useAuthStore()
   const navigate = useNavigate()
+  const [loadError,setLoadError] = useState('')
 
   const [zones, setZones] = useState([])
   const [allShelves, setAllShelves] = useState([])
@@ -523,11 +534,11 @@ export default function Warehouse3DMap() {
   const loadStockLevels = useCallback(async (shelfList) => {
     if (!token || !shelfList.length) return
     try {
-      const resp = await apiRequest('/products?per_page=500')
-      const products = resp.data ?? resp
+      const products = await getAllProducts()
       const { levels } = buildShelfStockMap(products, shelfList)
       setStockData(levels)
-    } catch {
+    } catch (error) {
+      setLoadError(error.message || tx('Could not load stock.'))
       setStockData({})
     }
   }, [token])
@@ -535,6 +546,7 @@ export default function Warehouse3DMap() {
   useEffect(() => {
     if (!token) return
     setLayoutLoading(true)
+    setLoadError('')
     getWarehouseLayout(warehouseId || undefined)
       .then((data) => {
         setWarehouse(data.warehouse ?? null)
@@ -545,7 +557,8 @@ export default function Warehouse3DMap() {
         setZones(sectionsToZones(data.sections ?? []))
         return loadStockLevels(shelves)
       })
-      .catch(() => {
+      .catch((error) => {
+        setLoadError(error.message || tx('Could not load warehouse layout.'))
         setAllShelves([])
         setZones([])
       })
@@ -554,8 +567,7 @@ export default function Warehouse3DMap() {
 
   useEffect(() => {
     if (!token) return
-    apiRequest('/products?per_page=500').then((resp) => {
-      const products = resp.data ?? resp
+    getAllProducts().then((products) => {
       const locMap = {}
       products.forEach((p) => {
         if (!p.location_code) return
@@ -584,8 +596,7 @@ export default function Warehouse3DMap() {
         loadStockLevels(allShelves)
         return
       }
-      const health = productHealthPercent(product)
-      setStockData((p) => ({ ...p, [shelf.id]: health }))
+      loadStockLevels(allShelves)
       setActivityScores((prev) => ({ ...prev, [shelf.id]: (prev[shelf.id] || 0) + 1 }))
     }
 
@@ -611,7 +622,7 @@ export default function Warehouse3DMap() {
     setLoadingProducts(true)
     try {
       // Use dedicated shelf endpoint — returns only products with location_code = shelfId
-      const items = await apiRequest(`/shelves/${shelf.id}/products`)
+      const items = await apiRequest(`/shelves/${encodeURIComponent(shelf.id)}/products?warehouse_id=${warehouse.id}`)
       setShelfProducts(Array.isArray(items) ? items : [])
     } catch { setShelfProducts([]) }
     finally { setLoadingProducts(false) }
@@ -633,20 +644,21 @@ export default function Warehouse3DMap() {
   return (
     <div className="warehouse-3d-page" style={{ position: 'relative', width: '100%', height: '100vh', background: '#060c18', overflow: 'hidden' }}>
 
+      {(layoutLoading||loadError)&&<p role={loadError?'alert':'status'} style={{position:'absolute',bottom:16,left:16,zIndex:20,background:'#111827',color:'#e2e8f0',padding:12,borderRadius:8}}>{loadError||tx('Loading layout...')}</p>}
       {/* Toolbar */}
       <div className="warehouse-3d-toolbar" style={{ position: 'absolute', top: 16, left: 16, right: 16, zIndex: 10, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', pointerEvents: 'none' }}>
         <div className="warehouse-3d-heading">
-          <div style={{ color: 'white', fontSize: 18, fontWeight: 700 }}>3D Warehouse Map</div>
+          <div style={{ color: 'white', fontSize: 18, fontWeight: 700 }}>{tx("3D Warehouse Map")}</div>
           <div style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
-            {allShelves.length} sections &nbsp;·&nbsp; {floorCount} floor{floorCount > 1 ? 's' : ''} &nbsp;·&nbsp;
-            <span style={{ color: lowStockCount > 0 ? '#fb923c' : '#4ade80' }}>{lowStockCount} low-stock sections</span>
+            {allShelves.length} {tx("sections ·")} {floorCount} {tx("Floors")} &nbsp;·&nbsp;
+            <span style={{ color: lowStockCount > 0 ? '#fb923c' : '#4ade80' }}>{lowStockCount} {tx("low-stock sections")}</span>
             &nbsp;·&nbsp;
-            <button type="button" onClick={() => navigate('/warehouse-layout')} style={{ background: 'none', border: 'none', color: '#60a5fa', cursor: 'pointer', fontSize: 12, padding: 0 }}>Edit layout</button>
+            <button type="button" onClick={() => navigate('/warehouse-layout')} style={{ background: 'none', border: 'none', color: '#60a5fa', cursor: 'pointer', fontSize: 12, padding: 0 }}>{tx("Edit layout")}</button>
           </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 8, pointerEvents: 'auto', flexWrap: 'wrap' }}>
             {warehouses.length > 1 && (
               <select
-                aria-label="Warehouse"
+                aria-label={tx("Warehouse")}
                 value={warehouseId}
                 onChange={(event) => { setSelectedShelf(null); setFloorFilter('all'); setWarehouseId(event.target.value) }}
                 style={{ padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, border: '1px solid #334155', background: 'rgba(6,12,24,0.92)', color: '#e2e8f0' }}
@@ -663,9 +675,7 @@ export default function Warehouse3DMap() {
                 background: floorFilter === 'all' ? 'rgba(96,165,250,0.2)' : 'rgba(6,12,24,0.88)',
                 color: floorFilter === 'all' ? '#93c5fd' : '#94a3b8',
               }}
-            >
-              All floors
-            </button>
+            > {tx("All floors")} </button>
             {floorLevels.map((level) => (
               <button
                 key={level}
@@ -677,8 +687,7 @@ export default function Warehouse3DMap() {
                   background: floorFilter === level ? 'rgba(96,165,250,0.2)' : 'rgba(6,12,24,0.88)',
                   color: floorFilter === level ? '#93c5fd' : '#94a3b8',
                 }}
-              >
-                Level {level}
+              > {tx("Level")} {level}
               </button>
             ))}
           </div>
@@ -694,15 +703,13 @@ export default function Warehouse3DMap() {
             }}
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(30,48,80,0.95)'; e.currentTarget.style.color = '#e2e8f0' }}
             onMouseLeave={e => { e.currentTarget.style.background = 'rgba(6,12,24,0.88)'; e.currentTarget.style.color = '#94a3b8' }}
-          >
-            ← Back
-          </button>
+          > {tx("← Back")} </button>
           {!heatmapActive && (
             <div style={{ display: 'flex', gap: 12, background: 'rgba(6,12,24,0.88)', backdropFilter: 'blur(8px)', border: '1px solid #1e293b', borderRadius: 8, padding: '8px 14px', fontSize: 12, color: '#94a3b8', alignItems: 'center' }}>
               {[['#22c55e','Healthy'],['#fb923c','Low Stock'],['#ef4444','Out of Stock']].map(([c, l]) => (
                 <span key={l} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ width: 10, height: 10, borderRadius: '50%', background: c, boxShadow: `0 0 6px ${c}`, display: 'inline-block' }} />
-                  {l}
+                  {tx(l)}
                 </span>
               ))}
             </div>
@@ -721,7 +728,7 @@ export default function Warehouse3DMap() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
-            {heatmapActive ? 'Heatmap ON' : 'Toggle 3D Heatmap View'}
+            {heatmapActive ? tx("Heatmap ON") : tx("Toggle 3D Heatmap View")}
           </button>
         </div>
       </div>
@@ -790,8 +797,7 @@ export default function Warehouse3DMap() {
                 </mesh>
               )}
               <Html position={[-lengthM / 2 + 2, y + 6, -widthM / 2 + 2]} distanceFactor={28} style={{ pointerEvents: 'none' }} zIndexRange={[0, 0]}>
-                <div style={{ background: 'rgba(0,0,0,0.7)', color: '#94a3b8', fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 4, fontFamily: 'monospace' }}>
-                  LEVEL {level}
+                <div style={{ background: 'rgba(0,0,0,0.7)', color: '#94a3b8', fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 4, fontFamily: 'monospace' }}> {tx("LEVEL")} {level}
                 </div>
               </Html>
             </group>

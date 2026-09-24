@@ -7,9 +7,9 @@ use App\Support\Money;
 
 class CustomerCreditService
 {
-    public function exposure(Customer $customer): array
+    /** Shared oldest-due-first allocation used by exposure and order payment state. */
+    public function obligations(Customer $customer): \Illuminate\Support\Collection
     {
-        $today = now('Europe/Tirane')->startOfDay();
         $debts = $customer->debtTransactions()
             ->whereIn('type', ['debt_added', 'opening_balance', 'positive_adjustment'])
             ->whereNull('reversed_transaction_id')
@@ -29,6 +29,18 @@ class CustomerCreditService
             ->sum('amount');
 
         $unallocatedPayments = Money::normalize($payments);
+        return $debts->map(function($debt)use(&$unallocatedPayments){
+            $allocated=Money::minimum($debt->amount,$unallocatedPayments);
+            $debt->setAttribute('outstanding_amount',Money::subtract($debt->amount,$allocated));
+            $unallocatedPayments=Money::subtract($unallocatedPayments,$allocated);
+            return $debt;
+        });
+    }
+
+    public function exposure(Customer $customer): array
+    {
+        $today = now('Europe/Tirane')->startOfDay();
+        $debts=$this->obligations($customer);
         $buckets = [
             'current' => '0.00',
             '1_30' => '0.00',
@@ -39,9 +51,7 @@ class CustomerCreditService
         $oldestOverdue = null;
 
         foreach ($debts as $debt) {
-            $allocated = Money::minimum($debt->amount, $unallocatedPayments);
-            $openAmount = Money::subtract($debt->amount, $allocated);
-            $unallocatedPayments = Money::subtract($unallocatedPayments, $allocated);
+            $openAmount = $debt->outstanding_amount;
 
             if (Money::compare($openAmount, '0.00') <= 0) {
                 continue;
@@ -70,7 +80,8 @@ class CustomerCreditService
             $buckets['61_90'],
             $buckets['90_plus'],
         );
-        $exposure = Money::subtract($customer->current_debt, $customer->current_credit);
+        $committed = \App\Models\SalesOrder::query()->where('customer_id',$customer->id)->sum('committed_amount');
+        $exposure = Money::add(Money::subtract($customer->current_debt, $customer->current_credit),$committed);
         $limit = $customer->credit_limit === null
             ? null
             : Money::normalize($customer->credit_limit);
@@ -86,6 +97,7 @@ class CustomerCreditService
 
         return [
             'current_debt' => Money::normalize($customer->current_debt),
+            'committed_exposure' => Money::normalize($committed),
             'advance' => Money::normalize($customer->current_credit),
             'overdue' => $overdue,
             'aging' => $buckets,

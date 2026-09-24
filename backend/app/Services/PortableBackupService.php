@@ -32,6 +32,9 @@ class PortableBackupService
      * never portable business data and are therefore not part of any module.
      */
     public const MODULES = [
+        'order_hub'=>['order_channels','order_channel_mappings','order_intakes','order_hub_presets','sales_orders','sales_order_items','pick_waves','pick_tasks','outbound_allocations','outbound_dispatches','outbound_packages','outbound_package_items','outbound_returns','outbound_actions'],
+        'documents'=>['document_types','document_settings','documents','document_versions','document_links','document_requirements','approval_requests','approval_decisions','business_events'],
+        'fulfillment' => ['sales_orders','sales_order_items','pick_waves','pick_tasks','outbound_allocations','outbound_dispatches','outbound_packages','outbound_package_items','outbound_returns','outbound_actions'],
         'company' => [],
         'categories' => ['categories'],
         'suppliers' => ['suppliers'],
@@ -54,9 +57,16 @@ class PortableBackupService
             'purchase_order_changes', 'goods_receipts', 'goods_receipt_items',
             'landed_costs', 'landed_cost_allocations', 'landed_cost_accounting_entries',
         ],
+        'procurement' => [
+            'approval_rules', 'approval_requests', 'approval_decisions',
+            'purchase_requests', 'purchase_request_items', 'rfqs', 'rfq_suppliers',
+            'supplier_quotes', 'supplier_quote_items', 'procurement_awards',
+        ],
         'daily_sales' => ['daily_sales_days', 'daily_sales', 'daily_sale_items'],
         'customer_debts' => ['customer_debts', 'customer_debt_entries', 'customers', 'customer_debt_transactions'],
         'finance' => [
+            'accounting_accounts', 'accounting_periods', 'accounting_posting_mappings',
+            'journal_entries', 'journal_lines', 'accounting_exceptions', 'accounting_recovery_attempts',
             'invoice_profiles', 'invoice_sequences', 'invoices', 'invoice_items',
             'payment_transactions', 'expenses', 'expense_payments',
             'supplier_invoice_items', 'supplier_invoice_payment_allocations',
@@ -69,7 +79,9 @@ class PortableBackupService
         ],
         'shipments' => [
             'shipments', 'shipment_histories', 'shipment_containers',
-            'shipment_items', 'shipment_documents',
+            'shipment_purchase_orders', 'shipment_container_purchase_orders',
+            'shipment_items', 'shipment_documents', 'shipment_milestones',
+            'operational_exceptions', 'business_events',
         ],
         'quality' => [
             'quality_inspection_templates', 'quality_checklist_items', 'quality_defect_categories',
@@ -81,16 +93,22 @@ class PortableBackupService
 
     /** Tables must be inserted in this order and removed in reverse order. */
     private const TABLE_ORDER = [
+        'document_types','document_settings','documents','document_versions','document_requirements',
         'users',
+        'approval_rules', 'approval_requests', 'approval_decisions',
         'quality_inspection_templates', 'quality_checklist_items', 'quality_defect_categories', 'supplier_score_settings',
         'categories', 'suppliers', 'warehouses', 'warehouse_sections', 'warehouse_locations',
         'customers', 'customer_debts', 'products', 'product_barcodes', 'product_units',
         'product_suppliers', 'product_supplier_price_history', 'warehouse_stock',
+        'purchase_requests', 'purchase_request_items', 'rfqs', 'rfq_suppliers',
+        'supplier_quotes', 'supplier_quote_items',
         'inventory_lots', 'inventory_trace_balances',
         'daily_sales_days', 'daily_sales', 'daily_sale_items',
+        'accounting_accounts', 'accounting_periods', 'accounting_posting_mappings',
+        'journal_entries', 'journal_lines', 'accounting_exceptions', 'accounting_recovery_attempts',
         'financial_accounts', 'invoice_profiles', 'invoice_sequences', 'invoices', 'invoice_items', 'payment_transactions',
         'expenses', 'expense_payments', 'customer_debt_entries', 'customer_debt_transactions',
-        'purchase_orders', 'purchase_order_items', 'purchase_order_payments', 'purchase_order_changes',
+        'purchase_orders', 'purchase_order_items', 'purchase_order_payments', 'purchase_order_changes', 'procurement_awards',
         'supplier_invoice_payment_allocations',
         'supplier_payment_allocation_requests',
         'goods_receipts', 'goods_receipt_items',
@@ -101,18 +119,27 @@ class PortableBackupService
         'stock_movement_traces', 'inventory_count_sessions', 'inventory_count_items', 'inventory_count_entries',
         'inventory_returns', 'inventory_return_items', 'inventory_return_events',
         'supplier_claims', 'supplier_claim_items', 'supplier_claim_defects', 'quality_attachments',
-        'shipments', 'shipment_histories', 'shipment_containers', 'shipment_items', 'shipment_documents',
+        'shipments', 'shipment_histories', 'shipment_containers',
+        'shipment_purchase_orders', 'shipment_container_purchase_orders',
+        'shipment_items', 'shipment_documents', 'shipment_milestones', 'operational_exceptions', 'business_events',
         'financial_account_transfers', 'financial_account_transactions',
         'bank_statements', 'bank_statement_rows', 'bank_reconciliation_events',
+        'sales_orders','sales_order_items','pick_waves','pick_tasks','outbound_allocations','outbound_dispatches','outbound_packages','outbound_package_items','outbound_returns','outbound_actions',
+        'order_channels','order_channel_mappings','order_intakes','order_hub_presets',
+        'document_links',
     ];
 
     /** Child tables that do not carry company_id are owned through this parent. */
     private const OWNER_RELATIONS = [
+        'journal_lines' => ['journal_entry_id', 'journal_entries'],
         'customer_debt_entries' => ['customer_debt_id', 'customer_debts'],
         'invoice_items' => ['invoice_id', 'invoices'],
         'purchase_order_items' => ['purchase_order_id', 'purchase_orders'],
         'purchase_order_payments' => ['purchase_order_id', 'purchase_orders'],
         'purchase_order_changes' => ['purchase_order_id', 'purchase_orders'],
+        'purchase_request_items' => ['purchase_request_id', 'purchase_requests'],
+        'rfq_suppliers' => ['rfq_id', 'rfqs'],
+        'supplier_quote_items' => ['supplier_quote_id', 'supplier_quotes'],
         'goods_receipt_items' => ['goods_receipt_id', 'goods_receipts'],
         'stock_transfer_items' => ['stock_transfer_id', 'stock_transfers'],
         'inventory_return_items' => ['inventory_return_id', 'inventory_returns'],
@@ -124,6 +151,19 @@ class PortableBackupService
     ];
 
     private const IDENTITY_COLUMNS = [
+        'order_channels'=>['company_id','name'],
+        'order_channel_mappings'=>['order_channel_id','kind','external_id'],
+        'order_intakes'=>['order_channel_id','idempotency_key'],
+        'document_types'=>['company_id','name'],
+        'document_settings'=>['company_id'],
+        'documents'=>['company_id','uuid'],
+        'document_versions'=>['document_id','version'],
+        'document_links'=>['document_id','entity_type','entity_id'],
+        'document_requirements'=>['company_id','entity_type','document_type_id'],
+        'sales_orders'=>['company_id','order_number'],
+        'pick_tasks'=>['company_id','reference'], 'pick_waves'=>['company_id','reference'],
+        'outbound_dispatches'=>['company_id','reference'], 'outbound_packages'=>['company_id','reference'],
+        'outbound_returns'=>['company_id','reference'], 'outbound_actions'=>['company_id','idempotency_key'],
         'categories' => ['company_id', 'name'],
         'suppliers' => ['company_id', 'name'],
         'warehouse_sections' => ['warehouse_id', 'code'],
@@ -168,6 +208,18 @@ class PortableBackupService
         'quality_inspections' => ['company_id', 'inspection_number'],
         'supplier_claims' => ['company_id', 'claim_number'],
         'supplier_score_settings' => ['company_id'],
+        'approval_rules' => ['company_id', 'rule_type'],
+        'purchase_requests' => ['company_id', 'request_number'],
+        'rfqs' => ['company_id', 'rfq_number'],
+        'rfq_suppliers' => ['rfq_id', 'supplier_id'],
+        'supplier_quotes' => ['rfq_id', 'supplier_id', 'revision'],
+        'supplier_quote_items' => ['supplier_quote_id', 'purchase_request_item_id'],
+        'procurement_awards' => ['rfq_id', 'purchase_request_item_id'],
+        'shipment_purchase_orders' => ['shipment_id', 'purchase_order_id'],
+        'shipment_container_purchase_orders' => ['shipment_container_id', 'purchase_order_id'],
+        'shipment_milestones' => ['company_id', 'shipment_id', 'scope_key', 'milestone_type'],
+        'operational_exceptions' => ['company_id', 'exception_key'],
+        'business_events' => ['company_id', 'idempotency_key'],
     ];
 
     public function __construct(
@@ -197,6 +249,28 @@ class PortableBackupService
             $rawData[$table] = $this->ownedRows($table, (int) $company->id);
         }
 
+        if(in_array('documents',$modules,true)) {
+            $docIds=collect($rawData['documents']??[])->pluck('id')->all();
+            $versionIds=collect($rawData['document_versions']??[])->pluck('id')->all();
+            $approvalIds=DB::table('approval_requests')->where('company_id',$company->id)->where('entity_type','document_version')->whereIn('entity_id',$versionIds)->pluck('id')->all();
+            foreach(['business_events','approval_requests','approval_decisions'] as $table){
+                $alsoSelected=collect($modules)->reject(fn($m)=>$m==='documents')->contains(fn($m)=>in_array($table,self::MODULES[$m],true));
+                if($alsoSelected)continue;
+                $rawData[$table]=array_values(array_filter($rawData[$table],fn($row)=>match($table){
+                    'business_events'=>($row['entity_type']??'')==='Document'&&in_array($row['entity_id'],$docIds),
+                    'approval_requests'=>in_array($row['id'],$approvalIds),
+                    'approval_decisions'=>in_array($row['approval_request_id'],$approvalIds),
+                }));
+            }
+        }
+
+        foreach($rawData['document_links']??[] as $link) {
+            $table=DocumentEntityRegistry::TYPES[$link['entity_type']][1]??null;
+            if(!$table)throw ValidationException::withMessages(['documents'=>'Unknown document relationship.']);
+            $target=DB::table($table)->where('company_id',$company->id)->where('id',$link['entity_id'])->first();
+            if(!$target)throw ValidationException::withMessages(['documents'=>'A document relationship is broken. Resolve it before backup.']);
+            if(!collect($rawData[$table]??[])->contains('id',$target->id))$rawData[$table][]=(array)$target;
+        }
         $rawData = $this->includeReferencedRows($rawData, (int) $company->id);
         [$data, $encodings] = $this->prepareForArchive($rawData);
         $tables = $this->sortTables(array_keys($data));
@@ -215,6 +289,7 @@ class PortableBackupService
             'database_schema' => 'AIMS-'.self::VERSION,
         ];
         $payload = ['data' => $data, 'encodings' => $encodings];
+        if(!empty($rawData['document_versions']))$payload['document_files']=app(DocumentBackupService::class)->export($rawData['document_versions'],$passphrase);
         $archive = [
             'format' => self::FORMAT,
             'version' => self::VERSION,
@@ -296,11 +371,16 @@ class PortableBackupService
         );
         $coreTables = $this->tablesForModules($modules);
         $activeData = $this->selectRowsWithDependencies($archiveData, $coreTables);
+        foreach($activeData['document_links']??[] as $link){$table=DocumentEntityRegistry::TYPES[$link['entity_type']][1]??null;$target=$table?collect($archiveData[$table]??[])->firstWhere('id',$link['entity_id']):null;if(!$target)throw ValidationException::withMessages(['file'=>'Missing linked document entity.']);if(!collect($activeData[$table]??[])->contains('id',$target['id']))$activeData[$table][]=$target;}
+        $activeData=$this->selectRowsWithDependencies($archiveData,array_keys($activeData));
         $companyId = (int) $user->company_id;
+        $documentKeys=app(DocumentBackupService::class)->restoreFiles($activeData['document_versions']??[],$archive['payload']['document_files']??[],$companyId);
+        foreach($activeData['document_versions']??[] as $i=>$v){$activeData['document_versions'][$i]['storage_key']=$documentKeys[$v['storage_key']];$activeData['document_versions'][$i]['provider']='local';}
         $warnings = [];
         $imported = [];
         $restoresWarehouseStock = array_key_exists('warehouse_stock', $activeData);
 
+        try {
         DB::transaction(function () use (
             $archive, $modules, $mode, $coreTables, $activeData, $companyId, $user,
             $restoresWarehouseStock, &$warnings, &$imported
@@ -311,7 +391,10 @@ class PortableBackupService
             Company::query()->whereKey($companyId)->lockForUpdate()->firstOrFail();
 
             if ($mode === 'merge') {
-                $this->assertMergeIsSafe($activeData, $companyId);
+                // A document-only restore imports linked entities as references, not as
+                // operational aggregates. Existing references are preserved below.
+                $documentOnly = count($modules) === 1 && $modules[0] === 'documents';
+                $this->assertMergeIsSafe($documentOnly ? array_intersect_key($activeData, array_flip($coreTables)) : $activeData, $companyId);
             }
 
             if (in_array('company', $modules, true)) {
@@ -323,6 +406,12 @@ class PortableBackupService
             }
 
             if ($mode === 'replace') {
+                if(in_array('documents',$modules,true))foreach(DB::table('documents')->where('company_id',$companyId)->where('legal_hold',true)->get() as $held){
+                    $source=collect($activeData['documents']??[])->firstWhere('uuid',$held->uuid);
+                    if(!$source||!($source['legal_hold']??false))throw ValidationException::withMessages(['file'=>'Restore would remove a document under legal hold. Release the hold deliberately before replacing it.']);
+                    $hashes=collect($activeData['document_versions']??[])->where('document_id',$source['id'])->pluck('checksum')->all();
+                    foreach(DB::table('document_versions')->where('document_id',$held->id)->pluck('checksum') as $checksum)if(!in_array($checksum,$hashes,true))throw ValidationException::withMessages(['file'=>'Restore would remove held document evidence.']);
+                }
                 $this->deleteCurrentModuleRows($coreTables, $companyId);
             }
 
@@ -358,7 +447,19 @@ class PortableBackupService
                     if ($table === 'products' && ! $restoresWarehouseStock) {
                         unset($values['quantity']);
                     }
-                    $targetId = $this->upsertPortableRow($table, $values, $mode, in_array($table, $coreTables, true));
+                    $isCore = in_array($table, $coreTables, true);
+                    $referenceIdentity = count($modules) === 1 && $modules[0] === 'documents' && !$isCore
+                        ? $this->identityFor($table, $values) : [];
+                    $existingReference = $referenceIdentity && Schema::hasColumn($table, 'id')
+                        ? DB::table($table)->where($referenceIdentity)->value('id') : null;
+                    if ($existingReference) {
+                        // Never roll a live PO, supplier or other linked business record
+                        // back to the snapshot merely to restore its document link.
+                        $targetId = (int) $existingReference;
+                        $rowDeferred = [];
+                    } else {
+                        $targetId = $this->upsertPortableRow($table, $values, $mode, $isCore);
+                    }
 
                     if ($restoresWarehouseStock && $table === 'products' && $targetId !== null) {
                         // Validate every restored product, including a product
@@ -402,6 +503,14 @@ class PortableBackupService
                 }
             }
 
+            foreach(array_values($idMap['approval_requests']??[]) as $approvalId){
+                $approval=\App\Models\ApprovalRequest::withoutGlobalScopes()->where('company_id',$companyId)->find($approvalId);
+                if($approval?->entity_type!=='document_version')continue;
+                $version=\App\Models\DocumentVersion::withoutGlobalScopes()->where('company_id',$companyId)->findOrFail($approval->entity_id);
+                $context=$approval->context??[];$context['document_id']=$version->document_id;$context['version']=$version->version;
+                $approval->update(['context'=>$context]);
+            }
+
             if ($restoresWarehouseStock) {
                 $affectedProductIds = array_keys($affectedInventoryProductIds);
                 sort($affectedProductIds, SORT_NUMERIC);
@@ -413,6 +522,11 @@ class PortableBackupService
                 }
             }
         }, 3);
+        } finally {
+            // Only this restore's newly generated keys are eligible. Referenced
+            // versions (including legal hold) are never removed by cleanup.
+            app(DocumentBackupService::class)->discardStaged($documentKeys);
+        }
 
         return [
             'message' => 'AIMS backup restored successfully.',
@@ -495,7 +609,7 @@ class PortableBackupService
             }
         }
 
-        return $query->get()->map(fn ($row) => (array) $row)->all();
+        return $query->get()->map(function($row)use($table){$data=(array)$row;if($table==='order_intakes'){$data['tracking_hash']=null;$data['tracking_expires_at']=null;}return $data;})->all();
     }
 
     private function includeReferencedRows(array $data, int $companyId): array
@@ -707,6 +821,9 @@ class PortableBackupService
         }
 
         foreach (array_reverse($this->sortTables($coreTables)) as $table) {
+            if($table==='order_channels' && Schema::hasTable('order_channel_keys')) {
+                DB::table('order_channel_keys')->where('company_id',$companyId)->delete();
+            }
             if (($ownedRows[$table] ?? []) === []) {
                 continue;
             }
@@ -753,9 +870,22 @@ class PortableBackupService
         unset($row['id']);
         $columns = collect(Schema::getColumns($table))->pluck('name')->flip();
         $row = array_intersect_key($row, $columns->all());
+        if($table==='order_intakes'){
+            $row['tracking_hash']=null;$row['tracking_expires_at']=null;
+            $payload=json_decode((string)($row['payload']??'{}'),true)?:[];
+            if(!empty($payload['customer_id']))$payload['customer_id']=$idMap['customers'][(string)$payload['customer_id']]??null;
+            foreach($payload['items']??[] as $n=>$line)if(!empty($line['product_id']))$payload['items'][$n]['product_id']=$idMap['products'][(string)$line['product_id']]??null;
+            $row['payload']=json_encode($payload);
+        }
 
         if ($columns->has('company_id')) {
             $row['company_id'] = $companyId;
+        }
+        if($table==='business_events'&&isset($row['event_id'])&&DB::table('business_events')->where('event_id',$row['event_id'])->where('company_id','!=',$companyId)->exists()){
+            $metadata=json_decode((string)($row['metadata']??'{}'),true)?:[];
+            $metadata['portable_original_event_id']=$row['event_id'];
+            $row['metadata']=json_encode($metadata);
+            $row['event_id']=(string)Str::uuid();
         }
 
         if (in_array($table, ['products', 'product_barcodes'], true)
@@ -803,6 +933,7 @@ class PortableBackupService
 
         if ($table === 'stock_movements' && array_key_exists('source_id', $row) && $row['source_id'] !== null) {
             $sourceTable = match ($row['source_type'] ?? null) {
+                'sales_order' => 'sales_orders',
                 'daily_sale' => 'daily_sales',
                 'invoice' => 'invoices',
                 'product', 'product_edit' => 'products',
@@ -847,6 +978,14 @@ class PortableBackupService
             }
         }
 
+        $documentEntityTable=null;
+        if($table==='document_links')$documentEntityTable=DocumentEntityRegistry::TYPES[$row['entity_type']][1]??null;
+        if($table==='approval_requests'&&($row['entity_type']??'')==='document_version')$documentEntityTable='document_versions';
+        if($table==='approval_requests'&&($row['entity_type']??'')==='order_intake')$documentEntityTable='order_intakes';
+        if($table==='business_events'&&($row['entity_type']??'')==='OrderIntake')$documentEntityTable='order_intakes';
+        if($table==='business_events'&&($row['entity_type']??'')==='Document')$documentEntityTable='documents';
+        if($documentEntityTable){$old=(string)$row['entity_id'];if(isset($idMap[$documentEntityTable][$old]))$row['entity_id']=$idMap[$documentEntityTable][$old];else $deferred['entity_id']=[$documentEntityTable,$old];}
+
         foreach (['warehouse_stock', 'inventory_trace_balances', 'inventory_count_items'] as $locationScopedTable) {
             if ($table === $locationScopedTable && $columns->has('location_key')) {
                 $row['location_key'] = (int) ($row['location_id'] ?? 0);
@@ -888,6 +1027,20 @@ class PortableBackupService
         $this->assertPortableBarcodeIsUnique($table, $values, $existingId ? (int) $existingId : null);
 
         if ($existingId) {
+            if($table==='document_versions'&&!hash_equals((string)DB::table($table)->where('id',$existingId)->value('checksum'),(string)$values['checksum']))throw ValidationException::withMessages(['file'=>'An existing immutable document version differs from the backup.']);
+            if($table==='document_versions'&&$mode==='merge'){
+                foreach(['storage_key','provider','filename','mime_type','size','created_at','uploaded_by','change_note'] as $immutable)unset($values[$immutable]);
+            }
+            if($table==='documents'){
+                $current=DB::table($table)->where('id',$existingId)->first();
+                if($current->legal_hold&&!($values['legal_hold']??false))throw ValidationException::withMessages(['file'=>'A merge cannot release an existing legal hold.']);
+                if ($mode === 'merge' && (int)$current->current_version >= (int)$values['current_version']) {
+                    // A partial restore must not roll live metadata/review state back,
+                    // especially by attaching an old approval to a newer version.
+                    return (int) $existingId;
+                }
+                $values['current_version']=max((int)$current->current_version,(int)$values['current_version']);
+            }
             if ($table === 'invoice_sequences' && isset($values['next_number'])) {
                 $values['next_number'] = max(
                     (int) $values['next_number'],

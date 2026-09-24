@@ -12,7 +12,7 @@ class FinancialAccount extends Model
 
     protected $fillable = [
         'company_id', 'type', 'name', 'currency', 'bank_name', 'account_number',
-        'opening_balance', 'opening_date', 'is_active', 'notes',
+        'opening_balance', 'opening_date', 'is_active', 'notes', 'accounting_account_id',
     ];
 
     protected function casts(): array
@@ -27,5 +27,10 @@ class FinancialAccount extends Model
     public function transactions(): HasMany
     {
         return $this->hasMany(FinancialAccountTransaction::class);
+    }
+
+    public function accountingAccount()
+    {
+        return $this->belongsTo(AccountingAccount::class);
     }
 }

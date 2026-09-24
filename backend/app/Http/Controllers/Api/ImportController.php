@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\BackupRunService;
 use App\Services\DataImportService;
 use App\Services\ImportService;
 use App\Services\PortableBackupService;
@@ -16,6 +17,7 @@ class ImportController extends Controller
         private ImportService $importService,
         private DataImportService $dataImportService,
         private PortableBackupService $backups,
+        private BackupRunService $backupRuns,
     ) {}
 
     public function products(Request $request): JsonResponse
@@ -65,12 +67,20 @@ class ImportController extends Controller
             ]);
         }
 
-        $result = $this->backups->restore(
-            $request->file('file'),
-            $modules,
-            $mode,
-            $validated['passphrase'] ?? null,
-        );
+        $run = $this->backupRuns->start('restore', $mode, $modules);
+        try {
+            $file = $request->file('file');
+            $result = $this->backups->restore(
+                $file,
+                $modules,
+                $mode,
+                $validated['passphrase'] ?? null,
+            );
+            $this->backupRuns->complete($run, $file?->getSize(), 'checksum_verified');
+        } catch (\Throwable $error) {
+            $this->backupRuns->fail($run, $error);
+            throw $error;
+        }
 
         return response()->json($result);
     }

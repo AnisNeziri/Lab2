@@ -213,9 +213,10 @@ class SupplierInvoiceMatchingService
 
     private function calculateSummary(Expense $expense): array
     {
-        $quantityTolerance = (float) config('procurement.matching.quantity_tolerance', .001);
-        $priceTolerance = (float) config('procurement.matching.unit_price_tolerance', .02);
-        $taxTolerance = (float) config('procurement.matching.tax_tolerance', .02);
+        $company = Auth::user()->company;
+        $quantityTolerance = (float) ($company->supplier_match_quantity_tolerance ?? config('procurement.matching.quantity_tolerance', .001));
+        $priceTolerance = (float) ($company->supplier_match_price_tolerance ?? config('procurement.matching.unit_price_tolerance', .02));
+        $taxTolerance = (float) ($company->supplier_match_tax_tolerance ?? config('procurement.matching.tax_tolerance', .02));
         $expense->load(['supplierInvoiceItems.purchaseOrderItem', 'purchaseOrder', 'goodsReceipts:id']);
         $linkedReceiptIds = $expense->goodsReceipts->pluck('id');
         $lines = [];

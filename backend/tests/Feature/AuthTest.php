@@ -93,6 +93,7 @@ class AuthTest extends TestCase
 
     public function test_user_must_change_password_before_accessing_protected_routes(): void
     {
+        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
         $company = Company::factory()->create();
         $tempPassword = 'TempPass123!';
 

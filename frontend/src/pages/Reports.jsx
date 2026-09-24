@@ -31,8 +31,8 @@ import { useAuthStore } from '../store/authStore'
 
 const BACKUP_MODULES = [
   'company', 'categories', 'suppliers', 'products', 'inventory',
-  'warehouses', 'purchases', 'daily_sales', 'customer_debts', 'finance',
-  'shipments',
+  'warehouses', 'purchases', 'procurement', 'daily_sales', 'customer_debts',
+  'finance', 'shipments', 'quality', 'fulfillment', 'documents',
 ]
 
 const DATA_LISTS = [

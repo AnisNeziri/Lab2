@@ -1,3 +1,4 @@
+import { useUiText } from '../hooks/useUiText'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Box, Plus, Save, Trash2, ArrowLeft, Layers } from 'lucide-react'
@@ -26,6 +27,8 @@ const emptySection = {
 }
 
 export default function WarehouseLayout() {
+ const tx = useUiText()
+
   const navigate = useNavigate()
   const [sections, setSections] = useState([])
   const [warehouses, setWarehouses] = useState([])
@@ -58,7 +61,7 @@ export default function WarehouseLayout() {
       })
       setActiveFloor((f) => Math.min(f, data.warehouse?.floor_count ?? 1))
     } catch (err) {
-      setError(err.message || 'Could not load warehouse layout.')
+      setError(err.message || tx('Could not load warehouse layout.'))
     } finally {
       setLoading(false)
     }
@@ -76,10 +79,10 @@ export default function WarehouseLayout() {
         height_m: STANDARD_HEIGHT,
         floor_count: Number(dims.floor_count),
       })
-      setMessage('Warehouse footprint saved.')
+      setMessage(tx('Warehouse footprint saved.'))
       load()
     } catch (err) {
-      setError(err.message || 'Could not save dimensions.')
+      setError(err.message || tx('Could not save dimensions.'))
     }
   }
 
@@ -115,16 +118,16 @@ export default function WarehouseLayout() {
         payload.pos_x = Number(pos_x)
         payload.pos_z = Number(pos_z)
         await updateWarehouseSection(editingId, payload)
-        setMessage('Section updated.')
+        setMessage(tx('Section updated.'))
       } else {
         await createWarehouseSection(payload)
-        setMessage('Section created and placed automatically — drag it to fine-tune the position.')
+        setMessage(tx('Section created and placed automatically — drag it to fine-tune the position.'))
       }
       setForm({ ...emptySection, floor_level: activeFloor })
       setEditingId(null)
       load()
     } catch (err) {
-      setError(err.message || 'Could not save section.')
+      setError(err.message || tx('Could not save section.'))
     }
   }
 
@@ -140,21 +143,21 @@ export default function WarehouseLayout() {
       if (editingId === sectionId) {
         setForm((f) => ({ ...f, pos_x: pos.pos_x, pos_z: pos.pos_z }))
       }
-      if (!silent) setMessage(`Position saved — X ${pos.pos_x}m, Z ${pos.pos_z}m`)
+      if (!silent) setMessage(`${tx('Position saved')} — X ${pos.pos_x}m, Z ${pos.pos_z}m`)
     } catch (err) {
-      setError(err.message || 'Could not save position.')
+      setError(err.message || tx('Could not save position.'))
       load()
     }
   }
 
   async function handleDelete(section) {
-    if (!window.confirm(`Delete location ${section.display_code ?? section.code} on level ${section.floor_level ?? 1}? It must be empty and have no child locations.`)) return
+    if (!window.confirm(`${tx('Delete location')} ${section.display_code ?? section.code} (${tx('Level')} ${section.floor_level ?? 1})? ${tx('It must be empty and have no child locations.')}`)) return
     try {
       await deleteWarehouseSection(section.id)
-      setMessage('Section deleted.')
+      setMessage(tx('Section deleted.'))
       load()
     } catch (err) {
-      setError(err.message || 'Could not delete section.')
+      setError(err.message || tx('Could not delete section.'))
     }
   }
 
@@ -170,9 +173,9 @@ export default function WarehouseLayout() {
       })
       setDims((d) => ({ ...d, floor_count: next }))
       setActiveFloor(next)
-      setMessage(`Level ${next} added. Place sections on this floor in the plan below.`)
+      setMessage(`${tx('Level')} ${next}: ${tx('Place sections on this floor in the plan below.')}`)
     } catch (err) {
-      setError(err.message || 'Could not add floor.')
+      setError(err.message || tx('Could not add floor.'))
     }
   }
 
@@ -182,26 +185,22 @@ export default function WarehouseLayout() {
     <main className="warehouse-layout-page">
       <div className="page-header-row">
         <div>
-          <h2>Warehouse layout</h2>
-          <p className="page-intro">
-            Set the footprint in square meters, add floors, then drag sections anywhere on each level. Standard ceiling height is 8&nbsp;m per floor.
-          </p>
+          <h2>{tx("Warehouse layout")}</h2>
+          <p className="page-intro"> {tx("Set the footprint in square meters, add floors, then drag sections anywhere on each level. Standard ceiling height is 8 m per floor.")} </p>
         </div>
         <div className="header-actions">
           {warehouses.length > 1 && (
             <label className="warehouse-layout-selector">
-              <span>Warehouse</span>
+              <span>{tx("Warehouse")}</span>
               <select value={warehouseId} onChange={(event) => { setEditingId(null); setActiveFloor(1); void load(event.target.value) }}>
                 {warehouses.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}
               </select>
             </label>
           )}
           <button type="button" className="btn-secondary" onClick={() => navigate('/warehouse-3d')}>
-            <Box size={16} /> 3D map
-          </button>
+            <Box size={16} /> {tx("3D map")} </button>
           <button type="button" className="btn-secondary" onClick={() => navigate('/dashboard')}>
-            <ArrowLeft size={16} /> Back
-          </button>
+            <ArrowLeft size={16} /> {tx("Back")} </button>
         </div>
       </div>
 
@@ -209,16 +208,14 @@ export default function WarehouseLayout() {
       {message && <div className="page-success">{message}</div>}
 
       {loading ? (
-        <p className="page-message">Loading layout...</p>
+        <p className="page-message">{tx("Loading layout...")}</p>
       ) : (
         <>
           <section className="card">
-            <h3>Building footprint</h3>
+            <h3>{tx("Building footprint")}</h3>
             <form className="product-form" onSubmit={saveDimensions}>
               <div className="form-row">
-                <label>
-                  Length (m)
-                  <input
+                <label> {tx("Length (m)")} <input
                     type="number"
                     min="1"
                     step="1"
@@ -226,9 +223,7 @@ export default function WarehouseLayout() {
                     onChange={(e) => setDims((d) => ({ ...d, length_m: e.target.value }))}
                   />
                 </label>
-                <label>
-                  Width (m)
-                  <input
+                <label> {tx("Width (m)")} <input
                     type="number"
                     min="1"
                     step="1"
@@ -236,9 +231,7 @@ export default function WarehouseLayout() {
                     onChange={(e) => setDims((d) => ({ ...d, width_m: e.target.value }))}
                   />
                 </label>
-                <label>
-                  Floors
-                  <input
+                <label> {tx("Floors")} <input
                     type="number"
                     min="1"
                     max="20"
@@ -249,13 +242,13 @@ export default function WarehouseLayout() {
                 </label>
               </div>
               <div className="warehouse-dim-summary">
-                <span><strong>{areaSqm.toLocaleString()} m²</strong> total footprint</span>
+                <span><strong>{areaSqm.toLocaleString()} m²</strong> {tx("total footprint")}</span>
                 <span>·</span>
-                <span>{STANDARD_HEIGHT} m standard height per floor</span>
+                <span>{STANDARD_HEIGHT} {tx("m standard height per floor")}</span>
                 <span>·</span>
-                <span>{(areaSqm * STANDARD_HEIGHT * (Number(dims.floor_count) || 1)).toLocaleString()} m³ volume</span>
+                <span>{(areaSqm * STANDARD_HEIGHT * (Number(dims.floor_count) || 1)).toLocaleString()} {tx("m³ volume")}</span>
               </div>
-              <button type="submit" className="btn-primary"><Save size={16} /> Save footprint</button>
+              <button type="submit" className="btn-primary"><Save size={16} /> {tx("Save footprint")}</button>
             </form>
           </section>
 
@@ -270,57 +263,50 @@ export default function WarehouseLayout() {
                   setForm((f) => ({ ...f, floor_level: level }))
                 }}
               >
-                <Layers size={14} /> Level {level}
+                <Layers size={14} /> {tx("Level")} {level}
               </button>
             ))}
             <button type="button" className="floor-tab add-floor" onClick={addFloor}>
-              <Plus size={14} /> Add floor
-            </button>
+              <Plus size={14} /> {tx("Add floor")} </button>
           </div>
 
           <section className="card">
-            <h3>{editingId ? 'Edit section' : `Add section — Level ${activeFloor}`}</h3>
+            <h3>{editingId ? tx("Edit section") : `${tx('Add section')} — ${tx('Level')} ${activeFloor}`}</h3>
               <form className="product-form" onSubmit={handleSectionSubmit}>
                 <div className="form-row">
-                  <label>
-                    Code
-                    <input
+                  <label> {tx("Code")} <input
                       value={form.code}
                       onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
                       required
                       placeholder="A1"
                     />
                   </label>
-                  <label>
-                    Name
-                    <input
+                  <label> {tx("Name")} <input
                       value={form.name}
                       onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                       required
-                      placeholder={`Level ${activeFloor} — Zone A`}
+                      placeholder={`${tx('Level')} ${activeFloor} — A`}
                     />
                   </label>
                 </div>
                 <div className="form-row">
-                  <label>Color<input type="color" value={form.color} onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))} /></label>
-                  <label>Width (m)<input type="number" min="1" step="0.5" value={form.width} onChange={(e) => setForm((f) => ({ ...f, width: e.target.value }))} /></label>
-                  <label>Depth (m)<input type="number" min="1" step="0.5" value={form.depth} onChange={(e) => setForm((f) => ({ ...f, depth: e.target.value }))} /></label>
+                  <label>{tx("Color")}<input type="color" value={form.color} onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))} /></label>
+                  <label>{tx("Width (m)")}<input type="number" min="1" step="0.5" value={form.width} onChange={(e) => setForm((f) => ({ ...f, width: e.target.value }))} /></label>
+                  <label>{tx("Depth (m)")}<input type="number" min="1" step="0.5" value={form.depth} onChange={(e) => setForm((f) => ({ ...f, depth: e.target.value }))} /></label>
                 </div>
-                <p className="form-hint">
-                  Drag the grip on the floor plan to place sections. Use arrow keys for fine nudging (hold Shift for larger steps).
-                  {editingId && <> Position: X {form.pos_x}m, Z {form.pos_z}m</>}
+                <p className="form-hint"> {tx("Drag the grip on the floor plan to place sections. Use arrow keys for fine nudging (hold Shift for larger steps).")} {editingId && <> {tx("Position: X")} {form.pos_x}m, Z {form.pos_z}m</>}
                 </p>
                 <button type="submit" className="btn-primary">
-                  <Plus size={16} /> {editingId ? 'Update section' : 'Add section'}
+                  <Plus size={16} /> {editingId ? tx("Update section") : tx("Add section")}
                 </button>
                 {editingId && (
-                  <button type="button" className="btn-secondary" onClick={() => { setEditingId(null); setForm({ ...emptySection, floor_level: activeFloor }) }}>Cancel edit</button>
+                  <button type="button" className="btn-secondary" onClick={() => { setEditingId(null); setForm({ ...emptySection, floor_level: activeFloor }) }}>{tx("Cancel edit")}</button>
                 )}
               </form>
           </section>
 
           <section className="card warehouse-preview-card">
-              <h3>Level {activeFloor} — floor plan editor</h3>
+              <h3>{tx("Level")} {activeFloor} {tx("— floor plan editor")}</h3>
               <WarehouseFloorPlan
                 sections={sections}
                 lengthM={Number(dims.length_m) || 80}
@@ -333,16 +319,16 @@ export default function WarehouseLayout() {
           </section>
 
           <section className="card">
-            <h3>Sections ({sections.length})</h3>
+            <h3>{tx("Sections (")}{sections.length})</h3>
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Level</th>
-                    <th>Code</th>
-                    <th>Name</th>
-                    <th>Position</th>
-                    <th>Products</th>
+                    <th>{tx("Level")}</th>
+                    <th>{tx("Code")}</th>
+                    <th>{tx("Name")}</th>
+                    <th>{tx("Position")}</th>
+                    <th>{tx("Products")}</th>
                     <th />
                   </tr>
                 </thead>
@@ -355,8 +341,8 @@ export default function WarehouseLayout() {
                       <td>X {s.pos_x}, Z {s.pos_z}</td>
                       <td>{s.product_count ?? 0}</td>
                       <td className="table-actions">
-                        <button type="button" className="btn-link" onClick={() => { setActiveFloor(s.floor_level ?? 1); startEdit(s) }}>Edit</button>
-                        <button type="button" className="btn-link danger" onClick={() => handleDelete(s)}><Trash2 size={14} /></button>
+                        <button type="button" className="btn-link" onClick={() => { setActiveFloor(s.floor_level ?? 1); startEdit(s) }}>{tx("Edit")}</button>
+                        <button type="button" className="btn-link danger" aria-label={tx('Delete')} onClick={() => handleDelete(s)}><Trash2 size={14} /></button>
                       </td>
                     </tr>
                   ))}

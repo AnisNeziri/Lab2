@@ -17,6 +17,8 @@ import {
 import { getFinancialAccounts } from "../api/advancedOperations";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAuthStore } from "../store/authStore";
+import EntityContext from "../components/EntityContext";
+import { Link } from 'react-router-dom';
 import "./CustomerDebts.css";
 
 const euro = (value) =>
@@ -90,7 +92,7 @@ const reportState = (row) => {
 };
 
 export default function CustomerDebts() {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const permissions = useAuthStore((state) => state.permissions);
   const canManageCustomers = permissions.includes("customers.manage");
   const canCreateDebt = permissions.includes("debts.create");
@@ -276,6 +278,11 @@ export default function CustomerDebts() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const requestedCustomer = Number(new URLSearchParams(window.location.search).get("customer"));
+    if (Number.isInteger(requestedCustomer) && requestedCustomer > 0) open(requestedCustomer);
+  }, []);
 
   const begin = (nextMode) => {
     setCorrection(null);
@@ -1079,6 +1086,8 @@ export default function CustomerDebts() {
               </div>
             )}
           </section>
+          <EntityContext entityType="customer" entityId={selected.id} />
+          {permissions.includes('fulfillment.view')&&<Link to={`/order-hub?customer=${selected.id}`}>{language==='sq'?'Porositë e klientit':'Customer orders'}</Link>}
           {correction && (
             <section className="inline-editor">
               <div className="section-header">

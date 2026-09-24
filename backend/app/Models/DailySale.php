@@ -60,6 +60,11 @@ class DailySale extends Model
         return $this->belongsTo(Customer::class)->withTrashed();
     }
 
+    public function outboundDispatch()
+    {
+        return $this->hasOne(OutboundDispatch::class, 'daily_sale_id');
+    }
+
     public function scopeDraft($query)
     {
         return $query->where('status', 'draft');

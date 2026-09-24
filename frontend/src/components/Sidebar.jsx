@@ -23,6 +23,8 @@ import {
   ScanLine,
   Boxes,
   Radar,
+  BookOpen,
+  HeartPulse,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import NotificationCenter from "./NotificationCenter";
@@ -32,6 +34,7 @@ import AimsLogo from "./AimsLogo";
 import { useTranslation } from "../hooks/useTranslation";
 import { useSettingsStore } from "../store/settingsStore";
 import { pageToGroup, useSidebarNavStore } from "../store/sidebarNavStore";
+import { canOpenPage } from "../config/pageAccess";
 
 export default function Sidebar({
   currentPage,
@@ -49,6 +52,7 @@ export default function Sidebar({
   const canViewDebts = permissions.includes("debts.view");
   const canViewFinance = permissions.includes("finance.view");
   const canViewMoneyAccounts = permissions.includes("financial_accounts.view");
+  const canViewAccounting = permissions.includes("accounting.reports.view");
   const expandedGroups = useSidebarNavStore((state) => state.expandedGroups);
   const toggleGroup = useSidebarNavStore((state) => state.toggleGroup);
   const ensureGroupOpen = useSidebarNavStore((state) => state.ensureGroupOpen);
@@ -62,7 +66,7 @@ export default function Sidebar({
           items: [
             {
               id: "superadmin",
-              label: "Platform administration",
+              label: t("nav.platformAdmin"),
               icon: ShieldCheck,
             },
           ],
@@ -78,7 +82,7 @@ export default function Sidebar({
           { id: "dashboard", label: t("nav.dashboard"), icon: LayoutDashboard },
         ],
       },
-      ...(canViewFinance || canManageInvoices || canManageDailySales || canViewMoneyAccounts
+      ...(canViewFinance || canManageInvoices || canManageDailySales || canViewMoneyAccounts || canViewAccounting
         ? [
             {
               id: "finance",
@@ -88,6 +92,7 @@ export default function Sidebar({
                 ...(canManageInvoices ? [{ id: "invoices", label: t("nav.invoices"), icon: FileText }] : []),
                 ...(canViewFinance ? [{ id: "finance", label: t("nav.financeCenter"), icon: Landmark }] : []),
                 ...(canViewMoneyAccounts ? [{ id: "money-accounts", label: t("nav.moneyAccounts"), icon: Landmark }] : []),
+                ...(canViewAccounting ? [{ id: "accounting", label: t("nav.accounting"), icon: BookOpen }] : []),
               ],
             },
           ]
@@ -117,9 +122,12 @@ export default function Sidebar({
       {
         id: "orders",
         label: t("nav.group.orders"),
-        items: [
-          { id: "purchase-orders", label: "Purchase Orders", icon: Truck },
-          ...(permissions.includes("procurement.view") ? [{ id: "procurement", label: "Procurement", icon: ClipboardList }] : []),
+          items: [
+            ...(permissions.includes("fulfillment.view") ? [{ id: "order-hub", label: t("nav.orderHub"), icon: Package }] : []),
+            { id: "purchase-orders", label: t("nav.purchaseOrders"), icon: Truck },
+            ...(permissions.includes("fulfillment.view") ? [{ id: "fulfillment", label: t("nav.fulfillment"), icon: Package }] : []),
+            ...(permissions.includes("documents.view") ? [{ id: "documents", label: t("nav.documents"), icon: FileText }] : []),
+          ...(permissions.includes("procurement.view") ? [{ id: "procurement", label: t("nav.procurement"), icon: ClipboardList }] : []),
         ],
       },
       {
@@ -142,20 +150,19 @@ export default function Sidebar({
       },
     ];
 
-    if (userRole === "admin") {
+    if (userRole === "admin" || permissions.includes("system_integrity.view")) {
       all.push({
         id: "settings",
         label: t("nav.group.settings"),
         items: [
-          { id: "users", label: t("nav.users"), icon: Users },
-          { id: "activity-logs", label: t("nav.activityLogs"), icon: Activity },
-          { id: "cms", label: t("nav.systemSettings"), icon: FileEdit },
+          ...(userRole === "admin" ? [{ id: "users", label: t("nav.users"), icon: Users }, { id: "activity-logs", label: t("nav.activityLogs"), icon: Activity }, { id: "cms", label: t("nav.systemSettings"), icon: FileEdit }] : []),
+          ...(permissions.includes("system_integrity.view") ? [{ id: "system-integrity", label: t("nav.systemIntegrity"), icon: HeartPulse }] : []),
         ],
       });
     }
 
-    return all;
-  }, [enable3dMap, userRole, t, canManageDailySales, canManageInvoices, canViewDebts, canViewFinance, canViewMoneyAccounts, permissions]);
+    return all.map((group) => ({ ...group, items: group.items.filter((item) => canOpenPage(item.id, permissions)) })).filter((group) => group.items.length);
+  }, [enable3dMap, userRole, t, canManageDailySales, canManageInvoices, canViewDebts, canViewFinance, canViewMoneyAccounts, canViewAccounting, permissions]);
 
   useEffect(() => {
     const groupId = pageToGroup(currentPage);
@@ -175,8 +182,8 @@ export default function Sidebar({
           <AimsLogo showText={false} size="sm" />
           <p className="sidebar-subtitle">
             {userRole === "superadmin"
-              ? "Platform Administration"
-              : "Enterprise Management"}
+              ? t("nav.platformAdmin")
+              : t("nav.enterprise")}
           </p>
         </button>
         {userRole !== "superadmin" ? (
@@ -223,6 +230,7 @@ export default function Sidebar({
                         key={item.id}
                         type="button"
                         className={`sidebar-item sidebar-subitem ${isActive ? "active" : ""}`}
+                        aria-current={isActive ? "page" : undefined}
                         onClick={() => onPageChange(item.id)}
                       >
                         <Icon size={18} />

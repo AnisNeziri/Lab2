@@ -33,6 +33,7 @@ class PurchaseOrderService
         private readonly ApprovalService $approvals,
         private readonly BusinessEventService $events,
         private readonly QualityManagementService $quality,
+        private readonly OperationalAccountingService $operationalAccounting,
     ) {}
 
     public function list(array $filters): LengthAwarePaginator
@@ -281,6 +282,7 @@ class PurchaseOrderService
                 ]);
                 $payment->update(['financial_account_transaction_id' => $ledger->id]);
             }
+            $this->operationalAccounting->postPurchaseOrderPayment($payment->fresh());
             $before = Money::normalize($order->total_paid);
             $order->update(['total_paid' => Money::add($before, $amount), 'updated_by' => Auth::id()]);
             if ($linkedExpense) {
@@ -315,6 +317,15 @@ class PurchaseOrderService
             }
 
             foreach ($payment->allocations()->lockForUpdate()->get() as $allocation) {
+                DB::table('supplier_payment_allocation_requests')
+                    ->where('purchase_order_payment_id', $payment->id)
+                    ->where('expense_id', $allocation->expense_id)
+                    ->where('status', 'completed')
+                    ->get()
+                    ->each(fn ($request) => $this->operationalAccounting->reverseSource(
+                        'supplier_accounting', 'supplier-allocation:'.$request->id,
+                        'Supplier advance allocation reversal: '.trim($reason),
+                    ));
                 $oldAmount = $allocation->amount;
                 DB::table('supplier_payment_allocation_requests')
                     ->where('purchase_order_payment_id', $payment->id)
@@ -348,6 +359,10 @@ class PurchaseOrderService
                     $this->financialAccounts->reverse($ledger, 'Purchase Order payment reversal: '.trim($reason));
                 }
             }
+            $this->operationalAccounting->reverseSource(
+                'supplier_accounting', 'purchase-order-payment:'.$payment->id,
+                'Purchase Order payment reversal: '.trim($reason),
+            );
 
             $before = Money::normalize($order->total_paid);
             $totalPaid = Money::normalize($order->payments()->where('status', 'completed')->sum('amount'));

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import EntityDocuments from '../components/EntityDocuments'
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Anchor, Boxes, CheckCircle2, ExternalLink, RefreshCw, Radio, Route, Ship } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAuthStore } from "../store/authStore";
-import { getControlTower, getControlTowerAttention, getIntegrationHealth, resolveControlTowerException, saveControlTowerMilestone } from "../api/controlTower";
+import { getControlTower, getControlTowerShipment, getControlTowerAttention, getIntegrationHealth, resolveControlTowerException, saveControlTowerMilestone } from "../api/controlTower";
 import "./SupplyChainControlTower.css";
 
 const readable = (value) => String(value || "unknown").replaceAll("_", " ");
@@ -15,6 +16,8 @@ export default function SupplyChainControlTower() {
   const { shipmentId } = useParams();
   const permissions = useAuthStore((state) => state.permissions);
   const canManage = permissions.includes("control_tower.manage");
+  const canViewIntegrations = permissions.includes("integrations.view");
+  const loadVersion = useRef(0);
   const [tab, setTab] = useState("imports");
   const [imports, setImports] = useState([]);
   const [attention, setAttention] = useState([]);
@@ -26,26 +29,34 @@ export default function SupplyChainControlTower() {
   const [milestone, setMilestone] = useState({ milestone_type: "cargo_ready", planned_at: "", estimated_at: "", actual_at: "", notes: "" });
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true); setError("");
+  const load = useCallback(async (options = {}) => {
+    const version = ++loadVersion.current;
+    if (!options.silent) setLoading(true);
+    setError("");
     try {
       const [tower, issues, health] = await Promise.all([
         getControlTower({ per_page: 100 }),
         getControlTowerAttention({ ...filters, per_page: 100 }),
-        getIntegrationHealth(),
+        canViewIntegrations ? getIntegrationHealth() : Promise.resolve({ data: [] }),
       ]);
+      if (shipmentId && !tower.data?.some((row) => row.id === Number(shipmentId))) {
+        const detail = await getControlTowerShipment(shipmentId);
+        if (detail.id) tower.data = [detail, ...(tower.data || [])];
+      }
+      if (version !== loadVersion.current) return;
       setImports(tower.data || []);
       setAttention(issues.data || []);
       setIntegrations(health.data || []);
       setSelectedId((current) => Number(shipmentId) || current || tower.data?.[0]?.id || null);
     } catch (exception) {
+      if (version !== loadVersion.current) return;
       setError(exception.message || t("controlTower.loadError"));
-    } finally { setLoading(false); }
-  }, [filters, shipmentId, t]);
+    } finally { if (version === loadVersion.current) setLoading(false); }
+  }, [filters, shipmentId, t, canViewIntegrations]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); return () => { loadVersion.current++; }; }, [load]);
   useEffect(() => {
-    const refresh = () => void load();
+    const refresh = () => void load({ silent: true });
     window.addEventListener("database-refresh", refresh);
     return () => window.removeEventListener("database-refresh", refresh);
   }, [load]);
@@ -88,7 +99,7 @@ export default function SupplyChainControlTower() {
     <nav className="ct-tabs">
       <button className={tab === "imports" ? "active" : ""} onClick={() => setTab("imports")}><Route size={17}/>{t("controlTower.imports")}</button>
       <button className={tab === "attention" ? "active" : ""} onClick={() => setTab("attention")}><AlertTriangle size={17}/>{t("controlTower.attention")} {attention.length > 0 && <b>{attention.length}</b>}</button>
-      <button className={tab === "integrations" ? "active" : ""} onClick={() => setTab("integrations")}><Radio size={17}/>{t("controlTower.integrations")}</button>
+      {canViewIntegrations && <button className={tab === "integrations" ? "active" : ""} onClick={() => setTab("integrations")}><Radio size={17}/>{t("controlTower.integrations")}</button>}
     </nav>
     {loading ? <section className="ct-loading"><span/><span/><span/></section> : null}
     {!loading && tab === "imports" && <section className="ct-workspace">
@@ -100,7 +111,7 @@ export default function SupplyChainControlTower() {
           <small>{readable(item.current_milestone?.type)} · {item.containers.length} {t("controlTower.containers")}</small>
         </button>)}
       </aside>
-      {selected && <article className="ct-detail">
+      {selected && <article className="ct-detail"><EntityDocuments entityType="shipment" entityId={selected.id}/>
         <header><div><span>{selected.supplier?.name || t("controlTower.unknownSupplier")}</span><h2>{selected.reference}</h2></div><button onClick={() => navigate(selected.links.shipment)}>{t("controlTower.openShipment")}<ExternalLink size={15}/></button></header>
         <div className="ct-facts">
           <span><small>{t("controlTower.route")}</small><b>{selected.origin || "Unknown"} → {selected.destination || "Unknown"}</b></span>
@@ -116,7 +127,7 @@ export default function SupplyChainControlTower() {
           </div>)}
         </section>
         <section className="ct-grid-two">
-          <div className="ct-panel"><h3><Boxes size={17}/>{t("controlTower.containers")}</h3>{selected.containers.length ? selected.containers.map((container) => <div className="ct-container" key={container.id}><b>{container.container_number}</b><span>{container.container_type || "—"} · {readable(container.status)}</span><small>{container.used_cbm} / {container.capacity_cbm ?? "?"} CBM · {container.used_weight_kg} / {container.capacity_weight_kg ?? "?"} kg</small>{container.capacity_warning && <em>{t("controlTower.capacityExceeded")}</em>}</div>) : <p>{t("controlTower.noContainers")}</p>}</div>
+          <div className="ct-panel"><h3><Boxes size={17}/>{t("controlTower.containers")}</h3>{selected.containers.length ? selected.containers.map((container) => <div className="ct-container" key={container.id}><EntityDocuments compact entityType="container" entityId={container.id}/><b>{container.container_number}</b><span>{container.container_type || "—"} · {readable(container.status)}</span><small>{container.used_cbm} / {container.capacity_cbm ?? "?"} CBM · {container.used_weight_kg} / {container.capacity_weight_kg ?? "?"} kg</small>{container.capacity_warning && <em>{t("controlTower.capacityExceeded")}</em>}</div>) : <p>{t("controlTower.noContainers")}</p>}</div>
           <div className="ct-panel"><h3><Anchor size={17}/>{t("controlTower.linkedOrders")}</h3>{selected.purchase_orders.map((po) => <button className="ct-link" key={po.id} onClick={() => navigate(po.url)}><span><b>{po.po_number}</b><small>{po.supplier?.name} · {readable(po.status)}</small></span><ExternalLink size={15}/></button>)}{selected.next_action && <button className="ct-next" onClick={() => navigate(selected.next_action.url)}>{t("controlTower.nextAction")}: {selected.next_action.label}</button>}</div>
         </section>
         {canManage && <form className="ct-milestone" onSubmit={saveMilestone}><h3>{t("controlTower.updateMilestone")}</h3><select value={milestone.milestone_type} onChange={(e) => setMilestone({ ...milestone, milestone_type: e.target.value })}>{selected.timeline.map((step) => <option key={step.type} value={step.type}>{readable(step.type)}</option>)}</select><label>{t("controlTower.planned")}<input type="datetime-local" value={milestone.planned_at} onChange={(e) => setMilestone({ ...milestone, planned_at: e.target.value })}/></label><label>{t("controlTower.estimated")}<input type="datetime-local" value={milestone.estimated_at} onChange={(e) => setMilestone({ ...milestone, estimated_at: e.target.value })}/></label><label>{t("controlTower.actual")}<input type="datetime-local" value={milestone.actual_at} onChange={(e) => setMilestone({ ...milestone, actual_at: e.target.value })}/></label><input placeholder={t("controlTower.notes")} value={milestone.notes} onChange={(e) => setMilestone({ ...milestone, notes: e.target.value })}/><button disabled={saving}>{saving ? t("common.saving") : t("common.save")}</button></form>}

@@ -214,6 +214,23 @@ class QualityManagementService
     public function saveTemplate(array $data, ?QualityInspectionTemplate $template = null): QualityInspectionTemplate
     {
         return DB::transaction(function () use ($data, $template): QualityInspectionTemplate {
+            if ($template && QualityInspection::query()->where('quality_inspection_template_id', $template->id)->exists()) {
+                $fields = ['name','check_type','unit','is_required','minimum_value','maximum_value','tolerance','instructions','sort_order'];
+                $shape = fn ($items) => collect($items)->values()->map(function ($item, $index) use ($fields) {
+                    return collect($fields)->mapWithKeys(function ($key) use ($item, $index) {
+                        $value = $item[$key] ?? null;
+                        if ($key === 'is_required') $value = (bool) ($value ?? true);
+                        elseif ($key === 'sort_order') $value = (int) ($value ?? $index);
+                        elseif (in_array($key, ['minimum_value','maximum_value','tolerance'], true) && $value !== null) $value = number_format((float) $value, 6, '.', '');
+                        return [$key => $value];
+                    })->all();
+                })->all();
+                if ($shape($data['items']) !== $shape($template->items()->orderBy('sort_order')->get()->toArray())) {
+                    throw ValidationException::withMessages(['items'=>['This checklist is used by inspections. Create a copy to change its checks; historical and pending inspections must keep their original checklist.']]);
+                }
+                $template->fill(['name'=>$data['name'],'description'=>$data['description'] ?? null,'is_active'=>$data['is_active'] ?? true,'updated_by'=>Auth::id()])->save();
+                return $template->fresh('items');
+            }
             $template ??= new QualityInspectionTemplate(['company_id'=>Auth::user()->company_id,'created_by'=>Auth::id()]);
             $template->fill(['name'=>$data['name'],'description'=>$data['description'] ?? null,'is_active'=>$data['is_active'] ?? true,'updated_by'=>Auth::id()])->save();
             $template->items()->delete();
@@ -322,13 +339,16 @@ class QualityManagementService
 
     public function addAttachment(array $data, $file): QualityAttachment
     {
-        $contents = $file->get();
+        return DB::transaction(function()use($data,$file){
+        $links=[];if(!empty($data['quality_inspection_id']))$links[]=['quality-inspection',$data['quality_inspection_id']];if(!empty($data['supplier_claim_id']))$links[]=['supplier-claim',$data['supplier_claim_id']];
+        $version=app(DocumentEvidenceService::class)->store($file,'Quality Evidence',$links);
         return QualityAttachment::create([
             'company_id'=>Auth::user()->company_id,'quality_inspection_id'=>$data['quality_inspection_id'] ?? null,
             'supplier_claim_id'=>$data['supplier_claim_id'] ?? null,'document_type'=>$data['document_type'] ?? 'evidence',
-            'filename'=>$file->getClientOriginalName(),'mime_type'=>$file->getMimeType() ?: 'application/octet-stream',
-            'file_size'=>strlen($contents),'sha256'=>hash('sha256',$contents),'file_data'=>base64_encode($contents),'uploaded_by'=>Auth::id(),
+            'filename'=>$version->filename,'mime_type'=>$version->mime_type,
+            'file_size'=>$version->size,'sha256'=>$version->checksum,'file_data'=>'','document_version_id'=>$version->id,'uploaded_by'=>Auth::id(),
         ]);
+        });
     }
 
     public function dashboard(array $filters = []): array

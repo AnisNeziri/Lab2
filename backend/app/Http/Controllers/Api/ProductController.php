@@ -74,8 +74,10 @@ class ProductController extends Controller
     public function byShelf(Request $request, string $locationCode): JsonResponse
     {
         $companyId = (int) $request->user()->company_id;
+        $filters = $request->validate(['warehouse_id'=>['nullable','integer',Rule::exists('warehouses','id')->where('company_id',$companyId)]]);
         $normalized = strtoupper($locationCode);
         $section = WarehouseSection::where('company_id', $companyId)
+            ->when($filters['warehouse_id'] ?? null, fn ($query, $id) => $query->where('warehouse_id', $id))
             ->whereNotNull('warehouse_location_id')
             ->get()
             ->first(function (WarehouseSection $candidate) use ($normalized) {
@@ -104,6 +106,8 @@ class ProductController extends Controller
 
             return response()->json($products);
         }
+
+        if (!empty($filters['warehouse_id'])) return response()->json([]);
 
         $products = $this->productRepository->byLocationCode(
             $normalized,

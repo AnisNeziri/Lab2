@@ -15,6 +15,10 @@ export function getFinanceOverview(filters = {}) {
   return apiRequest(query("/finance/overview", filters), {}, "Could not load the finance overview.");
 }
 
+export function getExpense(id) {
+  return apiRequest(`/finance/expenses/${id}`, {}, "Could not load the expense.");
+}
+
 export function getExpenses(filters = {}) {
   return apiRequest(query("/finance/expenses", filters), {}, "Could not load expenses.");
 }

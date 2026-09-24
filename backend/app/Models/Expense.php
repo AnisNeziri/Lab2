@@ -14,7 +14,7 @@ class Expense extends Model
     use BelongsToCompany, SoftDeletes;
 
     protected $fillable = [
-        'company_id', 'vendor_name', 'vendor_business_number', 'vendor_fiscal_number',
+        'document_version_id', 'company_id', 'vendor_name', 'vendor_business_number', 'vendor_fiscal_number',
         'vendor_vat_number', 'vendor_key', 'document_type', 'document_number',
         'document_number_normalized', 'original_document_number', 'source_type',
         'asset_treatment', 'category', 'description', 'business_purpose', 'invoice_date', 'received_date', 'supply_date',

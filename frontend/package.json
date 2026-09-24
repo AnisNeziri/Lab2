@@ -6,6 +6,10 @@
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "dev": "vite",
+    "test": "node --test tests/*.test.mjs",
+    "test:e2e": "playwright test --project=chromium",
+    "test:e2e:smoke": "playwright test --project=chromium --grep @smoke",
+    "test:e2e:release": "playwright test --project=chromium",
     "build": "vite build",
     "preview": "vite preview"
   },
@@ -16,6 +20,7 @@
     "laravel-echo": "^2.3.7",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.17.0",
+    "pdfjs-dist": "^6.3.289",
     "pusher-js": "^8.5.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -25,6 +30,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "@vitejs/plugin-react": "^4.4.1",
     "autoprefixer": "^10.5.0",
     "postcss": "^8.5.26",

@@ -24,6 +24,7 @@ class InvoiceService
         private readonly InvoiceProfileService $profiles,
         private readonly UnitConversionService $unitConversions,
         private readonly InventoryCostingService $costing,
+        private readonly OperationalAccountingService $operationalAccounting,
     ) {}
 
     public function list(array $filters): LengthAwarePaginator
@@ -62,7 +63,30 @@ class InvoiceService
         }
 
         $today = $this->businessNow()->toDateString();
-        match ($paymentFilter) {
+        $sourceIds=[]; $obligations=[];
+        if (in_array($paymentFilter,['paid','partially_paid','unpaid','overdue'],true)) {
+            (clone $query)->whereNotNull('daily_sale_id')->whereNotNull('issued_at')->where('status','!=','void')
+                ->with('dailySale.outboundDispatch.order.customer')->chunkById(100,function($rows)use(&$sourceIds,&$obligations,$paymentFilter,$today){
+                    foreach($rows as $row){
+                        $customer=$row->dailySale?->outboundDispatch?->order?->customer;
+                        if($customer) $obligations[$customer->id]??=app(CustomerCreditService::class)->obligations($customer);
+                        $row=$this->withSourceSettlement($row,$customer ? $obligations[$customer->id] : null);
+                        if(!$row->source_settlement)continue;
+                        $open=$row->source_settlement['outstanding']; $settled=$row->source_settlement['settled'];
+                        $overdue=Money::compare($open,0)>0 && $row->due_at && $row->due_at->toDateString()<$today;
+                        $matches=match($paymentFilter){
+                            'paid'=>Money::compare($open,0)<=0,
+                            'partially_paid'=>Money::compare($open,0)>0 && Money::compare($settled,0)>0,
+                            'overdue'=>$overdue,
+                            'unpaid'=>!$overdue && Money::compare($open,0)>0 && Money::compare($settled,0)<=0,
+                        };
+                        if($matches)$sourceIds[]=$row->id;
+                    }
+                });
+            $query->where(function($combined)use($paymentFilter,$today,$sourceIds){
+                $combined->where(function($query)use($paymentFilter,$today){
+                    $query->whereNull('daily_sale_id');
+                    match ($paymentFilter) {
             'paid' => $query->where('status', 'issued')->where('payment_status', 'paid'),
             'partially_paid' => $query->where('status', 'issued')->where('payment_status', 'partially_paid'),
             'overdue' => $query->where('status', 'issued')
@@ -70,10 +94,14 @@ class InvoiceService
                 ->whereDate('due_at', '<', $today),
             'unpaid' => $query->where('status', 'issued')->where('payment_status', 'unpaid')
                 ->where(fn ($q) => $q->whereNull('due_at')->orWhereDate('due_at', '>=', $today)),
-            default => null,
-        };
+                        default => null,
+                    };
+                })->orWhereIntegerInRaw('id',$sourceIds);
+            });
+        }
 
-        return $query->latest('invoice_date')->latest('id')->paginate($filters['per_page'] ?? 20);
+        return $query->latest('invoice_date')->latest('id')->paginate($filters['per_page'] ?? 20)
+            ->through(fn (Invoice $invoice) => $this->withSourceSettlement($invoice));
     }
 
     public function find(Invoice $invoice): Invoice
@@ -83,12 +111,33 @@ class InvoiceService
             'customer', 'items.product:id,name,sku,unit,default_warehouse_id', 'items.product.units',
             'items.warehouse:id,name,code', 'items.location:id,name,code,path',
             'payments' => fn ($query) => $query->latest('payment_date')->latest('id'),
-            'creator:id,name', 'issuer:id,name', 'voider:id,name',
+            'creator:id,name', 'issuer:id,name', 'voider:id,name', 'dailySale.outboundDispatch.order.intake',
             'originalInvoice:id,invoice_number,invoice_date,grand_total',
             'creditNotes:id,original_invoice_id,invoice_number,status,grand_total,issued_at',
         ]);
         $this->verifyIntegrity($invoice);
 
+        return $this->withSourceSettlement($invoice);
+    }
+
+    /** Read-only projection: order invoices never create a second receivable or payment. */
+    private function withSourceSettlement(Invoice $invoice, ?\Illuminate\Support\Collection $obligations = null): Invoice
+    {
+        if (!$invoice->daily_sale_id || !$invoice->issued_at || $invoice->status === 'void') return $invoice;
+        $dispatch = $invoice->dailySale?->outboundDispatch;
+        if (!$dispatch) return $invoice;
+        $outstanding = '0.00';
+        if ($dispatch->order->payment_type !== 'cash') {
+            $obligation = $dispatch->order->customer
+                ? ($obligations ?? app(CustomerCreditService::class)->obligations($dispatch->order->customer))->firstWhere('id', $dispatch->customer_debt_transaction_id)
+                : null;
+            $outstanding = $obligation?->outstanding_amount ?? $invoice->grand_total;
+        }
+        $invoice->setAttribute('source_settlement', [
+            'basis' => $dispatch->order->payment_type === 'cash' ? 'cash_on_dispatch' : 'customer_ledger',
+            'outstanding' => Money::normalize($outstanding),
+            'settled' => Money::maximum('0', Money::subtract($invoice->grand_total, $outstanding)),
+        ]);
         return $invoice;
     }
 
@@ -108,17 +157,22 @@ class InvoiceService
         $invoice->forceFill(['integrity_hash' => $this->integrityHash($invoice)])->save();
     }
 
-    public function createDraft(array $data): Invoice
+    public function createDraft(array $data, ?\App\Models\DailySale $sourceSale = null): Invoice
     {
         $this->requireCompanyId();
 
-        return DB::transaction(function () use ($data) {
+        return DB::transaction(function () use ($data, $sourceSale) {
+            if ($sourceSale) {
+                abort_unless((int)$sourceSale->company_id === (int)Auth::user()->company_id,404);
+                if (!$sourceSale->outboundDispatch()->exists()) throw ValidationException::withMessages(['order'=>['The source must be an order dispatch sale.']]);
+            }
             $data = $this->applyProfileDefaults($data);
             $data = $this->persistBuyerIfRequested($data);
             $buyer = $this->draftBuyer($data);
             $invoice = Invoice::create([
                 'company_id' => Auth::user()->company_id,
                 'customer_id' => $data['customer_id'] ?? null,
+                'daily_sale_id' => $sourceSale?->id,
                 'invoice_number' => null,
                 'customer_name' => $buyer['legal_name'] ?? null,
                 'status' => 'draft',
@@ -166,6 +220,9 @@ class InvoiceService
         return DB::transaction(function () use ($invoice, $data) {
             $invoice = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
             $this->ensureDraft($invoice);
+            if ($invoice->daily_sale_id && (int)($data['customer_id'] ?? 0) !== (int)$invoice->customer_id) {
+                throw ValidationException::withMessages(['customer_id'=>['An order invoice must retain its original customer.']]);
+            }
             $data = $this->applyProfileDefaults($data);
             $data = $this->persistBuyerIfRequested($data);
             $buyer = $this->draftBuyer($data);
@@ -231,6 +288,7 @@ class InvoiceService
         return DB::transaction(function () use ($invoice) {
             $invoice = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
             if ($invoice->issued_at && in_array($invoice->status, ['issued', 'partially_paid', 'paid'], true)) {
+                app(InvoiceArchiveService::class)->archive($invoice);
                 return $this->find($invoice);
             }
             $this->ensureDraft($invoice);
@@ -277,7 +335,7 @@ class InvoiceService
                 throw ValidationException::withMessages(['due_date' => ['The due date cannot be earlier than the actual issue date.']]);
             }
             [$sequenceYear, $sequenceNumber, $number] = $this->nextNumber($profile, 'invoice', $issuedAt->year);
-            $this->applyStock($invoice, 'out', "Invoice {$number} issued");
+            if (!$invoice->daily_sale_id) $this->applyStock($invoice, 'out', "Invoice {$number} issued");
 
             $invoice->update([
                 'invoice_number' => $number,
@@ -298,7 +356,18 @@ class InvoiceService
                 'updated_by' => Auth::id(),
             ]);
             $invoice->update(['integrity_hash' => $this->integrityHash($invoice->fresh('items'))]);
+            $this->operationalAccounting->postInvoice($invoice->fresh('items'));
+            if ($invoice->daily_sale_id && $invoice->dailySale?->outboundDispatch) {
+                $dispatch=$invoice->dailySale->outboundDispatch;
+                if ($dispatch->order->payment_type === 'cash') $invoice->update(['total_paid'=>$invoice->grand_total,'payment_status'=>'paid','status'=>'paid','paid_at'=>now()]);
+                if (Money::compare($invoice->vat_total,0)>0) app(AccountingService::class)->postMapped('sales','order_invoice_tax',$invoice->id,'order-invoice-tax:'.$invoice->id,$invoice->invoice_date->toDateString(),'Tax classification for '.$invoice->invoice_number,[['mapping'=>'sales_revenue','debit'=>$invoice->vat_total],['mapping'=>'output_vat','credit'=>$invoice->vat_total]],$invoice->currency);
+                app(BusinessEventService::class)->record('order.invoice_created',$dispatch->order,$dispatch->order->order_number,['invoice_id'=>$invoice->id],'order-invoice:'.$invoice->id);
+                foreach (\App\Models\InventoryReturn::where('daily_sale_id', $invoice->daily_sale_id)->where('status', 'completed')->orderBy('id')->get() as $completedReturn) {
+                    $this->creditOrderReturn($invoice, $completedReturn);
+                }
+            }
 
+            app(InvoiceArchiveService::class)->archive($invoice->fresh());
             return $this->find($invoice->fresh());
         });
     }
@@ -306,6 +375,7 @@ class InvoiceService
     public function fullCreditNote(Invoice $original, string $reason): Invoice
     {
         $this->assertInvoiceCompany($original);
+        if ($original->daily_sale_id) throw ValidationException::withMessages(['order'=>['This invoice documents an order sale. Process the return through the order; do not reverse the sale or stock twice.']]);
 
         return DB::transaction(function () use ($original, $reason) {
             $original = Invoice::query()->lockForUpdate()->findOrFail($original->id);
@@ -387,7 +457,9 @@ class InvoiceService
                 'stock_reversed_at' => now(),
                 'integrity_hash' => $this->integrityHash($credit->fresh('items')),
             ]);
+            $this->operationalAccounting->creditInvoice($credit->fresh('items'), $original, $reason);
 
+            app(InvoiceArchiveService::class)->archive($credit->fresh());
             return $this->find($credit->fresh());
         });
     }
@@ -410,12 +482,49 @@ class InvoiceService
             })->values()->all();
     }
 
+    /** Documentary credit for an already completed return; no second stock/refund posting. */
+    public function creditOrderReturn(Invoice $original, \App\Models\InventoryReturn $return): ?Invoice
+    {
+        if (!$original->daily_sale_id || !$original->issued_at || !$original->dailySale?->outboundDispatch || $return->status!=='completed' || (int)$return->daily_sale_id!==(int)$original->daily_sale_id || !in_array($return->financial_resolution, ['cash_refund', 'debt_credit'], true)) return null;
+        return DB::transaction(function()use($original,$return){
+            DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
+            $original=Invoice::lockForUpdate()->findOrFail($original->id);
+            $reason='Order return '.$return->return_number;
+            if($existing=$original->creditNotes()->where('credit_reason',$reason)->first())return $existing;
+            $source=$original->dailySale->items()->get()->values();$invoiceItems=$original->items()->orderBy('id')->get()->values();
+            $rows=[];
+            foreach($return->items()->get() as $item){
+                $index=$source->search(fn($s)=>(int)$s->id===(int)$item->daily_sale_item_id);
+                if($index===false||!isset($invoiceItems[$index]))throw ValidationException::withMessages(['return'=>['The original invoice line cannot be matched. Review the order source links.']]);
+                $line=$invoiceItems[$index];
+                $before=\App\Models\InventoryReturnItem::where('daily_sale_item_id',$item->daily_sale_item_id)->whereHas('inventoryReturn',fn($q)=>$q->where('status','completed')->where('id','<',$return->id))->sum('quantity');
+                $after=\Brick\Math\BigDecimal::of((string)$before)->plus((string)$item->quantity);
+                $part=function($amount)use($line,$before,$after){return Money::subtract(Money::multiply($amount,Money::divide($after,$line->base_quantity,9)),Money::multiply($amount,Money::divide($before,$line->base_quantity,9)));};
+                $row=$line->only(['product_id','description','sku_snapshot','unit','conversion_mode','conversion_factor','warehouse_id','location_id','unit_price','vat_rate','tax_treatment','tax_legal_reference','unit_cost']);
+                $row['quantity']=Money::divide($item->quantity,$line->conversion_factor?:1,3);$row['base_quantity']=$item->quantity;
+                $row['discount_percent']='0.00';$row['discount_amount']='0.00';$row['line_total']=$part($line->line_total);$row['vat_amount']=$part($line->vat_amount);$row['taxable_amount']=Money::subtract($row['line_total'],$row['vat_amount']);$row['cost_total']=$line->cost_total===null?null:$part($line->cost_total);$rows[]=$row;
+            }
+            if(!$rows)return null;
+            $profile=InvoiceProfile::firstOrFail();$at=$this->businessNow();[$year,$sequence,$number]=$this->nextNumber($profile,'credit_note',$at->year);
+            $credit=Invoice::create([...$original->only(['company_id','customer_id','customer_name','seller_snapshot','buyer_snapshot','currency','payment_terms']),
+                'document_type'=>'credit_note','original_invoice_id'=>$original->id,'credit_reason'=>$reason,'invoice_number'=>$number,'status'=>'issued','payment_status'=>'credited','compliance_status'=>$original->compliance_status,'invoice_date'=>$at->toDateString(),'supply_date'=>$return->completed_at->toDateString(),'issued_at'=>$at,'issued_by'=>Auth::id(),'created_by'=>Auth::id(),'updated_by'=>Auth::id(),'sequence_year'=>$year,'sequence_number'=>$sequence,'notes'=>$return->reason,'retention_until'=>$at->copy()->addYears(6)->endOfYear()->toDateString()]);
+            foreach($rows as $row)$credit->items()->create($row);
+            $this->storeTotals($credit);$credit->refresh();$credit->update(['integrity_hash'=>$this->integrityHash($credit->fresh('items'))]);
+            if(Money::compare($credit->vat_total,0)>0)app(AccountingService::class)->postMapped('returns','order_invoice_tax',$credit->id,'order-return-tax:'.$credit->id,$at->toDateString(),$reason,[['mapping'=>'output_vat','debit'=>$credit->vat_total],['mapping'=>'sales_revenue','credit'=>$credit->vat_total]],$credit->currency);
+            app(BusinessEventService::class)->record('order.return_documented',$original->dailySale->outboundDispatch->order,$original->invoice_number,['invoice_id'=>$credit->id,'inventory_return_id'=>$return->id],'order-return-credit:'.$return->id);
+            app(InvoiceArchiveService::class)->archive($credit->fresh());
+            return $credit->fresh('items');
+        });
+    }
+
     private function syncItems(Invoice $invoice, array $items, bool $lockProducts = false): void
     {
         $profile = InvoiceProfile::query()->first();
         $isVatRegistered = (bool) ($profile?->is_vat_registered ?? false);
+        $sourceItems=$invoice->daily_sale_id ? $invoice->dailySale()->firstOrFail()->items()->get()->values() : null;
+        if ($sourceItems && count($items)!==$sourceItems->count()) throw ValidationException::withMessages(['items'=>['An order invoice must contain the original sale items.']]);
 
-        foreach ($items as $input) {
+        foreach (array_values($items) as $index => $input) {
             $product = null;
             if (! empty($input['product_id'])) {
                 $query = Product::query()->with('units');
@@ -472,6 +581,16 @@ class InvoiceService
                 $vatRate = '0.00';
             }
             $vat = $treatment === 'standard' ? Money::product([$taxable, $vatRate, '0.01']) : '0.00';
+            if ($sourceItems) {
+                $source=$sourceItems[$index];
+                if ((int)$source->product_id !== (int)$product?->id || Money::compareDecimal($source->quantity,$quantity)!==0 || $source->unit!==$resolvedUnit['unit']) throw ValidationException::withMessages(['items'=>['Change quantities or products through the original order, not its invoice.']]);
+                // Classify the agreed gross sale; never increase its value or re-post it.
+                $gross=Money::normalize($source->line_total);
+                $taxable=$treatment==='standard'?Money::divide($gross,\Brick\Math\BigDecimal::of('1')->plus(\Brick\Math\BigDecimal::of($vatRate)->dividedBy('100',4)),2):$gross;
+                $vat=Money::subtract($gross,$taxable);
+                $unitPrice=Money::divide($taxable,$quantity,2);
+                $discount='0.00';$discountPercent='0.00';
+            }
             $baseUnitCost = $product ? $this->costing->currentUnitCost($product) : null;
             $costTotal = $baseUnitCost === null ? null : Money::multiply($baseUnitCost, $resolvedUnit['base_quantity']);
             $unitCost = $costTotal === null ? null : Money::divide($costTotal, $quantity, 4);

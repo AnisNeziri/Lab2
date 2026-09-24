@@ -177,15 +177,15 @@ function Products() {
   }, [page, search, categoryFilter, supplierFilter, lifecycleFilter, lowStockOnly, sortBy, sortDirection])
 
   useEffect(() => {
-    if (!viewProductId) return undefined
-
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-
-    return () => {
-      document.body.style.overflow = previousOverflow
+    if (!viewProductId && document.body.style.overflow === 'hidden') {
+      document.body.style.removeProperty('overflow')
     }
   }, [viewProductId])
+
+  useEffect(() => {
+    const requestedProduct = Number(new URLSearchParams(window.location.search).get('product'))
+    if (Number.isInteger(requestedProduct) && requestedProduct > 0) setViewProductId(requestedProduct)
+  }, [])
 
   function handleChange(event) {
     const { name, value, checked, type } = event.target

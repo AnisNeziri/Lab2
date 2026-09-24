@@ -7,6 +7,8 @@ import {
   updateSupplier,
 } from '../api/suppliers'
 import { getSupplierScorecard } from '../api/quality'
+import EntityContext from '../components/EntityContext'
+import { useSearchParams } from 'react-router-dom'
 import './QualityManagement.css'
 import './SupplierScorecard.css'
 
@@ -18,6 +20,7 @@ const emptyForm = {
 }
 
 function Suppliers() {
+  const [documentParams] = useSearchParams()
   const userRole = useAuthStore((state) => state.role)
   const [suppliers, setSuppliers] = useState([])
   const [form, setForm] = useState(emptyForm)
@@ -134,6 +137,7 @@ function Suppliers() {
 
   return (
     <main className="suppliers-page">
+      {suppliers.filter(s=>String(s.id)===documentParams.get('supplier')).map(s=><section className="card" key={s.id}><h2>{s.name}</h2><EntityContext entityType="supplier" entityId={s.id}/></section>)}
       <section className="card">
         <h2>{editingId ? 'Edit supplier' : 'Add supplier'}</h2>
         <form className="supplier-form" onSubmit={handleSubmit}>
@@ -250,6 +254,7 @@ function Suppliers() {
               <p><span>Historical price movement</span><strong>{scorecard.commercial.historical_price_movement_percent == null ? '—' : `${scorecard.commercial.historical_price_movement_percent}%`}</strong></p>
             </div>
             <ul>{scorecard.explanation?.map((line) => <li key={line}>{line}</li>)}</ul>
+            <EntityContext entityType="supplier" entityId={scorecard.supplier_id} />
           </section>
         </div>
       )}

@@ -85,8 +85,9 @@ class ExpenseController extends Controller
         return response()->json($this->expenses->storeAttachment($expense, $request->file('proof')));
     }
 
-    public function downloadAttachment(Expense $expense): Response
+    public function downloadAttachment(Expense $expense)
     {
+        if($expense->document_version_id)return app(\App\Services\DocumentEvidenceService::class)->download($expense->document_version_id);
         abort_unless($expense->proof_data && $expense->proof_filename, 404, 'No supporting document is stored.');
         abort_unless(hash_equals((string) $expense->proof_sha256, hash('sha256', $expense->proof_data)), 409, 'The supporting document failed its integrity check.');
         $fallback = preg_replace('/[^A-Za-z0-9._-]+/', '-', $expense->proof_filename) ?: 'expense-proof';

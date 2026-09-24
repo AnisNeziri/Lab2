@@ -7,6 +7,7 @@
   "private": true,
   "scripts": {
     "prepare-assets": "node scripts/prepare-assets.cjs",
+    "test:startup": "npm run prepare-assets && node scripts/startup-check.cjs",
     "start": "npm run prepare-assets && electron .",
     "dist:win": "npm run prepare-assets && electron-builder --win nsis --publish never",
     "dist:win:signed": "node scripts/verify-signing-env.cjs && npm run prepare-assets && electron-builder --win nsis --publish never",

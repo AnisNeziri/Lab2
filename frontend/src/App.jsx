@@ -22,6 +22,8 @@ import { initEcho, disconnectEcho } from "./lib/echo";
 import { getNotifications } from "./api/notifications";
 import { useNotificationStore } from "./store/notificationStore";
 import PreferencesProvider from "./components/PreferencesProvider";
+import PageState from "./components/PageState";
+import { useTranslation } from "./hooks/useTranslation";
 import "./App.css";
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -51,9 +53,17 @@ const FinanceCenter = lazy(() => import("./pages/FinanceCenter"));
 const MobileWarehouse = lazy(() => import("./pages/MobileWarehouse"));
 const OperationsCenter = lazy(() => import("./pages/OperationsCenter"));
 const MoneyAccounts = lazy(() => import("./pages/MoneyAccounts"));
+const AccountingCore = lazy(() => import("./pages/AccountingCore"));
+const SystemIntegrity = lazy(() => import("./pages/SystemIntegrity"));
+const Fulfillment = lazy(() => import("./pages/Fulfillment"));
+const OrderHub = lazy(() => import("./pages/OrderHub"));
+const OrderTracking = lazy(() => import("./pages/OrderTracking"));
+const OrderPortal = lazy(() => import("./pages/OrderPortal"));
+const Documents = lazy(() => import("./pages/Documents"));
 
 function PageLoader() {
-  return <p className="page-message">Loading page...</p>;
+  const { t } = useTranslation();
+  return <p className="page-message" role="status">{t("common.loading")}</p>;
 }
 
 function WarehouseFeatureRoute({ children }) {
@@ -70,7 +80,7 @@ function PermissionRoute({ permission, children }) {
   const permissions = useAuthStore((state) => state.permissions);
 
   if (!permissions.includes(permission)) {
-    return <Navigate to="/dashboard" replace />;
+    return <PageState forbidden />;
   }
 
   return children;
@@ -434,6 +444,7 @@ function AppRoutes() {
               </Suspense>
             }
           />
+          <Route path="/order-hub" element={<Suspense fallback={<PageLoader />}><OrderHub /></Suspense>} />
           <Route
             path="/products"
             element={
@@ -494,6 +505,8 @@ function AppRoutes() {
               </PermissionRoute>
             }
           />
+          <Route path="/accounting" element={<PermissionRoute permission="accounting.reports.view"><Suspense fallback={<PageLoader />}><AccountingCore /></Suspense></PermissionRoute>} />
+          <Route path="/system-integrity" element={<PermissionRoute permission="system_integrity.view"><Suspense fallback={<PageLoader />}><SystemIntegrity /></Suspense></PermissionRoute>} />
           <Route
             path="/invoices"
             element={
@@ -512,6 +525,8 @@ function AppRoutes() {
               </Suspense>
             }
           />
+          <Route path="/fulfillment" element={<PermissionRoute permission="fulfillment.view"><Suspense fallback={<PageLoader />}><Fulfillment /></Suspense></PermissionRoute>} />
+          <Route path="/documents" element={<PermissionRoute permission="documents.view"><Suspense fallback={<PageLoader />}><Documents /></Suspense></PermissionRoute>} />
           <Route path="/procurement" element={<PermissionRoute permission="procurement.view"><Suspense fallback={<PageLoader />}><Procurement /></Suspense></PermissionRoute>} />
           <Route path="/quality" element={<PermissionRoute permission="quality.view"><Suspense fallback={<PageLoader />}><QualityManagement /></Suspense></PermissionRoute>} />
           <Route
@@ -663,21 +678,25 @@ function AppRoutes() {
           path="/warehouse-3d"
           element={
             <ProtectedRoute>
+              <PreferencesProvider>
               <WarehouseFeatureRoute>
-                <Suspense fallback={<PageLoader />}>
+                <PermissionRoute permission="inventory.view"><Suspense fallback={<PageLoader />}>
                   <Warehouse3DMap />
-                </Suspense>
+                </Suspense></PermissionRoute>
               </WarehouseFeatureRoute>
+              </PreferencesProvider>
             </ProtectedRoute>
           }
         />
+        <Route path="/order-tracking/:token" element={<Suspense fallback={<PageLoader />}><OrderTracking /></Suspense>} />
+        <Route path="/order-portal" element={<Suspense fallback={<PageLoader />}><OrderPortal /></Suspense>} />
         <Route
           path="/settings"
           element={<Navigate to="/dashboard" replace />}
         />
         <Route
           path="*"
-          element={<Navigate to={isDesktop ? "/login" : "/"} replace />}
+          element={<PageState />}
         />
       </Routes>
     </>

@@ -20,6 +20,8 @@ const frontendUrl = `http://127.0.0.1:${frontendPort}`
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 
 let backendProcess
+let documentMaintenanceProcess
+let documentMaintenanceTimer
 let aisProcess
 let frontendServer
 let mainWindow
@@ -564,6 +566,15 @@ function runArtisan(runtime, args, env) {
 }
 
 function startBackend(runtime, env) {
+  const maintainDocuments = () => {
+    if (shuttingDown || documentMaintenanceProcess) return
+    documentMaintenanceProcess = spawn(phpExecutable(), ['artisan', 'documents:expiry-alerts'], {cwd: runtime, env, windowsHide: true, shell: false, stdio: ['ignore', 'ignore', 'pipe']})
+    documentMaintenanceProcess.stderr.on('data', chunk => log('Document maintenance', chunk.toString().trim()))
+    documentMaintenanceProcess.once('error', error => log('Document maintenance error', error.message))
+    documentMaintenanceProcess.once('close', () => { documentMaintenanceProcess = null })
+  }
+  maintainDocuments()
+  documentMaintenanceTimer = setInterval(maintainDocuments, 60 * 60 * 1000)
   backendProcess = spawn(phpExecutable(), ['artisan', 'serve', '--host=127.0.0.1', `--port=${backendPort}`], {
     cwd: runtime,
     env,
@@ -699,7 +710,7 @@ function startFrontend() {
         'Content-Length': fs.statSync(target).size,
         // All animation code, fonts, icons, and application imagery are served
         // locally. Network access is optional and only permitted for map tiles.
-        'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://*.basemaps.cartocdn.com; font-src 'self' data:; connect-src 'self' http://127.0.0.1:18765 ws://127.0.0.1:18765; worker-src 'self' blob:; media-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+        'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://*.basemaps.cartocdn.com; font-src 'self' data:; connect-src 'self' blob: http://127.0.0.1:18765 ws://127.0.0.1:18765; worker-src 'self' blob:; media-src 'self' data: blob:; object-src 'none'; frame-src 'self' blob:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
         'X-Content-Type-Options': 'nosniff',
         'X-Frame-Options': 'DENY',
         'Referrer-Policy': 'no-referrer',
@@ -822,6 +833,8 @@ function shutdown() {
     }
   }
   if (backendProcess && !backendProcess.killed) {
+    clearInterval(documentMaintenanceTimer)
+    if(documentMaintenanceProcess && !documentMaintenanceProcess.killed) documentMaintenanceProcess.kill()
     if (process.platform === 'win32') {
       spawnSync('taskkill.exe', ['/pid', String(backendProcess.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' })
     } else {

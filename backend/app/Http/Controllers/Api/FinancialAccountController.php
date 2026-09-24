@@ -16,6 +16,11 @@ class FinancialAccountController extends Controller
 
     public function index(): JsonResponse { return response()->json($this->accounts->accounts()); }
 
+    public function postingAccounts(): JsonResponse
+    {
+        return response()->json($this->accounts->postingAccounts());
+    }
+
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -54,6 +59,9 @@ class FinancialAccountController extends Controller
             'amount' => ['required', 'numeric', 'gt:0'], 'transaction_date' => ['required', 'date'],
             'counterparty' => ['nullable', 'string', 'max:255'], 'reference_number' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:2000'], 'idempotency_key' => ['nullable', 'uuid'],
+            'counter_accounting_account_id' => ['nullable', 'integer', Rule::exists('accounting_accounts', 'id')->where('company_id', $request->user()->company_id)],
+            'exchange_rate' => ['nullable', 'numeric', 'gt:0'], 'exchange_rate_date' => ['nullable', 'date'],
+            'exchange_rate_source' => ['nullable', 'string', 'max:255'],
         ]);
         return response()->json($this->accounts->post($financialAccount, $data), 201);
     }

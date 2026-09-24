@@ -13,7 +13,10 @@ use Illuminate\Validation\ValidationException;
 
 class PaymentService
 {
-    public function __construct(private readonly FinancialAccountService $accounts) {}
+    public function __construct(
+        private readonly FinancialAccountService $accounts,
+        private readonly OperationalAccountingService $operationalAccounting,
+    ) {}
 
     public function processPayment(Invoice $invoice, array $data): PaymentTransaction
     {
@@ -22,6 +25,7 @@ class PaymentService
 
         return DB::transaction(function () use ($invoice, $data) {
             $invoice = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
+            if ($invoice->daily_sale_id && $invoice->dailySale?->outboundDispatch) throw ValidationException::withMessages(['order'=>['Record this payment through the linked order/customer ledger to avoid receiving it twice.']]);
             if ($invoice->document_type === 'credit_note' || in_array($invoice->status, ['draft', 'void', 'credited'], true)) {
                 throw ValidationException::withMessages([
                     'invoice_id' => ['Payments can be recorded only against an issued invoice that has not been voided or credited.'],
@@ -109,6 +113,8 @@ class PaymentService
                 'updated_by' => Auth::id(),
             ]);
 
+            $this->operationalAccounting->postInvoicePayment($transaction->fresh('invoice'));
+
             return $transaction->load('invoice');
         });
     }
@@ -159,6 +165,7 @@ class PaymentService
                     $this->accounts->reverse($ledger, 'Invoice payment reversal: '.trim($reason));
                 }
             }
+            $this->operationalAccounting->reverseSource('sales', 'invoice-payment:'.$payment->id, 'Invoice payment reversal: '.trim($reason));
 
             $totalPaid = Money::normalize(PaymentTransaction::query()
                 ->where('invoice_id', $invoice->id)

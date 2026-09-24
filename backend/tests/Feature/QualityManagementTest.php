@@ -125,6 +125,29 @@ class QualityManagementTest extends TestCase
         $this->withHeader('Authorization','Bearer '.$staffToken)->getJson('/api/quality/inspections')->assertOk();
     }
 
+    public function test_checklist_edit_archive_and_used_check_protection_preserve_inspection_history(): void
+    {
+        [$product,,$warehouse,$order]=$this->purchasingFixture('required',5);
+        $payload=['name'=>'Audit checklist','items'=>[['name'=>'Package intact','check_type'=>'pass_fail','is_required'=>true,'tolerance'=>1,'instructions'=>'Inspect packaging']]];
+        $template=$this->postJson('/api/quality/templates',$payload)->assertCreated()->json();
+        $payload['items'][0]['name']='Package and label intact';
+        $template=$this->putJson('/api/quality/templates/'.$template['id'],$payload)->assertOk()->assertJsonPath('items.0.name','Package and label intact')->json();
+        $product->update(['quality_inspection_template_id'=>$template['id']]);
+        $this->postJson('/api/purchase-orders/'.$order['id'].'/receive',['warehouse_id'=>$warehouse['id'],'items'=>[['id'=>$order['items'][0]['id'],'accepted_quantity'=>5]],'idempotency_key'=>(string)Str::uuid()])->assertOk();
+        $inspection=QualityInspection::firstOrFail();
+        $this->assertSame($template['id'],$inspection->quality_inspection_template_id);
+        $this->putJson('/api/quality/templates/'.$template['id'],[...$payload,'is_active'=>false])->assertOk()->assertJsonPath('is_active',false)->assertJsonPath('items.0.id',$template['items'][0]['id']);
+        $changed=$payload;
+        $changed['items'][0]['tolerance']=2;
+        $this->putJson('/api/quality/templates/'.$template['id'],$changed)->assertUnprocessable()->assertJsonValidationErrors('items');
+        $changed=$payload;
+        $changed['items'][0]['instructions']='Ignore packaging';
+        $this->putJson('/api/quality/templates/'.$template['id'],$changed)->assertUnprocessable()->assertJsonValidationErrors('items');
+        $payload['items'][0]['name']='Different check';
+        $this->putJson('/api/quality/templates/'.$template['id'],$payload)->assertUnprocessable()->assertJsonValidationErrors('items');
+        $this->getJson('/api/quality/inspections/'.$inspection->id)->assertOk()->assertJsonPath('template.items.0.name','Package and label intact');
+    }
+
     private function purchasingFixture(string $mode, int $quantity, ?string $expectedAt=null): array
     {
         $this->actingAsApiUser('admin');

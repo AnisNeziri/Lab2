@@ -82,11 +82,12 @@ class ShipmentLogisticsController extends Controller
         return response()->json($this->logistics->addDocument($shipment, $validated['document_type'], $validated['document'])->load('uploader:id,name'), 201);
     }
 
-    public function downloadDocument(Shipment $shipment, ShipmentDocument $document): Response
+    public function downloadDocument(Shipment $shipment, ShipmentDocument $document)
     {
         if ((int) $document->shipment_id !== (int) $shipment->id) {
             abort(404);
         }
+        if($document->document_version_id)return app(\App\Services\DocumentEvidenceService::class)->download($document->document_version_id);
         $contents = base64_decode((string) $document->file_data, true);
         abort_if($contents === false || ! hash_equals($document->sha256, hash('sha256', $contents)), 409, 'The stored document failed its integrity check.');
 

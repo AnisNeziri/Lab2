@@ -20,6 +20,7 @@ class DailySaleController extends Controller
         $validated = $request->validate([
             'date' => ['nullable', 'date'],
             'status' => ['nullable', 'in:draft,finalized'],
+            'source' => ['nullable', 'in:manual,order'],
         ]);
 
         return response()->json($this->dailySales->list($validated));

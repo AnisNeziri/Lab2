@@ -15,7 +15,25 @@ class Company extends Model
         'name',
         'address',
         'base_currency',
+        'accounting_start_date',
+        'accounting_opening_finalized_at',
+        'accounting_opening_journal_id',
+        'supplier_match_quantity_tolerance',
+        'supplier_match_price_tolerance',
+        'supplier_match_tax_tolerance',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'accounting_start_date' => 'date',
+            'accounting_opening_finalized_at' => 'datetime',
+            'accounting_opening_journal_id' => 'integer',
+            'supplier_match_quantity_tolerance' => 'decimal:3',
+            'supplier_match_price_tolerance' => 'decimal:4',
+            'supplier_match_tax_tolerance' => 'decimal:2',
+        ];
+    }
 
     public function users(): HasMany
     {

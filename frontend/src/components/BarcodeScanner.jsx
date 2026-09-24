@@ -1,8 +1,10 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Html5Qrcode } from 'html5-qrcode'
 import { X, ScanLine } from 'lucide-react'
+import { useSettingsStore } from '../store/settingsStore'
 
 export default function BarcodeScanner({ onScanSuccess, onClose }) {
+  const sq=useSettingsStore(s=>s.language)==='sq'
   const reactId = useId()
   const scannerId = `barcode-scanner-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`
   const successRef = useRef(onScanSuccess)
@@ -62,10 +64,11 @@ export default function BarcodeScanner({ onScanSuccess, onClose }) {
           () => {},
         )
         if (mounted) setStatus('scanning')
+        else { if(scanner.isScanning)await scanner.stop();await scanner.clear() }
       } catch (err) {
         if (!mounted) return
         setStatus('error')
-        setError(err?.message || 'Failed to start camera. Please allow camera access and try again.')
+        setError(err?.message || (sq?'Lejoni kamerën ose përdorni skanerin USB.':'Allow camera access or use a USB scanner.'))
       }
     }
 
@@ -84,14 +87,16 @@ export default function BarcodeScanner({ onScanSuccess, onClose }) {
   }
 
   return (
-    <div className="barcode-scanner-overlay">
+    <div className="barcode-scanner-overlay" role="dialog" aria-modal="true" aria-label={sq?'Skano barkodin':'Scan barcode'} onKeyDown={e=>{if(e.key==='Escape')onClose()}}>
       <div className="barcode-scanner-modal">
         <div className="scanner-header">
-          <h2>Scan Barcode</h2>
+          <h2>{sq?'Skano barkodin':'Scan Barcode'}</h2>
           <button
             type="button"
             className="close-btn"
             onClick={onClose}
+            aria-label={sq?'Mbyll skanerin':'Close scanner'}
+            autoFocus
           >
             <X size={20} />
           </button>
@@ -106,7 +111,7 @@ export default function BarcodeScanner({ onScanSuccess, onClose }) {
                 className="secondary"
                 onClick={handleRescan}
               >
-                Try Again
+                {sq?'Provo përsëri':'Try Again'}
               </button>
             </div>
           ) : (
@@ -115,7 +120,7 @@ export default function BarcodeScanner({ onScanSuccess, onClose }) {
               {status === 'success' && (
                 <div className="scan-success">
                   <ScanLine size={48} />
-                  <p>Barcode scanned successfully!</p>
+                  <p>{sq?'Barkodi u skanua!':'Barcode scanned successfully!'}</p>
                 </div>
               )}
             </>
@@ -123,7 +128,7 @@ export default function BarcodeScanner({ onScanSuccess, onClose }) {
         </div>
 
         <div className="scanner-footer">
-          <p>Point camera at a barcode to scan</p>
+          <p>{sq?'Drejto kamerën te barkodi':'Point camera at a barcode to scan'}</p>
         </div>
       </div>
     </div>

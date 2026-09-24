@@ -1,6 +1,8 @@
+import EntityDocuments from '../components/EntityDocuments'
+import EntityContext from '../components/EntityContext'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRightLeft, Building2, FileDown, LocateFixed, MapPin, PackageCheck, Pencil, Plus, Search, Send, X } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getAllProducts } from '../api/products'
 import {
   cancelStockTransfer,
@@ -72,10 +74,13 @@ function optionalNumber(value) {
 }
 
 export default function WarehouseOperations() {
+  const language = useSettingsStore((state) => state.language)
   const warehouseFormRef = useRef(null)
   const receiveKeyRef = useRef(null)
   const dispatchKeysRef = useRef(new Map())
   const navigate = useNavigate()
+  const [documentParams] = useSearchParams()
+  const linkedReceiptId = documentParams.get('receipt')
   const { t } = useTranslation()
   const permissions = useAuthStore((state) => state.permissions)
   const enable3dMap = useSettingsStore((state) => state.enable_3d_map)
@@ -133,6 +138,12 @@ export default function WarehouseOperations() {
   }, [t])
 
   useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    if (!linkedReceiptId) return
+    let active = true
+    getGoodsReceipt(linkedReceiptId).then(data => { if(active){ setTab('receipts'); setReceiptDetail(data) } }).catch(err => { if(active) setError(err.message) })
+    return () => { active = false }
+  }, [linkedReceiptId])
   useEffect(() => {
     if (warehouses.length === 0) {
       setSelectedWarehouseId('')
@@ -475,6 +486,7 @@ export default function WarehouseOperations() {
             })}
           </div>
           {selectedWarehouse ? <>
+            <EntityContext entityType="warehouse" entityId={selectedWarehouse.id} title={language==='sq'?'Daljet e magazinës':'Warehouse outbound'}/>
             <header className="warehouse-inventory-heading">
               <div><span><Building2 size={20} /></span><div><h3>{selectedWarehouse.name}</h3><p>{selectedWarehouse.code} · {selectedWarehouse.address || t('warehouseOps.noAddress')}</p></div></div>
               <div className="warehouse-inventory-count"><strong>{warehouseInventory.length}</strong><small>{t('warehouseOps.productsShown')} / {warehouseStockCount(selectedWarehouse.id)}</small></div>
@@ -553,7 +565,7 @@ export default function WarehouseOperations() {
 
       {receiveTarget && <div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) { receiveKeyRef.current = null; setReceiveTarget(null) } }}><section className="modal warehouse-action-modal" role="dialog" aria-modal="true"><header className="modal-header"><h2>{t('warehouseOps.receive')} {receiveTarget.transfer_number}</h2><button className="modal-close-btn" disabled={busy} onClick={() => { receiveKeyRef.current = null; setReceiveTarget(null) }}><X /></button></header><div className="modal-body"><p>{receiveTarget.destination_warehouse?.name}</p>{receiveLines.map((line, index) => <div className="receive-line" key={line.id}><strong>{line.name}</strong><small>{t('warehouseOps.remaining')}: {formatQuantity(line.remaining, line.unit)} {line.unit}</small><label>{t('warehouseOps.accepted')}<input type="number" min="0" max={line.remaining} step="0.001" value={line.accepted_quantity} onChange={(event) => setReceiveLines((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, accepted_quantity: event.target.value } : row))}/></label><label>{t('warehouseOps.damaged')}<input type="number" min="0" max={line.remaining} step="0.001" value={line.damaged_quantity} onChange={(event) => setReceiveLines((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, damaged_quantity: event.target.value } : row))}/></label></div>)}<button disabled={busy} onClick={() => perform(async () => { const key = receiveKeyRef.current || requestKey(); receiveKeyRef.current = key; await receiveStockTransfer(receiveTarget.id, { idempotency_key: key, items: receiveLines.map((row) => ({ id: row.id, accepted_quantity: Number(row.accepted_quantity || 0), damaged_quantity: Number(row.damaged_quantity || 0) })) }); receiveKeyRef.current = null; setReceiveTarget(null) }, t('warehouseOps.receivedSaved'))}>{t('warehouseOps.confirmReceipt')}</button></div></section></div>}
 
-      {receiptDetail && <div className="modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && setReceiptDetail(null)}><section className="modal warehouse-action-modal" role="dialog" aria-modal="true"><header className="modal-header"><div><h2>{receiptDetail.receipt_number}</h2><small>{receiptDetail.purchase_order?.po_number} · {receiptDetail.warehouse?.name}</small></div><button className="modal-close-btn" onClick={() => setReceiptDetail(null)}><X /></button></header><div className="modal-body"><div className="table-wrap"><table><thead><tr><th>{t('warehouseOps.product')}</th><th>{t('warehouseOps.accepted')}</th><th>{t('warehouseOps.damaged')}</th><th>{t('warehouseOps.rejected')}</th></tr></thead><tbody>{receiptDetail.items?.map((item) => <tr key={item.id}><td>{item.product?.name || item.purchase_order_item?.description}</td><td>{formatQuantity(item.accepted_quantity)} {item.inventory_unit}</td><td>{formatQuantity(item.damaged_quantity)} {item.inventory_unit}</td><td>{formatQuantity(item.rejected_quantity)} {item.inventory_unit}</td></tr>)}</tbody></table></div><button onClick={() => downloadGoodsReceiptPdf(receiptDetail.id, receiptDetail.receipt_number)}><FileDown size={16}/> {t('warehouseOps.downloadPdf')}</button></div></section></div>}
+      {receiptDetail && <div className="modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && setReceiptDetail(null)}><section className="modal warehouse-action-modal" role="dialog" aria-modal="true"><header className="modal-header"><div><h2>{receiptDetail.receipt_number}</h2><small>{receiptDetail.purchase_order?.po_number} · {receiptDetail.warehouse?.name}</small></div><button className="modal-close-btn" onClick={() => setReceiptDetail(null)}><X /></button></header><div className="modal-body"><EntityDocuments entityType="goods-receipt" entityId={receiptDetail.id}/><div className="table-wrap"><table><thead><tr><th>{t('warehouseOps.product')}</th><th>{t('warehouseOps.accepted')}</th><th>{t('warehouseOps.damaged')}</th><th>{t('warehouseOps.rejected')}</th></tr></thead><tbody>{receiptDetail.items?.map((item) => <tr key={item.id}><td>{item.product?.name || item.purchase_order_item?.description}</td><td>{formatQuantity(item.accepted_quantity)} {item.inventory_unit}</td><td>{formatQuantity(item.damaged_quantity)} {item.inventory_unit}</td><td>{formatQuantity(item.rejected_quantity)} {item.inventory_unit}</td></tr>)}</tbody></table></div><button onClick={() => downloadGoodsReceiptPdf(receiptDetail.id, receiptDetail.receipt_number)}><FileDown size={16}/> {t('warehouseOps.downloadPdf')}</button></div></section></div>}
     </main>
   )
 }

@@ -152,7 +152,9 @@ class InventoryIntegrityService
         if ($snapshot['issues'] !== []) {
             throw ValidationException::withMessages([
                 $field => [
-                    'Inventory sources disagree for this product. Reconciliation is required before continuing. '
+                    "Inventory sources disagree for {$product->name} (product #{$product->id}). "
+                    ."Company quantity {$snapshot['product_quantity']}; warehouse on-hand {$snapshot['warehouse_on_hand']}; in transit {$snapshot['in_transit']}. "
+                    .'Reconciliation is required before continuing. '
                     .implode(' ', $snapshot['issues']),
                 ],
             ]);

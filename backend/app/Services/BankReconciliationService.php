@@ -108,7 +108,7 @@ class BankReconciliationService
 
     public function show(BankStatement $statement): BankStatement
     {
-        return $statement->load(['account:id,name,currency', 'rows' => fn ($q) => $q->with('matchedTransaction')->orderBy('transaction_date')->orderBy('id')]);
+        return $statement->load(['account:id,name,currency', 'rows' => fn ($q) => $q->with(['matchedTransaction.journalEntry:id,journal_number,status,source_module,source_type,source_id', 'journalEntry:id,journal_number,status,source_module,source_type,source_id'])->orderBy('transaction_date')->orderBy('id')]);
     }
 
     public function suggestions(BankStatementRow $row): array
@@ -151,11 +151,16 @@ class BankReconciliationService
             $old = $locked->toArray();
             $locked->update([
                 'status' => 'reconciled', 'matched_transaction_id' => $transaction->id,
+                'journal_entry_id' => $transaction->journal_entry_id,
                 'match_score' => 100, 'ignore_reason' => null, 'reviewed_by' => Auth::id(), 'reviewed_at' => now(),
             ]);
             $this->event($locked, 'reconciled', $transaction->id, null, $old, $locked->fresh()->toArray());
+            app(BusinessEventService::class)->record('bank.transaction_reconciled', $locked, $locked->reference_number, [
+                'financial_account_transaction_id' => $transaction->id,
+                'journal_entry_id' => $transaction->journal_entry_id,
+            ], "bank-row:{$locked->id}:reconciled:{$transaction->id}");
 
-            return $locked->fresh(['matchedTransaction', 'statement.account']);
+            return $locked->fresh(['matchedTransaction.journalEntry', 'journalEntry', 'statement.account']);
         });
     }
 
@@ -166,6 +171,7 @@ class BankReconciliationService
             $old = $locked->toArray();
             $locked->update([
                 'status' => 'ignored', 'matched_transaction_id' => null, 'match_score' => null,
+                'journal_entry_id' => null,
                 'ignore_reason' => trim($reason), 'reviewed_by' => Auth::id(), 'reviewed_at' => now(),
             ]);
             $this->event($locked, 'ignored', null, $reason, $old, $locked->fresh()->toArray());
@@ -181,6 +187,7 @@ class BankReconciliationService
             $transactionId = $locked->matched_transaction_id;
             $locked->update([
                 'status' => 'unmatched', 'matched_transaction_id' => null, 'match_score' => null,
+                'journal_entry_id' => null,
                 'ignore_reason' => null, 'reviewed_by' => Auth::id(), 'reviewed_at' => now(),
             ]);
             $this->event($locked, 'unmatched', $transactionId, $reason, $old, $locked->fresh()->toArray());

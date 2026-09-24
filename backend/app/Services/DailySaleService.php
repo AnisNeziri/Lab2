@@ -21,6 +21,7 @@ class DailySaleService
         private readonly StockMovementService $stockMovements,
         private readonly UnitConversionService $unitConversions,
         private readonly InventoryCostingService $costing,
+        private readonly OperationalAccountingService $operationalAccounting,
     ) {}
 
     public function list(array $filters = []): Collection
@@ -50,6 +51,7 @@ class DailySaleService
                     'tracking_mode', 'expiration_controlled', 'near_expiry_days', 'fefo_enabled',
                 ]),
                 'creator:id,name',
+                'outboundDispatch.order.intake',
             ]);
 
         if (! empty($filters['date'])) {
@@ -64,17 +66,20 @@ class DailySaleService
             $query->where('status', $filters['status']);
         }
 
+        if (($filters['source'] ?? null) === 'order') $query->whereHas('outboundDispatch');
+        if (($filters['source'] ?? null) === 'manual') $query->whereDoesntHave('outboundDispatch');
+
         return $query->get();
     }
 
     public function find(int $id): DailySale
     {
-        return DailySale::with(['items.product', 'creator:id,name'])->findOrFail($id);
+        return DailySale::with(['items.product', 'creator:id,name', 'outboundDispatch.order.intake'])->findOrFail($id);
     }
 
-    public function create(array $data): DailySale
+    public function create(array $data, ?array $fulfillmentLineTotals = null): DailySale
     {
-        return DB::transaction(function () use ($data) {
+        return DB::transaction(function () use ($data, $fulfillmentLineTotals) {
             $user = Auth::user();
             $key = (string) ($data['idempotency_key'] ?? Str::uuid());
             $fingerprint = RequestFingerprint::make($data, ['idempotency_key']);
@@ -93,6 +98,13 @@ class DailySaleService
                 return $existing->load(['items.product', 'creator:id,name']);
             }
             $items = $this->normalizeItems($data['items'] ?? []);
+            if ($fulfillmentLineTotals !== null) {
+                foreach ($items as $index => &$item) {
+                    $item['line_total'] = Money::normalize($fulfillmentLineTotals[$index]);
+                    $item['gross_profit'] = $item['cost_total'] === null ? null : Money::subtract($item['line_total'], $item['cost_total']);
+                }
+                unset($item);
+            }
             $totals = $this->calculateTotals($items);
 
             $sale = DailySale::create([
@@ -124,6 +136,7 @@ class DailySaleService
                 $data['expired_override_reason'] ?? null,
             );
             $sale->update(['inventory_applied_at' => now()]);
+            $this->operationalAccounting->postDailySale($sale->fresh('items'));
 
             return $sale->fresh(['items.product', 'creator:id,name']);
         });
@@ -133,9 +146,11 @@ class DailySaleService
     {
         return DB::transaction(function () use ($sale, $data) {
             $sale = DailySale::query()->lockForUpdate()->findOrFail($sale->id);
+            if ($sale->outboundDispatch()->exists()) throw ValidationException::withMessages(['order'=>['This sale belongs to an order. Use the order return/correction workflow.']]);
             $this->ensureDraft($sale);
             $sale->load('items');
             if ($sale->inventory_applied_at) {
+                $this->operationalAccounting->reverseDailySale($sale, 'Daily sale edited');
                 $this->applyInventory($sale, 'in', 'Reversed before editing daily sale');
             }
 
@@ -165,6 +180,7 @@ class DailySaleService
                 $data['expired_override_reason'] ?? null,
             );
             $sale->update(['inventory_applied_at' => now()]);
+            $this->operationalAccounting->postDailySale($sale->fresh('items'));
 
             return $sale->fresh(['items.product', 'creator:id,name']);
         });
@@ -229,6 +245,7 @@ class DailySaleService
     {
         DB::transaction(function () use ($sale) {
             $sale = DailySale::query()->lockForUpdate()->findOrFail($sale->id);
+            if ($sale->outboundDispatch()->exists()) throw ValidationException::withMessages(['order'=>['This sale belongs to an order and cannot be deleted separately.']]);
             if ($sale->status === 'finalized') {
                 throw ValidationException::withMessages([
                     'status' => ['Finalized daily sales sheets cannot be deleted.'],
@@ -236,6 +253,7 @@ class DailySaleService
             }
             $sale->load('items');
             if ($sale->inventory_applied_at) {
+                $this->operationalAccounting->reverseDailySale($sale, 'Daily sale deleted');
                 $this->applyInventory($sale, 'in', 'Deleted daily sale');
             }
             $sale->delete();

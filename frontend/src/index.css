@@ -62,3 +62,22 @@ html[data-theme='dark'] .dashboard-page {
   width: 100%;
   max-width: 100%;
 }
+
+.page-state { max-width: 42rem; margin: 12vh auto; padding: 2rem; background: var(--card-bg); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 1rem; }
+.page-state h1 { font-size: 1.6rem; margin-bottom: 1rem; }
+.page-state p { color: var(--text-muted); margin-bottom: 1rem; }
+.page-state a { color: var(--primary-color); text-decoration: underline; }
+.procurement-page .procurement-fields { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,170px),1fr)); gap: .75rem; border-color: var(--border-color); }
+.procurement-page .procurement-fields legend { padding: .4rem 0; }
+.procurement-page .inline-check { display: flex; align-items: center; gap: .5rem; }
+.procurement-page input[type='checkbox'], .procurement-page input[type='radio'] { width: 1rem; min-height: 1rem; }
+.procurement-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.award-review { border-color: var(--primary-color); }
+.award-review article { padding: .75rem; border: 1px solid var(--border-color); border-radius: .7rem; }
+.procurement-card .table-wrap { overflow-x: auto; min-width: 0; }
+.quality-modal header, .integrity-history header { background: transparent; color: var(--text-color); padding-right: 2.5rem; }
+.quality-modal :is(h2,h3), .integrity-history :is(h2,h3) { color: var(--text-color); }
+.command-palette header { background: var(--card-bg); color: var(--text-color); }
+.command-palette header input { color: var(--text-color); }
+html[data-theme='dark'] .command-palette-state.is-error { color: #fecaca; background: #451a22; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 3px; }

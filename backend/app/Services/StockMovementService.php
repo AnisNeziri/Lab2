@@ -76,6 +76,7 @@ class StockMovementService
         private TraceabilityService $traceability,
         private PermissionService $permissions,
         private InventoryIntegrityService $integrity,
+        private OperationalAccountingService $operationalAccounting,
     ) {}
 
     public function list(array $filters): Collection
@@ -321,6 +322,10 @@ class StockMovementService
                 );
                 if ($affectsCompanyQuantity) {
                     $this->integrity->assertProductReconciled($product);
+                }
+
+                if (Auth::check()) {
+                    $this->operationalAccounting->postStockMovement($movement);
                 }
 
                 return $movement;

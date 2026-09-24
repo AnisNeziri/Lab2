@@ -31,10 +31,18 @@ class WarehouseSeeder extends Seeder
             ]
         );
 
-        Product::where('company_id', $company->id)->each(function (Product $product) use ($warehouse) {
+        Product::where('company_id', $company->id)->each(function (Product $product) use ($company, $warehouse) {
             WarehouseStock::updateOrCreate(
                 ['warehouse_id' => $warehouse->id, 'product_id' => $product->id],
-                ['quantity' => $product->quantity]
+                [
+                    'company_id' => $company->id,
+                    'quantity' => $product->quantity,
+                    'available_quantity' => $product->quantity,
+                    'reserved_quantity' => 0,
+                    'damaged_quantity' => 0,
+                    'quarantine_quantity' => 0,
+                    'blocked_quantity' => 0,
+                ]
             );
         });
     }

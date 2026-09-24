@@ -23,6 +23,7 @@ export const useSettingsStore = create(
       applyPreferences(preferences) {
         const next = { ...DEFAULTS, ...preferences }
         applyTheme(next.theme)
+        document.documentElement.lang = next.language === 'sq' ? 'sq' : 'en'
         set({
           theme: next.theme,
           language: next.language,
@@ -59,6 +60,7 @@ export const useSettingsStore = create(
       onRehydrateStorage: () => (state) => {
         if (state) {
           applyTheme(state.theme)
+          document.documentElement.lang = state.language === 'sq' ? 'sq' : 'en'
           state.hydrated = true
         }
       },

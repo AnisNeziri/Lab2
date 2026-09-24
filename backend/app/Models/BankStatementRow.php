@@ -16,6 +16,7 @@ class BankStatementRow extends Model
         'reference_number', 'amount', 'statement_balance', 'status',
         'matched_transaction_id', 'match_score', 'ignore_reason', 'reviewed_by',
         'reviewed_at', 'row_hash', 'raw_data',
+        'journal_entry_id',
     ];
 
     protected function casts(): array
@@ -24,6 +25,7 @@ class BankStatementRow extends Model
             'transaction_date' => 'date:Y-m-d', 'amount' => 'decimal:2',
             'statement_balance' => 'decimal:2', 'match_score' => 'decimal:2',
             'reviewed_at' => 'datetime', 'raw_data' => 'array',
+            'journal_entry_id' => 'integer',
         ];
     }
 
@@ -40,5 +42,10 @@ class BankStatementRow extends Model
     public function events(): HasMany
     {
         return $this->hasMany(BankReconciliationEvent::class);
+    }
+
+    public function journalEntry(): BelongsTo
+    {
+        return $this->belongsTo(JournalEntry::class);
     }
 }

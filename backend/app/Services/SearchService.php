@@ -2,89 +2,130 @@
 
 namespace App\Services;
 
-use App\Models\Category;
-use App\Models\Invoice;
 use App\Models\Customer;
-use App\Models\GoodsReceipt;
+use App\Models\Invoice;
+use App\Models\JournalEntry;
 use App\Models\PurchaseOrder;
+use App\Models\PurchaseRequest;
+use App\Models\Rfq;
 use App\Models\Shipment;
-use App\Models\StockTransfer;
+use App\Models\ShipmentContainer;
 use App\Models\StockMovement;
 use App\Models\Supplier;
+use App\Models\Warehouse;
+use App\Models\WarehouseLocation;
 use App\Repositories\Contracts\ProductRepositoryInterface;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 
+/** Permission-aware, company-scoped search over operational records. */
 class SearchService
 {
     public function __construct(
-        private ProductRepositoryInterface $products
+        private readonly ProductRepositoryInterface $products,
+        private readonly PermissionService $permissions,
     ) {}
 
     public function search(string $term): array
     {
-        $like = "%{$term}%";
+        $term = trim($term);
+        $like = '%'.addcslashes($term, '%_\\').'%';
+        $result = [];
+        if ($this->can('documents.view')) {
+            $result['documents']=app(DocumentService::class)->listing(['q'=>$term])->getCollection()->take(8)->map(fn($d)=>$this->item($d->id,$d->title,$d->reference.' · v'.$d->current_version,'/documents?document='.$d->id));
+        }
+        if ($this->can('fulfillment.view')) {
+            $result['order_hub']=\App\Models\OrderIntake::with('channel:id,name')->where(fn($q)=>$q->where('external_id','like',$like)->orWhereHas('channel',fn($c)=>$c->where('external_reference','like',$like))->orWhereHas('order',fn($o)=>$o->where('order_number','like',$like)))->limit(8)->get()->map(fn($i)=>$this->item($i->id,$i->external_id?:'#'.$i->id,$i->channel?->name.' · '.$i->state,'/order-hub?intake='.$i->id));
+            $result['sales_orders'] = \App\Models\SalesOrder::query()->with('customer:id,name')->where(fn($q)=>$q->where('order_number','like',$like)->orWhereHas('customer',fn($c)=>$c->where('name','like',$like)))->limit(8)->get()->map(fn($x)=>$this->item($x->id,$x->order_number,$x->customer?->name.' · '.$x->status,'/fulfillment?order='.$x->id));
+            foreach (['pick_tasks'=>\App\Models\PickTask::class,'dispatches'=>\App\Models\OutboundDispatch::class,'returns'=>\App\Models\OutboundReturn::class] as $key=>$class) {
+                $result[$key]=$class::query()->where('reference','like',$like)->limit(6)->get()->map(fn($x)=>$this->item($x->id,$x->reference,$x->status,'/fulfillment?order='.$x->sales_order_id));
+            }
+            $result['pick_waves']=\App\Models\PickWave::query()->where('reference','like',$like)->limit(6)->get()->map(fn($x)=>$this->item($x->id,$x->reference,$x->status,'/fulfillment?wave='.$x->id));
+        }
 
-        $products = $this->products->searchGlobal($term, 10);
+        if ($this->can('products.manage', 'inventory.view')) {
+            $result['products'] = $this->products->searchGlobal($term, 8)
+                ->map(fn ($x) => $this->item($x->id, $x->name, $x->sku ?: $x->barcode, '/products?product='.$x->id));
+            $result['stock_movements'] = StockMovement::query()->with('product:id,name,sku')
+                ->where(fn ($q) => $q->where('reason', 'like', $like)->orWhere('type', 'like', $like)
+                    ->orWhereHas('product', fn ($p) => $p->where('name', 'like', $like)->orWhere('sku', 'like', $like)))
+                ->latest()->limit(5)->get()
+                ->map(fn ($x) => $this->item($x->id, $x->product?->name ?: 'Stock movement', strtoupper($x->type).' '.$x->quantity, '/stock?movement='.$x->id));
+        }
 
-        $categories = Category::where('name', 'like', $like)
-            ->limit(5)
-            ->get(['id', 'name']);
+        if ($this->can('suppliers.manage', 'supplier_catalogue.view', 'procurement.view')) {
+            $result['suppliers'] = Supplier::query()
+                ->where(fn ($q) => $q->where('name', 'like', $like)->orWhere('email', 'like', $like)->orWhere('phone', 'like', $like))
+                ->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->name, $x->email ?: $x->phone, '/suppliers?supplier='.$x->id));
+        }
 
-        $suppliers = Supplier::where(fn ($query) => $query->where('name', 'like', $like)
-            ->orWhere('email', 'like', $like))
-            ->limit(5)
-            ->get(['id', 'name', 'email']);
+        if ($this->can('customers.manage', 'debts.view', 'invoices.manage')) {
+            $result['customers'] = Customer::query()
+                ->where(fn ($q) => $q->where('name', 'like', $like)->orWhere('business_registration_number', 'like', $like)
+                    ->orWhere('fiscal_number', 'like', $like)->orWhere('email', 'like', $like))
+                ->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->name, $x->business_registration_number ?: $x->email, '/customer-debts?customer='.$x->id));
+        }
 
-        $invoices = Invoice::where(fn ($query) => $query->where('invoice_number', 'like', $like)
-            ->orWhere('customer_name', 'like', $like))
-            ->limit(5)
-            ->get(['id', 'invoice_number', 'customer_name', 'status', 'total_amount']);
+        if ($this->can('invoices.manage')) {
+            $result['invoices'] = Invoice::query()
+                ->where(fn ($q) => $q->where('invoice_number', 'like', $like)->orWhere('customer_name', 'like', $like))
+                ->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->invoice_number, $x->customer_name.' · '.$x->status, '/invoices?invoice='.$x->id));
+        }
 
-        $stockMovements = StockMovement::with('product:id,name,sku')
-            ->where(function ($query) use ($like) {
-                $query->where('reason', 'like', $like)
-                    ->orWhere('type', 'like', $like)
-                    ->orWhereHas('product', function ($productQuery) use ($like) {
-                        $productQuery->where('name', 'like', $like)->orWhere('sku', 'like', $like);
-                    });
-            })
-            ->latest()
-            ->limit(5)
-            ->get(['id', 'product_id', 'type', 'quantity', 'reason', 'created_at']);
+        if ($this->can('purchase_orders.view')) {
+            $result['purchase_orders'] = PurchaseOrder::query()->with('supplier:id,name')
+                ->where(fn ($q) => $q->where('po_number', 'like', $like)->orWhereHas('supplier', fn ($s) => $s->where('name', 'like', $like)))
+                ->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->po_number, ($x->supplier?->name ?: 'Supplier').' · '.$x->status, '/purchase-orders?po='.$x->id));
+        }
 
-        $customers = Customer::query()->where(function ($query) use ($like) {
-            $query->where('name', 'like', $like)->orWhere('business_registration_number', 'like', $like)
-                ->orWhere('fiscal_number', 'like', $like)->orWhere('email', 'like', $like);
-        })->limit(5)->get(['id', 'name', 'business_registration_number', 'email']);
+        if ($this->can('procurement.view')) {
+            $result['purchase_requests'] = PurchaseRequest::query()
+                ->where(fn ($q) => $q->where('request_number', 'like', $like)->orWhere('notes', 'like', $like))
+                ->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->request_number, $x->status, '/procurement?request='.$x->id));
+            $result['rfqs'] = Rfq::query()
+                ->where(fn ($q) => $q->where('rfq_number', 'like', $like)->orWhere('notes', 'like', $like))
+                ->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->rfq_number, $x->status, '/procurement?rfq='.$x->id));
+        }
 
-        $purchaseOrders = PurchaseOrder::with('supplier:id,name')->where(function ($query) use ($like) {
-            $query->where('po_number', 'like', $like)->orWhereHas('supplier', fn ($supplier) => $supplier->where('name', 'like', $like));
-        })->limit(5)->get(['id', 'supplier_id', 'po_number', 'status', 'total_amount', 'currency']);
+        if ($this->can('shipments.view')) {
+            $result['shipments'] = Shipment::query()->active()
+                ->where(fn ($q) => $q->where('tracking_number', 'like', $like)->orWhere('tracking_reference', 'like', $like)
+                    ->orWhere('bill_of_lading', 'like', $like)->orWhere('vessel_name', 'like', $like)->orWhere('mmsi', 'like', $like)->orWhere('imo', 'like', $like))
+                ->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->vessel_name ?: ($x->tracking_number ?: $x->tracking_reference), $x->status, '/shipments/my-shipments?shipment='.$x->id));
+            $result['containers'] = ShipmentContainer::query()->with('shipment:id,vessel_name')
+                ->where(fn ($q) => $q->where('container_number', 'like', $like)->orWhere('booking_reference', 'like', $like)->orWhere('bill_of_lading', 'like', $like))
+                ->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->container_number, $x->shipment?->vessel_name ?: $x->status, '/control-tower/'.$x->shipment_id));
+        }
 
-        $shipments = Shipment::query()->where(function ($query) use ($like) {
-            $query->where('tracking_number', 'like', $like)->orWhere('tracking_reference', 'like', $like)
-                ->orWhere('bill_of_lading', 'like', $like)->orWhere('vessel_name', 'like', $like)
-                ->orWhere('destination_port', 'like', $like);
-        })->limit(5)->get(['id', 'tracking_number', 'tracking_reference', 'bill_of_lading', 'status', 'destination_port']);
+        if ($this->can('inventory.view', 'transfers.view')) {
+            $result['warehouses'] = Warehouse::query()->where('is_active', true)
+                ->where(fn ($q) => $q->where('name', 'like', $like)->orWhere('code', 'like', $like)->orWhere('address', 'like', $like))
+                ->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->name, $x->code, '/warehouse-operations?warehouse='.$x->id));
+            $result['bins'] = WarehouseLocation::query()->with('warehouse:id,name')->where('is_active', true)
+                ->where(fn ($q) => $q->where('name', 'like', $like)->orWhere('code', 'like', $like)->orWhere('path', 'like', $like))
+                ->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->name ?: $x->code, ($x->warehouse?->name ?: 'Warehouse').' · '.$x->path, '/warehouse-operations?warehouse='.$x->warehouse_id.'&location='.$x->id));
+        }
 
-        $transfers = StockTransfer::with(['sourceWarehouse:id,name', 'destinationWarehouse:id,name'])
-            ->where('transfer_number', 'like', $like)->limit(5)
-            ->get(['id', 'transfer_number', 'source_warehouse_id', 'destination_warehouse_id', 'status']);
+        if ($this->can('accounting.journal.view')) {
+            $result['journals'] = JournalEntry::query()
+                ->where(fn ($q) => $q->where('journal_number', 'like', $like)->orWhere('reference_number', 'like', $like)->orWhere('description', 'like', $like))
+                ->latest('posting_date')->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->journal_number, $x->description ?: $x->status, '/accounting?tab=journal&journal='.$x->id));
+        }
 
-        $goodsReceipts = GoodsReceipt::with('purchaseOrder:id,po_number')
-            ->where(fn ($query) => $query->where('receipt_number', 'like', $like)->orWhere('supplier_document_number', 'like', $like))
-            ->limit(5)->get(['id', 'purchase_order_id', 'receipt_number', 'supplier_document_number', 'received_at']);
+        return collect($result)->map(fn (Collection $items) => $items->values()->all())
+            ->filter(fn (array $items) => $items !== [])->all();
+    }
 
-        return [
-            'products' => $products,
-            'categories' => $categories,
-            'suppliers' => $suppliers,
-            'invoices' => $invoices,
-            'stock_movements' => $stockMovements,
-            'customers' => $customers,
-            'purchase_orders' => $purchaseOrders,
-            'shipments' => $shipments,
-            'stock_transfers' => $transfers,
-            'goods_receipts' => $goodsReceipts,
-        ];
+    private function can(string ...$permissions): bool
+    {
+        $role = Auth::user()?->role;
+
+        return $role !== null && collect($permissions)
+            ->contains(fn (string $permission) => $this->permissions->roleHasPermission($role, $permission));
+    }
+
+    private function item(int $id, ?string $title, mixed $subtitle, string $url): array
+    {
+        return ['id' => $id, 'title' => $title ?: 'Untitled', 'subtitle' => (string) ($subtitle ?? ''), 'url' => $url];
     }
 }

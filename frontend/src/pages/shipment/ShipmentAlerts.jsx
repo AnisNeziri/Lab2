@@ -54,6 +54,7 @@ export default function ShipmentAlerts() {
 
   return (
     <div className="page">
+      <h1 className="page-title">{t('tracking.alerts.title')}</h1>
       {error ? <div className="auth-error">{error}</div> : null}
 
       {loading ? <p className="page-message">{t('common.loading')}</p> : null}

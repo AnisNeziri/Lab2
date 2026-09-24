@@ -178,9 +178,10 @@ class QualityController extends Controller
         return response()->json($this->quality->addAttachment($data,$request->file('file')),201);
     }
 
-    public function download(QualityAttachment $qualityAttachment): Response
+    public function download(QualityAttachment $qualityAttachment)
     {
         $this->owned($qualityAttachment);
+        if($qualityAttachment->document_version_id)return app(\App\Services\DocumentEvidenceService::class)->download($qualityAttachment->document_version_id);
         $contents=base64_decode((string)$qualityAttachment->getRawOriginal('file_data'),true);
         abort_if($contents===false,422,'Stored evidence is invalid.');
         return response($contents,200,['Content-Type'=>$qualityAttachment->mime_type,'Content-Disposition'=>'attachment; filename="'.str_replace('"','',$qualityAttachment->filename).'"']);

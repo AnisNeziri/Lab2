@@ -22,7 +22,7 @@ export function buildShelfStockMap(products, shelves) {
       if (!balance) return []
       return [{ ...product, quantity: Number(balance.available_quantity ?? balance.quantity ?? 0) }]
     })
-    const prods = locatedProducts.length
+    const prods = shelf.locationId != null
       ? locatedProducts
       : products.filter((p) => productMatchesShelf(p, shelf))
     levels[shelf.id] = prods.length ? shelfHealthFromProducts(prods) : null

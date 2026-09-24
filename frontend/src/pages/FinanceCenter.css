@@ -478,7 +478,7 @@ html[data-theme="dark"] .finance-advanced > fieldset { background: #111827; }
   .finance-search-row > button { width: 100%; }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1100px) {
   .finance-hero { align-items: flex-start; flex-direction: column; }
   .finance-hero > button { width: 100%; }
   .finance-quick-actions { grid-template-columns: 1fr; }

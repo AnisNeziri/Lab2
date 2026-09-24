@@ -21,6 +21,7 @@ import SuccessAnimation from "../components/SuccessAnimation";
 import { getWarehouses, getWarehouseLocations } from "../api/warehouseOperations";
 import { getFinancialAccounts } from "../api/advancedOperations";
 import { useAuthStore } from "../store/authStore";
+import EntityContext from "../components/EntityContext";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const dateOnly = (value) => (value ? String(value).slice(0, 10) : "—");
@@ -284,6 +285,11 @@ export default function PurchaseOrders() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const requestedOrder = Number(new URLSearchParams(window.location.search).get("po"));
+    if (Number.isInteger(requestedOrder) && requestedOrder > 0) openOrder(requestedOrder);
+  }, []);
 
   const beginNew = () => {
     setSelected(null);
@@ -1203,6 +1209,7 @@ export default function PurchaseOrders() {
             </p>
           </div>
           <p>{selected.notes || ""}</p>
+          <EntityContext entityType="purchase-order" entityId={selected.id} />
           {selected.shipments?.length ? (
             <section className="po-linked-shipments">
               <h3>{t("po.linkedVessels")}</h3>

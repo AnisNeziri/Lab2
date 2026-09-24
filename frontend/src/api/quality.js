@@ -10,6 +10,7 @@ export const correctInspection = (id, reason) => apiRequest(`/quality/inspection
 export const addDefect = (id, payload) => apiRequest(`/quality/inspections/${id}/defects`, { method: 'POST', body: JSON.stringify(payload) }, 'Could not record defect')
 export const getQualityTemplates = () => apiRequest('/quality/templates', {}, 'Could not load checklists')
 export const saveQualityTemplate = (payload) => apiRequest('/quality/templates', { method: 'POST', body: JSON.stringify(payload) }, 'Could not save checklist')
+export const updateQualityTemplate = (id, payload) => apiRequest(`/quality/templates/${id}`, { method: 'PUT', body: JSON.stringify(payload) }, 'Could not update checklist')
 export const getDefectCategories = () => apiRequest('/quality/defect-categories', {}, 'Could not load defect categories')
 export const saveDefectCategory = (payload) => apiRequest('/quality/defect-categories', { method: 'POST', body: JSON.stringify(payload) }, 'Could not save defect category')
 export const configureQuality = (payload) => apiRequest('/quality/configuration', { method: 'PUT', body: JSON.stringify(payload) }, 'Could not save quality configuration')

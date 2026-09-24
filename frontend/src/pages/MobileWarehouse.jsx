@@ -1,3 +1,4 @@
+import { useUiText } from '../hooks/useUiText'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowRight, Boxes, Camera, CheckCircle2, ClipboardCheck, LoaderCircle,
@@ -61,6 +62,8 @@ function Field({ label, children, hint }) {
 }
 
 export default function MobileWarehouse() {
+ const tx = useUiText()
+
   const language = useSettingsStore((state) => state.language)
   const permissions = useAuthStore((state) => state.permissions)
   const canOverrideExpiredReceipt = permissions.includes('inventory.expired.override')
@@ -282,7 +285,7 @@ export default function MobileWarehouse() {
         <button type="button" className="camera" onClick={() => openScanner('product')}><Camera /><span>{text.scan}</span></button>
       </section>
 
-      <nav className="mobile-warehouse-actions" aria-label="Warehouse actions">
+      <nav className="mobile-warehouse-actions" aria-label={tx("Warehouse actions")}>
         {['receive', 'move', 'count', 'pick', 'lookup'].map((item) => {
           const Icon = actionIcons[item]
           return <button type="button" key={item} className={action === item ? 'active' : ''} onClick={() => { setAction(item); setError(''); setSuccess('') }}><Icon /><span>{text[item]}</span></button>
@@ -334,7 +337,7 @@ export default function MobileWarehouse() {
           <Field label={text.reason}><input required value={form.reason || ''} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></Field>
         </OperationForm>}
 
-        {action === 'lookup' && <section className="mobile-warehouse-panel"><div className="mobile-lookup-summary"><article><span>{text.available}</span><strong>{formatQuantity(availableBalances.reduce((sum, row) => sum + Number(row.available_quantity || 0), 0), product.unit)}</strong></article><article><span>{text.reserved}</span><strong>{formatQuantity(reservedTotal, product.unit)}</strong></article><article><span>{text.incoming}</span><strong>{formatQuantity(incomingTotal, product.unit)}</strong></article></div><h2>{text.balances}</h2><div className="mobile-warehouse-balances">{(result.balances || []).map((row) => <article key={row.id}><MapPin /><div><strong>{row.warehouse?.name}</strong><span>{row.location?.path || 'Unassigned'}</span></div><b>{formatQuantity(row.available_quantity, product.unit)} {product.unit}<small>{text.reserved}: {formatQuantity(row.reserved_quantity, product.unit)} · Total: {formatQuantity(row.quantity, product.unit)}</small></b></article>)}</div>{(result.lots || []).length > 0 && <><h2>{text.traceStock}</h2><div className="mobile-trace-list">{result.lots.map((lot) => <article key={lot.id}><div><strong>{lot.serial_number || lot.lot_number}</strong><span>{lot.expiry_at ? `${text.expiry}: ${String(lot.expiry_at).slice(0, 10)} · ${lot.expiry_status}` : lot.supplier_batch || '—'}</span></div><b>{formatQuantity(lot.quantity_remaining, product.unit)} {product.unit}</b><small>{(lot.balances || []).map((balance) => `${balance.warehouse?.name} / ${balance.location?.path || 'Unassigned'}: ${formatQuantity(balance.quantity, product.unit)}`).join(' · ')}</small></article>)}</div></>}</section>}
+        {action === 'lookup' && <section className="mobile-warehouse-panel"><div className="mobile-lookup-summary"><article><span>{text.available}</span><strong>{formatQuantity(availableBalances.reduce((sum, row) => sum + Number(row.available_quantity || 0), 0), product.unit)}</strong></article><article><span>{text.reserved}</span><strong>{formatQuantity(reservedTotal, product.unit)}</strong></article><article><span>{text.incoming}</span><strong>{formatQuantity(incomingTotal, product.unit)}</strong></article></div><h2>{text.balances}</h2><div className="mobile-warehouse-balances">{(result.balances || []).map((row) => <article key={row.id}><MapPin /><div><strong>{row.warehouse?.name}</strong><span>{row.location?.path || 'Unassigned'}</span></div><b>{formatQuantity(row.available_quantity, product.unit)} {product.unit}<small>{text.reserved}: {formatQuantity(row.reserved_quantity, product.unit)} {tx("· Total:")} {formatQuantity(row.quantity, product.unit)}</small></b></article>)}</div>{(result.lots || []).length > 0 && <><h2>{text.traceStock}</h2><div className="mobile-trace-list">{result.lots.map((lot) => <article key={lot.id}><div><strong>{lot.serial_number || lot.lot_number}</strong><span>{lot.expiry_at ? `${text.expiry}: ${String(lot.expiry_at).slice(0, 10)} · ${lot.expiry_status}` : lot.supplier_batch || '—'}</span></div><b>{formatQuantity(lot.quantity_remaining, product.unit)} {product.unit}</b><small>{(lot.balances || []).map((balance) => `${balance.warehouse?.name} / ${balance.location?.path || 'Unassigned'}: ${formatQuantity(balance.quantity, product.unit)}`).join(' · ')}</small></article>)}</div></>}</section>}
       </>}
 
       {scannerOpen && <BarcodeScanner onScanSuccess={scanned} onClose={() => setScannerOpen(false)} />}
@@ -347,8 +350,10 @@ function OperationForm({ onSubmit, submit, busy, children }) {
 }
 
 function WarehouseLocationFields({ text, form, setForm, warehouses, locations, onScan }) {
+ const tx = useUiText()
+
   const options = locations.filter((location) => String(location.warehouse_id) === String(form.warehouse_id))
-  return <div className="mobile-warehouse-grid"><Field label={text.warehouse}><select required value={form.warehouse_id || ''} onChange={(e) => setForm({ ...form, warehouse_id: e.target.value, location_id: '' })}><option value="">—</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select></Field><Field label={text.location}><div className="mobile-location-control"><select value={form.location_id || ''} onChange={(e) => setForm({ ...form, location_id: e.target.value })}><option value="">Unassigned</option>{options.map((location) => <option key={location.id} value={location.id}>{location.path}</option>)}</select>{onScan && <button type="button" onClick={onScan}><ScanLine /><span>{text.scanLocation}</span></button>}</div></Field></div>
+  return <div className="mobile-warehouse-grid"><Field label={text.warehouse}><select required value={form.warehouse_id || ''} onChange={(e) => setForm({ ...form, warehouse_id: e.target.value, location_id: '' })}><option value="">—</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select></Field><Field label={text.location}><div className="mobile-location-control"><select value={form.location_id || ''} onChange={(e) => setForm({ ...form, location_id: e.target.value })}><option value="">{tx("Unassigned")}</option>{options.map((location) => <option key={location.id} value={location.id}>{location.path}</option>)}</select>{onScan && <button type="button" onClick={onScan}><ScanLine /><span>{text.scanLocation}</span></button>}</div></Field></div>
 }
 
 function TraceFields({ text, product, result, form, setForm, receive = false }) {

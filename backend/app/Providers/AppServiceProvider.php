@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Contracts\IntelligenceProvider;
 use App\Repositories\Contracts\CategoryRepositoryInterface;
 use App\Repositories\Contracts\InvoiceRepositoryInterface;
 use App\Repositories\Contracts\ProductRepositoryInterface;
@@ -14,6 +15,7 @@ use App\Repositories\Eloquent\ProductRepository;
 use App\Repositories\Eloquent\StockMovementRepository;
 use App\Repositories\Eloquent\SupplierRepository;
 use App\Repositories\Eloquent\UserRepository;
+use App\Services\DisabledIntelligenceProvider;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -21,6 +23,7 @@ use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
+    public $bindings = [\App\Contracts\DocumentStorageProvider::class => \App\Services\LocalDocumentStorage::class];
     public function register(): void
     {
         $this->app->bind(ProductRepositoryInterface::class, ProductRepository::class);
@@ -29,6 +32,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SupplierRepositoryInterface::class, SupplierRepository::class);
         $this->app->bind(UserRepositoryInterface::class, UserRepository::class);
         $this->app->bind(InvoiceRepositoryInterface::class, InvoiceRepository::class);
+        $this->app->bind(IntelligenceProvider::class, DisabledIntelligenceProvider::class);
     }
 
     public function boot(): void

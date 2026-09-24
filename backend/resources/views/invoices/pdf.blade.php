@@ -141,8 +141,8 @@
     <tr><td>{{ $labels['taxable_total'] }}</td><td class="right">{{ $amountSign }}€{{ number_format((float)$invoice->taxable_total, 2) }}</td></tr>
     <tr><td>{{ $labels['vat_total'] }}</td><td class="right">{{ $amountSign }}€{{ number_format((float)$invoice->vat_total, 2) }}</td></tr>
     <tr class="grand"><td>{{ $labels['grand_total'] }}</td><td class="right">{{ $amountSign }}€{{ number_format((float)$invoice->grand_total, 2) }}</td></tr>
-    <tr><td>{{ $labels['paid'] }}</td><td class="right">€{{ number_format((float)$invoice->total_paid, 2) }}</td></tr>
-    <tr><td>{{ $labels['balance'] }}</td><td class="right">€{{ number_format((float)$invoice->remaining_balance, 2) }}</td></tr>
+    <tr><td>{{ data_get($invoice->source_settlement, 'basis') === 'customer_ledger' ? 'Shlyer në regjistrin e klientit / Settled in customer ledger' : $labels['paid'] }}</td><td class="right">€{{ number_format((float) data_get($invoice->source_settlement, 'settled', $invoice->total_paid), 2) }}</td></tr>
+    <tr><td>{{ $labels['balance'] }}</td><td class="right">€{{ number_format((float) data_get($invoice->source_settlement, 'outstanding', $invoice->remaining_balance), 2) }}</td></tr>
 </table>
 
 <table class="summary">
