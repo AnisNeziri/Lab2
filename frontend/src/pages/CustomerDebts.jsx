@@ -18,6 +18,7 @@ import { getFinancialAccounts } from "../api/advancedOperations";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAuthStore } from "../store/authStore";
 import EntityContext from "../components/EntityContext";
+import CustomerSalesSummary from "../components/CustomerSalesSummary";
 import { Link } from 'react-router-dom';
 import "./CustomerDebts.css";
 
@@ -1087,6 +1088,7 @@ export default function CustomerDebts() {
             )}
           </section>
           <EntityContext entityType="customer" entityId={selected.id} />
+          <CustomerSalesSummary customerId={selected.id} />
           {permissions.includes('fulfillment.view')&&<Link to={`/order-hub?customer=${selected.id}`}>{language==='sq'?'Porositë e klientit':'Customer orders'}</Link>}
           {correction && (
             <section className="inline-editor">

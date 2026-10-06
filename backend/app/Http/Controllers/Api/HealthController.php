@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\RedisStoreService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -10,20 +11,30 @@ use Illuminate\Support\Facades\DB;
 
 class HealthController extends Controller
 {
-    public function show(): JsonResponse
+    public function show(RedisStoreService $redis): JsonResponse
     {
         $database = $this->databaseStatus();
-        $connection = Cache::get('tracking.aisstream.connection', []);
+        $cacheAvailable = true;
+        try {
+            $connection = Cache::get('tracking.aisstream.connection', []);
+            $lastMessage = Cache::get('tracking.aisstream.last_message_at');
+        } catch (\Throwable) {
+            $connection = [];
+            $lastMessage = null;
+            $cacheAvailable = false;
+        }
         $connection = is_array($connection) ? $connection : [];
         $connectionUpdatedAt = ! empty($connection['updated_at']) ? Carbon::parse($connection['updated_at']) : null;
-        $lastMessage = Cache::get('tracking.aisstream.last_message_at');
         $lastMessageAt = $lastMessage ? Carbon::parse($lastMessage) : null;
-        $connectionState = $connectionUpdatedAt?->gte(now()->subMinutes(2))
+        $connectionState = ! $cacheAvailable ? 'cache_unavailable' : ($connectionUpdatedAt?->gte(now()->subMinutes(2))
             ? ($connection['state'] ?? 'unknown')
-            : 'worker_unavailable';
+            : 'worker_unavailable');
 
         return response()->json([
             'database' => $database,
+            'mode' => config('system.operation_mode', 'online'),
+            'redis' => $redis->status(),
+            'cache_available' => $cacheAvailable,
             'cache_driver' => config('cache.default'),
             'scheduler' => 'Configure the Laravel scheduler on the host to run every minute.',
             'aisstream' => [

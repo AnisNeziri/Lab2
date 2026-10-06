@@ -1,0 +1,41 @@
+import {test,expect} from '@playwright/test'
+import {login} from '../helpers/auth.mjs'
+
+test('analytics workspace, periods, snapshots, dataset download and responsive themes',async({page})=>{
+  test.setTimeout(90000)
+  const errors=[];page.on('pageerror',e=>errors.push(e.message))
+  await login(page)
+  await page.goto('/analytics')
+  await expect(page.getByRole('heading',{name:'Analytics',exact:true})).toBeVisible()
+  const nav=page.getByRole('navigation',{name:'Analytics areas'})
+  await nav.getByRole('button',{name:'Sales',exact:true}).click()
+  await page.getByRole('combobox',{name:'Period',exact:true}).selectOption('7d')
+  await expect(page.locator('.analytics-kpis')).toContainText('Revenue')
+  await nav.getByRole('button',{name:'Inventory',exact:true}).click()
+  await expect(page.locator('.analytics-kpis')).toContainText('Products')
+  for(const width of [390,768,1024,1366,1920]){
+    await page.setViewportSize({width,height:900})
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2)).toBeTruthy()
+  }
+  await nav.getByRole('button',{name:'Datasets',exact:true}).click()
+  await page.getByRole('button',{name:'Capture today',exact:true}).click()
+  await expect(page.locator('.analytics-page [role="status"]')).toContainText('observations are saved')
+  const token=await page.evaluate(()=>localStorage.getItem('api_token'))
+  const response=await page.request.get('/api/analytics/overview',{headers:{Authorization:`Bearer ${token}`}})
+  const today=(await response.json()).period.to
+  await page.getByLabel('From',{exact:true}).fill(today)
+  await page.getByLabel('To',{exact:true}).fill(today)
+  await page.getByRole('button',{name:'Build demand dataset',exact:true}).click()
+  await expect(page.getByRole('heading',{name:'demand_forecasting_v1'}).first()).toBeVisible()
+  const download=page.waitForEvent('download')
+  await page.getByRole('button',{name:'Export CSV',exact:true}).first().click()
+  expect((await download).suggestedFilename()).toMatch(/\.csv$/)
+  await page.evaluate(async()=>{const {useSettingsStore}=await import('/src/store/settingsStore.js');useSettingsStore.getState().applyPreferences({theme:'dark',language:'sq'})})
+  await expect(page.getByRole('heading',{name:'Analitika',exact:true})).toBeVisible()
+  const header=page.locator('.analytics-page > header')
+  expect(await header.evaluate(e=>getComputedStyle(e).backgroundColor)).not.toBe('rgb(255, 255, 255)')
+  await page.setViewportSize({width:390,height:844})
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2)).toBeTruthy()
+  await page.screenshot({path:'test-results/analytics-dark-mobile.png',fullPage:true})
+  expect(errors).toEqual([])
+})

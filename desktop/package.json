@@ -6,12 +6,13 @@
   "main": "src/main.cjs",
   "private": true,
   "scripts": {
+    "test": "node --test tests/*.test.cjs",
     "prepare-assets": "node scripts/prepare-assets.cjs",
     "test:startup": "npm run prepare-assets && node scripts/startup-check.cjs",
     "start": "npm run prepare-assets && electron .",
     "dist:win": "npm run prepare-assets && electron-builder --win nsis --publish never",
     "dist:win:signed": "node scripts/verify-signing-env.cjs && npm run prepare-assets && electron-builder --win nsis --publish never",
-    "release:win": "node scripts/verify-signing-env.cjs && npm run prepare-assets && electron-builder --win nsis --publish always"
+    "release:win": "node scripts/release-via-ci.cjs"
   },
   "dependencies": {
     "electron-updater": "^6.6.2"
@@ -36,6 +37,7 @@
       "package.json"
     ],
     "extraResources": [
+      { "from": "resources/python", "to": "python" },
       {
         "from": "resources/backend",
         "to": "backend"

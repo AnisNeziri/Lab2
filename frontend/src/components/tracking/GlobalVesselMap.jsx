@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import '../ShipmentMap.css'
+import { useTranslation } from '../../hooks/useTranslation'
+import { shipmentIntelligenceLabel } from '../shipmentIntelligencePresentation'
 
 const shipIcon = (active = false) => L.divIcon({
   className: `shipment-ship-marker${active ? ' is-active' : ''}`,
@@ -31,6 +33,7 @@ function escapeHtml(value) {
 }
 
 export default function GlobalVesselMap({ vessels = [], selectedId, onSelectVessel, pendingLabel = 'Waiting for AIS signal', noPositionsLabel = 'No tracked vessels match these filters.' }) {
+  const { language } = useTranslation()
   const mapRef = useRef(null)
   const mapInstance = useRef(null)
   const layersRef = useRef([])
@@ -48,6 +51,9 @@ export default function GlobalVesselMap({ vessels = [], selectedId, onSelectVess
         zoomControl: true,
         scrollWheelZoom: true,
         preferCanvas: true,
+        zoomAnimation: false,
+        markerZoomAnimation: false,
+        fadeAnimation: false,
       }).setView([25, 45], 3)
 
       const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -56,6 +62,7 @@ export default function GlobalVesselMap({ vessels = [], selectedId, onSelectVess
       }).addTo(mapInstance.current)
       let fallbackTiles
       tiles.once('tileerror', () => {
+        if (!mapInstance.current) return
         // Some company networks block one public tile host. Try a second
         // reputable provider before showing an error to the operator.
         mapInstance.current?.removeLayer(tiles)
@@ -75,13 +82,17 @@ export default function GlobalVesselMap({ vessels = [], selectedId, onSelectVess
         ? new ResizeObserver(resize)
         : null
       observer?.observe(mapRef.current)
-      requestAnimationFrame(resize)
+      const frame = requestAnimationFrame(resize)
       const timer = window.setTimeout(resize, 250)
 
       return () => {
         window.clearTimeout(timer)
+        cancelAnimationFrame(frame)
         observer?.disconnect()
+        tiles.off('tileerror')
+        fallbackTiles?.off('tileerror')
         fallbackTiles?.remove()
+        mapInstance.current?.stop()
         mapInstance.current?.remove()
         mapInstance.current = null
       }
@@ -119,8 +130,11 @@ export default function GlobalVesselMap({ vessels = [], selectedId, onSelectVess
 
       const marker = L.marker(current, { icon: shipIcon(vessel.id === selectedId) })
         .addTo(map)
-        .bindPopup(`<strong>${escapeHtml(vessel.name)}</strong><br>${escapeHtml(vessel.mmsi ? `MMSI ${vessel.mmsi}` : '')}${vessel.destination_port ? `<br>Destination: ${escapeHtml(vessel.destination_port)}` : ''}`)
+        .bindPopup(`<strong>${escapeHtml(vessel.name)}</strong><br>${escapeHtml(vessel.mmsi ? `MMSI ${vessel.mmsi}` : '')}${vessel.destination_port ? `<br>${language==='sq'?'Destinacioni':'Destination'}: ${escapeHtml(vessel.destination_port)}` : ''}`)
         .on('click', () => onSelectVessel?.(vessel))
+      if (vessel.intelligence?.risk && vessel.intelligence.risk !== 'ON_TRACK') {
+        marker.bindTooltip(escapeHtml(shipmentIntelligenceLabel(vessel.intelligence.risk,language)), {direction:'top', permanent:false})
+      }
 
       layersRef.current.push(marker)
 
@@ -136,9 +150,9 @@ export default function GlobalVesselMap({ vessels = [], selectedId, onSelectVess
     })
 
     if (points.length) {
-      map.fitBounds(L.latLngBounds(points).pad(0.15))
+      map.fitBounds(L.latLngBounds(points).pad(0.15), { animate: false })
     }
-  }, [vessels, selectedId, onSelectVessel])
+  }, [vessels, selectedId, onSelectVessel, language])
 
   return (
     <div className="map-shell">
@@ -164,6 +178,7 @@ export default function GlobalVesselMap({ vessels = [], selectedId, onSelectVess
 }
 
 export function ShipmentRouteMap({ shipment, pendingLabel = 'Waiting for the first AIS position broadcast' }) {
+  const { language } = useTranslation()
   const mapRef = useRef(null)
   const mapInstance = useRef(null)
   const layersRef = useRef({})
@@ -174,6 +189,9 @@ export function ShipmentRouteMap({ shipment, pendingLabel = 'Waiting for the fir
     mapInstance.current = L.map(mapRef.current, {
       zoomControl: true,
       scrollWheelZoom: true,
+      zoomAnimation: false,
+      markerZoomAnimation: false,
+      fadeAnimation: false,
     }).setView([20, 0], 2)
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -181,7 +199,14 @@ export function ShipmentRouteMap({ shipment, pendingLabel = 'Waiting for the fir
       maxZoom: 18,
     }).addTo(mapInstance.current)
 
+    const resize = () => mapInstance.current?.invalidateSize({ animate: false })
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null
+    observer?.observe(mapRef.current)
+    const frame = requestAnimationFrame(resize)
     return () => {
+      cancelAnimationFrame(frame)
+      observer?.disconnect()
+      mapInstance.current?.stop()
       mapInstance.current?.remove()
       mapInstance.current = null
     }
@@ -206,11 +231,11 @@ export function ShipmentRouteMap({ shipment, pendingLabel = 'Waiting for the fir
 
     if (origin) {
       layersRef.current.origin = L.marker(origin, { icon: portIcon }).addTo(map)
-        .bindPopup(`Origin: ${escapeHtml(shipment.origin_port || 'Known origin')}`)
+        .bindPopup(`${language === 'sq' ? 'Origjina' : 'Origin'}: ${escapeHtml(shipment.origin_port || '—')}`)
     }
     if (destination) {
       layersRef.current.destination = L.marker(destination, { icon: portIcon }).addTo(map)
-        .bindPopup(`Destination: ${escapeHtml(shipment.destination_port || 'Known destination')}`)
+        .bindPopup(`${language === 'sq' ? 'Destinacioni' : 'Destination'}: ${escapeHtml(shipment.destination_port || '—')}`)
     }
     if (current) {
       layersRef.current.ship = L.marker(current, { icon: shipIcon(true) }).addTo(map)
@@ -225,16 +250,16 @@ export function ShipmentRouteMap({ shipment, pendingLabel = 'Waiting for the fir
         opacity: 0.75,
         dashArray: shipment.status === 'arrived_at_port' ? null : '8 8',
       }).addTo(map)
-      map.fitBounds(L.latLngBounds(route).pad(0.2))
+      map.fitBounds(L.latLngBounds(route).pad(0.2), { animate: false })
     } else if (route.length === 1) {
-      map.setView(route[0], 6)
+      map.setView(route[0], 6, { animate: false })
     }
-  }, [shipment])
+  }, [shipment, language])
 
   const hasPosition = validPoint(shipment?.current_lat, shipment?.current_lng)
 
   return <div className="map-shell shipment-route-map-shell">
-    <div ref={mapRef} className="shipment-map" aria-label="Shipment route map" />
+    <div ref={mapRef} className="shipment-map" aria-label={language === 'sq' ? 'Harta e itinerarit të dërgesës' : 'Shipment route map'} />
     {!hasPosition ? <div className="map-pending-vessel-detail" role="status">
       <span className="map-pending-radar" aria-hidden="true" />
       <div><strong>{shipment?.vessel_name || (shipment?.mmsi ? `MMSI ${shipment.mmsi}` : shipment?.tracking_number)}</strong><small>{pendingLabel}</small></div>

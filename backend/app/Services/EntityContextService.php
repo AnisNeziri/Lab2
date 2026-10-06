@@ -44,6 +44,7 @@ class EntityContextService
             ]);
 
         return [
+            'tasks'=>$this->permissions->roleHasPermission($role,'tasks.view') ? app(ActionCenterService::class)->tasks(['source_type'=>class_basename($entity),'source_id'=>$entity->id])->items() : [],
             'entity' => ['type' => $type, 'id' => $entity->getKey(), 'label' => $this->label($entity)],
             'activity' => $events->concat($this->domainActivity($type, $entity))->concat($this->outboundActivity($type,$entity))->sortByDesc('occurred_at')->take(12)->values()->all(),
             'outbound' => in_array($type,['customer','product','warehouse'])&&$this->permissions->roleHasPermission($role,'fulfillment.view')?app(OutboundReportingService::class)->context($type,$id):null,

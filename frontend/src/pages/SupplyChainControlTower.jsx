@@ -1,4 +1,5 @@
 import EntityDocuments from '../components/EntityDocuments'
+import {shipmentIntelligenceLabel} from '../components/shipmentIntelligencePresentation'
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Anchor, Boxes, CheckCircle2, ExternalLink, RefreshCw, Radio, Route, Ship } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -7,11 +8,11 @@ import { useAuthStore } from "../store/authStore";
 import { getControlTower, getControlTowerShipment, getControlTowerAttention, getIntegrationHealth, resolveControlTowerException, saveControlTowerMilestone } from "../api/controlTower";
 import "./SupplyChainControlTower.css";
 
-const readable = (value) => String(value || "unknown").replaceAll("_", " ");
 const formatDate = (value) => value ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Unknown";
 
 export default function SupplyChainControlTower() {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
+  const readable = value => shipmentIntelligenceLabel(String(value || 'unknown'), language);
   const navigate = useNavigate();
   const { shipmentId } = useParams();
   const permissions = useAuthStore((state) => state.permissions);

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { ShipmentRouteMap } from '../../components/tracking/GlobalVesselMap'
 import ShipmentsPageIntro from '../../components/ShipmentsPageIntro'
+import ShipmentIntelligence from '../../components/ShipmentIntelligence'
 import EntityDocuments from '../../components/EntityDocuments'
 import { useTranslation } from '../../hooks/useTranslation'
 import {
@@ -67,11 +68,12 @@ function formatDate(value) {
 
 export default function MyShipments() {
   const { t } = useTranslation()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const requestedShipmentId = Number(searchParams.get('shipment')) || null
   const permissions = useAuthStore((state) => state.permissions)
   const canManageLogistics = permissions.includes('shipments.manage')
-  const [view, setView] = useState('active')
+  const [view, setView] = useState(searchParams.get('view') === 'intelligence' ? 'intelligence' : 'active')
+  useEffect(() => { setView(searchParams.get('view') === 'intelligence' ? 'intelligence' : 'active') }, [searchParams.get('view')])
   const [shipments, setShipments] = useState([])
   const [history, setHistory] = useState([])
   const [purchaseOrders, setPurchaseOrders] = useState([])
@@ -115,13 +117,13 @@ export default function MyShipments() {
     try {
       setLoading(true)
       setError('')
-      const [poData, modeData] = await Promise.all([
-        canManageLogistics ? getPurchaseOrders() : Promise.resolve([]),
+      const [, poData, modeData] = await Promise.all([
+        loadShipments(),
+        canManageLogistics ? getPurchaseOrders().catch(() => []) : Promise.resolve([]),
         getSystemMode().catch(() => null),
       ])
       setPurchaseOrders(responseItems(poData))
       setTrackingCapabilities(modeData?.tracking || null)
-      await loadShipments()
     } catch {
       setError(t('shipments.loadError'))
     } finally {
@@ -226,6 +228,7 @@ export default function MyShipments() {
 
   async function switchView(nextView) {
     setView(nextView)
+    setSearchParams(p => { if (nextView === 'intelligence') p.set('view', 'intelligence'); else p.delete('view'); return p })
     try {
       await loadShipments(nextView)
     } catch {
@@ -299,12 +302,15 @@ export default function MyShipments() {
   const selectedAisDetails = selected?.vessel_details?.aisstream || {}
   const selectedDimensions = selectedAisDetails?.static?.dimensions || {}
 
+  if (view === 'intelligence') return <div className="page"><button onClick={() => switchView('active')}>{t('shipments.active')}</button>{error&&<p className="auth-error" role="alert">{error}</p>}<ShipmentIntelligence shipments={shipments}/></div>
+
   return (
     <div className="page">
       <ShipmentsPageIntro message={t('shipments.networkLoading')} />
       {selected&&<EntityDocuments entityType="shipment" entityId={selected.id}/>}
       <div className="shipments-toolbar no-print">
         <div className="shipments-view-tabs">
+          <button type="button" onClick={() => switchView('intelligence')}>{t('shipments.intelligence')}</button>
           <button type="button" className={view === 'active' ? 'active' : ''} onClick={() => switchView('active')}>
             {t('shipments.active')}
           </button>

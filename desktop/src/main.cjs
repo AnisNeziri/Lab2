@@ -22,6 +22,13 @@ const gotSingleInstanceLock = app.requestSingleInstanceLock()
 let backendProcess
 let documentMaintenanceProcess
 let documentMaintenanceTimer
+let automationTimer
+let automationProcess
+let analyticsTimer
+let optimizerTimer
+let optimizerProcess
+let optimizerMaintenanceProcess
+let analyticsProcess
 let aisProcess
 let frontendServer
 let mainWindow
@@ -359,6 +366,30 @@ function decryptedValue(file) {
   return safeStorage.decryptString(fs.readFileSync(file))
 }
 
+function recoveryCredential() {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows protected storage is required to provision AIMS recovery access.')
+  const file = userDataPath('recovery-pending.enc')
+  if (fs.existsSync(file)) return decryptedValue(file)
+  const password = crypto.randomBytes(24).toString('base64url')
+  encryptedValue(file, password)
+  return password
+}
+
+async function acknowledgeRecovery(password, setupOutput) {
+  const file = userDataPath('recovery-pending.enc')
+  if (setupOutput.includes('AIMS_RECOVERY_PROVISIONED')) {
+    const result = await dialog.showMessageBox({
+      type: 'warning', title: 'AIMS recovery access',
+      message: 'Save your unique recovery password in a password manager.',
+      detail: `Account: aimsadmin@company.com\nTemporary password: ${password}\n\nYou must change this password after signing in. Keep it with the installation owner, not in a shared company document.`,
+      buttons: ['I saved it securely', 'Remind me next launch'], defaultId: 1, cancelId: 1,
+      noLink: true,
+    })
+    if (result.response !== 0) return
+  }
+  fs.rmSync(file, { force: true })
+}
+
 function envFileValue(file, name) {
   try {
     if (!fs.existsSync(file)) return ''
@@ -468,6 +499,8 @@ function backupDatabase() {
       '$database = new PDO("sqlite:".$source);',
       '$database->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);',
       '$database->exec("VACUUM INTO ".$database->quote($target));',
+      '$copy = new PDO("sqlite:".$target);',
+      'if ($copy->query("PRAGMA quick_check")->fetchColumn() !== "ok") { throw new RuntimeException("Backup integrity verification failed"); }',
     ].join('')
 
     execFileSync(phpExecutable(), ['-r', script], {
@@ -481,15 +514,11 @@ function backupDatabase() {
       windowsHide: true,
     })
   } catch (error) {
-    // Keep a recoverable snapshot even if VACUUM INTO is unavailable. When a
-    // previous run ended abnormally, the WAL sidecar can contain committed rows
-    // that are not yet checkpointed into the main SQLite file.
-    fs.copyFileSync(database, backup)
-    for (const suffix of ['-wal', '-shm']) {
-      const sourceSidecar = `${database}${suffix}`
-      if (fs.existsSync(sourceSidecar)) fs.copyFileSync(sourceSidecar, `${backup}${suffix}`)
-    }
-    log('Consistent SQLite snapshot was unavailable; copied database sidecars', error.message)
+    // Never upgrade on the strength of an unverified raw/WAL file copy.
+    // Leave the live database and earlier recovery points untouched.
+    fs.rmSync(backup, { force: true })
+    log('Pre-upgrade recovery snapshot failed', error.message)
+    throw new Error('AIMS could not verify a recovery snapshot. No database upgrade was started. Check free disk space and contact support; your existing database is unchanged.')
   }
 
   const backups = fs.readdirSync(directory)
@@ -510,10 +539,7 @@ function localEnvironment() {
   const appKey = loadAppKey()
   const aisStreamKey = loadAisStreamKey()
   const phpIni = ensurePhpIni()
-  const inherited = { ...process.env }
-  for (const key of Object.keys(inherited)) {
-    if (/^(APP_KEY|DB_|MYSQL_|REDIS_PASSWORD|AISSTREAM_API_KEY|VESSELAPI_API_KEY|REVERB_APP_SECRET|STRIPE_SECRET|MAIL_PASSWORD)$/i.test(key)) delete inherited[key]
-  }
+  const inherited = require('./runtime-env.cjs').sanitizeInheritedEnvironment(process.env)
 
   return {
     ...inherited,
@@ -528,6 +554,8 @@ function localEnvironment() {
     ...(aisStreamKey ? { AISSTREAM_API_KEY: aisStreamKey } : {}),
     DB_CONNECTION: 'sqlite',
     DB_DATABASE: userDataPath('aims.sqlite'),
+    DB_URL: '',
+    AIMS_ML_PYTHON: fs.existsSync(resourcePath('python','python.exe')) ? resourcePath('python','python.exe') : (process.env.AIMS_ML_PYTHON || 'python'),
     CACHE_STORE: 'file',
     QUEUE_CONNECTION: 'sync',
     BROADCAST_CONNECTION: 'log',
@@ -563,9 +591,45 @@ function runArtisan(runtime, args, env) {
     log('Laravel command failed', output)
     throw new Error('AIMS could not initialize its local database. Check the desktop log for details.')
   }
+  return result.stdout || ''
 }
 
 function startBackend(runtime, env) {
+  const captureAnalytics=()=>{
+    if(shuttingDown || analyticsProcess) return
+    analyticsProcess=spawn(phpExecutable(),['artisan','analytics:capture'],{cwd:runtime,env,windowsHide:true,shell:false,stdio:'ignore'})
+    analyticsProcess.once('error',error=>{log('Analytics capture',error.message);analyticsProcess=null})
+    analyticsProcess.once('exit',()=>{
+      analyticsProcess=null
+      if(shuttingDown) return
+      analyticsProcess=spawn(phpExecutable(),['artisan','intelligence:maintain'],{cwd:runtime,env,windowsHide:true,shell:false,stdio:'ignore'})
+      analyticsProcess.once('error',()=>{analyticsProcess=null})
+      analyticsProcess.once('exit',()=>{
+        analyticsProcess=null
+        if(shuttingDown) return
+        analyticsProcess=spawn(phpExecutable(),['artisan','finance-intelligence:refresh'],{cwd:runtime,env,windowsHide:true,shell:false,stdio:'ignore'})
+        analyticsProcess.once('error',error=>{log('Financial intelligence refresh',error.message);analyticsProcess=null})
+        analyticsProcess.once('exit',()=>{analyticsProcess=null;if(shuttingDown)return;analyticsProcess=spawn(phpExecutable(),['artisan','customer-intelligence:refresh'],{cwd:runtime,env,windowsHide:true,shell:false,stdio:'ignore'});analyticsProcess.once('error',error=>{log('Customer intelligence refresh',error.message);analyticsProcess=null});analyticsProcess.once('exit',()=>{analyticsProcess=null;if(shuttingDown)return;analyticsProcess=spawn(phpExecutable(),['artisan','decision-learning:maintain'],{cwd:runtime,env,windowsHide:true,shell:false,stdio:'ignore'});analyticsProcess.once('error',error=>{log('Decision learning maintenance',error.message);analyticsProcess=null});analyticsProcess.once('exit',()=>{analyticsProcess=null})})})
+      })
+    })
+  }
+  analyticsTimer=setInterval(captureAnalytics,60*60*1000)
+  captureAnalytics() // Resume bounded, idempotent observation/evaluation work after downtime.
+  const runAutomations=()=>{
+    if(automationProcess && !automationProcess.killed) return
+    automationProcess=spawn(phpExecutable(),['artisan','automations:tick'],{cwd:runtime,env,windowsHide:true,shell:false,stdio:'ignore'})
+    automationProcess.once('error',error=>{log('Automation scheduler',error.message);automationProcess=null})
+    automationProcess.once('exit',()=>{automationProcess=null;if(shuttingDown||optimizerMaintenanceProcess)return;optimizerMaintenanceProcess=spawn(phpExecutable(),['artisan','supply-optimizer:maintain'],{cwd:runtime,env,windowsHide:true,shell:false,stdio:'ignore'});optimizerMaintenanceProcess.once('error',()=>{optimizerMaintenanceProcess=null});optimizerMaintenanceProcess.once('exit',()=>{optimizerMaintenanceProcess=null})})
+  }
+  automationTimer=setInterval(runAutomations,60000)
+  const runOptimizer=()=>{
+    if(optimizerProcess&&!optimizerProcess.killed)return
+    optimizerProcess=spawn(phpExecutable(),['artisan','supply-optimizer:work','--once'],{cwd:runtime,env,windowsHide:true,shell:false,stdio:'ignore'})
+    optimizerProcess.once('error',error=>{log('Supply optimizer',error.message);optimizerProcess=null})
+    optimizerProcess.once('exit',()=>{optimizerProcess=null})
+  }
+  optimizerTimer=setInterval(runOptimizer,3000)
+  runOptimizer()
   const maintainDocuments = () => {
     if (shuttingDown || documentMaintenanceProcess) return
     documentMaintenanceProcess = spawn(phpExecutable(), ['artisan', 'documents:expiry-alerts'], {cwd: runtime, env, windowsHide: true, shell: false, stdio: ['ignore', 'ignore', 'pipe']})
@@ -773,7 +837,9 @@ async function createWindow() {
     if (!await portAvailable(frontendPort)) throw new Error(`Port ${frontendPort} is already in use. Close another AIMS instance and try again.`)
     backupDatabase()
     runArtisan(runtime, ['optimize:clear'], env)
-    runArtisan(runtime, ['aims:desktop-setup'], env)
+    const recoveryPassword = recoveryCredential()
+    const setupOutput = runArtisan(runtime, ['aims:desktop-setup'], { ...env, AIMS_DESKTOP_RECOVERY_PASSWORD: recoveryPassword })
+    await acknowledgeRecovery(recoveryPassword, setupOutput)
     startBackend(runtime, env)
     startAisWorker(runtime, env)
     await waitForBackend()
@@ -834,6 +900,13 @@ function shutdown() {
   }
   if (backendProcess && !backendProcess.killed) {
     clearInterval(documentMaintenanceTimer)
+    clearInterval(automationTimer)
+    clearInterval(analyticsTimer)
+    clearInterval(optimizerTimer)
+    if(optimizerProcess&&!optimizerProcess.killed)optimizerProcess.kill()
+    if(optimizerMaintenanceProcess&&!optimizerMaintenanceProcess.killed)optimizerMaintenanceProcess.kill()
+    if(analyticsProcess && !analyticsProcess.killed) analyticsProcess.kill()
+    if(automationProcess && !automationProcess.killed) automationProcess.kill()
     if(documentMaintenanceProcess && !documentMaintenanceProcess.killed) documentMaintenanceProcess.kill()
     if (process.platform === 'win32') {
       spawnSync('taskkill.exe', ['/pid', String(backendProcess.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' })

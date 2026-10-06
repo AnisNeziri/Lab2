@@ -1,4 +1,7 @@
 export const en = {
+  "common.close": "Close",
+  "nav.analytics": "Analytics",
+  "nav.inventoryIntelligence": "Inventory Intelligence",
   "finance.receivedDate": "Received date", "finance.supplierVat": "Supplier VAT", "finance.selfAssessedVat": "Self-assessed VAT", "finance.supplierPayable": "Payable to supplier",
   "finance.paymentExchangeRequired": "Enter the payment exchange rate.", "finance.paymentExchangeRate": "Payment exchange rate", "finance.paymentEurValue": "Payment value in base currency", "finance.invoiceDateShort": "Invoice date",
   "productTracking.openingManufactureRequired": "Enter the manufacturing date for opening stock.", "productTracking.shelfLifeBasis": "Shelf-life basis", "productTracking.shelfLifeManufacture": "Manufacturing date", "productTracking.shelfLifeReceipt": "Receipt date",
@@ -12,6 +15,11 @@ export const en = {
   "search.empty": "No permitted records match this search.", "search.hint": "Type at least two characters to search records. Commands are filtered by your permissions.", "search.close": "Close search",
   "nav.fulfillment": "Orders & Fulfillment",
   "nav.orderHub": "Orders",
+  "nav.actionCenter": "Action Center",
+  "nav.automationStudio": "Automation Studio",
+  "backup.module.automations": "Automations, tasks & execution history",
+  "backup.module.analytics": "Analytics observations, datasets & history",
+  "backup.module.order_hub": "Online orders & channels",
   "backup.module.order_hub": "Order Hub & channels",
   "nav.documents": "Documents",
   "backup.module.documents": "Documents & evidence",
@@ -683,6 +691,7 @@ export const en = {
   "settings.checkUpdates": "Check for updates",
 
   "shipments.title": "Shipment Tracking",
+  "shipments.intelligence": "Shipment Intelligence",
   "shipments.subtitle":
     "Track warehouse inbound shipments with live route updates.",
   "shipments.trackError": "Could not register tracking number.",

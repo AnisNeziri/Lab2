@@ -4,9 +4,11 @@ import { Bell, X, AlertTriangle, Package, Trash2 } from 'lucide-react'
 import { clearNotifications, getNotifications, markNotificationRead, markAllNotificationsRead } from '../api/notifications'
 import { useNotificationStore } from '../store/notificationStore'
 import { useSettingsStore } from '../store/settingsStore'
+import { useDialog } from '../hooks/useDialog'
 
 export default function NotificationCenter({ onNavigate }) {
   const language=useSettingsStore(state=>state.language)
+  const copy=(en,sq)=>language==='sq'?sq:en
   const notifications = useNotificationStore((state) => state.notifications)
   const unreadCount = useNotificationStore((state) => state.unreadCount)
   const setNotifications = useNotificationStore((state) => state.setNotifications)
@@ -14,7 +16,9 @@ export default function NotificationCenter({ onNavigate }) {
   const markAllAsRead = useNotificationStore((state) => state.markAllAsRead)
   const [isOpen, setIsOpen] = useState(false)
   const [clearBusy, setClearBusy] = useState(false)
-  const panelRef = useRef(null)
+  const [error, setError] = useState('')
+  const mutationPending = useRef(false)
+  const panelRef = useDialog(()=>setIsOpen(false), clearBusy, isOpen)
   const bellRef = useRef(null)
   const [panelStyle, setPanelStyle] = useState({ top: 72, left: 16 })
 
@@ -46,8 +50,9 @@ export default function NotificationCenter({ onNavigate }) {
     try {
       const data = await getNotifications()
       setNotifications(data.notifications || [])
-    } catch {
-      setNotifications([])
+      setError('')
+    } catch (cause) {
+      setError(cause.message)
     }
   }, [setNotifications])
 
@@ -71,51 +76,50 @@ export default function NotificationCenter({ onNavigate }) {
     window.addEventListener('scroll', updatePanelPosition, true)
 
     function handlePointerDown(event) {
-      if (panelRef.current && !panelRef.current.contains(event.target)) {
-        setIsOpen(false)
-      }
-    }
-
-    function handleEscape(event) {
-      if (event.key === 'Escape') {
+      if (!mutationPending.current && panelRef.current && !panelRef.current.contains(event.target)) {
         setIsOpen(false)
       }
     }
 
     document.addEventListener('mousedown', handlePointerDown)
-    document.addEventListener('keydown', handleEscape)
     return () => {
       window.removeEventListener('resize', updatePanelPosition)
       window.removeEventListener('scroll', updatePanelPosition, true)
       document.removeEventListener('mousedown', handlePointerDown)
-      document.removeEventListener('keydown', handleEscape)
     }
   }, [isOpen, updatePanelPosition])
 
   const handleMarkAsRead = async (id) => {
-    markAsRead(id)
     try {
       await markNotificationRead(id)
-    } catch {
+      markAsRead(id)
+    } catch (cause) {
+      setError(cause.message)
     }
   }
 
   const handleMarkAllAsRead = async () => {
-    markAllAsRead()
+    if(mutationPending.current)return
+    mutationPending.current=true;setClearBusy(true);setError('')
     try {
       await markAllNotificationsRead()
-    } catch {
-    }
+      markAllAsRead()
+    } catch (cause) { setError(cause.message) }
+    finally { mutationPending.current=false;setClearBusy(false) }
   }
 
   const handleClear = async () => {
-    if (!notifications.length || clearBusy) return
+    if (!notifications.length || mutationPending.current) return
+    mutationPending.current=true
     setClearBusy(true)
+    setError('')
     try {
       await clearNotifications('all')
       setNotifications([])
-    } catch {
+    } catch (cause) {
+      setError(cause.message)
     } finally {
+      mutationPending.current=false
       setClearBusy(false)
     }
   }
@@ -124,7 +128,8 @@ export default function NotificationCenter({ onNavigate }) {
     handleMarkAsRead(notification.id)
     const data = notification.data || {}
     let path = '/dashboard'
-    if (data.order_intake_id) path = `/order-hub?intake=${data.order_intake_id}`
+    if (['automation','shipment_intelligence'].includes(notification.type) && /^\/(?!\/)/.test(data.url || '')) path=data.url
+    else if (data.order_intake_id) path = `/order-hub?intake=${data.order_intake_id}`
     else if (data.document_id) path = `/documents?document=${data.document_id}`
     else if (data.sales_order_id) path = `/fulfillment?order=${data.sales_order_id}`
     else if (data.shipment_id) path = `/shipments/my-shipments?shipment=${data.shipment_id}`
@@ -137,33 +142,35 @@ export default function NotificationCenter({ onNavigate }) {
   const dropdown = isOpen
     ? createPortal(
         <>
-          <div className="notification-backdrop" onClick={() => setIsOpen(false)} />
-          <div className="notification-dropdown" ref={panelRef} style={panelStyle}>
+          <div className="notification-backdrop" onClick={() => {if(!mutationPending.current)setIsOpen(false)}} />
+          <div className="notification-dropdown" ref={panelRef} style={panelStyle} role="dialog" aria-modal="true" aria-label={copy('Notifications','Njoftimet')}>
             <div className="notification-header">
-              <h3>Notifications</h3>
+              <h3>{copy('Notifications','Njoftimet')}</h3>
               <div className="notification-header-actions">
                 {unreadCount > 0 && (
-                  <button type="button" className="mark-read-btn" onClick={handleMarkAllAsRead}>
-                    Mark all read
+                  <button type="button" className="mark-read-btn" disabled={clearBusy} onClick={handleMarkAllAsRead}>
+                    {copy('Mark all read','Shëno të gjitha të lexuara')}
                   </button>
                 )}
                 <>
-                  <button type="button" className="mark-read-btn notification-clear-btn" onClick={handleClear} disabled={clearBusy || notifications.length === 0} aria-label="Clear notifications">
+                  <button type="button" className="mark-read-btn notification-clear-btn" onClick={handleClear} disabled={clearBusy || notifications.length === 0} aria-label={copy('Clear notifications','Pastro njoftimet')}>
                     <Trash2 size={13} />
-                    {clearBusy ? 'Clearing…' : 'Clear'}
+                    {clearBusy ? copy('Working…','Duke punuar…') : copy('Clear','Pastro')}
                   </button>
                 </>
-                <button type="button" className="close-btn" onClick={() => setIsOpen(false)}>
+                <button type="button" className="close-btn" disabled={clearBusy} aria-label={copy('Close notifications','Mbyll njoftimet')} onClick={() => setIsOpen(false)}>
                   <X size={16} />
                 </button>
               </div>
             </div>
 
+            {error&&<div className="notification-error" role="alert"><p>{error}</p><button type="button" onClick={fetchNotifications}>{copy('Retry loading','Provo ngarkimin përsëri')}</button></div>}
+
             <div className="notification-list">
               {notifications.length === 0 ? (
                 <div className="notification-empty">
                   <Package size={32} />
-                  <p>No notifications yet</p>
+                  <p>{copy('No notifications yet','Nuk ka njoftime ende')}</p>
                 </div>
               ) : (
                 notifications.map((notification) => (
@@ -200,7 +207,7 @@ export default function NotificationCenter({ onNavigate }) {
         className="notification-bell"
         ref={bellRef}
         aria-expanded={isOpen}
-        aria-label="Open notifications"
+        aria-label={copy('Open notifications','Hap njoftimet')}
         onClick={toggleOpen}
       >
         <Bell size={20} />

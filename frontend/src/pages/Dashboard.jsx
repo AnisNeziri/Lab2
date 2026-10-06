@@ -1,5 +1,8 @@
 import { useUiText } from '../hooks/useUiText'
 import OrdersOverview from '../components/OrdersOverview'
+import MyActionsSummary from '../components/MyActionsSummary'
+import CustomerSalesSummary from '../components/CustomerSalesSummary'
+import { movementActivity, categoryActivity } from '../components/dashboardPresentation'
 import { useEffect, useState, useCallback, useRef, createContext, useContext, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getDashboard, getSalesAnalytics } from '../api/dashboard'
@@ -500,51 +503,18 @@ export default function Dashboard() {
     return () => ch.stopListening('.stock.updated').stopListening('.notification.created')
   }, [user?.company_id, loadDashboard, loadAlerts, showLiveEvent])
 
-  const movementChart = (() => {
-    if (!data?.recent_movements?.length) return []
-    const map = {}
-    ;[...data.recent_movements].reverse().forEach(m => {
-      const d = new Date(m.created_at).toLocaleDateString('en', { month: 'short', day: 'numeric' })
-      if (!map[d]) map[d] = { date: d, In: 0, Out: 0 }
-      if (m.type === 'in')  map[d].In  += Number(m.quantity || 0)
-      if (m.type === 'out') map[d].Out += Number(m.quantity || 0)
-    })
-    return Object.values(map).slice(-10)
-  })()
-
-  // "Top Selling Categories" — aggregate outbound movements by category
-  const categoryChart = (() => {
-    const movements = data?.recent_movements ?? []
-    const map = {}
-    movements
-      .filter(m => m.type === 'out')
-      .forEach(m => {
-        const k = m.product?.category?.name ?? m.category_name ?? 'Other'
-        map[k] = (map[k] ?? 0) + Number(m.quantity ?? 0)
-      })
-    // fallback: if no movement category data, use all products by category
-    if (!Object.keys(map).length) {
-      ;(data?.low_stock_products ?? []).forEach(p => {
-        const k = p.category?.name ?? 'Other'
-        map[k] = (map[k] ?? 0) + 1
-      })
-    }
-    return Object.entries(map).map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value).slice(0, 6)
-  })()
+  const movementChart = movementActivity(data?.recent_movements || [], language === 'sq' ? 'sq-AL' : 'en-GB')
+  const categoryChart = categoryActivity(data?.recent_movements || [], tx('Uncategorised'))
 
   const totalValue  = data?.total_value      ?? 0
   const totalProds  = data?.total_products   ?? 0
 
-  const zoneData = sectionChart.length > 0
-    ? sectionChart.slice(0, 8)
-    : [{ name: 'Unassigned', value: totalProds || 1 }]
+  const zoneData = sectionChart.slice(0, 8)
   const lowCnt = new Set([
     ...(data?.low_stock_products ?? []).map(product => product.id),
     ...(data?.out_of_stock_products ?? []).map(product => product.id),
   ]).size
   const turnover    = data?.stock_turnover   ?? 0
-  const accuracy    = totalProds > 0 ? Math.round(((totalProds - lowCnt) / totalProds) * 100) : 100
 
   if (loading) return (
     <DashboardColorsContext.Provider value={palette}>
@@ -577,7 +547,6 @@ export default function Dashboard() {
   return (
     <DashboardColorsContext.Provider value={palette}>
     <div className="dashboard-page" style={{ background: palette.bg, minHeight: '100vh', width: '100%', boxSizing: 'border-box', color: palette.text, fontFamily: 'system-ui,sans-serif' }}>
-      <OrdersOverview />
       <style>{`
         @keyframes spin    { to { transform:rotate(360deg) } }
         @keyframes pulse   { 0%,100%{opacity:1}50%{opacity:.35} }
@@ -653,15 +622,15 @@ export default function Dashboard() {
 
         <div className="dashboard-kpi-grid" style={{ gap: 16, marginBottom: 24 }}>
           <KpiCard icon={DollarSign}  label={tx("Total Stock Value")}        value={fmtMoney(totalValue)}             color={palette.green}  glow sub={`${fmt(totalProds)} SKUs tracked`} />
-          <KpiCard icon={TrendingUp}  label={tx("Inventory Turnover Rate")}  value={turnover ? `${turnover}×` : '—'} color={palette.cyan} sub="Inventory cycles / period" />
+          <KpiCard icon={TrendingUp}  label={tx("Inventory Turnover Rate")}  value={data?.stock_turnover == null ? '—' : `${turnover}×`} color={palette.cyan} sub={tx("Inventory cycles / period")} />
           <KpiCard icon={Boxes}       label={tx("Warehouse Sections")}        value={`${sectionChart.length || 0} active`} color={palette.purple} glow sub={sectionChart.length ? tx("Stock spread across layout") : tx("Configure layout to assign products")} />
-          <KpiCard icon={ShieldCheck} label={tx("Fulfillment Accuracy Rate")} value={`${accuracy}%`}                 color={palette.indigo}     glow={accuracy < 85} sub={lowCnt > 0 ? `${lowCnt} item${lowCnt !== 1 ? 's' : ''} need attention` : tx("All stock healthy")} />
+          <KpiCard icon={ShieldCheck} label={tx("Flagged stock products")} value={fmt(lowCnt)} color={palette.indigo} glow={lowCnt > 0} sub={tx("Based on current dashboard stock alerts")} />
         </div>
 
         <div className="dashboard-analytics-grid" style={{ gap: 16, marginBottom: 24 }}>
 
           {/* Inbound vs Outbound */}
-          <ChartCard title={tx("Inbound vs Outbound Movements")} icon={Activity} color={palette.cyan}>
+          <ChartCard title={tx("Recent stock movements (count)")} icon={Activity} color={palette.cyan}>
             {movementChart.length === 0 ? (
               <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: palette.muted, fontSize: 13 }}>{tx("No movement data yet")}</div>
             ) : (
@@ -681,15 +650,15 @@ export default function Dashboard() {
                   <XAxis dataKey="date" tick={axisTick} axisLine={false} tickLine={false} dy={6} />
                   <YAxis tick={axisTick} axisLine={false} tickLine={false} width={36} />
                   <Tooltip content={<ChartTip />} />
-                  <Area type="monotone" dataKey="In" stroke={palette.green} strokeWidth={2.5} fill="url(#gIn)" name="Inbound" dot={false} activeDot={{ r: 4 }} />
-                  <Area type="monotone" dataKey="Out" stroke={palette.red} strokeWidth={2.5} fill="url(#gOut)" name="Outbound" dot={false} activeDot={{ r: 4 }} />
+                  <Area type="monotone" dataKey="In" stroke={palette.green} strokeWidth={2.5} fill="url(#gIn)" name={tx("Inbound movements")} dot={false} activeDot={{ r: 4 }} />
+                  <Area type="monotone" dataKey="Out" stroke={palette.red} strokeWidth={2.5} fill="url(#gOut)" name={tx("Outbound movements")} dot={false} activeDot={{ r: 4 }} />
                 </AreaChart>
               </ResponsiveContainer>
             )}
           </ChartCard>
 
           {/* Category bar chart */}
-          <ChartCard title={tx("Top Selling Categories")} icon={BarChart3} color={palette.indigo}>
+          <ChartCard title={tx("Recent stock-out activity by category")} icon={BarChart3} color={palette.indigo}>
             {categoryChart.length === 0 ? (
               <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: palette.muted, fontSize: 13 }}>{tx("No category data")}</div>
             ) : (
@@ -709,7 +678,7 @@ export default function Dashboard() {
 
           {/* Zone donut */}
           <ChartCard title={tx("Stock by Section")} icon={Boxes} color={palette.purple}>
-            <ResponsiveContainer width="100%" height={220}>
+            {zoneData.length === 0 ? <p style={{ color: palette.muted }}>{tx("No warehouse distribution recorded")}</p> : <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie data={zoneData} cx="50%" cy="45%" innerRadius={48} outerRadius={72} dataKey="value" paddingAngle={2} stroke="none">
                   {zoneData.map((_, i) => <Cell key={i} fill={ZONE_COLORS[i % ZONE_COLORS.length]} />)}
@@ -717,7 +686,7 @@ export default function Dashboard() {
                 <Tooltip content={<ChartTip />} />
                 <Legend iconType="circle" iconSize={7} layout="horizontal" verticalAlign="bottom" formatter={(v) => <span style={{ fontSize: 11, color: palette.muted }}>{v}</span>} />
               </PieChart>
-            </ResponsiveContainer>
+            </ResponsiveContainer>}
           </ChartCard>
         </div>
 
@@ -742,16 +711,16 @@ export default function Dashboard() {
             {salesAnalytics ? <strong>{salesAnalytics.start_date} → {salesAnalytics.end_date}</strong> : null}
           </div>
           <div className="dashboard-sales-summary">
-            <div><span>{t('dashboard.salesTotal')}</span><strong>{fmtMoney(salesAnalytics?.total_sales ?? 0)}</strong></div>
-            <div><span>{t('dashboard.salesCost')}</span><strong>{fmtMoney(salesAnalytics?.total_cost ?? 0)}</strong></div>
-            <div className="dashboard-profit-summary"><span>{t('dashboard.salesProfit')}</span><strong>{fmtMoney(salesAnalytics?.gross_profit ?? 0)}</strong></div>
+            <div><span>{t('dashboard.salesTotal')}</span><strong>{salesAnalytics ? fmtMoney(salesAnalytics.total_sales) : '—'}</strong></div>
+            <div><span>{t('dashboard.salesCost')}</span><strong>{salesAnalytics ? fmtMoney(salesAnalytics.total_cost) : '—'}</strong></div>
+            <div className="dashboard-profit-summary"><span>{t('dashboard.salesProfit')}</span><strong>{salesAnalytics ? fmtMoney(salesAnalytics.gross_profit) : '—'}</strong></div>
             <div className={Number(salesAnalytics?.gross_margin_percent ?? 0) >= 0 ? 'is-positive' : 'is-negative'}>
               <span>{t('dashboard.salesMargin')}</span>
               <strong>{salesAnalytics?.gross_margin_percent == null ? '—' : `${salesAnalytics.gross_margin_percent}%`}</strong>
             </div>
-            <div><span>{t('dashboard.salesTransactions')}</span><strong>{fmt(salesAnalytics?.transaction_count ?? 0)}</strong></div>
-            <div><span>{t('dashboard.salesQuantity')}</span><strong>{fmt(salesAnalytics?.total_quantity ?? 0)}</strong></div>
-            <div><span>{t('dashboard.salesAverage')}</span><strong>{fmtMoney(salesAnalytics?.average_sale ?? 0)}</strong></div>
+            <div><span>{t('dashboard.salesTransactions')}</span><strong>{salesAnalytics ? fmt(salesAnalytics.transaction_count) : '—'}</strong></div>
+            <div><span>{t('dashboard.salesQuantity')}</span><strong>{salesAnalytics ? fmt(salesAnalytics.total_quantity) : '—'}</strong></div>
+            <div><span>{t('dashboard.salesAverage')}</span><strong>{salesAnalytics ? fmtMoney(salesAnalytics.average_sale) : '—'}</strong></div>
             <div className={salesAnalytics?.change_percent == null ? '' : salesAnalytics.change_percent >= 0 ? 'is-positive' : 'is-negative'}>
               <span>{t('dashboard.salesVsPrevious')}</span>
               <strong>{salesAnalytics?.change_percent == null ? '—' : `${salesAnalytics.change_percent > 0 ? '+' : ''}${salesAnalytics.change_percent}%`}</strong>
@@ -835,6 +804,7 @@ export default function Dashboard() {
           {/* Quick actions */}
           <QuickActions />
         </div>
+        <section className="dashboard-attention dashboard-attention-bottom" aria-label={tx('Today’s work')}><OrdersOverview/><MyActionsSummary/><CustomerSalesSummary/></section>
       </div>
     </div>
     </DashboardColorsContext.Provider>

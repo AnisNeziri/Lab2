@@ -1,5 +1,13 @@
 // The same route-level permissions drive navigation and direct URL access.
 export const pagePermissions = {
+  'supply-optimizer':['analytics.finance'],
+  'decision-learning':['analytics.view'],
+  'customer-sales-intelligence':['analytics.view'],
+  'financial-intelligence':['analytics.finance'],
+  analytics:['analytics.view'],
+  'inventory-intelligence':['analytics.view'],
+  'action-center':['tasks.view'],
+  'automation-studio':['automations.view'],
   dashboard: ['dashboard.view'],
   products: ['products.manage', 'inventory.view'],
   stock: ['inventory.view'],
@@ -32,6 +40,11 @@ export const pagePermissions = {
 }
 
 export function canOpenPage(page, permissions = []) {
-  const required = pagePermissions[page.split('?')[0]]
+  const pathname = String(page).replace(/^\/+|\/+$/g, '').split(/[?#]/)[0]
+  const key = pathname.startsWith('control-tower/') ? 'control-tower' : pathname
+  const required = pagePermissions[key]
+  if (key === 'supply-optimizer') return ['analytics.view','analytics.finance','inventory.view','procurement.view','finance.view','financial_accounts.view'].every(p=>permissions.includes(p))
+  if (key === 'customer-sales-intelligence') return ['analytics.view', 'customers.manage', 'daily_sales.manage'].every(p => permissions.includes(p))
+  if (key === 'financial-intelligence') return ['analytics.finance', 'finance.view', 'financial_accounts.view'].every(p => permissions.includes(p))
   return !required || required.some((permission) => permissions.includes(permission))
 }

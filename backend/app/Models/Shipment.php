@@ -124,6 +124,8 @@ class Shipment extends Model
         return $this->hasMany(ShipmentHistory::class)->latest('created_at');
     }
 
+    public function intelligence(): HasMany { return $this->hasMany(ShipmentIntelligence::class); }
+
     public function containers(): HasMany
     {
         return $this->hasMany(ShipmentContainer::class);

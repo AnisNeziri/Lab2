@@ -1,4 +1,7 @@
 export const sq = {
+  "common.close": "Mbyll",
+  "nav.analytics": "Analitika",
+  "nav.inventoryIntelligence": "Inteligjenca e inventarit",
   "finance.receivedDate": "Data e pranimit", "finance.supplierVat": "TVSH e furnitorit", "finance.selfAssessedVat": "TVSH e vetëllogaritur", "finance.supplierPayable": "Detyrimi ndaj furnitorit",
   "finance.paymentExchangeRequired": "Vendosni kursin e këmbimit të pagesës.", "finance.paymentExchangeRate": "Kursi i këmbimit të pagesës", "finance.paymentEurValue": "Vlera e pagesës në valutën bazë", "finance.invoiceDateShort": "Data e faturës",
   "productTracking.openingManufactureRequired": "Vendosni datën e prodhimit për stokun fillestar.", "productTracking.shelfLifeBasis": "Baza e afatit të ruajtjes", "productTracking.shelfLifeManufacture": "Data e prodhimit", "productTracking.shelfLifeReceipt": "Data e pranimit",
@@ -12,6 +15,11 @@ export const sq = {
   "search.empty": "Nuk u gjetën të dhëna të lejuara për këtë kërkim.", "search.hint": "Shkruani të paktën dy karaktere. Komandat filtrohen sipas lejeve tuaja.", "search.close": "Mbyll kërkimin",
   "nav.fulfillment": "Porositë & Përmbushja",
   "nav.orderHub": "Porositë",
+  "nav.actionCenter": "Qendra e veprimeve",
+  "nav.automationStudio": "Studio e automatizimit",
+  "backup.module.automations": "Automatizimet, detyrat dhe historiku",
+  "backup.module.analytics": "Analitika, grupet e të dhënave dhe historiku",
+  "backup.module.order_hub": "Porositë online dhe kanalet",
   "backup.module.order_hub": "Qendra e porosive & kanalet",
   "nav.documents": "Dokumentet",
   "backup.module.documents": "Dokumentet dhe dëshmitë",
@@ -684,6 +692,7 @@ export const sq = {
   "settings.checkUpdates": "Kontrollo përditësimet",
 
   "shipments.title": "Gjurmimi i dërgesave",
+  "shipments.intelligence": "Inteligjenca e dërgesave",
   "shipments.subtitle":
     "Gjurmoni dërgesat hyrëse të magazinës me përditësime të rrugës në kohë reale.",
   "shipments.trackError": "Numri i gjurmimit nuk u regjistrua.",

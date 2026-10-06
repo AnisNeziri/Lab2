@@ -1,0 +1,41 @@
+import {test,expect} from '@playwright/test'
+import {spawnSync} from 'node:child_process'
+import {fileURLToPath} from 'node:url'
+import {login} from '../helpers/auth.mjs'
+
+test('V6 fabric shipment shows delay, exposed inventory, human reviews and responsive bilingual details',async({page})=>{
+ test.setTimeout(90000)
+ const database=fileURLToPath(new URL('../../../backend/database/e2e.sqlite',import.meta.url))
+ const fixture=spawnSync('php',[fileURLToPath(new URL('../fixtures/logistics.php',import.meta.url))],{env:{...process.env,APP_ENV:'e2e',DB_CONNECTION:'sqlite',DB_DATABASE:database,DB_URL:'',CACHE_STORE:'array',SESSION_DRIVER:'array',QUEUE_CONNECTION:'sync',MAIL_MAILER:'array',BROADCAST_CONNECTION:'log'},encoding:'utf8'})
+ expect(fixture.status,fixture.stderr||fixture.stdout).toBe(0)
+ const id=JSON.parse(fixture.stdout).shipment_id,errors=[];page.on('pageerror',e=>errors.push(e.message));await login(page)
+ await page.goto('/shipments/my-shipments?view=intelligence')
+ await expect(page.getByRole('heading',{name:'Shipment Intelligence',exact:true})).toBeVisible()
+ await page.getByRole('combobox',{name:'Shipment to evaluate',exact:true}).selectOption(String(id))
+ await page.getByRole('button',{name:'Evaluate shipment',exact:true}).click()
+ await expect(page.locator('.logistics-detail')).toBeVisible()
+ await expect(page.locator('.logistics-detail')).toContainText('Critical')
+ await expect(page.locator('.logistics-detail')).toContainText('Limited historical evidence')
+ await expect(page.locator('.logistics-product')).toContainText('E2E Milano V6')
+ await expect(page.locator('.logistics-stock-timeline')).toContainText('Potential stockout')
+ await expect(page.locator('.logistics-detail')).toContainText('Stale AIS position')
+ await expect(page.getByRole('link',{name:'Review supplier / purchasing alternatives'})).toHaveCount(0)
+ await expect(page.getByRole('link',{name:'Open review'}).first()).toBeVisible()
+ await expect(page.getByRole('link',{name:'Record / review milestones'})).toHaveAttribute('href','/control-tower/'+id)
+ const purchasingReview=page.locator('.logistics-alternatives article').filter({hasText:'Review supplier / purchasing alternatives'}).getByRole('link',{name:'Open review'})
+ const reviewUrl=await purchasingReview.getAttribute('href'),productId=new URL(reviewUrl,'http://aims.test').searchParams.get('product')
+ await purchasingReview.click()
+ await expect(page.getByRole('heading',{name:'Decision Center',exact:true})).toBeVisible()
+ await expect(page.getByText('Decisions for:',{exact:false})).toContainText('E2E Milano V6')
+ await page.getByText('Evaluate a product',{exact:true}).click()
+ await expect(page.getByRole('combobox',{name:'Product to evaluate',exact:true})).toHaveValue(productId)
+ await page.goto('/shipments/my-shipments?view=intelligence&shipment='+id)
+ await expect(page.locator('.logistics-detail')).toBeVisible()
+ await page.getByRole('button',{name:'Re-evaluate evidence',exact:true}).click();await expect(page.locator('.logistics-detail')).toBeVisible()
+ for(const width of [390,768,1366]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2)).toBeTruthy()}
+ await page.evaluate(async()=>{const {useSettingsStore}=await import('/src/store/settingsStore.js');useSettingsStore.getState().applyPreferences({theme:'dark',language:'sq'})})
+ await expect(page.getByRole('heading',{name:'Inteligjenca e dërgesave',exact:true})).toBeVisible()
+ expect(await page.locator('.logistics-detail').evaluate(e=>getComputedStyle(e).backgroundColor)).not.toBe('rgb(255, 255, 255)')
+ await page.getByRole('button',{name:'Mbyll detajet e inteligjencës',exact:true}).click();await expect(page.locator('.logistics-detail')).toHaveCount(0)
+ expect(errors).toEqual([])
+})

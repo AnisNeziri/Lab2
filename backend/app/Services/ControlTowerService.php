@@ -10,8 +10,8 @@ class ControlTowerService
 {
     public const MILESTONES = [
         'purchase_order', 'supplier_confirmation', 'supplier_production', 'cargo_ready',
-        'container_booking', 'container_loaded', 'origin_port', 'vessel_departure',
-        'sea_transit', 'transshipment', 'destination_port', 'customs_cleared',
+        'supplier_dispatch', 'container_booking', 'container_loaded', 'origin_port', 'vessel_departure',
+        'sea_transit', 'transshipment', 'destination_port', 'customs_started', 'customs_cleared',
         'inland_transport', 'warehouse_arrival', 'goods_receipt',
         'landed_cost_finalized', 'inventory_available',
     ];

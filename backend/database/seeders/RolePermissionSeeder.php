@@ -9,8 +9,9 @@ use Illuminate\Support\Facades\Cache;
 
 class RolePermissionSeeder extends Seeder
 {
-    public function run(): void
+    public function run(bool $preserveExisting = false): void
     {
+        $existingPermissionIds = Permission::pluck('id')->all();
         $permissions = [
             ...array_map(fn($slug)=>['name'=>'Documents '.str_replace('_',' ',$slug),'slug'=>'documents.'.$slug,'group'=>'documents'],['view','upload','update_metadata','new_version','archive','download','review','manage','confidential']),
             ['name'=>'View Fulfillment','slug'=>'fulfillment.view','group'=>'fulfillment'],
@@ -153,13 +154,23 @@ class RolePermissionSeeder extends Seeder
             ])->pluck('id')->all(),
         ];
 
+        $newRoleSlugs = [];
         foreach ($roles as $slug => $permissionIds) {
-            $role = Role::updateOrCreate(
+            $role = Role::firstOrCreate(
                 ['slug' => $slug],
                 ['name' => ucfirst($slug), 'description' => ucfirst($slug).' role']
             );
-            $role->permissions()->sync($permissionIds);
+            if ($role->wasRecentlyCreated) $newRoleSlugs[] = $slug;
+            if ($preserveExisting && ! $role->wasRecentlyCreated) {
+                // Upgrade only newly introduced permissions, never undo an
+                // administrator's existing grants or deliberate revocations.
+                $role->permissions()->syncWithoutDetaching(array_diff($permissionIds, $existingPermissionIds));
+            } else {
+                $role->permissions()->sync($permissionIds);
+            }
             Cache::forget("role_permissions:{$slug}");
         }
+        \App\Services\AutomationPermissions::install($preserveExisting, $newRoleSlugs);
+        \App\Services\AnalyticsPermissions::install($preserveExisting, $newRoleSlugs);
     }
 }

@@ -67,7 +67,11 @@ class ShipmentController extends Controller
             $query->favorites();
         }
 
-        return response()->json($query->get());
+        $rows=$query->get();
+        // Reference-only PO relations must not calculate financial appends from
+        // columns that were intentionally omitted from this logistics response.
+        $rows->each(fn(Shipment $s)=>$s->purchaseOrder?->setAppends([]));
+        return response()->json($rows);
     }
 
     public function validateTracking(Request $request): JsonResponse

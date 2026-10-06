@@ -7,6 +7,7 @@ test.describe('Product browser workflow', () => {
     await login(page)
     await page.goto('/products')
 
+    await page.getByRole('button', { name: 'Add product', exact: true }).click()
     const form = page.locator('form.product-form')
     await form.getByLabel('Category').selectOption({ label: 'Clothing' })
     await form.getByLabel('Name').fill('E2E Fabric Roll')
@@ -45,7 +46,7 @@ test.describe('Product browser workflow', () => {
     await viewButton.scrollIntoViewIfNeeded()
     await viewButton.click()
 
-    const dialog = page.getByRole('dialog', { name: /product details|inventory product/i })
+    const dialog = page.locator('.product-detail-modal')
     await expect(dialog).toBeVisible()
     const box = await dialog.boundingBox()
     const viewport = page.viewportSize()
@@ -66,12 +67,12 @@ test.describe('Product browser workflow', () => {
     await login(page)
     let dialog = await openCommandCenter(page)
     const searchResponse = page.waitForResponse((response) => response.url().includes('/api/search?q='))
-    await dialog.getByRole('textbox').fill('laptop')
+    await dialog.getByRole('combobox').fill('laptop')
     const response = await searchResponse
     expect(response.ok(), await response.text()).toBeTruthy()
     await expect(dialog).toContainText(/laptop/i)
-    await dialog.getByRole('textbox').press('ArrowDown')
-    await dialog.getByRole('textbox').press('Enter')
+    await dialog.getByRole('combobox').press('ArrowDown')
+    await dialog.getByRole('combobox').press('Enter')
     await expect(page).toHaveURL(/\/products\?product=/)
 
     dialog = await openCommandCenter(page)

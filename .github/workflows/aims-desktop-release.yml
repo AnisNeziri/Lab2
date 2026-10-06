@@ -7,13 +7,14 @@ permissions:
   contents: write
 
 jobs:
-  windows-release:
-    runs-on: windows-latest
-    env:
-      CSC_LINK: ${{ secrets.AIMS_WINDOWS_CERTIFICATE_BASE64 }}
-      CSC_KEY_PASSWORD: ${{ secrets.AIMS_WINDOWS_CERTIFICATE_PASSWORD }}
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  validation:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
 
+  windows-release:
+    needs: validation
+    runs-on: windows-latest
     steps:
       - name: Check out AIMS
         uses: actions/checkout@v4
@@ -44,10 +45,48 @@ jobs:
           npm ci
           npm run build
 
-      - name: Install desktop dependencies
+      - name: Prepare local forecasting runtime
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned local supply optimizer
+        run: python -m pip install --target backend/ml/optimizer_vendor -r backend/ml/supply_optimizer_requirements.txt
+
+      - name: Install Electron dependencies
         working-directory: desktop
         run: npm ci
 
-      - name: Build, sign, and publish update
+      - name: Test desktop recovery guards
         working-directory: desktop
-        run: npm run release:win
+        run: npm test
+
+      - name: Verify self-contained desktop startup
+        working-directory: desktop
+        run: npm run test:startup
+
+      - name: Build and sign without publishing
+        working-directory: desktop
+        env:
+          CSC_LINK: ${{ secrets.AIMS_WINDOWS_CERTIFICATE_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.AIMS_WINDOWS_CERTIFICATE_PASSWORD }}
+        run: npm run dist:win:signed
+
+      - name: Verify installer signature
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $installer = "dist/AIMS-Setup-$version.exe"
+          foreach ($file in @($installer, 'dist/win-unpacked/AIMS.exe')) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $file
+            if ($signature.Status -ne 'Valid') { throw "Signature is not valid for ${file}: $($signature.Status)" }
+          }
+
+      - name: Publish verified artifacts
+        working-directory: desktop
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          gh release create "v$version" "dist/AIMS-Setup-$version.exe" "dist/AIMS-Setup-$version.exe.blockmap" "dist/latest.yml" --title "AIMS $version" --generate-notes

@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { Download, KeyRound, RefreshCw, Settings as SettingsIcon, ShieldCheck, X } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useTranslation } from '../hooks/useTranslation'
+import { useDialog } from '../hooks/useDialog'
 
 export default function SettingsModal() {
   const { t } = useTranslation()
@@ -19,30 +20,7 @@ export default function SettingsModal() {
   const [desktopLicence, setDesktopLicence] = useState(null)
   const [desktopUpdate, setDesktopUpdate] = useState(null)
   const [desktopBusy, setDesktopBusy] = useState('')
-  const panelRef = useRef(null)
-
-  useEffect(() => {
-    if (!isOpen) return undefined
-
-    function handlePointerDown(event) {
-      if (panelRef.current && !panelRef.current.contains(event.target)) {
-        setIsOpen(false)
-      }
-    }
-
-    function handleEscape(event) {
-      if (event.key === 'Escape') {
-        setIsOpen(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handlePointerDown)
-    document.addEventListener('keydown', handleEscape)
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown)
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [isOpen])
+  const panelRef = useDialog(() => setIsOpen(false), saving || Boolean(desktopBusy), isOpen)
 
   useEffect(() => {
     if (!isOpen || !window.aimsDesktop) return undefined
@@ -76,7 +54,7 @@ export default function SettingsModal() {
       if (user) {
         updateUser({ ...user, preferences })
       }
-      setMessage(t('settings.saved'))
+      setMessage('settings.saved')
 
       if (!next.enable_3d_map && ['/warehouse-3d', '/warehouse-layout'].includes(window.location.pathname)) {
         navigate('/dashboard', { replace: true })
@@ -111,7 +89,7 @@ export default function SettingsModal() {
     try {
       const status = await window.aimsDesktop.activateLicence()
       setDesktopLicence(status)
-      if (status?.valid) setMessage(t('settings.licenceActivated'))
+      if (status?.valid) setMessage('settings.licenceActivated')
     } catch {
       setError(t('settings.licenceError'))
     } finally {
@@ -136,11 +114,11 @@ export default function SettingsModal() {
   const modal = isOpen
     ? createPortal(
         <>
-          <div className="settings-modal-backdrop" onClick={() => setIsOpen(false)} />
+          <div className="settings-modal-backdrop" onClick={() => { if (!saving && !desktopBusy) setIsOpen(false) }} />
           <div className="settings-modal" ref={panelRef} role="dialog" aria-modal="true" aria-label={t('settings.title')}>
             <div className="settings-modal-header">
               <h3>{t('settings.title')}</h3>
-              <button type="button" className="close-btn" onClick={() => setIsOpen(false)} aria-label="Close settings">
+              <button type="button" className="close-btn" onClick={() => { if (!saving && !desktopBusy) setIsOpen(false) }} aria-label={t('common.close')} disabled={saving || Boolean(desktopBusy)}>
                 <X size={16} />
               </button>
             </div>
@@ -148,7 +126,7 @@ export default function SettingsModal() {
             <div className="settings-modal-body">
               <label className="settings-modal-field">
                 <span>{t('settings.theme')}</span>
-                <select value={theme} onChange={handleThemeChange} disabled={saving}>
+                <select aria-label={t('settings.theme')} value={theme} onChange={handleThemeChange} disabled={saving}>
                   <option value="light">{t('settings.themeLight')}</option>
                   <option value="dark">{t('settings.themeDark')}</option>
                 </select>
@@ -156,7 +134,7 @@ export default function SettingsModal() {
 
               <label className="settings-modal-field">
                 <span>{t('settings.language')}</span>
-                <select value={language} onChange={handleLanguageChange} disabled={saving}>
+                <select aria-label={t('settings.language')} value={language} onChange={handleLanguageChange} disabled={saving}>
                   <option value="en">{t('settings.languageEn')}</option>
                   <option value="sq">{t('settings.languageSq')}</option>
                 </select>
@@ -235,7 +213,7 @@ export default function SettingsModal() {
                 </section>
               ) : null}
 
-              {message ? <p className="settings-modal-success">{message}</p> : null}
+              {message ? <p className="settings-modal-success" role="status">{t(message)}</p> : null}
               {error ? <p className="settings-modal-error">{error}</p> : null}
             </div>
           </div>

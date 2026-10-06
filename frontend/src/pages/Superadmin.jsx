@@ -685,6 +685,12 @@ export default function Superadmin() {
           <p>
             <strong>{t("superadmin.cache")}</strong>
             <span>{health?.cache_driver || "—"}</span>
+            {health?.cache_available === false && <small>Cache unavailable. Check the cache service, or use CACHE_STORE=file locally and run php artisan config:clear.</small>}
+          </p>
+          <p>
+            <strong>Redis</strong>
+            <span>{health?.redis?.status || "—"}</span>
+            <small>{health?.redis?.message}</small>
           </p>
           <p>
             <strong>{t("superadmin.totalLogins")}</strong>

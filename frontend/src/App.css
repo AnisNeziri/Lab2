@@ -30,6 +30,10 @@
 }
 
 .system-mode-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin: -0.5rem 0 1rem;
   padding: 0.65rem 0.85rem;
   border-radius: 8px;
@@ -1365,6 +1369,9 @@ html[data-theme='dark'] .dashboard-live-event { background: rgba(15, 23, 42, .95
     animation: none !important;
   }
 }
+
+.system-mode-banner p { margin: 4px 0 0; font-weight: 400; overflow-wrap: anywhere; }
+.system-mode-banner button { flex-shrink: 0; width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid currentColor; border-radius: 4px; background: transparent; color: inherit; cursor: pointer; }
 
 /* Platform-wide interaction and responsive primitives. These rules strengthen
    existing pages without replacing their domain-specific layouts. */

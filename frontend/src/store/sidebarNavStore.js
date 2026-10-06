@@ -1,14 +1,16 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { navigationContext } from '../config/navigation';
 
 const DEFAULT_GROUPS = {
   overview: true,
-  inventory: true,
-  orders: true,
+  inventory: false,
+  sales: false,
+  purchasing: false,
   shipments: false,
-  finance: true,
-  reports: true,
-  warehouse: false,
+  finance: false,
+  intelligence: false,
+  operations: false,
   settings: false,
 };
 
@@ -39,46 +41,12 @@ export const useSidebarNavStore = create(
     }),
     {
       name: "aims-sidebar-nav",
+      version: 2,
+      migrate: (state) => ({ ...state, expandedGroups: Object.fromEntries(Object.entries(DEFAULT_GROUPS).map(([key, value]) => [key, typeof state?.expandedGroups?.[key] === 'boolean' ? state.expandedGroups[key] : value])) }),
     },
   ),
 );
 
 export function pageToGroup(pageId) {
-  const map = {
-    dashboard: "overview",
-    products: "inventory",
-    stock: "inventory",
-    categories: "inventory",
-    suppliers: "inventory",
-    quality: "inventory",
-    "operations-center": "inventory",
-    "warehouse-mobile": "inventory",
-    procurement: "orders",
-    "system-integrity": "settings",
-    accounting: "finance",
-    "warehouse-operations": "inventory",
-    invoices: "finance",
-    finance: "finance",
-    "money-accounts": "finance",
-    "customer-debts": "reports",
-    "purchase-orders": "orders",
-    fulfillment: "orders",
-    "order-hub": "orders",
-    documents: "orders",
-    "daily-sales": "finance",
-    "shipments/global-map": "shipments",
-    "shipments/my-shipments": "shipments",
-    "shipments/alerts": "shipments",
-    "control-tower": "shipments",
-    shipments: "shipments",
-    reports: "reports",
-    "warehouse-3d": "warehouse",
-    "warehouse-layout": "warehouse",
-    users: "settings",
-    "activity-logs": "settings",
-    cms: "settings",
-    superadmin: "settings",
-  };
-
-  return map[pageId] ?? null;
+  return pageId === 'superadmin' ? 'settings' : navigationContext(pageId)?.group.id ?? null;
 }

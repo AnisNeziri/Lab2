@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ClipboardList, Navigation, RotateCcw, Search, Ship } from 'lucide-react'
+import {Link} from 'react-router-dom'
+import {shipmentIntelligenceLabel} from '../../components/shipmentIntelligencePresentation'
+import { ClipboardList, Navigation, RotateCcw, Ship } from 'lucide-react'
+import PageHeader from '../../components/PageHeader'
+import SearchField from '../../components/SearchField'
 import GlobalVesselMap from '../../components/tracking/GlobalVesselMap'
 import { useTranslation } from '../../hooks/useTranslation'
 import { getTrackingPorts, getVessels } from '../../api/tracking'
@@ -17,7 +21,7 @@ function formatDate(value) {
 }
 
 export default function GlobalMap() {
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
   const [vessels, setVessels] = useState([])
   const [metrics, setMetrics] = useState(null)
   const [ports, setPorts] = useState([])
@@ -87,6 +91,7 @@ export default function GlobalMap() {
 
   return (
     <div className="page tracking-global-page">
+      <PageHeader title={t('nav.globalMap')} description={language === 'sq' ? 'Pozicionet më të fundit të marra. Kontrolloni gjithmonë kohën e sinjalit.' : 'Latest received vessel positions. Always check the signal timestamp.'} actions={<Link className="btn-secondary" to="/shipments/my-shipments">{t('nav.myShipments')}</Link>}/>
       <div className="tracking-metrics-grid">
         <div className="tracking-metric-card">
           <Ship size={18} />
@@ -119,24 +124,17 @@ export default function GlobalMap() {
       </div>
 
       <div className="tracking-filters">
+        {selected?.intelligence&&<div className="tracking-provider-notice"><strong>{shipmentIntelligenceLabel(selected.intelligence.risk,language)}</strong> · {selected.intelligence.eta?.range_start||'—'} — {selected.intelligence.eta?.range_end||'—'} · <Link to={'/shipments/my-shipments?view=intelligence&shipment='+selected.id}>{t('shipments.intelligence')}</Link></div>}
         <label>
           {t('tracking.global.destinationFilter')}
-          <select value={destination} onChange={(e) => setDestination(e.target.value)}>
+          <select aria-label={t('tracking.global.destinationFilter')} value={destination} onChange={(e) => setDestination(e.target.value)}>
             <option value="">{t('tracking.global.allDestinations')}</option>
             {destinationOptions.map((name) => (
               <option key={name} value={name}>{name}</option>
             ))}
           </select>
         </label>
-        <label className="tracking-search-field">
-          <Search size={16} />
-          <input
-            type="search"
-            placeholder={t('tracking.global.searchPlaceholder')}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </label>
+        <SearchField label={language === 'sq' ? 'Kërko anije' : 'Search vessels'} placeholder={t('tracking.global.searchPlaceholder')} value={search} onChange={(e) => setSearch(e.target.value)}/>
         <button type="button" className="btn-secondary" onClick={resetFilters}>
           {t('tracking.global.resetFilters')}
         </button>

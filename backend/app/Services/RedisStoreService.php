@@ -108,6 +108,24 @@ class RedisStoreService
         }
     }
 
+    public function status(): array
+    {
+        if (config('system.operation_mode') === 'offline') {
+            return ['status' => 'disabled_offline', 'required' => false,
+                'message' => 'Desktop offline mode is intentional. Data is stored locally; Redis is not required.'];
+        }
+
+        if ($this->isDisabledForOfflineMode()) {
+            return ['status' => 'disabled', 'required' => false,
+                'message' => 'Optional Redis acceleration is disabled. Use REDIS_ENABLED=true and start Redis to enable it.'];
+        }
+
+        return $this->isAvailable()
+            ? ['status' => 'connected', 'required' => false, 'message' => 'Redis acceleration is connected.']
+            : ['status' => 'unavailable', 'required' => false,
+                'message' => 'Redis is unreachable. Database-backed inventory remains available; the Redis activity feed may be empty. Start Redis and check REDIS_HOST/REDIS_PORT, or set REDIS_ENABLED=false. Use CACHE_STORE=file for local development, then run php artisan config:clear.'];
+    }
+
     private function run(callable $callback, mixed $default = null): mixed
     {
         if ($this->isDisabledForOfflineMode()) {
@@ -124,6 +142,7 @@ class RedisStoreService
     private function isDisabledForOfflineMode(): bool
     {
         return config('system.operation_mode') === 'offline'
+            || ! config('system.redis_enabled', true)
             || config('cache.default') === 'array';
     }
 }

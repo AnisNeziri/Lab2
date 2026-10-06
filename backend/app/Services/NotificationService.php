@@ -9,12 +9,18 @@ use Illuminate\Support\Facades\Cache;
 
 class NotificationService
 {
+    public function createAutomationNotice(int $companyId, int $userId, string $key, string $title, string $message, ?string $url): Notification
+    {
+        return Notification::firstOrCreate(['company_id'=>$companyId,'user_id'=>$userId,'type'=>'automation','data->automation_key'=>$key],
+            ['title'=>$title,'message'=>$message,'data'=>['automation_key'=>$key,'url'=>$url ?: '/action-center']]);
+    }
     public function __construct(
         private readonly InventorySnapshotService $inventorySnapshots,
         private readonly InventoryExpiryAlertService $expiryAlerts,
     ) {}
 
     public const SHIPMENT_TYPES = [
+        'shipment_intelligence',
         'vessel_tracking_started',
         'vessel_position_available',
         'shipment_delayed',
@@ -106,6 +112,9 @@ class NotificationService
     public function createLowStockAlert(Product $product): Notification
     {
         $available = $this->inventorySnapshots->forProduct($product)['available'];
+        app(BusinessEventService::class)->record($available<=0?'inventory.stockout':'inventory.low_stock',$product,$product->name,
+            ['available'=>$available,'minimum'=>$product->min_quantity,'shortage'=>max(0,(float)$product->min_quantity-$available)],
+            'stock-threshold:'.$product->id.':'.($product->updated_at?->format('YmdHisu') ?? '').':'.$available);
         $values = [
             'company_id' => $product->company_id,
             'type' => 'low_stock',

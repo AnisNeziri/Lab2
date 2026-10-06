@@ -1,0 +1,7 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {scenarioPayload,purchasableItems,planningLabels} from '../src/components/planningPresentation.js'
+test('scenario payload preserves zero, removes unknowns and scope follows the current warehouse',()=>{assert.deepEqual(scenarioPayload({base_quantity:'0',budget:'',delay_days:'0',warehouse_id:'7',service_level:'.95'},{warehouse_id:2}),{base_quantity:0,delay_days:0,warehouse_id:7,service_level:.95})})
+test('only feasible funded supported rows can be converted, labels exist in both languages',()=>{const ready={base_quantity:10,feasible:true,coverage_supported:true,unit_price:'2.00'};assert.deepEqual(purchasableItems({groups:[{items:[ready,{...ready,base_quantity:0},{...ready,coverage_supported:false},{...ready,unit_price:null}]}]}),[ready]);for(const pair of Object.values(planningLabels)){assert.equal(pair.length,2);assert.ok(pair.every(Boolean))}})
+test('blank scenario supplier retains the reviewed supplier instead of silently using the default',()=>{assert.deepEqual(scenarioPayload({supplier_id:'',base_quantity:'0'},{supplier_id:9,unit:'box'}),{supplier_id:9,unit:'box',base_quantity:0})})
+test('optimization states and decision labels are available in both languages',()=>{for(const state of ['healthy','reorder_soon','reorder_now','critical','potential_stockout','excess_stock','slow_moving','overstock','insufficient_data','postponed','transferred'])assert.ok(planningLabels[state]?.every(Boolean))})

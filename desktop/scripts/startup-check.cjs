@@ -10,6 +10,7 @@ const backend = path.join(resources, 'backend')
 const frontend = path.join(resources, 'frontend')
 const phpRoot = path.join(resources, 'php')
 const php = path.join(phpRoot, 'php.exe')
+const python = path.join(resources, 'python', 'python.exe')
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'aims-desktop-startup-'))
 const database = path.join(work, 'aims.sqlite')
 const port = 18775
@@ -81,13 +82,16 @@ async function main() {
       fail(`private development data was bundled: ${file}`)
     }
   }
-  for (const required of [php, path.join(backend, 'artisan'), path.join(backend, 'vendor', 'autoload.php')]) {
+  for (const required of [php, python, path.join(backend, 'ml', 'forecast.py'), path.join(backend, 'artisan'), path.join(backend, 'vendor', 'autoload.php')]) {
     if (!fs.existsSync(required)) fail(`required bundled resource is missing: ${required}`)
   }
   validateFrontend()
+  const ml=spawnSync(python,['-I',path.join(backend,'ml','forecast.py')],{input:JSON.stringify({series:[]}),encoding:'utf8',windowsHide:true})
+  if(ml.status!==0||JSON.parse(ml.stdout).status!=='insufficient_data')fail('bundled local forecasting runtime failed')
   fs.writeFileSync(database, '')
   const env = {
     ...process.env,
+    AIMS_ML_PYTHON: python,
     APP_NAME: 'AIMS', APP_ENV: 'testing', APP_DEBUG: 'false',
     APP_KEY: 'base64:32Hr/pYy5GkWR0Lcm3HnL0fHw2cbCtmHtravymO8GA0=',
     APP_URL: `http://127.0.0.1:${port}`, APP_OPERATION_MODE: 'offline',
@@ -95,6 +99,7 @@ async function main() {
     CACHE_STORE: 'array', SESSION_DRIVER: 'array', QUEUE_CONNECTION: 'sync',
     BROADCAST_CONNECTION: 'log', MAIL_MAILER: 'array',
     TRACKING_EXTERNAL_ENABLED: 'false', PHPRC: portablePhpIni(), PHP_INI_SCAN_DIR: '',
+    AIMS_DESKTOP_RECOVERY_PASSWORD: require('node:crypto').randomBytes(24).toString('base64url'),
   }
   const setup = spawnSync(php, ['artisan', 'aims:desktop-setup'], {
     cwd: backend, env, encoding: 'utf8', windowsHide: true, timeout: 120000,

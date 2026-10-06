@@ -185,7 +185,7 @@ export default function WarehouseLayout() {
     <main className="warehouse-layout-page">
       <div className="page-header-row">
         <div>
-          <h2>{tx("Warehouse layout")}</h2>
+          <h1>{tx("Warehouse layout")}</h1>
           <p className="page-intro"> {tx("Set the footprint in square meters, add floors, then drag sections anywhere on each level. Standard ceiling height is 8 m per floor.")} </p>
         </div>
         <div className="header-actions">

@@ -1,4 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useTranslation } from '../hooks/useTranslation'
+import { useUiText } from '../hooks/useUiText'
+import PageHeader from '../components/PageHeader'
+import { useDialog } from '../hooks/useDialog'
+import SearchField from '../components/SearchField'
 import { useAuthStore } from '../store/authStore'
 import {
   createSupplier,
@@ -8,6 +14,7 @@ import {
 } from '../api/suppliers'
 import { getSupplierScorecard } from '../api/quality'
 import EntityContext from '../components/EntityContext'
+import SupplierIntelligence from '../components/SupplierIntelligence'
 import { useSearchParams } from 'react-router-dom'
 import './QualityManagement.css'
 import './SupplierScorecard.css'
@@ -21,7 +28,20 @@ const emptyForm = {
 
 function Suppliers() {
   const [documentParams] = useSearchParams()
-  const userRole = useAuthStore((state) => state.role)
+  const { t, language } = useTranslation()
+  const ui = useUiText()
+  const permissions = useAuthStore(state => state.permissions)
+  const canManage = permissions.includes('suppliers.manage')
+  const canScore = permissions.includes('supplier_performance.view')
+  const [search, setSearch] = useState('')
+  const [formOpen, setFormOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState('')
+  const [deletingId, setDeletingId] = useState(null)
+  const [scoreBusy, setScoreBusy] = useState(false)
+  const [intelligenceOpen, setIntelligenceOpen] = useState(Boolean(documentParams.get('supplier')))
+  const pending = useRef(false), deleting = useRef(new Set()), scorePending = useRef(false), formRef = useRef(null)
+  const canIntelligence = permissions.includes('analytics.view') && permissions.includes('inventory.view')
   const [suppliers, setSuppliers] = useState([])
   const [form, setForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState(null)
@@ -29,10 +49,12 @@ function Suppliers() {
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
   const [scorecard, setScorecard] = useState(null)
+  const scoreRef = useDialog(() => setScorecard(null), false, Boolean(scorecard))
+  const visibleSuppliers = suppliers.filter(supplier => [supplier.name, supplier.phone, supplier.email, supplier.address].some(value => String(value || '').toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())))
 
-  async function loadSuppliers() {
+  async function loadSuppliers(silent = false) {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       setError('')
       const data = await getSuppliers()
       setSuppliers(data)
@@ -56,6 +78,8 @@ function Suppliers() {
   }
 
   function startEdit(supplier) {
+    setFormOpen(true)
+    requestAnimationFrame(() => { formRef.current?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }); formRef.current?.querySelector('input')?.focus({ preventScroll: true }) })
     setEditingId(supplier.id)
     setFormError('')
     setForm({
@@ -74,7 +98,11 @@ function Suppliers() {
 
   async function handleSubmit(event) {
     event.preventDefault()
+    if (pending.current) return
+    pending.current = true
+    setSaving(true)
     setFormError('')
+    setMessage('')
 
     const payload = {
       name: form.name,
@@ -90,27 +118,32 @@ function Suppliers() {
         await createSupplier(payload)
       }
 
+      setMessage(ui(editingId ? 'Supplier updated.' : 'Supplier added.'))
       cancelEdit()
-      await loadSuppliers()
+      setFormOpen(false)
+      await loadSuppliers(true)
     } catch (err) {
       if (err.errors) {
         const messages = Object.values(err.errors).flat().join(' ')
         setFormError(messages)
       } else {
-        setFormError(editingId ? 'Could not update supplier.' : 'Could not save supplier.')
+        setFormError(err.message || ui(editingId ? 'Could not update supplier.' : 'Could not save supplier.'))
       }
-    }
+    } finally { pending.current = false; setSaving(false) }
   }
 
   async function handleDelete(supplier) {
+    if (deleting.current.has(supplier.id)) return
     const confirmed = window.confirm(
-      `Delete "${supplier.name}"? Linked products will be left without a supplier.`
+      language === 'sq' ? `Të fshihet "${supplier.name}"? Produktet e lidhura do mbeten pa furnitor.` : `Delete "${supplier.name}"? Linked products will be left without a supplier.`
     )
 
     if (!confirmed) {
       return
     }
 
+    deleting.current.add(supplier.id)
+    setDeletingId(supplier.id)
     try {
       await deleteSupplier(supplier.id)
       if (editingId === supplier.id) {
@@ -123,86 +156,94 @@ function Suppliers() {
       } else {
         setError('Could not delete supplier.')
       }
-    }
+    } finally { deleting.current.delete(supplier.id); setDeletingId(null) }
   }
 
   async function openScorecard(supplier) {
+    if (scorePending.current) return
+    scorePending.current = true
+    setScoreBusy(true)
     try {
       setFormError('')
       setScorecard(await getSupplierScorecard(supplier.id))
     } catch (error) {
       setFormError(error.message || 'Could not load supplier performance.')
-    }
+    } finally { scorePending.current = false; setScoreBusy(false) }
   }
 
   return (
     <main className="suppliers-page">
+      <PageHeader title={t('nav.suppliers')} description={ui('Supplier contacts and purchasing evidence.')} actions={canManage && !formOpen && <button type="button" className="workspace-primary" onClick={() => setFormOpen(true)}>{ui('Add supplier')}</button>}/>
+      {message && <p role="status" className="workspace-success">{message}</p>}
+      {scoreBusy && <p role="status">{ui('Loading supplier performance…')}</p>}
       {suppliers.filter(s=>String(s.id)===documentParams.get('supplier')).map(s=><section className="card" key={s.id}><h2>{s.name}</h2><EntityContext entityType="supplier" entityId={s.id}/></section>)}
-      <section className="card">
-        <h2>{editingId ? 'Edit supplier' : 'Add supplier'}</h2>
+      {formOpen && canManage && <section className="card" ref={formRef}>
+        <h2>{ui(editingId ? 'Edit supplier' : 'Add supplier')}</h2>
         <form className="supplier-form" onSubmit={handleSubmit}>
           <label>
-            Name
+            {ui("Name")}
             <input name="name" value={form.name} onChange={handleChange} required />
           </label>
 
           <div className="form-row">
             <label>
-              Phone
+              {ui("Phone")}
               <input name="phone" value={form.phone} onChange={handleChange} />
             </label>
 
             <label>
-              Email
+              {ui("Email")}
               <input name="email" type="email" value={form.email} onChange={handleChange} />
             </label>
           </div>
 
           <label>
-            Address
+            {ui("Address")}
             <input name="address" value={form.address} onChange={handleChange} />
           </label>
 
-          {formError && <p className="error">{formError}</p>}
+          {formError && <p className="error">{ui(formError)}</p>}
 
           <div className="form-actions">
-            <button type="submit">{editingId ? 'Update supplier' : 'Save supplier'}</button>
-            {editingId && (
-              <button type="button" className="secondary" onClick={cancelEdit}>
-                Cancel
+            <button type="submit" disabled={saving}>{ui(saving ? 'Saving…' : editingId ? 'Update supplier' : 'Save supplier')}</button>
+            {(
+              <button type="button" className="secondary" disabled={saving} onClick={() => { if (form.name && !window.confirm(ui('Discard unsaved supplier changes?'))) return; cancelEdit(); setFormOpen(false) }}>
+                {ui("Cancel")}
               </button>
             )}
           </div>
         </form>
-      </section>
+      </section>}
 
       <section className="card">
         <div className="section-header">
-          <h2>Supplier list</h2>
-          {!loading && <p className="result-count">{suppliers.length} supplier(s)</p>}
+          <h2>{ui("Supplier list")}</h2>
+          {!loading && <p className="result-count">{visibleSuppliers.length} / {suppliers.length} {ui('suppliers')}</p>}
         </div>
 
-        {loading && <p>Loading suppliers...</p>}
-        {error && <p className="error">{error}</p>}
+        <SearchField placeholder={ui('Search by name, phone or email')} value={search} onChange={event => setSearch(event.target.value)}/>
+        {loading && <p>{ui("Loading suppliers...")}</p>}
+        {error && <p className="error">{ui(error)}</p>}
 
         {!loading && !error && suppliers.length === 0 && (
-          <p>No suppliers yet. Add one above or run the database seeder.</p>
+          <p>{ui('No suppliers yet. Add your first supplier.')}</p>
         )}
 
-        {!loading && suppliers.length > 0 && (
-          <table className="product-table">
+        {!loading && visibleSuppliers.length === 0 && search && <p>{ui('No suppliers match this search. Clear the search to see all suppliers.')}</p>}
+        {!loading && visibleSuppliers.length > 0 && (
+          <div className="table-wrap" tabIndex={0} aria-label={ui('Supplier list')}><table className="product-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Phone</th>
-                <th>Email</th>
-                <th>Address</th>
-                <th>Products</th>
+                <th>{ui("Name")}</th>
+                <th>{ui("Phone")}</th>
+                <th>{ui("Email")}</th>
+                <th>{ui("Address")}</th>
+                <th>{ui("Products")}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {suppliers.map((supplier) => (
+              {visibleSuppliers.map((supplier) => (
                 <tr key={supplier.id} className={editingId === supplier.id ? 'editing' : ''}>
                   <td>{supplier.name}</td>
                   <td>{supplier.phone ?? '—'}</td>
@@ -210,54 +251,55 @@ function Suppliers() {
                   <td>{supplier.address ?? '—'}</td>
                   <td>{supplier.products_count ?? 0}</td>
                   <td className="actions">
-                    <button type="button" className="secondary" onClick={() => openScorecard(supplier)}>
-                      Scorecard
-                    </button>
-                    <button type="button" className="secondary" onClick={() => startEdit(supplier)}>
-                      Edit
-                    </button>
-                    {(userRole === 'admin' || userRole === 'manager') && (
+                    {canScore && <button type="button" disabled={scoreBusy} className="secondary" onClick={() => openScorecard(supplier)}>
+                      {ui('Scorecard')}
+                    </button>}
+                    {canManage && <button type="button" disabled={saving} className="secondary" onClick={() => startEdit(supplier)}>
+                      {ui('Edit')}
+                    </button>}
+                    {canManage && (
                       <button
                         type="button"
                         className="danger"
-                        onClick={() => handleDelete(supplier)}
+                        disabled={deletingId === supplier.id} onClick={() => handleDelete(supplier)}
                       >
-                        Delete
+                        {ui("Delete")}
                       </button>
                     )}
                   </td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </section>
-      {scorecard && (
-        <div className="quality-modal-backdrop">
-          <section className="quality-modal supplier-scorecard">
-            <button type="button" className="quality-close" onClick={() => setScorecard(null)}>×</button>
-            <span className="scorecard-eyebrow">Supplier Performance</span>
+      {canIntelligence && <details className="supplier-intelligence-disclosure" open={intelligenceOpen} onToggle={event => setIntelligenceOpen(event.currentTarget.open)}><summary>{ui('Delivery intelligence and forecasting')}</summary>{intelligenceOpen && <SupplierIntelligence suppliers={suppliers} initialSupplier={documentParams.get('supplier')}/>}</details>}
+      {scorecard && createPortal(
+        <div className="quality-modal-backdrop" onMouseDown={event => event.target === event.currentTarget && setScorecard(null)}>
+          <section ref={scoreRef} className="quality-modal supplier-scorecard" role="dialog" aria-modal="true" aria-label={ui('Supplier Performance')}>
+            <button type="button" className="quality-close" aria-label={ui('Close')} onClick={() => setScorecard(null)}>×</button>
+            <span className="scorecard-eyebrow">{ui("Supplier Performance")}</span>
             <h2>{scorecard.supplier_name}</h2>
-            <div className="scorecard-overall"><strong>{scorecard.overall_score ?? '—'}</strong><span>{scorecard.overall_score == null ? 'Insufficient data' : 'Overall score / 100'}</span></div>
+            <div className="scorecard-overall"><strong>{scorecard.overall_score ?? '—'}</strong><span>{scorecard.overall_score == null ? ui('Insufficient data') : ui('Overall score / 100')}</span></div>
             <div className="quality-metrics scorecard-categories">
               {Object.entries(scorecard.category_scores || {}).map(([name, item]) => <article className="quality-metric" key={name}><span>{name}</span><strong>{item.score ?? '—'}</strong></article>)}
             </div>
             <div className="scorecard-details">
-              <p><span>Total spend</span><strong>€{scorecard.delivery.total_purchased_value}</strong></p>
-              <p><span>Purchase Orders</span><strong>{scorecard.delivery.purchase_orders}</strong></p>
-              <p><span>On-time delivery</span><strong>{scorecard.delivery.on_time_delivery_percent == null ? '—' : `${scorecard.delivery.on_time_delivery_percent}%`}</strong></p>
-              <p><span>Average delay</span><strong>{scorecard.delivery.average_days_late ?? '—'} days</strong></p>
-              <p><span>Defect rate</span><strong>{scorecard.quality.defect_rate == null ? '—' : `${scorecard.quality.defect_rate}%`}</strong></p>
-              <p><span>Acceptance rate</span><strong>{scorecard.quality.acceptance_percent == null ? '—' : `${scorecard.quality.acceptance_percent}%`}</strong></p>
-              <p><span>Claims / returns</span><strong>{scorecard.quality.claim_count} / {scorecard.quality.return_quantity}</strong></p>
-              <p><span>RFQ response</span><strong>{scorecard.commercial.quote_response_rate == null ? '—' : `${scorecard.commercial.quote_response_rate}%`}</strong></p>
-              <p><span>Historical price movement</span><strong>{scorecard.commercial.historical_price_movement_percent == null ? '—' : `${scorecard.commercial.historical_price_movement_percent}%`}</strong></p>
+              <p><span>{ui("Total spend")}</span><strong>€{scorecard.delivery.total_purchased_value}</strong></p>
+              <p><span>{ui("Purchase Orders")}</span><strong>{scorecard.delivery.purchase_orders}</strong></p>
+              <p><span>{ui("On-time delivery")}</span><strong>{scorecard.delivery.on_time_delivery_percent == null ? '—' : `${scorecard.delivery.on_time_delivery_percent}%`}</strong></p>
+              <p><span>{ui("Average delay")}</span><strong>{scorecard.delivery.average_days_late ?? '—'} days</strong></p>
+              <p><span>{ui("Defect rate")}</span><strong>{scorecard.quality.defect_rate == null ? '—' : `${scorecard.quality.defect_rate}%`}</strong></p>
+              <p><span>{ui("Acceptance rate")}</span><strong>{scorecard.quality.acceptance_percent == null ? '—' : `${scorecard.quality.acceptance_percent}%`}</strong></p>
+              <p><span>{ui("Claims / returns")}</span><strong>{scorecard.quality.claim_count} / {scorecard.quality.return_quantity}</strong></p>
+              <p><span>{ui("RFQ response")}</span><strong>{scorecard.commercial.quote_response_rate == null ? '—' : `${scorecard.commercial.quote_response_rate}%`}</strong></p>
+              <p><span>{ui("Historical price movement")}</span><strong>{scorecard.commercial.historical_price_movement_percent == null ? '—' : `${scorecard.commercial.historical_price_movement_percent}%`}</strong></p>
             </div>
             <ul>{scorecard.explanation?.map((line) => <li key={line}>{line}</li>)}</ul>
             <EntityContext entityType="supplier" entityId={scorecard.supplier_id} />
           </section>
         </div>
-      )}
+      , document.body)}
     </main>
   )
 }

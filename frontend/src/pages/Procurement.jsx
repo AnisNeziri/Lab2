@@ -3,16 +3,21 @@ import { getAllProducts } from "../api/products";
 import { getSuppliers } from "../api/suppliers";
 import { createPurchaseRequest, updatePurchaseRequest, createRfq, createSupplierQuote, decideApproval, getPendingApprovals, getPurchaseRequest, getPurchaseRequests, getRfqComparison, issueRfq, submitPurchaseRequest, awardRfq, convertAwards } from "../api/procurement";
 import "./Procurement.css";
-import {useSearchParams} from "react-router-dom";
+import {useSearchParams,Link} from "react-router-dom";
+import '../components/InventoryPlanning.css';
 import EntityDocuments from "../components/EntityDocuments";
 import { SupplierQuoteEditor, AwardReview } from '../components/ProcurementEditors';
 import { useAuthStore } from '../store/authStore';
 import { useUiText } from '../hooks/useUiText';
+import { useTranslation } from '../hooks/useTranslation';
 const rows = v => v?.data || v || [];
 const failure = e => e?.errors ? Object.values(e.errors).flat().join(" ") : e?.message || "The operation could not be completed.";
 const key = () => crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 
 export default function Procurement() {
+  const {language}=useTranslation();return <><nav className="intelligence-nav"><Link to="/inventory-intelligence?view=planning">{language==='sq'?'Planifikimi i inventarit →':'Inventory Planning →'}</Link></nav><ProcurementWorkspace/></>;
+}
+function ProcurementWorkspace() {
   const tx=useUiText(),permissions=useAuthStore(s=>s.permissions),canManage=permissions.includes('procurement.manage'),canDecide=permissions.includes('approvals.decide'),actionLock=useRef(false);
   const [review,setReview]=useState(false),[editing,setEditing]=useState(null),[requestPage,setRequestPage]=useState(1),[lastPage,setLastPage]=useState(1);
   const guarded=async(fn)=>{if(actionLock.current)return false;actionLock.current=true;setBusy(true);try{await fn();return true}catch(e){setNotice(failure(e));return false}finally{actionLock.current=false;setBusy(false)}};
@@ -42,4 +47,6 @@ const items=rfq.purchase_request?.items||[];const selected=offers.filter(x=>Stri
 
 function SupplierSignal({performance}){
  const tx = useUiText()
-if(!performance||performance.overall_score==null)return <small className="supplier-signal insufficient">{tx("Performance: insufficient data")}</small>;return <small className="supplier-signal"><b>{performance.overall_score}/100</b> {tx("· Quality")} {performance.category_scores?.QUALITY?.score??'—'} {tx("· Delivery")} {performance.category_scores?.DELIVERY?.score??'—'}<br/>{tx("On time")} {performance.delivery?.on_time_delivery_percent??'—'}{tx("% · Defects")} {performance.quality?.defect_rate??'—'}%</small>}
+ const {language}=useTranslation()
+ return <small className="supplier-signal">{!performance||performance.overall_score==null?<span>{tx("Performance: insufficient data")}</span>:<><b>{performance.overall_score}/100</b> {tx("· Quality")} {performance.category_scores?.QUALITY?.score??'—'} {tx("· Delivery")} {performance.category_scores?.DELIVERY?.score??'—'}<br/>{tx("On time")} {performance.delivery?.on_time_delivery_percent??'—'}{tx("% · Defects")} {performance.quality?.defect_rate??'—'}%</>}{performance?.supplier_id&&<a href={`/suppliers?supplier=${performance.supplier_id}`}>{language==='sq'?'Rishiko provat e dorëzimit':'Review delivery evidence'}</a>}</small>
+}

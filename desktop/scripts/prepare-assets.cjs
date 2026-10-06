@@ -93,6 +93,7 @@ function includeBackendSource(source) {
   if (!relative) return true
 
   const parts = relative.split(path.sep)
+  if(parts[0]==='ml'&&parts[1]==='optimizer_vendor')return false // Bundled once in Python site-packages.
   const filename = parts.at(-1).toLowerCase()
   const isDirectory = fs.lstatSync(normalizedSource).isDirectory()
 
@@ -101,6 +102,7 @@ function includeBackendSource(source) {
   if (parts[0].toLowerCase() === 'public' && parts[1]?.toLowerCase() === 'storage') return false
   if (parts[0].toLowerCase() === 'tests' || parts[0].toLowerCase() === 'tmp') return false
   if (filename === '.phpunit.result.cache') return false
+  if (parts.includes('__pycache__') || filename.endsWith('.pyc')) return false
 
   // Ship Laravel's writable directory structure, never the web installation's
   // cache, compiled views, test databases, locks, uploads, or other company
@@ -175,3 +177,4 @@ fs.cpSync(phpSource, packagedPhp, {
 fs.copyFileSync(path.join(root, 'frontend', 'public', 'aims-logo.svg'), path.join(desktop, 'resources', 'frontend', 'aims-logo.svg'))
 fs.copyFileSync(path.join(root, 'frontend', 'public', 'aims-logo.png'), path.join(desktop, 'resources', 'frontend', 'aims-logo.png'))
 require('./create-icon.cjs')
+require('./prepare-python.cjs')

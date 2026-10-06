@@ -46,7 +46,7 @@
 .main-content textarea::placeholder,
 .form-grid input::placeholder,
 .form-grid textarea::placeholder {
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .main-content input:focus,
@@ -72,8 +72,8 @@
 .cms-page textarea:focus,
 .cms-page select:focus {
   outline: none;
-  border-color: #0f766e;
-  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.18);
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .form-grid,

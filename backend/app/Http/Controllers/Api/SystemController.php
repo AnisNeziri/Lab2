@@ -3,13 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\RedisStoreService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 
 class SystemController extends Controller
 {
-    public function mode(): JsonResponse
+    public function mode(RedisStoreService $redis): JsonResponse
     {
         $mode = config('system.operation_mode', 'online');
         $parcelProvider = config('tracking.shipment_provider', 'disabled');
@@ -20,14 +21,20 @@ class SystemController extends Controller
         $aisConfigured = $vesselProvider === 'aisstream'
             && filled(config('tracking.aisstream.api_key'));
         $aisEnabled = $externalTrackingEnabled && $aisConfigured;
-        $aisConnection = Cache::get('tracking.aisstream.connection', []);
+        $cacheAvailable = true;
+        try {
+            $aisConnection = Cache::get('tracking.aisstream.connection', []);
+        } catch (\Throwable) {
+            $aisConnection = [];
+            $cacheAvailable = false;
+        }
         $aisConnection = is_array($aisConnection) ? $aisConnection : [];
         $connectionUpdatedAt = ! empty($aisConnection['updated_at'])
             ? Carbon::parse($aisConnection['updated_at'])
             : null;
         $connectionFresh = $connectionUpdatedAt?->gte(now()->subMinutes(2)) ?? false;
         $connectionState = $aisEnabled
-            ? ($connectionFresh ? ($aisConnection['state'] ?? 'starting') : 'worker_unavailable')
+            ? (! $cacheAvailable ? 'cache_unavailable' : ($connectionFresh ? ($aisConnection['state'] ?? 'starting') : 'worker_unavailable'))
             : ($aisConfigured ? 'network_disabled' : 'not_configured');
         $vesselLookupConfigured = $vesselLookupProvider === 'vesselapi'
             && filled(config('tracking.vessel_lookup.api_key'));
@@ -38,6 +45,8 @@ class SystemController extends Controller
         return response()->json([
             'mode' => $mode,
             'online' => $mode === 'online',
+            'redis' => $redis->status(),
+            'cache_available' => $cacheAvailable,
             'tracking_message' => $externalTrackingEnabled
                 ? 'Configured tracking integrations may refresh silently when an internet connection is available.'
                 : 'Inventory and sales remain local; tracking integrations are disabled and saved positions remain available.',

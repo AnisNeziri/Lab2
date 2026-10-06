@@ -25,6 +25,7 @@ import PreferencesProvider from "./components/PreferencesProvider";
 import PageState from "./components/PageState";
 import { useTranslation } from "./hooks/useTranslation";
 import "./App.css";
+import './styles/EnterpriseUI.css';
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Products = lazy(() => import("./pages/Products"));
@@ -55,6 +56,15 @@ const OperationsCenter = lazy(() => import("./pages/OperationsCenter"));
 const MoneyAccounts = lazy(() => import("./pages/MoneyAccounts"));
 const AccountingCore = lazy(() => import("./pages/AccountingCore"));
 const SystemIntegrity = lazy(() => import("./pages/SystemIntegrity"));
+const AutomationStudio = lazy(() => import("./pages/AutomationStudio"));
+const Analytics = lazy(() => import("./pages/Analytics"));
+const InventoryIntelligence = lazy(() => import("./pages/InventoryIntelligence"));
+const FinancialIntelligence = lazy(() => import("./pages/FinancialIntelligence"));
+const CustomerSalesIntelligence = lazy(() => import("./pages/CustomerSalesIntelligence"));
+const IntelligenceAssistant = lazy(() => import("./pages/IntelligenceAssistant"));
+const DecisionLearning = lazy(() => import("./pages/DecisionLearning"));
+const SupplyOptimizer = lazy(() => import("./pages/SupplyOptimizer"));
+const ActionCenter = lazy(() => import("./pages/ActionCenter"));
 const Fulfillment = lazy(() => import("./pages/Fulfillment"));
 const OrderHub = lazy(() => import("./pages/OrderHub"));
 const OrderTracking = lazy(() => import("./pages/OrderTracking"));
@@ -63,7 +73,7 @@ const Documents = lazy(() => import("./pages/Documents"));
 
 function PageLoader() {
   const { t } = useTranslation();
-  return <p className="page-message" role="status">{t("common.loading")}</p>;
+  return <div className="workspace-loading" role="status"><span>{t("common.loading")}</span><div aria-hidden="true"><i/><i/><i/></div></div>;
 }
 
 function WarehouseFeatureRoute({ children }) {
@@ -507,6 +517,15 @@ function AppRoutes() {
           />
           <Route path="/accounting" element={<PermissionRoute permission="accounting.reports.view"><Suspense fallback={<PageLoader />}><AccountingCore /></Suspense></PermissionRoute>} />
           <Route path="/system-integrity" element={<PermissionRoute permission="system_integrity.view"><Suspense fallback={<PageLoader />}><SystemIntegrity /></Suspense></PermissionRoute>} />
+          <Route path="/automation-studio" element={<PermissionRoute permission="automations.view"><Suspense fallback={<PageLoader />}><AutomationStudio /></Suspense></PermissionRoute>} />
+          <Route path="/analytics" element={<PermissionRoute permission="analytics.view"><Suspense fallback={<PageLoader />}><Analytics /></Suspense></PermissionRoute>} />
+          <Route path="/inventory-intelligence" element={<PermissionRoute permission="analytics.view"><Suspense fallback={<PageLoader />}><InventoryIntelligence /></Suspense></PermissionRoute>} />
+          <Route path="/customer-sales-intelligence" element={<PermissionRoute permission="analytics.view"><PermissionRoute permission="customers.manage"><PermissionRoute permission="daily_sales.manage"><Suspense fallback={<PageLoader />}><CustomerSalesIntelligence /></Suspense></PermissionRoute></PermissionRoute></PermissionRoute>} />
+          <Route path="/intelligence-assistant" element={<Suspense fallback={<PageLoader />}><IntelligenceAssistant /></Suspense>} />
+          <Route path="/decision-learning" element={<PermissionRoute permission="analytics.view"><Suspense fallback={<PageLoader />}><DecisionLearning /></Suspense></PermissionRoute>} />
+          <Route path="/supply-optimizer" element={<PermissionRoute permission="analytics.view"><PermissionRoute permission="analytics.finance"><PermissionRoute permission="inventory.view"><PermissionRoute permission="procurement.view"><PermissionRoute permission="finance.view"><PermissionRoute permission="financial_accounts.view"><Suspense fallback={<PageLoader />}><SupplyOptimizer /></Suspense></PermissionRoute></PermissionRoute></PermissionRoute></PermissionRoute></PermissionRoute></PermissionRoute>} />
+          <Route path="/financial-intelligence" element={<PermissionRoute permission="analytics.finance"><PermissionRoute permission="finance.view"><PermissionRoute permission="financial_accounts.view"><Suspense fallback={<PageLoader />}><FinancialIntelligence /></Suspense></PermissionRoute></PermissionRoute></PermissionRoute>} />
+          <Route path="/action-center" element={<PermissionRoute permission="tasks.view"><Suspense fallback={<PageLoader />}><ActionCenter /></Suspense></PermissionRoute>} />
           <Route
             path="/invoices"
             element={

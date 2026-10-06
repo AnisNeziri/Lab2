@@ -20,6 +20,13 @@ import { getInventoryQuantity } from '../utils/inventoryQuantity'
 import ProductDetail from '../components/ProductDetail'
 import SuccessAnimation from '../components/SuccessAnimation'
 import { useTranslation } from '../hooks/useTranslation'
+import { useUiText } from '../hooks/useUiText'
+import { useSearchParams } from 'react-router-dom'
+import { useSettingsStore } from '../store/settingsStore'
+import SearchField from '../components/SearchField'
+import ActiveFilters from '../components/ActiveFilters'
+import PageHeader from '../components/PageHeader'
+import RowActions from '../components/RowActions'
 
 const emptyForm = {
   category_id: '',
@@ -67,8 +74,17 @@ const emptyForm = {
 }
 
 function Products() {
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
+  const ui = useUiText()
+  const [params, setParams] = useSearchParams()
+  const [formOpen, setFormOpen] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
+  const deleting = useRef(new Set())
+  const pendingSave = useRef(false)
+  const baseCurrency = useSettingsStore(state => state.base_currency) || 'EUR'
+  const currency = value => new Intl.NumberFormat(language === 'sq' ? 'sq-AL' : 'en-GB', { style: 'currency', currency: baseCurrency }).format(Number(value || 0))
   const userRole = useAuthStore((state) => state.role)
+  const canManage = useAuthStore(state => state.permissions.includes('products.manage'))
   const [products, setProducts] = useState([])
   const [pagination, setPagination] = useState(null)
   const [categories, setCategories] = useState([])
@@ -92,8 +108,19 @@ function Products() {
   const formSectionRef = useRef(null)
   const productsRequestRef = useRef(0)
   const [productSuccess, setProductSuccess] = useState(null)
+  const [savedFeedback, setSavedFeedback] = useState(null)
   const [highlightedProductId, setHighlightedProductId] = useState(null)
   const [saving, setSaving] = useState(false)
+  const highlightTimer = useRef(null)
+  useEffect(() => () => clearTimeout(highlightTimer.current), [])
+  useEffect(() => {
+    if (!formOpen) return undefined
+    const frame = requestAnimationFrame(() => {
+      formSectionRef.current?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })
+      formSectionRef.current?.querySelector(editingId ? 'input[name="name"]' : 'select[name="category_id"]')?.focus({ preventScroll: true })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [formOpen, editingId])
   async function loadCategories() {
     const categoriesData = await getCategories()
     setCategories(categoriesData)
@@ -107,12 +134,13 @@ function Products() {
   async function loadProducts(filters = {}, { silent = false } = {}) {
     const requestId = ++productsRequestRef.current
     try {
-      if (!silent) {
+      if (!silent && !products.length) {
         setLoading(true)
         setError('')
       }
       const response = await getProducts(filters)
       if (requestId !== productsRequestRef.current) return
+      setError('')
       setProducts(response.data)
       setPagination({
         current_page: response.current_page,
@@ -125,7 +153,7 @@ function Products() {
         setError('Could not load products. Make sure the API is running.')
       }
     } finally {
-      if (!silent) setLoading(false)
+      if (requestId === productsRequestRef.current) setLoading(false)
     }
   }
 
@@ -177,15 +205,22 @@ function Products() {
   }, [page, search, categoryFilter, supplierFilter, lifecycleFilter, lowStockOnly, sortBy, sortDirection])
 
   useEffect(() => {
-    if (!viewProductId && document.body.style.overflow === 'hidden') {
-      document.body.style.removeProperty('overflow')
-    }
-  }, [viewProductId])
+    const requestedProduct = Number(params.get('product'))
+    if (Number.isInteger(requestedProduct) && requestedProduct > 0) setViewProductId(requestedProduct)
+    else setViewProductId(null)
+  }, [params.get('product')])
 
   useEffect(() => {
-    const requestedProduct = Number(new URLSearchParams(window.location.search).get('product'))
-    if (Number.isInteger(requestedProduct) && requestedProduct > 0) setViewProductId(requestedProduct)
-  }, [])
+    if (params.get('new') === '1') {
+      setFormOpen(true)
+      setParams(current => { const next = new URLSearchParams(current); next.delete('new'); return next }, { replace: true })
+    }
+  }, [params.get('new'), setParams])
+
+  function closeView() {
+    setViewProductId(null)
+    if (params.has('product')) setParams(current => { const next = new URLSearchParams(current); next.delete('product'); return next }, { replace: true })
+  }
 
   function handleChange(event) {
     const { name, value, checked, type } = event.target
@@ -203,6 +238,7 @@ function Products() {
   }
 
   function startEdit(product) {
+    setFormOpen(true)
     setEditingId(product.id)
     setFormError('')
     setForm({
@@ -341,7 +377,7 @@ function Products() {
 
   async function handleSubmit(event) {
     event.preventDefault()
-    if (saving) return
+    if (pendingSave.current) return
     setFormError('')
     const creating = !editingId
     const openingQuantity = Number(form.quantity || 0)
@@ -401,6 +437,7 @@ function Products() {
       })))
     }
 
+    pendingSave.current = true
     setSaving(true)
     const payload = {
       category_id: Number(form.category_id),
@@ -456,6 +493,7 @@ function Products() {
 
     try {
       let savedProduct
+      let imageWarning = ''
       if (editingId) {
         savedProduct = await updateProduct(editingId, payload)
       } else {
@@ -463,7 +501,8 @@ function Products() {
       }
 
       if (form.image && savedProduct?.id) {
-        await uploadProductImage(savedProduct.id, form.image)
+        try { await uploadProductImage(savedProduct.id, form.image) }
+        catch (cause) { imageWarning = ui('Product saved, but its image could not be uploaded. Edit the product to try again.') + ' ' + (cause.message || '') }
       }
 
       if (creating) {
@@ -472,30 +511,38 @@ function Products() {
           sku: savedProduct?.sku || 'SKU generated automatically',
         })
         setHighlightedProductId(savedProduct?.id ?? null)
-        window.setTimeout(() => setHighlightedProductId(null), 3200)
+        clearTimeout(highlightTimer.current)
+        highlightTimer.current = window.setTimeout(() => setHighlightedProductId(null), 3200)
       }
 
       cancelEdit()
+      setFormOpen(false)
       await loadProducts(getActiveFilters())
+      setSavedFeedback({ id: savedProduct?.id, name: savedProduct?.name || payload.name, created: creating })
+      if (imageWarning) setError(imageWarning)
     } catch (err) {
       if (err.errors) {
         const messages = Object.values(err.errors).flat().join(' ')
         setFormError(messages)
       } else {
-        setFormError(editingId ? 'Could not update product.' : 'Could not save product.')
+        setFormError(err.message || ui(editingId ? 'Could not update product.' : 'Could not save product.'))
       }
     } finally {
+      pendingSave.current = false
       setSaving(false)
     }
   }
 
   async function handleDelete(product) {
-    const confirmed = window.confirm(`Delete "${product.name}"? This cannot be undone.`)
+    if (deleting.current.has(product.id)) return
+    const confirmed = window.confirm(language === 'sq' ? `Të fshihet "${product.name}"? Ky veprim nuk zhbëhet.` : `Delete "${product.name}"? This cannot be undone.`)
 
     if (!confirmed) {
       return
     }
 
+    deleting.current.add(product.id)
+    setDeletingId(product.id)
     try {
       await deleteProduct(product.id)
       if (editingId === product.id) {
@@ -505,8 +552,11 @@ function Products() {
         setViewProductId(null)
       }
       await loadProducts(getActiveFilters())
-    } catch {
-      setError('Could not delete product.')
+    } catch (cause) {
+      setError(cause.message || ui('Could not delete product.'))
+    } finally {
+      deleting.current.delete(product.id)
+      setDeletingId(null)
     }
   }
 
@@ -526,6 +576,8 @@ function Products() {
 
   return (
     <main className="products-page">
+      <PageHeader title={t('nav.products')} description={ui('Manage products, prices and inventory details.')} actions={canManage && !formOpen && <button type="button" className="workspace-primary" onClick={() => setFormOpen(true)}>{ui('Add product')}</button>}/>
+      {savedFeedback && <div role="status" className="workspace-success workspace-save-feedback"><span>{ui(savedFeedback.created ? 'Product added.' : 'Product updated.')} <strong>{savedFeedback.name}</strong></span>{savedFeedback.id && <button type="button" className="secondary" onClick={() => setViewProductId(savedFeedback.id)}>{ui('View product')}</button>}<button type="button" className="secondary" aria-label={ui('Dismiss confirmation')} onClick={() => setSavedFeedback(null)}>×</button></div>}
       <SuccessAnimation
         open={Boolean(productSuccess)}
         title={t('animations.productAddedTitle')}
@@ -534,16 +586,16 @@ function Products() {
         onClose={() => setProductSuccess(null)}
       />
       {viewProductId && (
-        <ProductDetail productId={viewProductId} onClose={() => setViewProductId(null)} />
+        <ProductDetail productId={viewProductId} onClose={closeView} />
       )}
 
-      <section className="card product-form-card" ref={formSectionRef}>
-        <h2>{editingId ? 'Edit product' : 'Add product'}</h2>
-        <form className="product-form" onSubmit={handleSubmit}>
+      {formOpen && canManage && <section className="card product-form-card" ref={formSectionRef}>
+        <h2>{ui(editingId ? 'Edit product' : 'Add product')}</h2>
+        <form className="product-form" onSubmit={handleSubmit} onInvalidCapture={event => { const details = event.target.closest('details'); if (details) details.open = true }}>
           <label>
-            Category
+            {ui("Category")}
             <select name="category_id" value={form.category_id} onChange={handleChange} required>
-              <option value="">Select a category</option>
+              <option value="">{ui("Select a category")}</option>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
@@ -553,9 +605,9 @@ function Products() {
           </label>
 
           <label>
-            Supplier
+            {ui("Supplier")}
             <select name="supplier_id" value={form.supplier_id} onChange={handleChange}>
-              <option value="">No supplier</option>
+              <option value="">{ui("No supplier")}</option>
               {suppliers.map((supplier) => (
                 <option key={supplier.id} value={supplier.id}>
                   {supplier.name}
@@ -565,19 +617,19 @@ function Products() {
           </label>
 
           <label>
-            Name
+            {ui("Name")}
             <input name="name" value={form.name} onChange={handleChange} required />
           </label>
 
           <label>
-            <span>SKU <span className="field-optional">(optional)</span></span>
-            <input name="sku" value={form.sku} onChange={handleChange} placeholder="Leave blank to generate automatically" />
+            <span>SKU <span className="field-optional">({ui('Optional')})</span></span>
+            <input name="sku" value={form.sku} onChange={handleChange} placeholder={ui('Leave blank to generate automatically')} />
           </label>
 
           <label>
-            Warehouse section
+            {ui("Warehouse section")}
             <select name="location_code" value={form.location_code} onChange={handleChange}>
-              <option value="">No section assigned</option>
+              <option value="">{ui("No section assigned")}</option>
               {warehouseSections.map((section) => (
                 <option key={section.id} value={sectionLocationKey(section.floor_level, section.code)}>
                   L{section.floor_level ?? 1} · {section.code} — {section.name}
@@ -587,7 +639,7 @@ function Products() {
           </label>
 
           <label>
-            Description
+            {ui("Description")}
             <textarea
               name="description"
               value={form.description}
@@ -607,7 +659,7 @@ function Products() {
           </label>
 
           <label>
-            Product image <span className="field-optional">(optional)</span>
+            {ui("Product image")} <span className="field-optional">({ui('Optional')})</span>
             <input
               name="image"
               type="file"
@@ -634,7 +686,7 @@ function Products() {
             </label>
 
             <label>
-              Min quantity
+              {ui("Min quantity")}
               <input
                 name="min_quantity"
                 type="number"
@@ -658,7 +710,7 @@ function Products() {
             </label>
 
             <label>
-              High stock at
+              {ui("High stock at")}
               <input
                 name="high_stock_threshold"
                 type="number"
@@ -673,7 +725,7 @@ function Products() {
 
           <div className="form-row">
             <label>
-              Purchase Price
+              {ui("Purchase Price")}
               <input
                 name="purchase_price"
                 type="number"
@@ -681,12 +733,12 @@ function Products() {
                 step="0.01"
                 value={form.purchase_price}
                 onChange={handleChange}
-                placeholder="Cost price"
+                placeholder={ui('Cost price')}
               />
             </label>
 
             <label>
-              Selling Price
+              {ui("Selling Price")}
               <input
                 name="selling_price"
                 type="number"
@@ -694,7 +746,7 @@ function Products() {
                 step="0.01"
                 value={form.selling_price}
                 onChange={handleChange}
-                placeholder="Retail price"
+                placeholder={ui('Retail price')}
                 required
               />
             </label>
@@ -859,55 +911,48 @@ function Products() {
           {formError && <p className="error">{formError}</p>}
 
           <div className="form-actions">
-            <button type="submit" disabled={saving}>{saving ? 'Saving…' : (editingId ? 'Update product' : 'Save product')}</button>
-            {editingId && (
-              <button type="button" className="secondary" onClick={cancelEdit}>
-                Cancel
+            <button type="submit" disabled={saving}>{ui(saving ? 'Saving…' : (editingId ? 'Update product' : 'Save product'))}</button>
+            {(
+              <button type="button" disabled={saving} className="secondary" onClick={() => { if ((form.name || form.description || editingId) && !window.confirm(ui('Discard unsaved product changes?'))) return; cancelEdit(); setFormOpen(false) }}>
+                {ui("Cancel")}
               </button>
             )}
           </div>
         </form>
-      </section>
+      </section>}
 
       <section className="card">
         <div className="section-header">
-          <h2>Product list</h2>
+          <h2>{ui("Product list")}</h2>
           <div className="section-header-actions">
             {!loading && pagination && (
               <p className="result-count">
-                {pagination.total} product(s) - page {pagination.current_page} of{' '}
+                {pagination.total} {ui('products')} · {ui('Page')} {pagination.current_page} {ui('of')}{' '}
                 {pagination.last_page}
               </p>
             )}
             <button type="button" className="secondary" onClick={handleExport}>
-              Export CSV
+              {ui("Export CSV")}
             </button>
             <label className="secondary import-label">
               <Upload size={16} />
-              Import CSV
+              {ui("Import CSV")}
               <input type="file" accept=".csv,text/csv" onChange={handleImport} hidden />
             </label>
           </div>
         </div>
 
         <div className="filters">
-          <label>
-            Search
-            <input
-              type="search"
-              placeholder="Search by name or SKU"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </label>
+          <SearchField placeholder={ui('Search by name or SKU')} value={search} onChange={event => setSearch(event.target.value)}/>
 
           <label>
-            Category
+            {ui("Category")}
             <select
+              aria-label={ui('Category')}
               value={categoryFilter}
               onChange={(event) => setCategoryFilter(event.target.value)}
             >
-              <option value="">All categories</option>
+              <option value="">{ui("All categories")}</option>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
@@ -917,12 +962,13 @@ function Products() {
           </label>
 
           <label>
-            Supplier
+            {ui("Supplier")}
             <select
+              aria-label={ui('Supplier')}
               value={supplierFilter}
               onChange={(event) => setSupplierFilter(event.target.value)}
             >
-              <option value="">All suppliers</option>
+              <option value="">{ui("All suppliers")}</option>
               {suppliers.map((supplier) => (
                 <option key={supplier.id} value={supplier.id}>
                   {supplier.name}
@@ -933,7 +979,7 @@ function Products() {
 
           <label>
             {t('productMaster.status')}
-            <select value={lifecycleFilter} onChange={(event) => setLifecycleFilter(event.target.value)}>
+            <select aria-label={t('productMaster.status')} value={lifecycleFilter} onChange={(event) => setLifecycleFilter(event.target.value)}>
               <option value="">{t('productMaster.allCurrent')}</option>
               <option value="active">{t('productMaster.active')}</option>
               <option value="discontinued">{t('productMaster.discontinued')}</option>
@@ -947,64 +993,73 @@ function Products() {
               checked={lowStockOnly}
               onChange={(event) => setLowStockOnly(event.target.checked)}
             />
-            Low stock only
+            {ui("Low stock only")}
           </label>
 
           <label>
-            Sort by
-            <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
-              <option value="name">Name</option>
+            {ui("Sort by")}
+            <select aria-label={ui('Sort by')} value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+              <option value="name">{ui("Name")}</option>
               <option value="sku">SKU</option>
-              <option value="quantity">Company-owned stock</option>
-              <option value="min_quantity">Min quantity</option>
-              <option value="price">Price</option>
+              <option value="quantity">{ui("Company-owned stock")}</option>
+              <option value="min_quantity">{ui("Min quantity")}</option>
+              <option value="price">{ui("Price")}</option>
             </select>
           </label>
 
           <label>
-            Order
+            {ui("Order")}
             <select
+              aria-label={ui('Order')}
               value={sortDirection}
               onChange={(event) => setSortDirection(event.target.value)}
             >
-              <option value="asc">Ascending</option>
-              <option value="desc">Descending</option>
+              <option value="asc">{ui("Ascending")}</option>
+              <option value="desc">{ui("Descending")}</option>
             </select>
           </label>
 
           {hasFilters && (
             <button type="button" className="secondary" onClick={clearFilters}>
-              Clear filters
+              {ui("Clear filters")}
             </button>
           )}
         </div>
 
-        {loading && <p>Loading products...</p>}
+        <ActiveFilters onClear={clearFilters} filters={[
+          search && {key:'search',label:`${ui('Search')}: ${search}`,remove:()=>{setSearch('');setPage(1)}},
+          categoryFilter && {key:'category',label:`${ui('Category')}: ${categories.find(row=>String(row.id)===categoryFilter)?.name || categoryFilter}`,remove:()=>{setCategoryFilter('');setPage(1)}},
+          supplierFilter && {key:'supplier',label:`${ui('Supplier')}: ${suppliers.find(row=>String(row.id)===supplierFilter)?.name || supplierFilter}`,remove:()=>{setSupplierFilter('');setPage(1)}},
+          lowStockOnly && {key:'low',label:ui('Low stock only'),remove:()=>{setLowStockOnly(false);setPage(1)}},
+          lifecycleFilter && {key:'status',label:t(`productMaster.${lifecycleFilter}`),remove:()=>{setLifecycleFilter('');setPage(1)}},
+          (sortBy !== 'name' || sortDirection !== 'asc') && {key:'sort',label:`${ui('Sort by')}: ${ui(({name:'Name',sku:'SKU',quantity:'Company-owned stock',min_quantity:'Min quantity',price:'Price'})[sortBy] || 'Name')} · ${ui(sortDirection === 'asc' ? 'Ascending' : 'Descending')}`,remove:()=>{setSortBy('name');setSortDirection('asc');setPage(1)}},
+        ]}/>
+        {loading && <p role="status">{ui('Loading products...')}</p>}
         {error && <p className="error">{error}</p>}
 
         {!loading && !error && products.length === 0 && !hasFilters && (
-          <p>No products yet. Add your first item above.</p>
+          <p>{ui("No products yet. Add your first item above.")}</p>
         )}
 
         {!loading && !error && products.length === 0 && hasFilters && (
-          <p>No products match your search or filter.</p>
+          <p>{ui("No products match your search or filter.")}</p>
         )}
 
         {!loading && products.length > 0 && (
           <>
-            <table className="product-table">
+            <div className="table-wrap" tabIndex={0} aria-label={ui('Product list')}><table className="product-table">
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Category</th>
-                  <th>Supplier</th>
+                  <th>{ui("Name")}</th>
+                  <th>{ui("Category")}</th>
+                  <th>{ui("Supplier")}</th>
                   <th>SKU</th>
                   <th>{t('productMaster.status')}</th>
-                  <th>Section</th>
-                  <th>Unit</th>
-                  <th>Min</th>
-                  <th>Selling price</th>
-                  <th></th>
+                  <th>{ui("Section")}</th>
+                  <th>{ui("Unit")}</th>
+                  <th>{ui("Min")}</th>
+                  <th>{ui("Selling price")}</th>
+                  <th>{ui('Actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1013,37 +1068,29 @@ function Products() {
                     <td>{product.name}</td>
                     <td>{product.category?.name ?? '-'}</td>
                     <td>{product.supplier?.name ?? '-'}</td>
-                    <td>{product.sku}</td>
+                    <td className="record-identifier">{product.sku || '—'}</td>
                     <td><span className={`product-lifecycle product-lifecycle-${product.lifecycle_status || 'active'}`}>{t(`productMaster.${product.lifecycle_status || 'active'}`)}</span></td>
                     <td>{product.location_code || '—'}</td>
                     <td>{product.unit ?? 'pcs'}</td>
-                    <td>{product.min_quantity}</td>
-                    <td>${Number(product.selling_price ?? product.price ?? 0).toFixed(2)}</td>
+                    <td>{formatQuantity(product.min_quantity, product.unit)}</td>
+                    <td>{currency(product.selling_price ?? product.price)}</td>
                     <td className="actions">
                       <button
                         type="button"
                         className="secondary"
                         onClick={() => setViewProductId(product.id)}
                       >
-                        View
+                        {ui("View")}
                       </button>
-                      <button type="button" className="secondary" onClick={() => startEdit(product)}>
-                        Edit
-                      </button>
-                      {(userRole === 'admin' || userRole === 'manager') && (
-                        <button
-                          type="button"
-                          className="danger"
-                          onClick={() => handleDelete(product)}
-                        >
-                          Delete
-                        </button>
-                      )}
+                      {canManage && <RowActions label={product.name} actions={[
+                        {label:ui('Edit'),disabled:saving,onClick:()=>startEdit(product)},
+                        (userRole === 'admin' || userRole === 'manager') && {label:ui('Delete'),danger:true,disabled:deletingId === product.id,onClick:()=>handleDelete(product)},
+                      ]}/>}
                     </td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
 
             {pagination && pagination.last_page > 1 && (
               <div className="pagination">
@@ -1053,10 +1100,10 @@ function Products() {
                   disabled={page <= 1}
                   onClick={() => setPage((current) => current - 1)}
                 >
-                  Previous
+                  {ui("Previous")}
                 </button>
                 <span>
-                  Page {pagination.current_page} of {pagination.last_page}
+                  {ui('Page')} {pagination.current_page} {ui('of')} {pagination.last_page}
                 </span>
                 <button
                   type="button"
@@ -1064,7 +1111,7 @@ function Products() {
                   disabled={page >= pagination.last_page}
                   onClick={() => setPage((current) => current + 1)}
                 >
-                  Next
+                  {ui("Next")}
                 </button>
               </div>
             )}

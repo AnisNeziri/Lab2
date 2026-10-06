@@ -1,4 +1,22 @@
 <?php
+Route::middleware(['auth.token','password.changed','company.context','throttle:120,1'])->prefix('supply-optimizer')->group(function(){
+ $c=\App\Http\Controllers\Api\SupplyOptimizerController::class;
+ Route::get('/options',[$c,'options']);Route::get('/',[$c,'index']);Route::post('/',[$c,'store'])->middleware('throttle:10,1');
+ Route::get('/{id}',[$c,'show'])->whereNumber('id');Route::get('/{id}/explain',[$c,'explain'])->whereNumber('id');
+ Route::get('/{id}/state',[$c,'state'])->whereNumber('id');
+ Route::post('/{id}/simulate',[$c,'simulate'])->whereNumber('id')->middleware('throttle:10,1');
+ Route::post('/{id}/stress',[$c,'stress'])->whereNumber('id');Route::post('/{id}/prepare',[$c,'prepare'])->whereNumber('id');
+});
+Route::middleware(['auth.token','password.changed','company.context','throttle:30,1'])->prefix('decision-learning')->group(function(){
+ Route::get('/',[\App\Http\Controllers\Api\DecisionLearningController::class,'index']);
+ Route::get('/performance',[\App\Http\Controllers\Api\DecisionLearningController::class,'performance']);
+   Route::get('/decisions/{id}',[\App\Http\Controllers\Api\DecisionLearningController::class,'outcome'])->whereNumber('id');
+   Route::get('/records/{id}/outcome',[\App\Http\Controllers\Api\DecisionLearningController::class,'recordOutcome'])->whereNumber('id');
+ Route::post('/experiments',[\App\Http\Controllers\Api\DecisionLearningController::class,'experiment']);
+ Route::get('/experiments/{id}',[\App\Http\Controllers\Api\DecisionLearningController::class,'compare'])->whereNumber('id');
+ Route::post('/experiments/{id}/promote',[\App\Http\Controllers\Api\DecisionLearningController::class,'promote'])->whereNumber('id');
+ Route::post('/experiments/{id}/rollback',[\App\Http\Controllers\Api\DecisionLearningController::class,'rollback'])->whereNumber('id');
+});
 
 use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\AimsCapabilityController;
@@ -59,6 +77,13 @@ use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
 Broadcast::routes(['middleware' => ['auth.token']]);
+
+Route::prefix('intelligence-assistant')->middleware(['auth.token','password.changed','company.context','throttle:30,1'])->group(function(){
+    $c=\App\Http\Controllers\Api\IntelligenceAssistantController::class;
+    Route::get('/status',[$c,'status']);Route::post('/ask',[$c,'ask']);Route::post('/feedback',[$c,'feedback']);
+    Route::post('/confirm',[$c,'confirm'])->middleware('permission:procurement.manage');
+    Route::get('/usage',[$c,'usage'])->middleware('permission:activity.view');
+});
 
 Route::prefix('order-api/v1')->middleware('throttle:60,1')->group(function(){
     Route::get('/portal',[\App\Http\Controllers\Api\OrderHubController::class,'portal'])->middleware('order.channel:orders:read');
@@ -129,6 +154,59 @@ Route::middleware('auth.token')->group(function () {
 
     Route::middleware('password.changed')->group(function () {
         Route::middleware('company.context')->group(function () {
+            Route::prefix('analytics')->middleware('permission:analytics.view')->group(function(){
+                $i=\App\Http\Controllers\Api\InventoryIntelligenceController::class;
+                $decisions=\App\Http\Controllers\Api\EnterpriseDecisionController::class;
+                Route::get('/decisions',[$decisions,'index']);
+                Route::get('/decisions/{decision}',[$decisions,'show'])->whereNumber('decision');
+                Route::post('/decisions/products/{product}/refresh',[$decisions,'refresh']);
+                Route::post('/decisions/{decision}/simulate',[$decisions,'simulate']);
+                Route::post('/decisions/{decision}/review',[$decisions,'review'])->middleware('permission:procurement.manage');
+                Route::post('/decisions/{decision}/purchase-request',[$decisions,'draft'])->middleware('permission:procurement.manage');
+                Route::post('/decisions/{decision}/feedback',[$decisions,'feedback'])->middleware('permission:procurement.manage');
+                $planning=\App\Http\Controllers\Api\InventoryPlanningController::class;
+                Route::get('/planning',[$planning,'index']);
+                Route::get('/planning/products/{product}',[$planning,'show']);
+                Route::post('/planning/products/{product}/policy',[$planning,'policy'])->middleware('permission:procurement.manage');
+                Route::post('/planning/products/{product}/save',[$planning,'save'])->middleware('permission:procurement.manage');
+                Route::post('/planning/recommendations/{recommendation}/feedback',[$planning,'feedback'])->middleware('permission:procurement.manage');
+                Route::post('/planning/products/{product}/scenarios',[$planning,'scenarios']);
+                Route::post('/planning/consolidate',[$planning,'consolidate']);
+                Route::post('/planning/purchase-requests',[$planning,'draft'])->middleware('permission:procurement.manage');
+                Route::get('/intelligence',[$i,'index']);
+                Route::get('/intelligence/products/{product}',[$i,'show']);
+                Route::get('/intelligence/products/{product}/performance',[$i,'performance']);
+                Route::get('/intelligence/models/{model}',[$i,'model']);
+                Route::get('/intelligence/alerts/{alert}',[$i,'alert']);
+                Route::post('/intelligence/products/{product}/observations',[$i,'observe'])->middleware('permission:analytics.ml_datasets');
+                Route::post('/intelligence/models/{model}/promote',[$i,'promote'])->middleware('permission:analytics.ml_datasets');
+                Route::post('/intelligence/models/{model}/rollback',[$i,'rollback'])->middleware('permission:analytics.ml_datasets');
+                Route::get('/intelligence/recommendations/{recommendation}',[$i,'recommendation']);
+                Route::post('/intelligence/products/{product}/train',[$i,'train'])->middleware('permission:analytics.ml_datasets');
+                Route::post('/intelligence/recommendations/{recommendation}/feedback',[$i,'feedback']);
+                Route::post('/intelligence/recommendations/{recommendation}/purchase-request',[$i,'draft'])->middleware('permission:procurement.manage');
+                $a=\App\Http\Controllers\Api\AnalyticsController::class;
+                Route::get('/catalog',[$a,'catalog']);Route::get('/features',[$a,'features']);
+                Route::post('/snapshots',[$a,'capture'])->middleware('permission:analytics.ml_datasets');
+                Route::get('/datasets',[$a,'datasets']);Route::post('/datasets',[$a,'build'])->middleware('permission:analytics.ml_datasets');
+                Route::get('/datasets/{dataset}/export',[$a,'export'])->middleware('permission:analytics.export');
+                Route::get('/{area}',[$a,'show']);
+            });
+            Route::get('/automation-catalog', [\App\Http\Controllers\Api\AutomationController::class,'catalog'])->middleware('permission:automations.view');
+            Route::get('/automations', [\App\Http\Controllers\Api\AutomationController::class,'index'])->middleware('permission:automations.view');
+            Route::post('/automations', [\App\Http\Controllers\Api\AutomationController::class,'store'])->middleware('permission:automations.create');
+            Route::get('/automations/{automation}', [\App\Http\Controllers\Api\AutomationController::class,'show'])->middleware('permission:automations.view');
+            Route::put('/automations/{automation}', [\App\Http\Controllers\Api\AutomationController::class,'update'])->middleware('permission:automations.edit');
+            Route::post('/automations/{automation}/toggle', [\App\Http\Controllers\Api\AutomationController::class,'toggle'])->middleware('permission:automations.view');
+            Route::post('/automations/{automation}/simulate', [\App\Http\Controllers\Api\AutomationController::class,'simulate'])->middleware('permission:automations.test');
+            Route::post('/automations/{automation}/duplicate', [\App\Http\Controllers\Api\AutomationController::class,'duplicate'])->middleware('permission:automations.create');
+            Route::get('/automations/{automation}/executions', [\App\Http\Controllers\Api\AutomationController::class,'executions'])->middleware('permission:automations.executions.view');
+            Route::post('/automation-executions/{execution}/retry', [\App\Http\Controllers\Api\AutomationController::class,'retry'])->middleware('permission:automations.edit');
+            Route::get('/action-center', [\App\Http\Controllers\Api\AutomationController::class,'center'])->middleware('permission:tasks.view');
+            Route::get('/task-assignees', [\App\Http\Controllers\Api\AutomationController::class,'assignees'])->middleware('permission:tasks.assign');
+            Route::get('/operational-tasks', [\App\Http\Controllers\Api\AutomationController::class,'tasks'])->middleware('permission:tasks.view');
+            Route::post('/operational-tasks', [\App\Http\Controllers\Api\AutomationController::class,'createTask'])->middleware('permission:tasks.create');
+            Route::patch('/operational-tasks/{task}', [\App\Http\Controllers\Api\AutomationController::class,'updateTask'])->middleware('permission:tasks.complete');
             Route::get('/dashboard', [DashboardController::class, 'index'])->middleware('permission:dashboard.view');
             Route::get('/dashboard/sales-analytics', [DashboardController::class, 'salesAnalytics'])->middleware('permission:dashboard.view');
             Route::get('/dashboard/activity-feed', [DashboardController::class, 'activityFeed'])->middleware('permission:dashboard.view');
@@ -149,6 +227,23 @@ Route::middleware('auth.token')->group(function () {
             Route::post('/shipments/vessels/lookup', [ShipmentController::class, 'lookupVessel'])->middleware('permission:shipments.manage');
             Route::post('/shipments/ais', [ShipmentController::class, 'storeAis'])->middleware('permission:shipments.manage');
             Route::get('/shipments', [ShipmentController::class, 'index'])->middleware('permission:shipments.view');
+            Route::prefix('customer-sales-intelligence')->middleware(['permission:analytics.view','permission:customers.manage','permission:daily_sales.manage'])->group(function(){
+                $c=\App\Http\Controllers\Api\CustomerSalesIntelligenceController::class;
+                Route::get('/',[$c,'index']);Route::post('/refresh',[$c,'refresh'])->middleware('throttle:6,1');
+                Route::get('/customers/{customer}',[$c,'customer']);Route::post('/predictions/{prediction}/review',[$c,'review']);Route::post('/predictions/{prediction}/draft',[$c,'draft']);Route::post('/model',[$c,'model']);
+            });
+            Route::prefix('financial-intelligence')->middleware(['permission:analytics.finance','permission:finance.view','permission:financial_accounts.view'])->group(function(){
+                $c=\App\Http\Controllers\Api\FinancialIntelligenceController::class;
+                Route::get('/',[$c,'index']);
+                Route::post('/refresh',[$c,'refresh'])->middleware('throttle:6,1');
+                Route::post('/scenarios',[$c,'scenario'])->middleware('throttle:30,1');
+                Route::put('/policy',[$c,'policy']);
+                Route::post('/model',[$c,'model']);
+            });
+            Route::get('/shipment-intelligence', [\App\Http\Controllers\Api\ShipmentIntelligenceController::class, 'index'])->middleware('permission:shipments.view');
+            Route::get('/shipment-intelligence/routes', [\App\Http\Controllers\Api\ShipmentIntelligenceController::class, 'routes'])->middleware('permission:shipments.view');
+            Route::get('/shipment-intelligence/{shipment}', [\App\Http\Controllers\Api\ShipmentIntelligenceController::class, 'show'])->middleware('permission:shipments.view');
+            Route::post('/shipment-intelligence/{shipment}/refresh', [\App\Http\Controllers\Api\ShipmentIntelligenceController::class, 'refresh'])->middleware('permission:shipments.manage');
             Route::get('/shipments/{shipment}', [ShipmentController::class, 'show'])->middleware('permission:shipments.view');
             Route::post('/shipments/{shipment}/refresh', [ShipmentController::class, 'refresh'])->middleware('permission:shipments.manage');
             Route::post('/shipments/{shipment}/save', [ShipmentController::class, 'save'])->middleware('permission:shipments.manage');
@@ -361,6 +456,12 @@ Route::middleware('auth.token')->group(function () {
             Route::delete('/product-suppliers/{productSupplier}', [ProductSupplierController::class, 'destroy'])->middleware('permission:supplier_catalogue.manage');
             Route::get('/product-suppliers/{productSupplier}/price-history', [ProductSupplierController::class, 'priceHistory'])->middleware('permission:supplier_catalogue.view');
             Route::get('/suppliers/{supplier}/performance', [ProductSupplierController::class, 'supplierPerformance'])->middleware('permission:supplier_catalogue.view');
+            Route::get('/suppliers/{supplier}/intelligence', [\App\Http\Controllers\Api\SupplierIntelligenceController::class, 'show']);
+            Route::post('/suppliers/{supplier}/intelligence/refresh', [\App\Http\Controllers\Api\SupplierIntelligenceController::class, 'refresh']);
+            Route::post('/suppliers/{supplier}/intelligence/train', [\App\Http\Controllers\Api\SupplierIntelligenceController::class, 'train']);
+            Route::post('/supplier-intelligence/risks/{risk}/feedback', [\App\Http\Controllers\Api\SupplierIntelligenceController::class, 'feedback']);
+            Route::post('/supplier-intelligence/models/{model}/promote', [\App\Http\Controllers\Api\SupplierIntelligenceController::class, 'promote']);
+            Route::post('/supplier-intelligence/models/{model}/rollback', [\App\Http\Controllers\Api\SupplierIntelligenceController::class, 'rollback']);
 
             Route::get('/inventory-returns', [InventoryReturnController::class, 'index'])->middleware('permission:returns.view');
             Route::post('/inventory-returns', [InventoryReturnController::class, 'store'])->middleware('permission:returns.manage');

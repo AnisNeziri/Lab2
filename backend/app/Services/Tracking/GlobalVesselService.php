@@ -13,7 +13,7 @@ class GlobalVesselService
     public function vessels(array $filters = []): array
     {
         $query = Shipment::query()->active()->where('tracking_provider', 'aisstream')
-            ->with('purchaseOrder:id,po_number');
+            ->with('purchaseOrder:id,po_number','intelligence');
 
         if (! empty($filters['origin'])) {
             $query->where('origin_port', $filters['origin']);
@@ -37,6 +37,7 @@ class GlobalVesselService
                 $aisDetails = (array) data_get($shipment->vessel_details, 'aisstream', []);
 
                 return [
+                    'intelligence' => $shipment->intelligence->firstWhere('is_current', true)?->only('risk','confidence','eta','checked_at'),
                     'id' => (string) $shipment->id,
                     'name' => $shipment->vessel_name ?: "MMSI {$shipment->mmsi}",
                     'mmsi' => $shipment->mmsi,

@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Product extends Model
 {
+    public function intelligenceRecommendations(){return $this->hasMany(InventoryRecommendation::class);}
     use BelongsToCompany, LogsActivity;
 
     protected $fillable = [

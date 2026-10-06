@@ -108,7 +108,9 @@ Frontend listens and updates Dashboard, 3D Map, and Notification Center live —
 | Sorted Set | `activity_feed:{companyId}` | Last 100 user actions | No TTL |
 | Set | `low_stock_alerts:{companyId}` | Low-stock product IDs | 1 hour |
 
-Graceful degradation: if Redis is unavailable, the system falls back to MySQL queries automatically.
+Redis is optional for local development. Use `CACHE_STORE=file` and `REDIS_ENABLED=false` (the example configuration). To enable the dashboard accelerator, start Redis and set `REDIS_ENABLED=true`. After configuration changes, run `php artisan config:clear`. Database-backed inventory remains available if the accelerator cannot connect; the Redis activity feed may be empty. Setting `CACHE_STORE=redis` separately makes Laravel cache operations depend on Redis.
+
+`APP_OPERATION_MODE=offline` selects intentional desktop local operation and skips Redis entirely. `/api/system/mode` and `/api/superadmin/health` report this separately from an unreachable Redis server; the app displays the reason and recovery steps.
 
 ---
 
@@ -230,7 +232,8 @@ DB_DATABASE=inventory_system
 DB_USERNAME=root
 DB_PASSWORD=
 
-CACHE_STORE=redis
+CACHE_STORE=file
+REDIS_ENABLED=false
 REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 REDIS_PASSWORD=null

@@ -28,6 +28,7 @@ output/
 outputs/
 tmp/
 backend/tmp/
+backend/ml/optimizer_vendor/
 *.sqlite
 *.sqlite-*
 *.sql

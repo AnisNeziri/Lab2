@@ -1,0 +1,21 @@
+<?php
+return [
+    'python' => env('AIMS_ML_PYTHON', 'python'),
+    'timeout_seconds' => 45,
+    'scheduled_training' => (bool) env('AIMS_ML_SCHEDULED_TRAINING', false),
+    'retrain_after_days' => max(7, (int) env('AIMS_ML_RETRAIN_DAYS', 7)),
+    'batch_limit' => max(1, min(100, (int) env('AIMS_ML_BATCH_LIMIT', 10))),
+    'observation_batch_limit'=>100,
+    'maintenance_max_seconds'=>max(10,min(300,(int)env('AIMS_ML_MAINTENANCE_SECONDS',60))),
+    'minimum_new_days'=>max(7,(int)env('AIMS_ML_MIN_NEW_DAYS',7)),
+    'stale_model_days'=>max(14,(int)env('AIMS_ML_STALE_MODEL_DAYS',28)),
+    'promotion_min_days'=>56,
+    'promotion_min_windows'=>2,
+    'promotion_min_coverage'=>0.8,
+    'promotion_min_improvement_percent'=>max(0,min(100,(float)env('AIMS_ML_PROMOTION_IMPROVEMENT_PERCENT',2))),
+    'feature_stale_days'=>max(2,(int)env('AIMS_ML_FEATURE_STALE_DAYS',7)),
+    'drift_min_windows'=>3,
+    'drift_wape_percent'=>35,
+    'drift_baseline_ratio'=>1.2,
+    'drift_bias_percent'=>20,
+];

@@ -43,7 +43,7 @@ class InventorySnapshotService
      *
      * @return Collection<int, array{on_hand: float, available: float, reserved: float, damaged: float, quarantine: float, blocked: float, incoming: float, projected: float, committed_outgoing: float, available_to_promise: float, expected_incoming_by_as_of: float, available_to_promise_by_as_of: float, incoming_schedule: array<int, array{expected_at: ?string, quantity: float, purchase_order_id: int}>}>
      */
-    public function forProducts(Collection $products, ?string $asOf = null): Collection
+    public function forProducts(Collection $products, ?string $asOf = null, ?int $warehouseId = null): Collection
     {
         if ($products->isEmpty()) {
             return collect();
@@ -54,6 +54,7 @@ class InventorySnapshotService
         $balances = WarehouseStock::withoutGlobalScopes()
             ->whereIn('company_id', $companyIds)
             ->whereIn('product_id', $productIds)
+            ->when($warehouseId, fn($q)=>$q->where('warehouse_id',$warehouseId))
             ->selectRaw('product_id, SUM(quantity) as on_hand, SUM(available_quantity) as available, SUM(reserved_quantity) as reserved, SUM(damaged_quantity) as damaged, SUM(quarantine_quantity) as quarantine, SUM(blocked_quantity) as blocked')
             ->groupBy('product_id')
             ->get()
@@ -69,6 +70,7 @@ class InventorySnapshotService
                 ->withoutGlobalScopes()
                 ->whereIn('company_id', $companyIds)
                 ->whereNull('deleted_at')
+                ->when($warehouseId, fn($q)=>$q->where('warehouse_id',$warehouseId))
                 ->whereIn('status', self::INCOMING_PURCHASE_ORDER_STATUSES))
             ->get([
                 'id', 'purchase_order_id', 'product_id', 'quantity', 'base_quantity',
@@ -96,11 +98,11 @@ class InventorySnapshotService
                 ];
             });
 
-        $demand=\App\Models\SalesOrderItem::query()->whereIn('product_id',$productIds)->whereHas('order',fn($q)=>$q->whereNotNull('confirmed_at')->whereNotIn('status',['cancelled','delivered']))
+        $demand=\App\Models\SalesOrderItem::query()->whereIn('product_id',$productIds)->whereHas('order',fn($q)=>$q->whereNotNull('confirmed_at')->whereNotIn('status',['cancelled','delivered'])->when($warehouseId,fn($q)=>$q->where('warehouse_id',$warehouseId)))
             ->selectRaw('product_id, SUM(base_quantity - dispatched_quantity - reserved_quantity) as unreserved')->groupBy('product_id')->pluck('unreserved','product_id');
-        return $products->mapWithKeys(function (Product $product) use ($balances, $incoming, $planningDate, $demand): array {
+        return $products->mapWithKeys(function (Product $product) use ($balances, $incoming, $planningDate, $demand, $warehouseId): array {
             $balance = $balances->get($product->id);
-            $legacyQuantity = round((float) $product->quantity, 3);
+            $legacyQuantity = $warehouseId ? 0 : round((float) $product->quantity, 3);
             $available = round((float) ($balance?->available ?? $legacyQuantity), 3);
             $incomingPlan = $incoming->get($product->id, ['total' => 0.0, 'schedule' => []]);
             $incomingQuantity = round((float) $incomingPlan['total'], 3);
@@ -133,8 +135,8 @@ class InventorySnapshotService
     }
 
     /** @return array{on_hand: float, available: float, reserved: float, damaged: float, quarantine: float, blocked: float, incoming: float, projected: float, committed_outgoing: float, available_to_promise: float, expected_incoming_by_as_of: float, available_to_promise_by_as_of: float, incoming_schedule: array<int, array{expected_at: ?string, quantity: float, purchase_order_id: int}>} */
-    public function forProduct(Product $product, ?string $asOf = null): array
+    public function forProduct(Product $product, ?string $asOf = null, ?int $warehouseId = null): array
     {
-        return $this->forProducts(collect([$product]), $asOf)->get((int) $product->id);
+        return $this->forProducts(collect([$product]), $asOf, $warehouseId)->get((int) $product->id);
     }
 }

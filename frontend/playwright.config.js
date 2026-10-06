@@ -55,7 +55,7 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: 'npm run dev -- --host 127.0.0.1 --port 4173 --strictPort',
+      command: 'node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4173 --strictPort',
       cwd: frontendDir,
       url: 'http://127.0.0.1:4173/login',
       env: { VITE_API_PROXY_TARGET: 'http://127.0.0.1:8010' },

@@ -24,6 +24,91 @@ class PortableBackupTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_customer_sales_history_restores_archived_without_promoting_or_replaying_predictions(): void
+    {
+        $this->actingAsApiUser();$source=$this->apiCompany;
+        $customer=DB::table('customers')->insertGetId(['company_id'=>$source->id,'name'=>'V8 source buyer','is_active'=>true,'created_at'=>now(),'updated_at'=>now()]);
+        $snapshot=DB::table('analytics_snapshots')->insertGetId(['company_id'=>$source->id,'entity_type'=>'customer_sales_v8','entity_id'=>$customer,'warehouse_id'=>0,'snapshot_date'=>today(),'observed_at'=>now(),'feature_version'=>'customer-sales-v8.1','facts'=>json_encode(['id'=>$customer]),'created_at'=>now(),'updated_at'=>now()]);
+        DB::table('analytics_predictions')->insert(['company_id'=>$source->id,'prediction_type'=>'reorder_window','entity_type'=>'customer','entity_id'=>$customer,'model_key'=>'customer-sales-v8','model_version'=>'median_mad','input_feature_version'=>'customer-sales-v8.1','analytics_snapshot_id'=>$snapshot,'value'=>json_encode(['key'=>'reorder:source','customer_id'=>$customer]),'generated_at'=>now(),'valid_until'=>now()->addDays(30),'evaluation'=>json_encode(['timing_qualified'=>true]),'evaluated_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);
+        DB::table('customer_sales_snapshots')->insert(['company_id'=>$source->id,'version'=>(string)Str::uuid(),'fingerprint'=>str_repeat('a',64),'as_of'=>today(),'evidence_cutoff'=>now(),'evidence'=>json_encode(['profiles'=>[['id'=>$customer]],'opportunities'=>[]]),'created_at'=>now(),'updated_at'=>now()]);
+        DB::table('customer_intelligence_policies')->insert(['company_id'=>$source->id,'version'=>(string)Str::uuid(),'settings'=>json_encode(['champion'=>'median_mad']),'created_at'=>now(),'updated_at'=>now()]);
+        $contents=$this->plainBackup($source,['customer_debts','analytics']);$target=$this->switchToNewCompany();$file=UploadedFile::fake()->createWithContent('v8-backup.json',$contents);$this->post('/api/backup/import',['file'=>$file,'mode'=>'merge'])->assertOk();
+        $summary=DB::table('customer_sales_snapshots')->where('company_id',$target->id)->first();$this->assertTrue(json_decode($summary->evidence,true)['archived']);$prediction=DB::table('analytics_predictions')->where('company_id',$target->id)->first();$this->assertTrue(json_decode($prediction->value,true)['archived']);$this->assertNull($prediction->evaluated_at);$this->assertSame($prediction->generated_at,$prediction->valid_until);$this->assertSame('interval_iqr_baseline',json_decode(DB::table('customer_intelligence_policies')->where('company_id',$target->id)->value('settings'),true)['champion']);
+    }
+
+    public function test_pre_analytics_full_backup_remains_restorable(): void
+    {
+        $this->actingAsApiUser();
+        $source = $this->apiCompany;
+        $this->makeProduct($source, 'LEGACY-FULL', 'Legacy full product');
+        $modules = array_values(array_diff(array_keys(PortableBackupService::MODULES), ['analytics']));
+        $contents = $this->plainBackup($source,$modules);
+        $target = $this->switchToNewCompany();
+        DB::table('analytics_snapshots')->insert([
+            'company_id'=>$target->id,'snapshot_date'=>today(),'entity_type'=>'backlog','entity_id'=>0,'warehouse_id'=>0,
+            'feature_version'=>'observed-v1','observed_at'=>now(),'facts'=>'{}','created_at'=>now(),'updated_at'=>now(),
+        ]);
+        $file = UploadedFile::fake()->createWithContent('legacy-full.json',$contents);
+        $this->post('/api/backup/import',['file'=>$file,'mode'=>'replace','confirm_replace'=>'1'])
+            ->assertOk()->assertJsonCount(1,'warnings');
+        $this->assertDatabaseHas('products',['company_id'=>$target->id,'sku'=>'LEGACY-FULL']);
+        $this->assertSame(0,DB::table('analytics_snapshots')->where('company_id',$target->id)->count());
+    }
+
+    public function test_analytics_backup_restores_immutable_history_and_remaps_entities_across_companies(): void
+    {
+        $this->actingAsApiUser();
+        $source = $this->apiCompany;
+        $product = $this->makeProduct($source, 'ANALYTICS-BACKUP', 'Analytics product');
+        $snapshot = DB::table('analytics_snapshots')->insertGetId([
+            'company_id'=>$source->id, 'snapshot_date'=>today()->toDateString(), 'entity_type'=>'product',
+            'entity_id'=>$product->id, 'warehouse_id'=>0, 'feature_version'=>'observed-v1',
+            'observed_at'=>now(), 'facts'=>json_encode(['id'=>$product->id,'unit'=>'pcs','on_hand'=>12]), 'created_at'=>now(), 'updated_at'=>now(),
+        ]);
+        $version = (string) Str::uuid();
+        $dataset = DB::table('analytics_datasets')->insertGetId([
+            'company_id'=>$source->id, 'version'=>$version, 'name'=>'backup-test', 'date_from'=>today(), 'date_to'=>today(),
+            'feature_definitions'=>'{}', 'row_count'=>1, 'labelled_count'=>0, 'quality_status'=>'waiting_for_outcomes', 'created_at'=>now(), 'updated_at'=>now(),
+        ]);
+        $frozenValues = json_encode(['product_id'=>$product->id, 'unit'=>'pcs', 'on_hand'=>12]);
+        DB::table('analytics_dataset_rows')->insert(['company_id'=>$source->id,'analytics_dataset_id'=>$dataset,'analytics_snapshot_id'=>$snapshot,'values'=>$frozenValues]);
+        $artifact=['version'=>'demand-v1','algorithm'=>'seasonal_mean','parameters'=>[],'training_cutoff'=>today()->subDay()->toDateString()];
+        $modelVersion=(string)Str::uuid();
+        DB::table('inventory_forecast_models')->insert(['company_id'=>$source->id,'product_id'=>$product->id,'analytics_dataset_id'=>$dataset,'version'=>$modelVersion,'feature_version'=>'demand-daily-v1','horizon'=>30,'algorithm'=>'seasonal_mean','status'=>'active','training_cutoff'=>today()->subDay(),'artifact'=>json_encode($artifact),'artifact_hash'=>\App\Services\InventoryIntelligenceService::artifactHash($artifact),'comparison'=>'{}','quality'=>'{}','created_at'=>now(),'updated_at'=>now()]);
+        $modelId=DB::table('inventory_forecast_models')->where('version',$modelVersion)->value('id');$decisionKey=(string)Str::uuid();
+        DB::table('inventory_model_decisions')->insert(['company_id'=>$source->id,'product_id'=>$product->id,'to_model_id'=>$modelId,'horizon'=>30,'decision_key'=>$decisionKey,'action'=>'promote','reason'=>'Reviewed real history','evidence'=>'{}','created_at'=>now(),'updated_at'=>now()]);
+        DB::table('inventory_intelligence_alerts')->insert(['company_id'=>$source->id,'product_id'=>$product->id,'horizon'=>30,'code'=>'accuracy_degraded','status'=>'open','episode'=>1,'evidence'=>'{}','opened_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);
+        $prediction=DB::table('analytics_predictions')->insertGetId(['company_id'=>$source->id,'prediction_type'=>'inventory_demand','entity_type'=>'product','entity_id'=>$product->id,'model_key'=>'inventory-demand-v1','model_version'=>$modelVersion,'input_feature_version'=>'demand-daily-v1','analytics_snapshot_id'=>$snapshot,'value'=>json_encode(['horizon'=>30,'unit'=>'pcs','daily'=>[]]),'generated_at'=>now(),'valid_until'=>now()->addDay(),'created_at'=>now(),'updated_at'=>now()]);
+        DB::table('inventory_recommendations')->insert(['company_id'=>$source->id,'product_id'=>$product->id,'analytics_prediction_id'=>$prediction,'status'=>'open','risk'=>'watch','explanation'=>'{}','created_at'=>now(),'updated_at'=>now()]);
+        $contents = $this->plainBackup($source, ['analytics']);
+        $archive = json_decode($contents,true);
+        $this->assertCount(1,$archive['payload']['data']['products']);
+        $target = $this->switchToNewCompany();
+        $file = UploadedFile::fake()->createWithContent('analytics.json',$contents);
+        $this->post('/api/backup/import',['file'=>$file,'mode'=>'merge'])->assertOk();
+        $restored = DB::table('analytics_snapshots')->where('company_id',$target->id)->first();
+        $newProduct = DB::table('products')->where('company_id',$target->id)->where('sku','ANALYTICS-BACKUP')->first();
+        $this->assertSame($newProduct->id,$restored->entity_id);
+        $this->assertNotEquals($product->id,$restored->entity_id);
+        $this->assertDatabaseHas('analytics_datasets',['company_id'=>$target->id,'version'=>$version]);
+        $this->assertDatabaseHas('inventory_forecast_models',['company_id'=>$target->id,'product_id'=>$newProduct->id,'version'=>$modelVersion,'status'=>'archived']);
+        $newModelId=DB::table('inventory_forecast_models')->where('company_id',$target->id)->where('version',$modelVersion)->value('id');
+        $this->assertDatabaseHas('inventory_model_decisions',['company_id'=>$target->id,'product_id'=>$newProduct->id,'to_model_id'=>$newModelId,'decision_key'=>$decisionKey]);
+        $this->assertDatabaseHas('inventory_intelligence_alerts',['company_id'=>$target->id,'product_id'=>$newProduct->id,'status'=>'resolved']);
+        $this->assertDatabaseHas('inventory_recommendations',['company_id'=>$target->id,'product_id'=>$newProduct->id,'status'=>'superseded']);
+        $restoredPrediction=DB::table('analytics_predictions')->where('company_id',$target->id)->first();
+        $this->assertSame($restoredPrediction->generated_at,$restoredPrediction->valid_until);
+        $this->assertSame($frozenValues,DB::table('analytics_dataset_rows')->where('company_id',$target->id)->value('values'));
+        $this->post('/api/backup/import',['file'=>$file,'mode'=>'merge'])->assertOk();
+        $this->assertSame(1,DB::table('analytics_snapshots')->where('company_id',$target->id)->count());
+        $this->assertSame(1,DB::table('analytics_dataset_rows')->where('company_id',$target->id)->count());
+        $this->assertSame(1,DB::table('inventory_model_decisions')->where('company_id',$target->id)->count());
+        $archive['payload']['data']['analytics_snapshots'][0]['facts'] = '{"on_hand":999}';
+        $conflicting = UploadedFile::fake()->createWithContent('conflicting.json',$this->resignArchive($archive));
+        $this->post('/api/backup/import',['file'=>$conflicting,'mode'=>'merge'])->assertStatus(422);
+        $this->assertSame(12,json_decode(DB::table('analytics_snapshots')->where('company_id',$target->id)->value('facts'),true)['on_hand']);
+    }
+
     public function test_backup_execution_history_records_verified_success_and_safe_failure(): void
     {
         $this->actingAsApiUser('admin');
@@ -188,6 +273,7 @@ class PortableBackupTest extends TestCase
         $this->actingAsApiUser('admin');
         $sourceCompany = $this->apiCompany;
         $this->makeProduct($sourceCompany, 'FULL-SOURCE', 'Full source product');
+        $this->postJson('/api/accounting/initialize')->assertOk();
         $partialBackup = $this->postJson('/api/backup/export', [
             'modules' => ['products'],
             'passphrase' => 'partial-replace-passphrase',
@@ -198,6 +284,7 @@ class PortableBackupTest extends TestCase
 
         $targetCompany = $this->switchToNewCompany();
         $this->makeProduct($targetCompany, 'TARGET-OLD', 'Old target product');
+        $this->postJson('/api/accounting/initialize')->assertOk();
 
         $partialFile = UploadedFile::fake()->createWithContent('partial.aimsbackup', $partialBackup);
         $this->post('/api/backup/import', [
@@ -219,6 +306,10 @@ class PortableBackupTest extends TestCase
         $this->assertDatabaseMissing('products', ['company_id' => $targetCompany->id, 'sku' => 'TARGET-OLD']);
         $this->assertDatabaseHas('products', ['company_id' => $targetCompany->id, 'sku' => 'FULL-SOURCE']);
         $this->assertDatabaseHas('companies', ['id' => $targetCompany->id, 'name' => $sourceCompany->name]);
+        $restoredCash = \App\Models\AccountingAccount::where('code', '1000')->firstOrFail();
+        $this->assertSame('100', $restoredCash->parent->code);
+        $this->assertSame($targetCompany->id, $restoredCash->parent->company_id);
+        $this->assertDatabaseHas('accounting_accounts', ['company_id' => $sourceCompany->id, 'code' => '1000']);
     }
 
     public function test_two_unnumbered_draft_invoices_restore_once_and_repeat_merge_is_rejected(): void

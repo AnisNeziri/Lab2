@@ -31,6 +31,8 @@ class SearchService
         $term = trim($term);
         $like = '%'.addcslashes($term, '%_\\').'%';
         $result = [];
+        if ($this->can('automations.view')) $result['automations']=app(AutomationService::class)->visibleRules()->where('name','like',$like)->limit(8)->get()->map(fn($a)=>$this->item($a->id,$a->name,'v'.$a->version,'/automation-studio?automation='.$a->id));
+        if ($this->can('tasks.view')) $result['tasks']=collect(app(ActionCenterService::class)->tasks(['q'=>$term,'status'=>'all'])->items())->take(8)->map(fn($a)=>$this->item($a['id'],$a['title'],$a['status'],'/action-center?status=all&task='.$a['id']));
         if ($this->can('documents.view')) {
             $result['documents']=app(DocumentService::class)->listing(['q'=>$term])->getCollection()->take(8)->map(fn($d)=>$this->item($d->id,$d->title,$d->reference.' · v'.$d->current_version,'/documents?document='.$d->id));
         }
@@ -60,10 +62,11 @@ class SearchService
         }
 
         if ($this->can('customers.manage', 'debts.view', 'invoices.manage')) {
+            $customerSignals=app(CustomerSalesIntelligenceService::class)->allowed()?collect(\App\Models\CustomerSalesSnapshot::whereNull('evidence->archived')->latest('id')->first()?->evidence['profiles']??[])->keyBy('id'):collect();
             $result['customers'] = Customer::query()
                 ->where(fn ($q) => $q->where('name', 'like', $like)->orWhere('business_registration_number', 'like', $like)
                     ->orWhere('fiscal_number', 'like', $like)->orWhere('email', 'like', $like))
-                ->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->name, $x->business_registration_number ?: $x->email, '/customer-debts?customer='.$x->id));
+                ->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->name, ($x->business_registration_number ?: $x->email).(isset($customerSignals[$x->id])?' · '.$customerSignals[$x->id]['state']:''), '/customer-debts?customer='.$x->id));
         }
 
         if ($this->can('invoices.manage')) {

@@ -29,9 +29,23 @@ class SystemIntegrityService
             $this->inventoryBalanceCheck($companyId),
             $this->backupRecencyCheck($companyId),
             $this->backupFailureCheck($companyId),
+            $this->analyticsHealthCheck($companyId),
             $this->relationshipIntegrityCheck($companyId),
             $this->countCheck('outbound_quantities','Outbound quantity integrity',\App\Models\OutboundAllocation::query()->where(fn($q)=>$q->whereColumn('picked_quantity','>','quantity')->orWhereColumn('packed_quantity','>','picked_quantity')->orWhereColumn('dispatched_quantity','>','packed_quantity')->orWhereColumn('delivered_quantity','>','dispatched_quantity')->orWhereColumn('returned_quantity','>','delivered_quantity'))->count(),'/fulfillment'),
         ];
+        if (Schema::hasTable('automation_executions')) {
+            $checks[]=$this->countCheck('automation_failures','Failed or blocked automations',\App\Models\AutomationExecution::whereIn('status',['failed','blocked'])->count(),'/automation-studio');
+            $checks[]=$this->countCheck('automation_stuck','Stuck automation executions',\App\Models\AutomationExecution::whereIn('status',['queued','running'])->where('updated_at','<',now()->subMinutes(15))->count(),'/automation-studio');
+            $invalid=0;
+            $registry=app(AutomationRegistry::class);
+            foreach(\App\Models\Automation::where('enabled',true)->get() as $rule) {
+                $trigger=$registry->triggers()[$rule->trigger] ?? null;
+                $invalidActions=collect($rule->actions)->contains(fn($a)=>!isset($registry->actions()[$a['type'] ?? '']));
+                $creator=\App\Models\User::where('company_id',$rule->company_id)->find($rule->created_by);
+                if(!$trigger || $invalidActions || !$creator?->is_active) $invalid++;
+            }
+            $checks[]=$this->countCheck('automation_configuration','Invalid automation configuration',$invalid,'/automation-studio');
+        }
         if(Schema::hasTable('document_versions')) $checks[]=$this->countCheck('document_integrity','Document integrity (last verification)',\App\Models\DocumentVersion::query()->whereNotNull('integrity_status')->where('integrity_status','!=','valid')->count(),'/documents');
         if(Schema::hasTable('order_intakes')){
             $checks[]=$this->countCheck('order_intake_review','Order intake requires review',\App\Models\OrderIntake::where('state','attention')->count(),'/order-hub?view=attention');
@@ -74,6 +88,20 @@ class SystemIntegrityService
             ->where('completed_at', '>=', now()->subDays(30))->exists();
 
         return $this->check('backup_recency', 'Recent verified backup', $recent ? 'healthy' : 'attention', $recent ? 0 : 1, '/reports', $recent ? 'A verified backup completed within the last 30 days.' : 'No verified backup completed within the last 30 days.');
+    }
+
+    private function analyticsHealthCheck(int $companyId): array
+    {
+        $run = Schema::hasTable('maintenance_health')
+            ? DB::table('maintenance_health')->where('company_id', $companyId)->where('task', 'analytics_capture')->first() : null;
+        $lastObservation = Schema::hasTable('analytics_snapshots')
+            ? DB::table('analytics_snapshots')->where('company_id', $companyId)->where('entity_type', 'backlog')->max('observed_at') : null;
+        $fresh = $lastObservation && \Carbon\Carbon::parse($lastObservation)->gte(now()->subHours(36));
+        $failed = $run?->status === 'failed';
+        $detail = $failed ? 'The latest scheduled analytics capture failed. Review permissions and the backend log.'
+            : ($fresh ? 'Analytics observations are current.' : 'No completed analytics observation in the last 36 hours. Check the scheduler.');
+        return $this->check('analytics_capture', 'Analytics capture health', $failed || !$fresh ? 'attention' : 'healthy', $failed || !$fresh ? 1 : 0, '/analytics', $detail)
+            + ['last_success_at' => $run?->last_success_at, 'last_attempt_at' => $run?->last_attempt_at, 'last_observation_at' => $lastObservation, 'error_code' => $run?->error_code];
     }
 
     private function backupFailureCheck(int $companyId): array

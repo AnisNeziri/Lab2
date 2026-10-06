@@ -6,6 +6,7 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -38,7 +39,13 @@ jobs:
           CACHE_STORE: array
           SESSION_DRIVER: array
           QUEUE_CONNECTION: sync
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --target ml/optimizer_vendor -r ml/supply_optimizer_requirements.txt
       - run: php artisan test
+      - run: python -m unittest discover -s ml -p 'test_*.py'
+      - run: python -m unittest discover -s ml/tests -p 'test_supply_optimizer.py'
 
   frontend-build:
     name: Frontend build
@@ -85,6 +92,9 @@ jobs:
           php-version: '8.3'
           extensions: mbstring, dom, fileinfo, pdo_mysql
           coverage: none
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - run: composer install --no-interaction --prefer-dist --no-progress
       - run: cp .env.example .env
       - run: php artisan key:generate --force
@@ -149,6 +159,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
@@ -181,6 +194,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
@@ -201,4 +217,6 @@ jobs:
       - run: npm ci
         working-directory: desktop
       - run: npm run test:startup
+        working-directory: desktop
+      - run: npm test
         working-directory: desktop

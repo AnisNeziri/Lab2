@@ -1,0 +1,9 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { financialMoney, scenarioDifference, evidenceLabel, financialTabs, financialCopy, financialAssumption } from '../src/pages/financialIntelligencePresentation.js'
+import { canOpenPage } from '../src/config/pageAccess.js'
+test('unknown money stays unknown and currencies remain explicit', () => { assert.equal(financialMoney(null), '—'); assert.match(financialMoney('100.10', 'USD'), /100\.10/); assert.equal(financialMoney('not-money'), '—') })
+test('scenario compares currency-specific net movements, not unknown cash', () => { const r = { base: { currencies: { EUR: { net_change: '0.00' } } }, scenario: { currencies: { EUR: { net_change: '-0.01' } } } }; assert.equal(scenarioDifference(r, 'EUR'), -.01); assert.equal(scenarioDifference(r, 'USD'), null) })
+test('financial navigation requires finance and cash access', () => { assert.equal(canOpenPage('/financial-intelligence', ['analytics.finance']), false); assert.equal(canOpenPage('/financial-intelligence', ['analytics.finance', 'finance.view', 'financial_accounts.view']), true) })
+test('every section and evidence classification has Albanian copy', () => { for (const tab of financialTabs) assert.ok(financialCopy[tab][1]); assert.equal(evidenceLabel('predicted', 'sq'), 'Kohë e parashikuar'); assert.notEqual(financialCopy.OVERDUE[0], financialCopy.HIGH_RISK[0]) })
+test('hypothetical financial assumptions are translated without changing their meaning', () => { const value='Supplier payment timing change is hypothetical, not approved renegotiation.'; assert.equal(financialAssumption(value),value); assert.match(financialAssumption(value,'sq'),/hipotetik, jo rinegocim i miratuar/); assert.equal(financialAssumption('New qualification','sq'),'New qualification') })
