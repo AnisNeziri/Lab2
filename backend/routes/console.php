@@ -1,4 +1,5 @@
 <?php
+\Illuminate\Support\Facades\Artisan::command('simulation:work {--once}',function(){do{$this->call('queue:work',['connection'=>'database','--queue'=>'strategic-simulation','--stop-when-empty'=>true,'--max-jobs'=>1,'--tries'=>1,'--timeout'=>240]);if(!$this->option('once'))sleep(2);}while(!$this->option('once'));})->purpose('Run isolated strategic simulation jobs locally');
 \Illuminate\Support\Facades\Artisan::command('supply-optimizer:work {--once}',function(){
  do {$this->call('queue:work',['connection'=>'database','--queue'=>'supply-optimizer','--stop-when-empty'=>true,'--max-jobs'=>1,'--tries'=>1,'--timeout'=>240]);
   if(!$this->option('once'))sleep(2);

@@ -13,6 +13,7 @@ import { useAuthStore } from '../store/authStore'
 import { useDialog } from '../hooks/useDialog'
 import { useUiText } from '../hooks/useUiText'
 import { useSettingsStore } from '../store/settingsStore'
+import ProductInsight from './ProductInsight'
 
 const trackingLabelKeys = { none: 'productTracking.none', batch: 'productTracking.batch', serial: 'productTracking.serial', batch_expiry: 'productTracking.batchExpiry' }
 
@@ -64,6 +65,7 @@ function ProductDetail({ productId, onClose }) {
           <article><span>{t('productUnits.reserved')}</span><strong>{formatQuantity(stock.reserved, product.unit)}</strong><small>{product.unit || 'pcs'}</small></article>
           <article><span>{t('productUnits.incoming')}</span><strong>{formatQuantity(stock.incoming, product.unit)}</strong><small>{ui('Projected')}: {formatQuantity(stock.projected, product.unit)}</small></article>
         </section>
+        <ProductInsight productId={productId} onOpen={onClose}/>
         <div className="product-detail-columns">
           <section className="product-detail-section"><h3>{ui("Product information")}</h3><dl className="detail-list"><dt>{t('productMaster.brand')}</dt><dd>{product.brand || '—'}</dd><dt>{ui("Purchase price")}</dt><dd>{money(product.purchase_price)}</dd><dt>{ui("Selling price")}</dt><dd>{money(product.selling_price ?? product.price)}</dd><dt>{ui("Margin per unit")}</dt><dd>{margin == null ? '—' : money(margin)}</dd><dt>{ui("Minimum quantity")}</dt><dd>{formatQuantity(product.min_quantity, product.unit)}</dd><dt>{ui("High stock at")}</dt><dd>{Number(product.high_stock_threshold) > 0 ? formatQuantity(product.high_stock_threshold, product.unit) : ui('Automatic')}</dd><dt>{ui("Warehouse section")}</dt><dd>{product.location_code || '—'}</dd><dt>{t('productTracking.mode')}</dt><dd>{t(trackingLabelKeys[product.tracking_mode || 'none'])}</dd></dl></section>
           <section className="product-detail-section"><h3>{ui("Inventory status")}</h3><dl className="detail-list"><dt>{t('productUnits.damaged')}</dt><dd>{formatQuantity(getInventoryQuantity(product, 'damaged'), product.unit)}</dd><dt>{t('productUnits.quarantine')}</dt><dd>{formatQuantity(getInventoryQuantity(product, 'quarantine'), product.unit)}</dd><dt>{t('productUnits.blocked')}</dt><dd>{formatQuantity(getInventoryQuantity(product, 'blocked'), product.unit)}</dd><dt>{t('productPlanning.safetyStock')}</dt><dd>{formatQuantity(product.safety_stock ?? 0, product.unit)}</dd><dt>{t('productPlanning.reorderPoint')}</dt><dd>{product.reorder_point == null ? t('productPlanning.automatic') : formatQuantity(product.reorder_point, product.unit)}</dd><dt>{ui("Stock value at cost")}</dt><dd>{money(product.inventory_value ?? (stock.onHand * Number(product.weighted_average_cost ?? product.purchase_price ?? 0)))}</dd></dl></section>

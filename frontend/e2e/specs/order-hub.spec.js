@@ -25,6 +25,7 @@ test('Order Hub creates, confirms, reserves, links WMS and exposes safe tracking
   await page.getByRole('button',{name:'Review order',exact:true}).click()
   await page.getByRole('button',{name:'Save order',exact:true}).click();await expect(page).toHaveURL(/intake=\d+/)
   await page.getByRole('button',{name:'Confirm & reserve',exact:true}).click();await expect(page.getByRole('button',{name:'Mark ready',exact:true})).toBeVisible()
+  await page.locator('.hub-secondary-actions > summary').click()
   await page.getByRole('button',{name:'Create tracking link',exact:true}).click();const tracking=page.getByRole('link',{name:/\/order-tracking\//});await expect(tracking).toBeVisible()
   const href=await tracking.getAttribute('href');const intake=await api(page,`/order-hub/intakes/${new URL(page.url()).searchParams.get('intake')}`)
   expect(Number(intake.order.items[0].reserved_quantity)).toBe(3)
@@ -81,6 +82,7 @@ test('external mapping control and customer portal submit real customer-bound or
 })
 test('CSV preview, import and saved view operate through the visible controls',async({page})=>{
   await login(page);const f=await fixture(page);await page.goto('/order-hub')
+  await page.locator('.hub-tools > summary').click()
   await page.getByText('Import orders from CSV',{exact:true}).click()
   await page.getByLabel('CSV file',{exact:true}).setInputFiles({name:'orders.csv',mimeType:'text/csv',buffer:Buffer.from(`external_id,customer_email,sku,quantity\n${f.tag},${f.customer.email},${f.product.sku},2\n`)})
   await expect(page.getByRole('cell',{name:f.tag,exact:true})).toBeVisible();await page.getByLabel('Import channel',{exact:true}).selectOption(String(f.channel.id));await page.getByRole('button',{name:'Confirm import',exact:true}).click()
@@ -106,7 +108,7 @@ test('Albanian labels, channel rules and order export remain usable',async({page
     await page.getByText('Rregullat e çmimeve & promocionet',{exact:true}).click();await page.getByRole('button',{name:'Shto rregull çmimi',exact:true}).click()
     await page.getByLabel('Emri i rregullit',{exact:true}).fill('Promocion prove');await page.getByLabel('Vlera e zbritjes',{exact:true}).fill('10')
     const saved=page.waitForResponse(r=>r.url().endsWith(`/order-hub/channels/${f.channel.id}`)&&r.request().method()==='PUT');await page.getByRole('button',{name:'Ruaj kanalin',exact:true}).click();expect((await saved).ok()).toBeTruthy()
-    await page.goto('/order-hub');await page.getByText('Eksporto & veprime në grup',{exact:true}).click()
+    await page.goto('/order-hub');await page.locator('.hub-tools > summary').click();await page.getByText('Eksporto & veprime në grup',{exact:true}).click()
     const download=page.waitForEvent('download');await page.getByRole('button',{name:'Eksporto XLSX',exact:true}).click();expect((await download).suggestedFilename()).toBe('AIMS-orders.xlsx')
   }finally{await page.request.put('/api/settings/preferences',{headers,data:{language:'en',theme:'light'}})}
 })

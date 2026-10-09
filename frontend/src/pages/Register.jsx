@@ -12,9 +12,12 @@ import {
 import { register } from '../api/register'
 import AimsLogo from '../components/AimsLogo'
 import AuthExperienceVisual from '../components/AuthExperienceVisual'
+import { useTranslation } from '../hooks/useTranslation'
 import '../styles/AuthPages.css'
 
 function Register({ onRegisterSuccess, onBackHome, onLogin }) {
+  const { language } = useTranslation()
+  const text = (en, sq) => language === 'sq' ? sq : en
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -30,7 +33,7 @@ function Register({ onRegisterSuccess, onBackHome, onLogin }) {
     setError('')
 
     if (password !== passwordConfirmation) {
-      setError('Passwords do not match.')
+      setError(text('Passwords do not match.', 'Fjalëkalimet nuk përputhen.'))
       setLoading(false)
       return
     }
@@ -49,7 +52,7 @@ function Register({ onRegisterSuccess, onBackHome, onLogin }) {
       if (err.errors) {
         setError(Object.values(err.errors).flat().join(' '))
       } else {
-        setError(err.message || 'Could not create account.')
+        setError(err.message || text('Could not create account.', 'Llogaria nuk mund të krijohej.'))
       }
     } finally {
       setLoading(false)
@@ -74,11 +77,11 @@ function Register({ onRegisterSuccess, onBackHome, onLogin }) {
           <div className="auth-shell-topline">
             <button type="button" className="auth-back auth-icon-link" onClick={onBackHome}>
               <ArrowLeft size={16} />
-              Back to home
+              {text('Back to home', 'Kthehu në ballinë')}
             </button>
             <span className="auth-secure-label">
               <ShieldCheck size={15} />
-              Secure registration
+              {text('Secure registration', 'Regjistrim i sigurt')}
             </span>
           </div>
 
@@ -86,18 +89,18 @@ function Register({ onRegisterSuccess, onBackHome, onLogin }) {
             <div className="auth-logo-halo">
               <AimsLogo size="xl" showText={false} />
             </div>
-            <span className="auth-brand-kicker">Create your AIMS workspace</span>
-            <h1>Register your company</h1>
-            <p>Set up the secure workspace where your business will operate.</p>
+            <span className="auth-brand-kicker">{text('Create your AIMS workspace', 'Krijo hapësirën tënde në AIMS')}</span>
+            <h1>{text('Register your company', 'Regjistro kompaninë')}</h1>
+            <p>{text('Set up the secure workspace where your business will operate.', 'Krijo hapësirën e sigurt ku do të punojë kompania jote.')}</p>
           </div>
 
           {error && <div className="auth-error" role="alert">{error}</div>}
 
           <form className="auth-form auth-register-form" onSubmit={handleSubmit}>
-            <div className="auth-section-label"><span>01</span> Company details</div>
+            <div className="auth-section-label"><span>01</span> {text('Company details', 'Të dhënat e kompanisë')}</div>
 
             <div className="auth-field">
-              <label htmlFor="register-company-name">Company name</label>
+              <label htmlFor="register-company-name">{text('Company name', 'Emri i kompanisë')}</label>
               <div className="auth-control">
                 <Building2 size={18} aria-hidden="true" />
                 <input
@@ -113,7 +116,7 @@ function Register({ onRegisterSuccess, onBackHome, onLogin }) {
             </div>
 
             <div className="auth-field">
-              <label htmlFor="register-company-address">Full company address</label>
+              <label htmlFor="register-company-address">{text('Full company address', 'Adresa e plotë e kompanisë')}</label>
               <div className="auth-control auth-control-textarea">
                 <MapPin size={18} aria-hidden="true" />
                 <textarea
@@ -121,18 +124,18 @@ function Register({ onRegisterSuccess, onBackHome, onLogin }) {
                   name="company_address"
                   required
                   rows={2}
-                  placeholder="Street, city, state, postal code, country"
+                  placeholder={text('Street, city, state, postal code, country', 'Rruga, qyteti, rajoni, kodi postar, shteti')}
                   value={companyAddress}
                   onChange={(event) => setCompanyAddress(event.target.value)}
                 />
               </div>
             </div>
 
-            <div className="auth-section-label"><span>02</span> Administrator account</div>
+            <div className="auth-section-label"><span>02</span> {text('Administrator account', 'Llogaria e administratorit')}</div>
 
             <div className="auth-form-row">
               <div className="auth-field">
-                <label htmlFor="register-name">Full name</label>
+                <label htmlFor="register-name">{text('Full name', 'Emri i plotë')}</label>
                 <div className="auth-control">
                   <UserRound size={18} aria-hidden="true" />
                   <input
@@ -148,7 +151,7 @@ function Register({ onRegisterSuccess, onBackHome, onLogin }) {
                 </div>
               </div>
               <div className="auth-field">
-                <label htmlFor="register-email">Email address</label>
+                <label htmlFor="register-email">{text('Email address', 'Adresa e emailit')}</label>
                 <div className="auth-control">
                   <Mail size={18} aria-hidden="true" />
                   <input
@@ -167,7 +170,7 @@ function Register({ onRegisterSuccess, onBackHome, onLogin }) {
 
             <div className="auth-form-row">
               <div className="auth-field">
-                <label htmlFor="register-password">Password</label>
+                <label htmlFor="register-password">{text('Password', 'Fjalëkalimi')}</label>
                 <div className="auth-control">
                   <LockKeyhole size={18} aria-hidden="true" />
                   <input
@@ -177,14 +180,14 @@ function Register({ onRegisterSuccess, onBackHome, onLogin }) {
                     required
                     minLength={8}
                     autoComplete="new-password"
-                    placeholder="At least 8 characters"
+                    placeholder={text('At least 8 characters', 'Të paktën 8 karaktere')}
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                   />
                 </div>
               </div>
               <div className="auth-field">
-                <label htmlFor="register-password-confirm">Confirm password</label>
+                <label htmlFor="register-password-confirm">{text('Confirm password', 'Konfirmo fjalëkalimin')}</label>
                 <div className="auth-control">
                   <LockKeyhole size={18} aria-hidden="true" />
                   <input
@@ -194,7 +197,7 @@ function Register({ onRegisterSuccess, onBackHome, onLogin }) {
                     required
                     minLength={8}
                     autoComplete="new-password"
-                    placeholder="Repeat password"
+                    placeholder={text('Repeat password', 'Përsërit fjalëkalimin')}
                     value={passwordConfirmation}
                     onChange={(event) => setPasswordConfirmation(event.target.value)}
                   />
@@ -203,21 +206,21 @@ function Register({ onRegisterSuccess, onBackHome, onLogin }) {
             </div>
 
             <button type="submit" className="auth-submit auth-submit-premium" disabled={loading}>
-              <span>{loading ? 'Creating company...' : 'Create company workspace'}</span>
+              <span>{loading ? text('Creating company...', 'Duke krijuar kompaninë…') : text('Create company workspace', 'Krijo hapësirën e kompanisë')}</span>
               {loading ? <i className="auth-button-spinner" aria-hidden="true" /> : <ArrowRight size={18} />}
             </button>
           </form>
 
           <p className="auth-switch">
-            Already have an AIMS workspace?{' '}
+            {text('Already have an AIMS workspace?', 'Ke tashmë llogari në AIMS?')}{' '}
             <button type="button" className="auth-switch-link" onClick={onLogin}>
-              Sign in
+              {text('Sign in', 'Hyr')}
             </button>
           </p>
 
           <div className="auth-trust-row" aria-hidden="true">
-            <span><i /> Secure company isolation</span>
-            <span><i /> Guided workspace setup</span>
+            <span><i /> {text('Secure company isolation', 'Ndarje e sigurt mes kompanive')}</span>
+            <span><i /> {text('Guided workspace setup', 'Udhëzim gjatë konfigurimit')}</span>
           </div>
         </main>
       </div>

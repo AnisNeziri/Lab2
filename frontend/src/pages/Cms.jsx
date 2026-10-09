@@ -1,3 +1,4 @@
+import { useTranslation } from '../hooks/useTranslation'
 import { useEffect, useState } from 'react'
 import { getCmsPages, updateCmsPage } from '../api/cms'
 
@@ -11,6 +12,7 @@ const SECTION_LABELS = {
 }
 
 export default function Cms() {
+  const { language } = useTranslation(), text = (en, sq) => language === 'sq' ? sq : en
   const [pages, setPages] = useState([])
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
@@ -60,16 +62,15 @@ export default function Cms() {
   }
 
   if (loading) {
-    return <p className="page-message">Loading site content...</p>
+    return <p className="page-message">{text("Loading site content...", "Duke ngarkuar përmbajtjen…")}</p>
   }
 
   return (
     <main className="cms-page page-stack">
       <section className="card">
-        <h2>Site Content</h2>
+        <h1>{text("Site Content", "Përmbajtja e faqes")}</h1>
         <p className="page-intro">
-          Edit the public landing page text. These changes affect what visitors see on the homepage,
-          not your inventory business data.
+          {text('Edit the public landing page text. These changes do not affect your inventory data.','Ndryshoni tekstin e faqes publike. Këto ndryshime nuk ndikojnë në të dhënat e inventarit.')}
         </p>
 
         {error && <div className="form-error-banner">{error}</div>}
@@ -82,7 +83,7 @@ export default function Cms() {
 
           <div className="form-grid">
             <label>
-              Display title
+              {text("Display title", "Titulli i shfaqur")}
               <input
                 value={page.title}
                 onChange={(e) => updateLocal(page.id, 'title', e.target.value)}
@@ -90,7 +91,7 @@ export default function Cms() {
             </label>
 
             <label>
-              Content
+              {text("Content", "Përmbajtja")}
               <textarea
                 rows={4}
                 value={page.content}
@@ -104,12 +105,12 @@ export default function Cms() {
                 checked={page.is_published}
                 onChange={(e) => updateLocal(page.id, 'is_published', e.target.checked)}
               />
-              Published on landing page
+              {text("Published on landing page", "Publikuar në faqen kryesore")}
             </label>
 
             <div className="form-actions">
               <button type="button" onClick={() => handleSave(page)} disabled={savingId === page.id}>
-                {savingId === page.id ? 'Saving...' : 'Save section'}
+                {savingId === page.id ? text('Saving…','Duke ruajtur…') : text('Save section','Ruaj pjesën')}
               </button>
             </div>
           </div>

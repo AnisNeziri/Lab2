@@ -1,5 +1,7 @@
 // The same route-level permissions drive navigation and direct URL access.
+import { simulationPermissions } from '../pages/strategicSimulationPresentation.js'
 export const pagePermissions = {
+  'strategic-simulation':simulationPermissions,
   'supply-optimizer':['analytics.finance'],
   'decision-learning':['analytics.view'],
   'customer-sales-intelligence':['analytics.view'],
@@ -43,6 +45,7 @@ export function canOpenPage(page, permissions = []) {
   const pathname = String(page).replace(/^\/+|\/+$/g, '').split(/[?#]/)[0]
   const key = pathname.startsWith('control-tower/') ? 'control-tower' : pathname
   const required = pagePermissions[key]
+  if (key === 'strategic-simulation') return simulationPermissions.every(p=>permissions.includes(p))
   if (key === 'supply-optimizer') return ['analytics.view','analytics.finance','inventory.view','procurement.view','finance.view','financial_accounts.view'].every(p=>permissions.includes(p))
   if (key === 'customer-sales-intelligence') return ['analytics.view', 'customers.manage', 'daily_sales.manage'].every(p => permissions.includes(p))
   if (key === 'financial-intelligence') return ['analytics.finance', 'finance.view', 'financial_accounts.view'].every(p => permissions.includes(p))

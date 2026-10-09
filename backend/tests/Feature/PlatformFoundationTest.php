@@ -20,17 +20,21 @@ class PlatformFoundationTest extends TestCase
         PurchaseRequest::create($this->tenantAttributes(['request_number' => 'PR-SEARCH-1', 'status' => 'draft', 'requested_by' => auth()->id(), 'requested_at' => now(), 'currency' => 'EUR']));
 
         $other = Company::factory()->create();
-        Product::withoutEvents(fn () => Product::create(array_merge($this->productData('Foreign Search Product', 'SEARCH-FOREIGN'), ['company_id' => $other->id])));
+        $foreign = Product::withoutEvents(fn () => Product::create(array_merge($this->productData('Foreign Search Product', 'SEARCH-FOREIGN'), ['company_id' => $other->id])));
+        $decisionData = ['logical_key'=>str_repeat('a',64),'version'=>(string)\Illuminate\Support\Str::uuid(),'decision_type'=>'REPLENISHMENT_DECISION','severity'=>'warning','confidence'=>'limited','source_fingerprint'=>str_repeat('b',64),'evidence'=>[],'alternatives'=>[],'reasoning'=>[],'history'=>[],'generated_at'=>now(),'evidence_cutoff_at'=>now(),'last_checked_at'=>now()];
+        $decision = \App\Models\EnterpriseDecision::create($this->tenantAttributes(['product_id'=>$product->id,...$decisionData]));
+        \App\Models\EnterpriseDecision::create(['company_id'=>$other->id,'product_id'=>$foreign->id,...$decisionData,'version'=>(string)\Illuminate\Support\Str::uuid()]);
 
         $this->getJson('/api/search?q=Search')->assertOk()
             ->assertJsonPath('products.0.id', $product->id)
             ->assertJsonPath('products.0.url', '/products?product='.$product->id)
             ->assertJsonCount(1, 'products')
-            ->assertJsonPath('purchase_requests.0.title', 'PR-SEARCH-1');
+            ->assertJsonPath('purchase_requests.0.title', 'PR-SEARCH-1')
+            ->assertJsonCount(1, 'decisions')->assertJsonPath('decisions.0.url', '/inventory-intelligence?view=decisions&decision='.$decision->id);
 
         $this->actingAsApiUser('staff');
         PurchaseRequest::withoutEvents(fn () => PurchaseRequest::create($this->tenantAttributes(['request_number' => 'PR-STAFF-SEARCH', 'status' => 'draft', 'requested_by' => auth()->id(), 'requested_at' => now(), 'currency' => 'EUR'])));
-        $this->getJson('/api/search?q=STAFF')->assertOk()->assertJsonMissingPath('purchase_requests');
+        $this->getJson('/api/search?q=STAFF')->assertOk()->assertJsonMissingPath('purchase_requests')->assertJsonMissingPath('decisions');
     }
 
     public function test_capability_catalog_and_execution_enforce_permissions_and_company_scope(): void

@@ -115,6 +115,12 @@ class SearchService
                 ->latest('posting_date')->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->journal_number, $x->description ?: $x->status, '/accounting?tab=journal&journal='.$x->id));
         }
 
+        if ($this->can('analytics.view') && $this->can('inventory.view')) {
+            $result['decisions'] = \App\Models\EnterpriseDecision::query()->with('product:id,name,sku')
+                ->where(fn ($q) => $q->where('decision_type', 'like', $like)->orWhereHas('product', fn ($p) => $p->where('name', 'like', $like)->orWhere('sku', 'like', $like)))
+                ->latest('id')->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->product?->name ?: 'Decision', $x->decision_type.' · '.$x->status, '/inventory-intelligence?view=decisions&decision='.$x->id));
+        }
+
         return collect($result)->map(fn (Collection $items) => $items->values()->all())
             ->filter(fn (array $items) => $items !== [])->all();
     }

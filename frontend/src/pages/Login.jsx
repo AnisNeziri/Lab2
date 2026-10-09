@@ -4,9 +4,12 @@ import { ArrowLeft, ArrowRight, LockKeyhole, Mail, ShieldCheck } from 'lucide-re
 import { login } from '../api/login'
 import AimsLogo from '../components/AimsLogo'
 import AuthExperienceVisual from '../components/AuthExperienceVisual'
+import { useTranslation } from '../hooks/useTranslation'
 import '../styles/AuthPages.css'
 
 function Login({ onLoginSuccess, onBackHome, onRegister }) {
+  const { language } = useTranslation()
+  const text = (en, sq) => language === 'sq' ? sq : en
   const navigate = useNavigate()
   const isDesktop = Boolean(window.__AIMS_API_BASE__)
   const [email, setEmail] = useState('')
@@ -24,7 +27,7 @@ function Login({ onLoginSuccess, onBackHome, onRegister }) {
       onLoginSuccess(data)
     } catch (err) {
       if (err.code === 'EMAIL_NOT_VERIFIED') {
-        setError('Please verify your email before signing in. Redirecting…')
+        setError(text('Please verify your email before signing in. Redirecting…', 'Verifiko emailin para hyrjes. Duke të ridrejtuar…'))
         setTimeout(() => {
           navigate(`/verify-email?email=${encodeURIComponent(email)}`)
         }, 900)
@@ -33,7 +36,7 @@ function Login({ onLoginSuccess, onBackHome, onRegister }) {
       if (err.errors) {
         setError(Object.values(err.errors).flat().join(' '))
       } else {
-        setError(err.message || 'Invalid email or password.')
+        setError(err.message || text('Invalid email or password.', 'Emaili ose fjalëkalimi është i pasaktë.'))
       }
     } finally {
       setLoading(false)
@@ -55,16 +58,21 @@ function Login({ onLoginSuccess, onBackHome, onRegister }) {
         <AuthExperienceVisual variant="login" />
 
         <main className="auth-shell auth-experience-shell">
+          {import.meta.env.VITE_AIMS_INSTALLATION === 'synthetic' && <div className="auth-demo-notice" role="status">
+            <strong>{text('Isolated demo installation', 'Instalim demonstrues i izoluar')}</strong>
+            <p>{text('Your original AIMS accounts and company data are not in this demo.', 'Llogaritë dhe të dhënat origjinale të AIMS nuk janë në këtë demonstrim.')}</p>
+            <a href="http://127.0.0.1:5173/login">{text('Open original AIMS', 'Hap AIMS origjinal')} →</a>
+          </div>}
           <div className="auth-shell-topline">
             {!isDesktop ? (
               <button type="button" className="auth-back auth-icon-link" onClick={onBackHome}>
                 <ArrowLeft size={16} />
-                Back to home
+                {text('Back to home', 'Kthehu në ballinë')}
               </button>
             ) : <span />}
             <span className="auth-secure-label">
               <ShieldCheck size={15} />
-              {isDesktop ? 'Protected local workspace' : 'Secure access'}
+              {isDesktop ? text('Protected local workspace', 'Hapësirë lokale e mbrojtur') : text('Secure access', 'Hyrje e sigurt')}
             </span>
           </div>
 
@@ -72,16 +80,16 @@ function Login({ onLoginSuccess, onBackHome, onRegister }) {
             <div className="auth-logo-halo">
               <AimsLogo size="xl" showText={false} />
             </div>
-            <span className="auth-brand-kicker">Company command center</span>
-            <h1>Welcome back</h1>
-            <p>Sign in to continue managing your company operations.</p>
+            <span className="auth-brand-kicker">{text('Company command center', 'Qendra e menaxhimit të kompanisë')}</span>
+            <h1>{text('Welcome back', 'Mirë se u ktheve')}</h1>
+            <p>{text('Sign in to continue managing your company operations.', 'Hyr për të vazhduar menaxhimin e kompanisë.')}</p>
           </div>
 
           {error && <div className="auth-error" role="alert">{error}</div>}
 
           <form className="auth-form" onSubmit={handleSubmit}>
             <div className="auth-field">
-              <label htmlFor="email-address">Email address</label>
+              <label htmlFor="email-address">{text('Email address', 'Adresa e emailit')}</label>
               <div className="auth-control">
                 <Mail size={18} aria-hidden="true" />
                 <input
@@ -99,14 +107,14 @@ function Login({ onLoginSuccess, onBackHome, onRegister }) {
 
             <div className="auth-field">
               <div className="auth-label-row">
-                <label htmlFor="password">Password</label>
+                <label htmlFor="password">{text('Password', 'Fjalëkalimi')}</label>
                 {!isDesktop ? (
                   <button
                     type="button"
                     className="auth-switch-link"
                     onClick={() => navigate('/forgot-password')}
                   >
-                    Forgot password?
+                    {text('Forgot password?', 'Ke harruar fjalëkalimin?')}
                   </button>
                 ) : null}
               </div>
@@ -118,7 +126,7 @@ function Login({ onLoginSuccess, onBackHome, onRegister }) {
                   type="password"
                   required
                   autoComplete="current-password"
-                  placeholder="Enter your password"
+                  placeholder={text('Enter your password', 'Shkruaj fjalëkalimin')}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                 />
@@ -126,23 +134,23 @@ function Login({ onLoginSuccess, onBackHome, onRegister }) {
             </div>
 
             <button type="submit" className="auth-submit auth-submit-premium" disabled={loading}>
-              <span>{loading ? 'Signing in...' : 'Enter workspace'}</span>
+              <span>{loading ? text('Signing in...', 'Duke hyrë…') : text('Enter workspace', 'Hyr në sistem')}</span>
               {loading ? <i className="auth-button-spinner" aria-hidden="true" /> : <ArrowRight size={18} />}
             </button>
           </form>
 
           {!isDesktop ? (
             <p className="auth-switch">
-              New to AIMS?{' '}
+              {text('New to AIMS?', 'Je i ri në AIMS?')}{' '}
               <button type="button" className="auth-switch-link" onClick={onRegister}>
-                Create a company workspace
+                {text('Create a company workspace', 'Krijo hapësirën e kompanisë')}
               </button>
             </p>
           ) : null}
 
           <div className="auth-trust-row" aria-hidden="true">
-            <span><i /> Encrypted session</span>
-            <span><i /> Company-isolated data</span>
+            <span><i /> {text('Secure access', 'Hyrje e sigurt')}</span>
+            <span><i /> {text('Company-isolated data', 'Të dhëna të ndara sipas kompanisë')}</span>
           </div>
         </main>
       </div>

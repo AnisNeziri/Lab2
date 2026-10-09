@@ -21,7 +21,9 @@ class GoodsReceiptController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
         $receipts = GoodsReceipt::query()
-            ->with(['purchaseOrder:id,po_number,supplier_id', 'purchaseOrder.supplier:id,name', 'warehouse:id,name,code', 'location:id,name,code,path', 'receiver:id,name'])
+            // PurchaseOrder appends its payment summary when serialized. Keep the
+            // authoritative inputs even in this compact receipt-list relation.
+            ->with(['purchaseOrder:id,company_id,po_number,supplier_id,total_amount,total_paid,due_at,status,currency', 'purchaseOrder.supplier:id,name', 'warehouse:id,name,code', 'location:id,name,code,path', 'receiver:id,name'])
             ->withCount('items')
             ->when($validated['purchase_order_id'] ?? null, fn ($query, $id) => $query->where('purchase_order_id', $id))
             ->when($validated['warehouse_id'] ?? null, fn ($query, $id) => $query->where('warehouse_id', $id))

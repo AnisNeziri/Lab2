@@ -304,7 +304,7 @@ function Reports() {
       <section className="card reports-heading-card">
         <div>
           <span className="eyebrow">{t('reports.workspace')}</span>
-          <h2>{t('reports.title')}</h2>
+          <h1>{t('reports.title')}</h1>
           <p className="page-intro">{t('reports.intro')}</p>
         </div>
         <span className="backup-security-badge"><ShieldCheck size={16} />{t('backup.companyScoped')}</span>

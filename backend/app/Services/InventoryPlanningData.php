@@ -15,7 +15,7 @@ final class InventoryPlanningData {
   $stamp=[today()->toDateString(),$product->unit,$product->created_at,AnalyticsSnapshot::where('entity_id',$product->id)->whereIn('entity_type',['product','demand_observation','inventory'])->max('id'),Cache::get('planning-generation:'.$product->company_id.':'.$product->id,0)];
   // V2's immutable reconciled observations are the planning authority. Never
   // re-scan an entire company's sales ledger for each product projection.
-  $history=Cache::remember('planning-history:v4.1:'.$product->company_id.':'.$product->id.':'.hash('sha256',json_encode($stamp)),900,fn()=>$this->closedHistory($product));
+  $history=Cache::remember('planning-history:v4.2:'.$product->company_id.':'.$product->id.':'.hash('sha256',json_encode($stamp)),900,fn()=>$this->closedHistory($product));
   $prediction=AnalyticsPrediction::where('entity_type','product')->where('entity_id',$product->id)->where('model_key','inventory-demand-v1')->where('value->unit',$product->unit)->where('value->horizon',90)->where('generated_at','<=',now())->where('valid_until','>',now())->latest('id')->first();
   $model=$prediction?InventoryForecastModel::where('version',$prediction->model_version)->where('domain','inventory_demand')->where('status','active')->first():null;
   $daily=$model&&$model->training_cutoff&&$model->training_cutoff->lt(today())&&hash_equals($model->artifact_hash,InventoryIntelligenceService::artifactHash($model->artifact))?($prediction->value['daily']??[]):[];
@@ -71,7 +71,7 @@ final class InventoryPlanningData {
   $start=today()->subDays(90)->max($p->created_at->copy()->startOfDay());$end=today()->subDay();
   $snapshots=AnalyticsSnapshot::where('entity_type','demand_observation')->where('entity_id',$p->id)->where('warehouse_id',0)->whereBetween('snapshot_date',[$start,$end])->get()->keyBy(fn($s)=>$s->snapshot_date->toDateString());$series=[];
   for($date=$start;$date->lte($end);$date=$date->copy()->addDay()){$key=$date->toDateString();$snapshot=$snapshots->get($key);$f=$snapshot?->facts??[];$valid=($f['unit']??null)===$p->unit&&($f['complete']??false)&&$snapshot->observed_at->lte(now());
-   $series[]=['date'=>$key,'demand'=>$valid?($f['demand']??null):null,'gross_recorded'=>$valid?($f['sales_quantity']??0):0,'returned'=>$valid?($f['returns_quantity']??0):0,'censored'=>$valid&&(bool)(($f['stockout']??false)||($f['potentially_censored']??false)),'available'=>$valid?($f['available']??null):null,'source_references'=>$f['provenance']['sales']??[],'quality'=>$valid?($f['quality']??'unknown'):'unknown'];
+   $series[]=['date'=>$key,'demand'=>$valid?($f['demand']??null):null,'gross_recorded'=>$valid?($f['sales_quantity']??0):0,'returned'=>$valid?($f['returns_quantity']??0):0,'censored'=>$valid&&(bool)($f['stockout']??false),'potentially_censored'=>$valid&&(bool)($f['potentially_censored']??false),'available'=>$valid?($f['available']??null):null,'source_references'=>$f['provenance']['sales']??[],'quality'=>$valid?($f['quality']??'unknown'):'unknown'];
   }return $series;
  }
  private function forecastError(Product $p,?string $version):array {
@@ -88,7 +88,7 @@ final class InventoryPlanningData {
   if(!$history)return [];
   $moves=StockMovement::where('product_id',$p->id)->whereBetween('occurred_at',[$history[0]['date'].' 00:00:00',last($history)['date'].' 23:59:59'])->whereIn('movement_code',['daily_sale','daily_sale_reversal','invoice_sale'])->limit(10000)->get()->groupBy(fn($m)=>$m->occurred_at->toDateString());
   $snapshots=AnalyticsSnapshot::where('entity_type','inventory')->where('entity_id',$p->id)->where('warehouse_id',$w->id)->whereDate('snapshot_date','>=',$history[0]['date'])->get()->keyBy(fn($s)=>$s->snapshot_date->toDateString());
-  $stockouts=StockMovement::where('product_id',$p->id)->where('warehouse_id',$w->id)->whereBetween('occurred_at',[$history[0]['date'].' 00:00:00',last($history)['date'].' 23:59:59'])->where('warehouse_quantity_after','<=',0)->pluck('occurred_at')->map(fn($d)=>substr((string)$d,0,10))->flip();
+  $stockouts=StockMovement::where('product_id',$p->id)->where('warehouse_id',$w->id)->whereBetween('occurred_at',[$history[0]['date'].' 00:00:00',last($history)['date'].' 23:59:59'])->where(fn($q)=>$q->where('stock_state','available')->orWhereNull('stock_state'))->where('warehouse_quantity_after','<=',0)->pluck('occurred_at')->map(fn($d)=>substr((string)$d,0,10))->flip();
   return array_map(function($h)use($p,$w,$moves,$snapshots,$stockouts){$all=$moves->get($h['date'],collect());$same=$all->every(fn($m)=>$m->unit_snapshot===$p->unit);$net=fn($rows)=>$rows->sum(fn($m)=>(float)$m->quantity*($m->movement_code==='daily_sale_reversal'?-1:1));
    $snapshot=$snapshots->get($h['date']);$local=$all->where('warehouse_id',$w->id);$censored=$stockouts->has($h['date']);
    $sources=$all->every(fn($m)=>in_array(($m->source_type==='daily_sale'?'sale:':($m->source_type==='invoice'?'invoice:':'unknown:')).$m->source_id,$h['source_references'],true));

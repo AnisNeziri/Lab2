@@ -12,6 +12,31 @@ use App\Services\{AssistantScenarioService,FinancialIntelligenceService};
 class IntelligenceAssistantTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_demo_business_questions_use_existing_evidence_tools_without_a_local_model(): void
+    {
+        $planner = app(AssistantPlanner::class);
+        foreach ([
+            'What needs my attention today?' => 'brief',
+            'Which products are at highest stock risk?' => 'stockout',
+            'Which supplier should I consider?' => 'suppliers',
+            'Which customers may reorder soon?' => 'opportunities',
+            'Çfarë kërkon vëmendjen sot?' => 'brief',
+            'Cilët klientë mund të riporosisin?' => 'opportunities',
+        ] as $question => $intent) $this->assertSame($intent, $planner->plan($question)['intent']);
+        $this->assertSame('Milano 01', $planner->plan('Why is Milano 01 at risk?')['term']);
+        $this->assertSame('Milano 01', $planner->plan('Pse është Milano 01 në rrezik?')['term']);
+        $this->login();
+        $this->decision();
+        $result = $this->ask('What needs my attention today?')->assertOk()->json();
+        $this->assertSame('brief', $result['intent']);
+        $this->assertTrue($result['read_only']);
+        $this->assertContains('get_open_decisions', array_column($result['sources'], 'tool'));
+        $risk = $this->ask('Which products are at highest stock risk?')->assertOk()->json();
+        $this->assertContains('get_replenishment_decisions', array_column($risk['sources'], 'tool'));
+        $this->assertTrue($risk['read_only']);
+        $this->assertDatabaseCount('purchase_requests', 0);
+    }
     private function login(string $role='admin'):void{$this->actingAsApiUser($role);$this->getJson('/api/me')->assertOk();$this->travelTo(now()->setDate(2026,10,6)->setTime(12,0));}
     private function product(string $name='Handles',string $sku='V9-1'):Product{return Product::create(['name'=>$name,'sku'=>$sku,'unit'=>'pcs','quantity'=>5,'min_quantity'=>20,'purchase_price'=>2,'price'=>5,'category_id'=>Category::firstOrCreate(['name'=>'Hardware'])->id]);}
     private function ask(string $question,array $extra=[]){return $this->postJson('/api/intelligence-assistant/ask',array_merge(['question'=>$question],$extra));}
@@ -125,6 +150,10 @@ class IntelligenceAssistantTest extends TestCase
         $shipment->items()->create(['product_id'=>$p->id,'purchase_order_item_id'=>$i->id,'description'=>'Handles','unit'=>'pcs','quantity'=>20,'planned_quantity'=>20,'base_quantity'=>20]);
         app(\App\Services\ShipmentIntelligenceService::class)->refresh($shipment->id);
         $before=$po->fresh()->toArray();$r=$this->ask('What if this shipment arrives 10 days late?',['entity'=>['type'=>'shipment','id'=>$shipment->id]])->assertOk()->json();
-        $this->assertSame('simulate_shipment_delay',$r['sources'][0]['tool']);$this->assertSame($before,$po->fresh()->toArray());$this->assertSame(5.0,(float)$p->fresh()->quantity);$this->assertDatabaseCount('purchase_requests',0);
+        $this->assertSame('simulate_shipment_delay',$r['sources'][0]['tool']);
+        $this->assertNotEmpty($r['cards'], 'Linked shipment products must not be silently dropped by the scenario adapter.');
+        $scenario = app(AssistantScenarioService::class)->shipmentDelay(['shipment_id'=>$shipment->id,'delay_days'=>10]);
+        $this->assertSame($p->id,$scenario['rows'][0]['product_id']);
+        $this->assertSame($before,$po->fresh()->toArray());$this->assertSame(5.0,(float)$p->fresh()->quantity);$this->assertDatabaseCount('purchase_requests',0);
     }
 }

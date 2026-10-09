@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { LayoutDashboard, Package, TrendingUp, FolderTree, Truck, FileText, Activity, Users, LogOut, FileEdit, Box, LayoutGrid, Ship, Globe, Bell, ChevronDown, ClipboardList, ShieldCheck, Landmark, Warehouse, ScanLine, Boxes, Radar, BookOpen, HeartPulse, X } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
@@ -9,8 +9,11 @@ import AimsLogo from './AimsLogo'
 import { useTranslation } from '../hooks/useTranslation'
 import { useSettingsStore } from '../store/settingsStore'
 import { useSidebarNavStore } from '../store/sidebarNavStore'
-import { navigationContext, permittedNavigation } from '../config/navigation'
+import { navigationContext } from '../config/navigation'
 import { useDialog } from '../hooks/useDialog'
+import NavigationCustomizer from './NavigationCustomizer'
+import { useWorkspaceStore } from '../store/workspaceStore'
+import { defaultNavigation, personalizedNavigation } from '../config/workspaceNavigation'
 
 const icons = { LayoutDashboard, Package, TrendingUp, FolderTree, Truck, FileText, Activity, Users, FileEdit, Box, LayoutGrid, Ship, Globe, Bell, ClipboardList, ShieldCheck, Landmark, Warehouse, ScanLine, Boxes, Radar, BookOpen, HeartPulse }
 
@@ -21,7 +24,10 @@ export default function Sidebar({ currentPage, onPageChange, userRole, onLogout,
   const expandedGroups = useSidebarNavStore(state => state.expandedGroups)
   const toggleGroup = useSidebarNavStore(state => state.toggleGroup)
   const ensureGroupOpen = useSidebarNavStore(state => state.ensureGroupOpen)
-  const groups = useMemo(() => permittedNavigation(permissions, enable3dMap, userRole), [permissions, enable3dMap, userRole])
+  const workspace = useWorkspaceStore(state => state.document)
+  const workspaceLoading = useWorkspaceStore(state => state.loading)
+  const [customizing,setCustomizing] = useState(false)
+  const {groups,favorites} = useMemo(() => personalizedNavigation(permissions, enable3dMap, userRole, workspace?.navigation||defaultNavigation(userRole)), [permissions, enable3dMap, userRole, workspace?.navigation])
   const panelRef = useDialog(onClose, false, isOpen)
   const navRef = useRef(null)
 
@@ -50,6 +56,7 @@ export default function Sidebar({ currentPage, onPageChange, userRole, onLogout,
       </>}
     </div>
     <nav ref={navRef} className="sidebar-nav">
+      {favorites.length>0&&<div className="sidebar-favorites"><p className="sidebar-favorites-title">{language==='sq'?'Të preferuarat':'Favorites'}</p>{favorites.map(entry=>{const Icon=icons[entry.icon]||Package,title=entry.label?t(entry.label):language==='sq'?entry.sq:entry.en;return <Link key={entry.id} to={entry.path} className={'sidebar-item sidebar-subitem '+(entry.id===currentPage?'active':'')} aria-current={entry.id===currentPage?'page':undefined} onClick={e=>{if(!e.ctrlKey&&!e.metaKey&&!e.shiftKey&&e.button===0){e.preventDefault();onPageChange(entry.path)}}}><Icon size={18}/><span>{title}</span></Link>})}</div>}
       {groups.map(group => {
         const expanded = expandedGroups[group.id] ?? false
         const active = group.items.some(entry => entry.id === currentPage)
@@ -67,6 +74,7 @@ export default function Sidebar({ currentPage, onPageChange, userRole, onLogout,
         </div>
       })}
     </nav>
-    <div className="sidebar-footer"><button type="button" className="sidebar-item logout" disabled={loggingOut} onClick={() => onLogout?.()}><LogOut size={20}/><span>{loggingOut ? (language === 'sq' ? 'Duke dalë…' : 'Signing out…') : t('nav.logout')}</span></button></div>
+    <div className="sidebar-footer">{userRole!=='superadmin'&&<button type="button" className="sidebar-item sidebar-customize" disabled={workspaceLoading} onClick={()=>setCustomizing(true)}><LayoutGrid size={18}/><span>{language==='sq'?'Personalizo navigimin':'Customize Navigation'}</span></button>}<button type="button" className="sidebar-item logout" disabled={loggingOut} onClick={() => onLogout?.()}><LogOut size={20}/><span>{loggingOut ? (language === 'sq' ? 'Duke dalë…' : 'Signing out…') : t('nav.logout')}</span></button></div>
+    {customizing&&<NavigationCustomizer onClose={()=>setCustomizing(false)}/>}
   </aside>
 }

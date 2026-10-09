@@ -27,6 +27,8 @@ let automationProcess
 let analyticsTimer
 let optimizerTimer
 let optimizerProcess
+let simulationTimer
+let simulationProcess
 let optimizerMaintenanceProcess
 let analyticsProcess
 let aisProcess
@@ -630,6 +632,14 @@ function startBackend(runtime, env) {
   }
   optimizerTimer=setInterval(runOptimizer,3000)
   runOptimizer()
+  const runSimulation=()=>{
+    if(shuttingDown||simulationProcess&&!simulationProcess.killed)return
+    simulationProcess=spawn(phpExecutable(),['artisan','simulation:work','--once'],{cwd:runtime,env,windowsHide:true,shell:false,stdio:'ignore'})
+    simulationProcess.once('error',error=>{log('Strategic simulation',error.message);simulationProcess=null})
+    simulationProcess.once('exit',()=>{simulationProcess=null})
+  }
+  simulationTimer=setInterval(runSimulation,3000)
+  runSimulation()
   const maintainDocuments = () => {
     if (shuttingDown || documentMaintenanceProcess) return
     documentMaintenanceProcess = spawn(phpExecutable(), ['artisan', 'documents:expiry-alerts'], {cwd: runtime, env, windowsHide: true, shell: false, stdio: ['ignore', 'ignore', 'pipe']})
@@ -903,6 +913,8 @@ function shutdown() {
     clearInterval(automationTimer)
     clearInterval(analyticsTimer)
     clearInterval(optimizerTimer)
+    clearInterval(simulationTimer)
+    if(simulationProcess&&!simulationProcess.killed)simulationProcess.kill()
     if(optimizerProcess&&!optimizerProcess.killed)optimizerProcess.kill()
     if(optimizerMaintenanceProcess&&!optimizerMaintenanceProcess.killed)optimizerMaintenanceProcess.kill()
     if(analyticsProcess && !analyticsProcess.killed) analyticsProcess.kill()

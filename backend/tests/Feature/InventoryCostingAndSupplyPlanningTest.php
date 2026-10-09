@@ -25,6 +25,25 @@ class InventoryCostingAndSupplyPlanningTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_receipt_list_serializes_the_linked_order_payment_summary(): void
+    {
+        [$supplier, $category] = $this->setupCompany();
+        $product = $this->product($category, 'RECEIPT-LIST', 0, 10);
+        $order = $this->order($supplier, [['product' => $product, 'quantity' => 10, 'price' => 20]]);
+        app(PurchaseOrderService::class)->receive($order, [
+            'items' => [['id' => $order->items->first()->id, 'quantity' => 5]],
+            'received_at' => '2026-08-20',
+            'idempotency_key' => (string) Str::uuid(),
+        ]);
+
+        $this->getJson('/api/goods-receipts?per_page=100')->assertOk()
+            ->assertJsonPath('data.0.purchase_order.id', $order->id)
+            ->assertJsonPath('data.0.purchase_order.po_number', $order->po_number)
+            ->assertJsonPath('data.0.purchase_order.remaining_balance', 200)
+            ->assertJsonPath('data.0.purchase_order.payment_status', 'unpaid')
+            ->assertJsonPath('data.0.items_count', 1);
+    }
+
     public function test_purchase_receipts_update_weighted_average_and_sales_snapshot_that_cost(): void
     {
         [$supplier, $category] = $this->setupCompany();

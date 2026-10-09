@@ -1283,6 +1283,34 @@ html[data-theme='dark'] .auth-secure-label {
   background: rgba(16, 61, 91, 0.32);
 }
 
+/* Keep interactive links and section labels readable on the dark auth surface. */
+html[data-theme='dark'] .auth-experience-shell :is(.auth-back, .auth-switch-link, .auth-brand-kicker, .auth-section-label) {
+  color: #8fd3ff;
+}
+
+html[data-theme='dark'] .auth-experience-shell .auth-trust-row {
+  color: #b6cddd;
+}
+
+html[data-theme='dark'] .auth-experience-shell .auth-control :is(input, textarea, select) {
+  background: transparent !important;
+}
+
+.auth-experience-shell :is(.auth-back, .auth-switch-link):focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.auth-shell-topline > *, .auth-label-row > * {
+  min-width: 0;
+}
+
+.auth-shell-topline, .auth-label-row {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 @keyframes auth-grid-drift {
   from { background-position: 0 0, 0 0; }
   to { background-position: 52px 52px, 52px 52px; }
@@ -1505,3 +1533,8 @@ html[data-theme='dark'] .auth-secure-label {
     transition-duration: 0.01ms !important;
   }
 }
+.auth-demo-notice{padding:12px 16px;margin-bottom:18px;border:1px solid #38bdf866;border-radius:10px;background:#0c4a6e22;color:var(--text-color,#0f172a)}
+.auth-demo-notice p{margin:6px 0;font-size:13px;color:inherit}
+.auth-demo-notice a{font-weight:600;color:#0284c7}
+html.dark .auth-demo-notice{color:#e2e8f0;background:#0c4a6e55}
+html.dark .auth-demo-notice a{color:#7dd3fc}

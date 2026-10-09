@@ -119,7 +119,7 @@ class CustomerDebtService
             if($dispatch->customer_debt_transaction_id)return CustomerDebtTransaction::query()->findOrFail($dispatch->customer_debt_transaction_id);
             app(OutboundCreditService::class)->authorize($locked);
             $customer=Customer::query()->lockForUpdate()->findOrFail($locked->customer_id);
-            $data=$this->applyPaymentTerms($customer,['amount'=>$dispatch->total_amount,'transaction_date'=>now()->toDateString(),'source'=>'manual','reference_number'=>$dispatch->reference,'note'=>'Fulfilled order '.$locked->order_number,'idempotency_key'=>'fulfillment-debt-'.$dispatch->id,'metadata'=>['sales_order_id'=>$locked->id,'outbound_dispatch_id'=>$dispatch->id]]);
+            $data=$this->applyPaymentTerms($customer,['amount'=>$dispatch->total_amount,'transaction_date'=>now()->toDateString(),'daily_sale_id'=>$dispatch->daily_sale_id,'source'=>'manual','reference_number'=>$dispatch->reference,'note'=>'Fulfilled order '.$locked->order_number,'idempotency_key'=>'fulfillment-debt-'.$dispatch->id,'metadata'=>['sales_order_id'=>$locked->id,'outbound_dispatch_id'=>$dispatch->id]]);
             $transaction=$this->record($customer,$data,'debt_added',true);
             $this->accounting->postCustomerDebt($transaction);
             $locked->update(['committed_amount'=>Money::maximum('0',Money::subtract($locked->committed_amount,$dispatch->total_amount))]);

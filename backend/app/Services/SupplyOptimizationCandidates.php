@@ -6,7 +6,8 @@ use Carbon\CarbonImmutable as Date;
 /** Enumerates bounded valid bundles, then scores only documented operational effects. */
 class SupplyOptimizationCandidates {
  public function build(array $data):array {
-  $groups=[];
+  $groups=[];$today=isset($data['as_of'])?Date::parse($data['as_of'])->startOfDay():Date::instance(today());
+  $purchaseDelay=(int)($data['scope']['purchase_delay_days']??0);
   foreach($data['rows'] as $row){$i=$row['input'];$math=app(InventoryPlanningMath::class);$base=$math->calculate($i,['base_quantity'=>0]);$base['timeline']=array_slice($base['timeline'],0,$data['scope']['horizon']);
    $need=$base['timeline']?max(0,$base['safety_stock']-min(array_column($base['timeline'],'baseline'))):max(0,max($i['minimum_safety'],$i['reorder_floor'])-$i['stock']['available']+$i['stock']['committed_outgoing']);
    $row+=['need'=>$need,'baseline'=>$base];$options=[$this->candidate($row,[],[],0,'monitor',$data)];
@@ -18,14 +19,14 @@ class SupplyOptimizationCandidates {
     foreach(array_slice($row['suppliers'],0,6) as $supplier){
      $si=$i;$si['supplier']=$supplier;$si['lead']=[];$si['landed_unit_allowance']=$supplier['supplier_id']===($i['supplier']['supplier_id']??null)?$i['landed_unit_allowance']:null;
      if($supplier['lead_evidence']['eligible']??false)$si['lead']=['p90'=>$supplier['lead_evidence']['p90_days'],'mean'=>$supplier['lead_evidence']['p90_days']];
-     $r=$math->calculate($si,['base_quantity'=>0]);if($r['unit_price']===null||$r['base_unit_price']===null||$r['lead_days']===null)continue;
+     $r=$math->calculate($si,['base_quantity'=>0,'order_date'=>$today->addDays($purchaseDelay)->toDateString()]);if($r['unit_price']===null||$r['base_unit_price']===null||$r['lead_days']===null)continue;
      $step=$r['step'];$required=max(0,$need-$tq);$max=ceil(max($required*$data['policy']['quantity_multiplier'],$r['moq'])/$step)*$step;
      if($required<=0)continue;
      $quantities=array_unique(array_map(fn($f)=>ceil(max($r['moq'],$max*$f)/$step)*$step,[.25,.5,.75,1]));
      $bridge=$base['timeline']?max(0,-min(array_column(array_filter($base['timeline'],fn($d)=>$d['date']>=$r['expected_arrival']),'baseline')?:[0])):0;
      if($bridge>0)$quantities[]=ceil(max($r['moq'],$bridge-$tq)/$step)*$step;
-     $delays=[0];$stockout=$base['stockout_date'];if($stockout){$delay=max(0,today()->diffInDays(Date::parse($stockout),false)-$r['lead_days']-1);if($delay>0)$delays[]=(int)min(30,$delay);}
-     foreach(array_unique($quantities) as $q)foreach($delays as $delay){$order=today()->addDays($delay)->toDateString();$pr=$math->calculate($si,['base_quantity'=>$q,'order_date'=>$order]);if(!$pr['feasible']||$pr['base_quantity']!=$q||$q<=0||$pr['base_cost']===null)continue;
+     $delays=[$purchaseDelay];$stockout=$base['stockout_date'];if($stockout){$delay=max($purchaseDelay,$today->diffInDays(Date::parse($stockout),false)-$r['lead_days']-1);if($delay>$purchaseDelay)$delays[]=(int)max($purchaseDelay,min(30,$delay));}
+     foreach(array_unique($quantities) as $q)foreach($delays as $delay){$order=$today->addDays($delay)->toDateString();$pr=$math->calculate($si,['base_quantity'=>$q,'order_date'=>$order]);if(!$pr['feasible']||$pr['base_quantity']!=$q||$q<=0||$pr['base_cost']===null)continue;
       $risk=collect($row['supplier_risk'])->firstWhere('supplier_id',$supplier['supplier_id'])??[];
       $purchase=['product_id'=>$i['product']['id'],'supplier_id'=>$supplier['supplier_id'],'supplier_name'=>$supplier['name'],'warehouse_id'=>$i['warehouse']['id']??null,'warehouse_name'=>$i['warehouse']['name']??null,
        'base_quantity'=>$q,'quantity'=>$pr['quantity'],'unit'=>$pr['unit'],'unit_price'=>$pr['unit_price'],'base_cost'=>$pr['base_cost'],'quote_cost'=>$pr['estimated_cost'],'currency'=>$pr['currency'],'moq'=>$pr['moq'],'step'=>$step,'factor'=>$pr['factor'],
@@ -35,7 +36,7 @@ class SupplyOptimizationCandidates {
     }
    }
    // Valid split bundles use two independently MOQ/pack-valid half-quantities.
-   $halves=array_values(array_filter($options,fn($c)=>$c&&count($c['purchases'])===1&&!$c['transfers']&&$c['purchases'][0]['base_quantity']<=$need*.65&&$c['purchases'][0]['order_date']===today()->toDateString()));
+   $halves=array_values(array_filter($options,fn($c)=>$c&&count($c['purchases'])===1&&!$c['transfers']&&$c['purchases'][0]['base_quantity']<=$need*.65&&$c['purchases'][0]['order_date']===$today->addDays($purchaseDelay)->toDateString()));
    foreach(array_slice($halves,0,8) as $a)foreach(array_slice($halves,0,8) as $b)if($a['purchases'][0]['supplier_id']<$b['purchases'][0]['supplier_id']&&$a['purchase_quantity']+$b['purchase_quantity']<=$need+max($a['purchases'][0]['step'],$b['purchases'][0]['step'])){
     $options[]=$this->candidate($row,[$a['purchases'][0],$b['purchases'][0]],[],0,'split_purchase',$data);
    }

@@ -56,10 +56,13 @@ class SettingsController extends Controller
                 }
             });
         }
-        $preferences = UserPreferences::normalize($user->preferences);
-        $preferences = array_merge($preferences, $validated);
-        $user->preferences = $preferences;
-        $user->save();
+        $preferences = DB::transaction(function () use ($user,$validated) {
+            $fresh = $user->newQuery()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $preferences = array_merge(UserPreferences::normalize($fresh->preferences), $validated);
+            $fresh->preferences = $preferences;
+            $fresh->save();
+            return $preferences;
+        });
 
         return response()->json([
             'preferences' => $preferences,

@@ -67,7 +67,7 @@ function formatDate(value) {
 }
 
 export default function MyShipments() {
-  const { t } = useTranslation()
+  const { t, language } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedShipmentId = Number(searchParams.get('shipment')) || null
   const permissions = useAuthStore((state) => state.permissions)
@@ -309,6 +309,7 @@ export default function MyShipments() {
       <ShipmentsPageIntro message={t('shipments.networkLoading')} />
       {selected&&<EntityDocuments entityType="shipment" entityId={selected.id}/>}
       <div className="shipments-toolbar no-print">
+        <h1>{t('nav.myShipments')}</h1>
         <div className="shipments-view-tabs">
           <button type="button" onClick={() => switchView('intelligence')}>{t('shipments.intelligence')}</button>
           <button type="button" className={view === 'active' ? 'active' : ''} onClick={() => switchView('active')}>
@@ -486,7 +487,7 @@ export default function MyShipments() {
                 {selected.containers?.length ? <div className="shipment-container-chips">{selected.containers.map((container) => <span key={container.id}><strong>{container.container_number}</strong><small>{container.container_type || t('shipments.container')} · {container.seal_number || t('shipments.noSeal')}</small></span>)}</div> : <p>{t('shipments.noContainers')}</p>}
               </section> : null}
 
-              <ShipmentRouteMap shipment={selected} pendingLabel={t('shipments.awaitingAisDetails')} />
+              <ShipmentRouteMap shipment={selected} pendingLabel={selected.tracking_provider === 'synthetic' ? (language === 'sq' ? 'Regjistrim logjistik sintetik — pa pozicion të drejtpërdrejtë AIS.' : 'Synthetic logistics record — no live AIS position.') : t('shipments.awaitingAisDetails')} />
 
               <section className="shipment-history">
                 <h3>{t('shipments.history')}</h3>

@@ -28,18 +28,18 @@ final class AssistantPlanner
             'prepare'=>'/\b(prepare|pergatit).*(option|recommend|draft|opsion|rekomand|kerkes)/',
             'scenario'=>'/\b(what if|po nese|simulate|simulo|only\s+[0-9]|vetem\s+[0-9])/',
             'changes'=>'/\b(what changed|changes since|changed since|cfare ndryshoi|ndryshimet|ndryshuar)/',
-            'brief'=>'/\b(daily brief|morning brief|executive brief|business brief|brief today|summarize my business|permbledhje|prioritetet sot)/',
+            'brief'=>'/\b(daily brief|morning brief|executive brief|business brief|brief today|summarize my business|what needs my attention|what should i focus on|permbledhje|prioritetet sot|cfare.*vemendjen)/',
             'capacity'=>'/\b(can we|can i|a mund).*(sell|fulfil|supply|handle|shes|plotes|furniz)/',
             'cash'=>'/\b(cash|cashflow|cash-flow|para|likuiditet|arke|cash forecast)/',
             'debt'=>'/\b(owes|owing|owe|receivable|borxh|debt)/',
             'inactive'=>'/\b(inactive|inactivity|stopped buying|joaktiv|nuk.*ble)/',
-            'opportunities'=>'/\b(sales opportun|reorder opportun|mundesi.*shit|mundesi.*ri)/',
+            'opportunities'=>'/\b(sales opportun|reorder opportun|customers.*(?:reorder|buy.*again)|mundesi.*shit|mundesi.*ri|klient.*riporos)/',
             'compare'=>'/\b(compare|instead of|versus| vs |krahaso|ne vend|supplier b.*supplier a)/',
             'explain'=>'/\b(why|explain|pse|shpjego)/',
             'shipments'=>'/\b(shipment|vessel|container|derges|anije|logistics)/',
-            'suppliers'=>'/\b(supplier.*attention|supplier.*risk|furnitor.*vemend|furnitor.*rrezik)/',
+            'suppliers'=>'/\b(supplier.*attention|supplier.*risk|supplier.*should.*consider|furnitor.*vemend|furnitor.*rrezik|furnitor.*duhet.*konsider)/',
             'replenishment'=>'/\b(what.*buy|should.*buy|what.*order|sa.*porosi|cfare.*ble|replenish|riporosi)/',
-            'stockout'=>'/\b(stockout|run out|running out|out of stock|mbar.*stok|munges.*stok)/',
+            'stockout'=>'/\b(stockout|run out|running out|out of stock|stock risk|risk.*stock|mbar.*stok|munges.*stok)/',
             'decisions'=>'/\b(waiting decision|pending decision|decisions|vendime|vendimet|miratime)/',
             'risks'=>'/\b(top risk|biggest risk|critical risk|rreziqet|rrezik)/',
             'movements'=>'/\b(movement|movements|levizje|levizjet)/',
@@ -56,6 +56,7 @@ final class AssistantPlanner
         if (preg_match('/["“]([^"”]+)["”]/u',$question,$m)) $term=$m[1];
         elseif (preg_match('/(?:\bfor\b|\babout\b|\bper\b|\bpër\b)\s+(.+?)[?.!]*$/iu',$question,$m)) $term=trim($m[1]);
         elseif (preg_match('/^(?:stock|stoku|stok|find|gjej|customer|klienti|supplier|furnitori|product|produkti)\s+(.+?)[?.!]*$/iu',$question,$m)) $term=trim($m[1]);
+        elseif ($intent === 'explain' && preg_match('/^(?:why\s+is|pse\s+(?:është|eshte))\s+(.+?)\s+(?:at\s+risk|në\s+rrezik|ne\s+rrezik)[?.!]*$/iu', $question, $m)) $term=trim($m[1]);
         $type = preg_match('/\b(customer|klient)/',$q)?'customer':(preg_match('/\b(supplier|furnitor)/',$q)?'supplier':(preg_match('/\b(shipment|vessel|derges|anije)/',$q)?'shipment':null));
         if (in_array($intent,['forecast','movements','replenishment','stockout','capacity']) && !$type) $type='product';
         $scenario=[];

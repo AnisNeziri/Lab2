@@ -1,4 +1,10 @@
 <?php
+\Illuminate\Support\Facades\Route::middleware(['auth.token','password.changed','company.context','throttle:120,1'])->prefix('strategic-simulation')->group(function(){
+ $c=\App\Http\Controllers\Api\StrategicSimulationController::class;
+ \Illuminate\Support\Facades\Route::get('/options',[$c,'options']);\Illuminate\Support\Facades\Route::get('/',[$c,'index']);\Illuminate\Support\Facades\Route::post('/',[$c,'store'])->middleware('throttle:10,1');\Illuminate\Support\Facades\Route::post('/compare',[$c,'compare']);
+ foreach(['show'=>'','state'=>'/state'] as $method=>$suffix)\Illuminate\Support\Facades\Route::get('/{id}'.$suffix,[$c,$method])->whereNumber('id');
+ foreach(['rerun','derive','cancel','sensitivity','response'] as $method)\Illuminate\Support\Facades\Route::post('/{id}/'.$method,[$c,$method])->whereNumber('id')->middleware('throttle:10,1');
+});
 Route::middleware(['auth.token','password.changed','company.context','throttle:120,1'])->prefix('supply-optimizer')->group(function(){
  $c=\App\Http\Controllers\Api\SupplyOptimizerController::class;
  Route::get('/options',[$c,'options']);Route::get('/',[$c,'index']);Route::post('/',[$c,'store'])->middleware('throttle:10,1');
@@ -214,6 +220,8 @@ Route::middleware('auth.token')->group(function () {
             Route::get('/reports', [ReportController::class, 'index'])->middleware('permission:reports.view');
             Route::get('/settings/preferences', [SettingsController::class, 'show']);
             Route::put('/settings/preferences', [SettingsController::class, 'update']);
+            Route::get('/settings/workspace', [\App\Http\Controllers\Api\WorkspaceController::class, 'show']);
+            Route::put('/settings/workspace', [\App\Http\Controllers\Api\WorkspaceController::class, 'update']);
 
             Route::get('/tracking/vessels', [GlobalMapController::class, 'vessels'])->middleware('permission:shipments.view');
             Route::get('/tracking/vessels/{vesselId}', [GlobalMapController::class, 'show'])->middleware('permission:shipments.view');

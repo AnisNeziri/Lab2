@@ -71,6 +71,7 @@ class InventoryPlanningTest extends TestCase {
    $facts=$s->facts;$facts['provenance']=['sales'=>['sale:'.$s->id]];\Illuminate\Support\Facades\DB::table('analytics_snapshots')->where('id',$s->id)->update(['facts'=>json_encode($facts)]);
    AnalyticsSnapshot::create($this->tenantAttributes(['entity_type'=>'inventory','entity_id'=>$p->id,'warehouse_id'=>$w->id,'snapshot_date'=>$s->snapshot_date,'observed_at'=>$s->snapshot_date->copy()->endOfDay(),'feature_version'=>'observed-v1','facts'=>['unit'=>'pcs','available'=>100]]));
    foreach([['daily_sale',10,true],['transfer_out',300,false]] as [$code,$qty,$affects])StockMovement::create($this->tenantAttributes(['product_id'=>$p->id,'warehouse_id'=>$w->id,'type'=>'out','quantity'=>$qty,'quantity_before'=>1000,'quantity_after'=>1000-$qty,'warehouse_quantity_after'=>100,'unit_snapshot'=>'pcs','movement_code'=>$code,'source_type'=>$affects?'daily_sale':'stock_transfer','source_id'=>$s->id,'affects_company_quantity'=>$affects,'occurred_at'=>$s->snapshot_date->copy()->midDay()]));
+   StockMovement::create($this->tenantAttributes(['product_id'=>$p->id,'warehouse_id'=>$w->id,'type'=>'out','quantity'=>10,'quantity_before'=>1000,'quantity_after'=>1000,'warehouse_quantity_after'=>0,'stock_state'=>'reserved','unit_snapshot'=>'pcs','movement_code'=>'transfer_out','source_type'=>'stock_transfer','source_id'=>$s->id,'affects_company_quantity'=>false,'occurred_at'=>$s->snapshot_date->copy()->midDay()]));
   }
   $r=$this->getJson('/api/analytics/planning/products/'.$p->id.'?warehouse_id='.$w->id)->assertOk()->assertJsonPath('plan.scope','qualified_warehouse')->json('plan');$this->assertEquals(10,$r['daily'][0]['quantity']);$this->assertEquals(90,$r['quality']['observed_days']);
  }
@@ -78,6 +79,11 @@ class InventoryPlanningTest extends TestCase {
   $p=$this->product();$a=Warehouse::create($this->tenantAttributes(['name'=>'First','code'=>'F','is_active'=>true]));$b=Warehouse::create($this->tenantAttributes(['name'=>'Second','code'=>'S','is_active'=>true]));$d=['service_level'=>.95,'priority'=>3,'review_days'=>7,'allocation_share'=>.7];
   $this->postJson('/api/analytics/planning/products/'.$p->id.'/policy',$d+['warehouse_id'=>$a->id])->assertOk();$this->postJson('/api/analytics/planning/products/'.$p->id.'/policy',$d+['warehouse_id'=>$b->id])->assertStatus(422);
   $this->expectException(\LogicException::class);\App\Models\InventoryPlanningPolicy::first()->update(['settings'=>['priority'=>1]]);
+ }
+ public function test_sampled_availability_warning_does_not_discard_reconciled_fulfilled_demand():void {
+  $p=$this->product();
+  foreach(AnalyticsSnapshot::where('entity_type','demand_observation')->get() as $snapshot){$facts=$snapshot->facts;$facts['potentially_censored']=true;\Illuminate\Support\Facades\DB::table('analytics_snapshots')->where('id',$snapshot->id)->update(['facts'=>json_encode($facts)]);}
+  $this->getJson('/api/analytics/planning/products/'.$p->id)->assertOk()->assertJsonPath('plan.quality.observed_days',90)->assertJsonPath('plan.quality.stockout_days',0)->assertJsonPath('plan.coverage_supported',true);
  }
  public function test_new_planning_data_survives_portable_restore_as_history():void {
   $p=$this->product();$this->postJson('/api/analytics/planning/products/'.$p->id.'/policy',['service_level'=>.95,'priority'=>4,'review_days'=>7])->assertOk();$this->postJson('/api/analytics/planning/products/'.$p->id.'/save')->assertOk();

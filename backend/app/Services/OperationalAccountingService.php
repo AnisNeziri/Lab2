@@ -109,7 +109,7 @@ class OperationalAccountingService
     {
         if (! $movement->affects_company_quantity || $movement->cost_total === null) return null;
         $amount = Money::normalize(abs((float) $movement->cost_total));
-        if (Money::compare($amount, '0') <= 0) return null;
+        if (Money::compare($amount, '0') <= 0 && Money::minor($movement->inventory_value_before ?? 0) === Money::minor($movement->inventory_value_after ?? 0)) return null;
 
         $lines = match ($movement->movement_code) {
             'purchase_receipt', 'damage_received' => [
@@ -147,6 +147,22 @@ class OperationalAccountingService
         };
         if ($lines === null) return null;
 
+        // Keep the cent-based control account equal to the carried product value.
+        // The principal receipt/COGS amount remains unchanged; its rounding carry
+        // is a separate, traceable inventory-variance line, not a relaxed check.
+        if ($movement->inventory_value_before !== null && $movement->inventory_value_after !== null) {
+            $bookDelta = Money::minor($movement->inventory_value_after) - Money::minor($movement->inventory_value_before);
+            $principal = $movement->type === 'in' ? Money::minor($amount) : -Money::minor($amount);
+            $carry = $bookDelta - $principal;
+            if ($carry !== 0) {
+                $value = Money::decimal(abs($carry));
+                $lines[] = ['mapping' => 'inventory', $carry > 0 ? 'debit' : 'credit' => $value, 'description' => 'Inventory valuation rounding carry'];
+                $lines[] = ['mapping' => 'inventory_adjustments', $carry > 0 ? 'credit' : 'debit' => $value, 'description' => 'Inventory valuation rounding carry'];
+            }
+        }
+
+        $lines = array_values(array_filter($lines, fn ($line) => Money::minor($line['debit'] ?? 0) > 0 || Money::minor($line['credit'] ?? 0) > 0));
+
         $date = ($movement->occurred_at ?: $movement->created_at)->toDateString();
         $entry = $this->accounting->postMapped(
             'inventory', 'stock_movement', $movement->id, 'stock-movement:'.$movement->id,
@@ -169,6 +185,14 @@ class OperationalAccountingService
         if (Money::compare($inventory, '0') > 0) $lines[] = ['mapping' => 'inventory', 'debit' => $inventory];
         if (Money::compare($cogs, '0') > 0) $lines[] = ['mapping' => 'cost_of_goods_sold', 'debit' => $cogs];
         $lines[] = ['mapping' => 'goods_receipt_clearing', 'credit' => $total];
+        $bookDelta = $landedCost->allocations()->get()->sum(fn ($allocation) =>
+            Money::minor($allocation->inventory_value_after ?? 0) - Money::minor($allocation->inventory_value_before ?? 0));
+        $carry = $bookDelta - Money::minor($inventory);
+        if ($carry !== 0) {
+            $value = Money::decimal(abs($carry));
+            $lines[] = ['mapping' => 'inventory', $carry > 0 ? 'debit' : 'credit' => $value, 'description' => 'Landed valuation rounding carry'];
+            $lines[] = ['mapping' => 'inventory_adjustments', $carry > 0 ? 'credit' : 'debit' => $value, 'description' => 'Landed valuation rounding carry'];
+        }
 
         $entry = $this->accounting->postMapped(
             'landed_cost', 'landed_cost', $landedCost->id, 'landed-cost:'.$landedCost->id,

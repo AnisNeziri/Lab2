@@ -10,6 +10,13 @@ use Tests\TestCase;
 
 class ProcurementApprovalTest extends TestCase {
  use RefreshDatabase;
+ public function test_rfq_numbers_have_their_own_company_sequence_when_requests_are_created_in_a_batch(): void {
+  [$a,$b,$supplier]=$this->catalogue();$requests=[];$numbers=[];
+  for($i=0;$i<3;$i++)$requests[]=$this->postJson('/api/purchase-requests',$this->requestPayload($a,$b))->assertCreated()->json('id');
+  foreach($requests as $id){$this->postJson('/api/purchase-requests/'.$id.'/submit')->assertOk();$numbers[]=$this->postJson('/api/purchase-requests/'.$id.'/rfqs',['supplier_ids'=>[$supplier->id]])->assertCreated()->json('rfq_number');}
+  $year=now('Europe/Tirane')->format('Y');$this->assertSame(["RFQ-$year-0001","RFQ-$year-0002","RFQ-$year-0003"],$numbers);
+  $this->assertCount(3,array_unique($numbers));
+ }
  public function test_multi_item_request_moves_through_approval_rfq_quotes_award_and_purchase_order(): void {
   [$first,$second,$supplierA,$supplierB]=$this->catalogue();
   ApprovalRule::create($this->tenantAttributes(['rule_type'=>'purchase_request','threshold_amount'=>'100.00','currency'=>'EUR','required_role'=>'manager','separation_of_duties'=>true,'is_active'=>true]));

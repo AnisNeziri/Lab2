@@ -1,7 +1,11 @@
 import { canOpenPage } from './pageAccess.js'
+import { permittedNavigation } from './navigation.js'
+import { en } from '../locales/en.js'
+import { sq } from '../locales/sq.js'
 
 export const commandCatalog = [
   { id:'supply-optimizer', label:'Open Supply Optimizer', keywords:'supply optimize purchasing plan constraints furnizim optimizim', path:'/supply-optimizer', permission:'analytics.view' },
+  { id:'strategic-simulation', label:'Open Strategic Simulation', keywords:'what if scenario stress simulation twin skenar simulim strategjik', path:'/strategic-simulation', permission:'analytics.view' },
   { id:'inventory-planning', label:'Open Inventory Planning', keywords:'replenish plan quantity buy inventory planifikim blerje', path:'/inventory-intelligence?view=planning', permission:'analytics.view' },
   { id:'decision-center', label:'Review Decisions', keywords:'decisions recommended actions attention vendime rekomandime', path:'/inventory-intelligence?view=decisions', permission:'analytics.view' },
   { id: 'customer-sales-intelligence', label: 'Open Customer & Sales Intelligence', keywords: 'customer sales reorder affinity klient shitje riporosi', path: '/customer-sales-intelligence', permission: 'analytics.view' },
@@ -52,7 +56,7 @@ export function permittedCommands(permissions = []) {
 }
 
 export const commandLabelsSq = {
-  'supply-optimizer':'Hap optimizuesin e furnizimit', 'inventory-planning':'Hap planifikimin e inventarit', 'decision-center':'Rishiko vendimet',
+  'strategic-simulation':'Hap simulimin strategjik', 'supply-optimizer':'Hap optimizuesin e furnizimit', 'inventory-planning':'Hap planifikimin e inventarit', 'decision-center':'Rishiko vendimet',
   'financial-intelligence': 'Hap inteligjencën financiare',
   'customer-sales-intelligence': 'Hap inteligjencën e klientëve dhe shitjeve',
   'add-product': 'Shto produkt', 'daily-sales': 'Regjistro shitje ditore', 'stock-locator': 'Gjej stokun sipas depos', finance: 'Hap qendrën financiare',
@@ -68,9 +72,15 @@ export const commandLabelsSq = {
   'accounting-exceptions': 'Hap përjashtimet kontabël', 'system-integrity': 'Hap integritetin e sistemit',
 }
 
-export function matchingCommands(query, permissions = [], language = 'en') {
+export function matchingCommands(query, permissions = [], language = 'en', navigationOptions = {}) {
   const needle = query.trim().toLocaleLowerCase()
   const commands = permittedCommands(permissions).map((command) => ({ ...command, label: language === 'sq' ? commandLabelsSq[command.id] || command.label : command.label, keywords: `${command.keywords} ${command.label}` }))
+  const pages = permittedNavigation(permissions,navigationOptions.enable3dMap??false,navigationOptions.role).flatMap(g=>g.items)
+  for(const page of pages) {
+    if(commands.some(c=>c.path===page.path))continue
+    const label=page.label?(language==='sq'?sq[page.label]:en[page.label]):language==='sq'?page.sq:page.en
+    commands.push({id:`page-${page.id}`,path:page.path,label,keywords:`${page.en||''} ${page.sq||''} ${page.id}`})
+  }
   const common = ['products', 'add-product', 'daily-sales', 'order-hub', 'purchase-order', 'stock-locator', 'debts', 'finance', 'action-center', 'dashboard']
   if (!needle) return commands.toSorted((a, b) => (common.indexOf(a.id) < 0 ? 100 : common.indexOf(a.id)) - (common.indexOf(b.id) < 0 ? 100 : common.indexOf(b.id)))
   return commands.filter(command => `${command.label} ${command.keywords}`.toLocaleLowerCase().includes(needle)).toSorted((a, b) => Number(b.label.toLocaleLowerCase().startsWith(needle)) - Number(a.label.toLocaleLowerCase().startsWith(needle)))

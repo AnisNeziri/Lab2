@@ -518,10 +518,10 @@ export default function CustomerDebts() {
     <main className="page-stack">
       <section className="card">
         <div className="section-header">
-          <h2>
+          <h1>
             <WalletCards size={20} />
             {t("debts.title")}
-          </h2>
+          </h1>
           <div className="table-actions">
             <button
               className="secondary"

@@ -21,12 +21,24 @@ class ReleaseRecoveryHardeningTest extends TestCase
 
     public function test_desktop_setup_rejects_web_and_server_connections_before_any_command(): void
     {
-        foreach ([['online','sqlite',null], ['offline','mysql',null], ['offline','sqlite','mysql://example.invalid/production']] as [$mode,$driver,$url]) {
-            config(['system.operation_mode'=>$mode,'database.default'=>$driver,'database.connections.sqlite.url'=>$url]);
-            $command = \Mockery::mock(\App\Console\Commands\SetupDesktopCommand::class)->makePartial();
-            $command->shouldReceive('error')->once();
-            $command->shouldNotReceive('call');
-            $this->assertSame(1,$command->handle());
+        $original = collect(['system.operation_mode', 'database.default', 'database.connections.sqlite.url'])
+            ->mapWithKeys(fn ($key) => [$key => config($key)])->all();
+        $database = DB::getFacadeRoot();
+        // The guard must reject configuration without even resolving a connection.
+        DB::shouldReceive('connection')->never();
+        try {
+            foreach ([['online','sqlite',null], ['offline','mysql',null], ['offline','sqlite','mysql://example.invalid/production']] as [$mode,$driver,$url]) {
+                config(['system.operation_mode'=>$mode,'database.default'=>$driver,'database.connections.sqlite.url'=>$url]);
+                $command = \Mockery::mock(\App\Console\Commands\SetupDesktopCommand::class)->makePartial();
+                $command->shouldReceive('error')->once();
+                $command->shouldNotReceive('call');
+                $this->assertSame(1,$command->handle());
+            }
+        } finally {
+            // RefreshDatabase must roll back the original CI connection, not a
+            // deliberately unsafe connection from a rejected setup scenario.
+            config($original);
+            DB::swap($database);
         }
     }
 

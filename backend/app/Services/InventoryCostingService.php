@@ -62,7 +62,9 @@ class InventoryCostingService
         } elseif ($affectsCompanyQuantity && $type === 'out') {
             $movementUnitCost = $averageBefore;
             if ($movementUnitCost !== null) {
-                $valueAfter = round(max(0, $quantityAfter) * $movementUnitCost, 6);
+                // Preserve the carried value; multiplying the remaining quantity by a
+                // six-decimal average repeatedly discards its valuation remainder.
+                $valueAfter = $quantityAfter <= 0 ? 0 : round(max(0, ($valueBefore ?? 0) - $quantity * $movementUnitCost), 6);
                 $averageAfter = $movementUnitCost;
             } else {
                 $valueAfter = null;

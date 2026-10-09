@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuthStore } from '../store/authStore'
+import { useTranslation } from '../hooks/useTranslation'
 import {
   createCategory,
   deleteCategory,
@@ -8,6 +9,7 @@ import {
 } from '../api/categories'
 
 function Categories() {
+  const { language } = useTranslation(), text = (en,sq) => language === 'sq' ? sq : en
   const userRole = useAuthStore((state) => state.role)
   const [categories, setCategories] = useState([])
   const [name, setName] = useState('')
@@ -99,14 +101,14 @@ function Categories() {
   return (
     <main className="categories-page">
       <section className="card">
-        <h2>{editingId ? 'Edit category' : 'Add category'}</h2>
+        <h1>{editingId ? text('Edit category','Ndrysho kategorinë') : text('Add category','Shto kategori')}</h1>
         <form className="category-form" onSubmit={handleSubmit}>
           <label>
-            Name
+            {text('Name','Emri')}
             <input
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="e.g. Electronics"
+              placeholder={text('e.g. Electronics','p.sh. Elektronikë')}
               required
             />
           </label>
@@ -114,10 +116,10 @@ function Categories() {
           {formError && <p className="error">{formError}</p>}
 
           <div className="form-actions">
-            <button type="submit">{editingId ? 'Update category' : 'Save category'}</button>
+            <button type="submit">{editingId ? text('Update category','Përditëso kategorinë') : text('Save category','Ruaj kategorinë')}</button>
             {editingId && (
               <button type="button" className="secondary" onClick={cancelEdit}>
-                Cancel
+                {text('Cancel','Anulo')}
               </button>
             )}
           </div>
@@ -126,23 +128,23 @@ function Categories() {
 
       <section className="card">
         <div className="section-header">
-          <h2>All categories</h2>
-          {!loading && <p className="result-count">{categories.length} category(s)</p>}
+          <h2>{text('All categories','Të gjitha kategoritë')}</h2>
+          {!loading && <p className="result-count">{categories.length} {text('categories','kategori')}</p>}
         </div>
 
-        {loading && <p>Loading categories...</p>}
+        {loading && <p>{text('Loading categories…','Duke ngarkuar kategoritë…')}</p>}
         {error && <p className="error">{error}</p>}
 
         {!loading && !error && categories.length === 0 && (
-          <p>No categories yet. Add one above or run the database seeder.</p>
+          <p>{text('No categories yet. Add your first category above.','Ende nuk ka kategori. Shtoni kategorinë e parë më sipër.')}</p>
         )}
 
         {!loading && categories.length > 0 && (
           <table className="product-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Products</th>
+                <th>{text('Name','Emri')}</th>
+                <th>{text('Products','Produktet')}</th>
                 <th></th>
               </tr>
             </thead>
@@ -153,7 +155,7 @@ function Categories() {
                   <td>{category.products_count}</td>
                   <td className="actions">
                     <button type="button" className="secondary" onClick={() => startEdit(category)}>
-                      Edit
+                      {text('Edit','Ndrysho')}
                     </button>
                     {(userRole === 'admin' || userRole === 'manager') && (
                       <button
@@ -161,7 +163,7 @@ function Categories() {
                         className="danger"
                         onClick={() => handleDelete(category)}
                       >
-                        Delete
+                        {text('Delete','Fshi')}
                       </button>
                     )}
                   </td>

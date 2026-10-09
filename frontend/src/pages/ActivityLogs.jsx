@@ -1,8 +1,10 @@
+import { useTranslation } from '../hooks/useTranslation'
 import { useEffect, useState } from 'react'
 import { getActivityLogs } from '../api/activityLogs'
 import { History, ArrowLeft, ArrowRight } from 'lucide-react'
 
 function ActivityLogs() {
+  const { language } = useTranslation(), text = (en, sq) => language === 'sq' ? sq : en
   const [logs, setLogs] = useState([])
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
@@ -29,7 +31,7 @@ function ActivityLogs() {
   if (loading) {
     return (
       <main className="activity-logs-page page-stack">
-        <p className="page-intro">Loading activity logs...</p>
+        <p className="page-intro">{text("Loading activity logs...", "Duke ngarkuar aktivitetet…")}</p>
       </main>
     )
   }
@@ -37,8 +39,8 @@ function ActivityLogs() {
   return (
     <main className="activity-logs-page page-stack">
       <section className="card">
-        <h2>Activity logs</h2>
-        <p className="page-intro">System audit trail of modifications on products and resources.</p>
+        <h1>{text("Activity logs", "Regjistri i aktiviteteve")}</h1>
+        <p className="page-intro">{text("System audit trail of modifications on products and resources.", "Historiku i ndryshimeve në produkte dhe burime.")}</p>
       </section>
 
       {error && (
@@ -52,24 +54,24 @@ function ActivityLogs() {
           <table className="activity-log-table min-w-full">
             <thead>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Timestamp</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Action</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Operator</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Description</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{text("Timestamp", "Data dhe ora")}</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{text("Action", "Veprimi")}</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{text("Operator", "Përdoruesi")}</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{text("Description", "Përshkrimi")}</th>
               </tr>
             </thead>
             <tbody>
               {logs.length === 0 ? (
                 <tr>
                   <td colSpan="4" className="px-6 py-10 text-center text-slate-400">
-                    No activity logs recorded yet.
+                    {text("No activity logs recorded yet.", "Ende nuk ka aktivitete të regjistruara.")}
                   </td>
                 </tr>
               ) : (
                 logs.map((log) => (
                   <tr key={log.id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                      {new Date(log.created_at).toLocaleString()}
+                      {new Date(log.created_at).toLocaleString(language === 'sq' ? 'sq-AL' : 'en-GB')}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-800">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${
@@ -102,17 +104,17 @@ function ActivityLogs() {
               className="inline-flex items-center gap-1 bg-white border border-slate-200 text-slate-600 text-sm px-3 py-1.5 rounded-lg font-medium hover:bg-slate-50 disabled:opacity-50 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
-              Previous
+              {text("Previous", "Para")}
             </button>
             <span className="text-slate-500 text-sm">
-              Page <span className="font-semibold text-slate-800">{currentPage}</span> of <span className="font-semibold text-slate-800">{totalPages}</span>
+              {text('Page','Faqja')} <span className="font-semibold text-slate-800">{currentPage}</span> / <span className="font-semibold text-slate-800">{totalPages}</span>
             </span>
             <button
               onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
               disabled={currentPage === totalPages}
               className="inline-flex items-center gap-1 bg-white border border-slate-200 text-slate-600 text-sm px-3 py-1.5 rounded-lg font-medium hover:bg-slate-50 disabled:opacity-50 transition-colors"
             >
-              Next
+              {text("Next", "Tjetër")}
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

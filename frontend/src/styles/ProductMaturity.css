@@ -1,0 +1,158 @@
+/* PM1: the application shell owns the grid; modules own their business layout. */
+:root {
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px; --space-12: 48px;
+  --ui-radius-sm: 8px; --ui-radius: 12px; --ui-radius-lg: 16px;
+  --ui-control-height: 40px; --ui-page-gutter: 24px; --ui-section-gap: 24px;
+  --ui-panel-padding: 20px;
+}
+.app .main-content { padding: var(--space-6) var(--ui-page-gutter) var(--space-10); }
+.app .page-transition > :is(main,section,div):not(.page-state) { padding-inline: 0; margin-inline: 0; max-width: none; }
+.app .page-transition > :is(.intelligence-page,.financial-intelligence,.customer-sales-intelligence,.supply-optimizer,.learning-page,.fulfillment-page,.auto-page) { padding-block: 0; }
+.app .main-content .intelligence-nav { padding: 0; margin: 0 0 var(--space-6); }
+.app .workspace-context { margin-bottom: var(--space-5); align-items: center; }
+.app .main-content :is(.page-header,.fulfillment-heading,.fi-heading,.csi-header) { align-items: flex-start; gap: var(--space-4); margin-bottom: var(--space-5); }
+.app .main-content :is(.page-header,.fulfillment-heading,.fi-heading,.csi-header) h1 { font-size: clamp(22px,1.9vw,28px); font-weight: 700; margin: 0 0 var(--space-2); }
+.app .main-content :is(.page-header,.fulfillment-heading,.fi-heading,.csi-header) p { margin: 0; max-width: 75ch; color: var(--text-muted); font-size: 14px; line-height: 1.5; }
+.app .main-content :is(.card,.fulfillment-panel,.fi-panel,.csi-panel,.learning-panel,.optimizer-panel,.simulation-panel,.auto-panel,.procurement-card) { border-radius: var(--ui-radius); padding: var(--ui-panel-padding); box-shadow: none; }
+.app .main-content :is(.fulfillment-panel,.fi-panel,.csi-panel,.learning-panel,.simulation-panel) :is(h2,h3) { font-weight: 650; }
+.app .main-content :is(input,select):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']):not([type='hidden']):not([type='color']) { height: var(--ui-control-height); min-height: var(--ui-control-height); padding-block: 8px; box-sizing: border-box; line-height: 20px; border-radius: var(--ui-radius-sm); box-shadow: none; font-size: 14px; }
+.app .main-content textarea { border-radius: var(--ui-radius-sm); line-height: 1.5; box-shadow: none; }
+.app .main-content :is(.form-row,.form-grid,.optimizer-form,.simulation-form,.fulfillment-grid,.filters) > label { gap: 6px; font-size: 13px; font-weight: 500; }
+.app .main-content :is(.form-row,.form-grid,.optimizer-form,.simulation-form,.fulfillment-grid,.filters) { gap: var(--space-4); align-items: end; }
+.app .main-content :is(.form-actions,.fulfillment-toolbar,.optimizer-controls,.simulation-actions,.workspace-header-actions) { gap: var(--space-2); }
+.app .main-content :is(button,.btn):not(.row-actions-trigger):not(.product-image-remove) { min-height: var(--ui-control-height); border-radius: var(--ui-radius-sm); line-height: 1.35; }
+.app .main-content :is(button,.btn) > svg { flex-shrink: 0; }
+.app .main-content .workspace-search-field > button { min-height: 28px; height: 28px; width: 28px; padding: 4px; }
+.app .main-content table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.app .main-content table :is(th,td) { padding: 12px; line-height: 1.4; }
+.app .main-content table th { font-size: 12px; letter-spacing: .01em; text-transform: none; }
+.app .main-content table td { font-size: 13px; }
+.app .main-content table :is(button,.btn) { min-height: 32px; padding: 6px 10px; font-size: 12px; }
+.app .main-content :is(.numeric,.numeric-cell,.money-cell,td[data-numeric],th[data-numeric]) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app .main-content :is(.stat-value,.metric-value,.fi-value,.learning-metrics strong,.simulation-kpis strong,.dashboard-motion-card,.hub-order-metrics dd) { font-variant-numeric: tabular-nums; }
+.app .main-content :is(.fulfillment-table,.intelligence-table,.table-wrap,.fi-table-scroll,.simulation-table) { scrollbar-width: thin; scrollbar-color: var(--border-color) transparent; overscroll-behavior-x: contain; }
+.app .main-content :is(.fulfillment-badge,.csi-badge,.stock-badge) { display: inline-flex; align-items: center; padding: 4px 8px; font-size: 12px; line-height: 1.4; border-radius: 6px; white-space: normal; }
+.app .main-content details:not([open]).fulfillment-panel { display: block; padding: 12px 16px; }
+.app .main-content .fulfillment-panel > summary { min-height: 24px; line-height: 24px; font-size: 14px; }
+.workspace-disclosure { border: 1px solid var(--border-color); border-radius: var(--ui-radius); background: var(--card-bg); min-width: 0; }
+.workspace-disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; cursor: pointer; list-style: none; color: var(--text-color); font-size: 14px; font-weight: 600; }
+.workspace-disclosure > summary::-webkit-details-marker { display: none; }
+.workspace-disclosure > summary small { display: block; font-weight: 400; font-size: 12px; margin-top: 4px; color: var(--text-muted); }
+.workspace-disclosure > summary svg { flex: 0 0 16px; transition: transform 140ms ease; }
+.workspace-disclosure[open] > summary svg { transform: rotate(180deg); }
+.workspace-disclosure > summary:hover { background: var(--surface-soft); border-radius: inherit; }
+.workspace-disclosure-body { padding: 0 16px 16px; }
+.workspace-disclosure-body > :first-child { margin-top: 0; }
+.workspace-disclosure-body > :last-child { margin-bottom: 0; }
+.app .main-content .intelligence-workflow { margin: 16px 0; padding: 10px 16px; border: 0; border-radius: 8px; }
+.app .intelligence-workflow > summary > span { display: inline; margin-left: 12px; }
+.app .main-content :is(.learning-status,.fi-notice,.csi-notice,.optimizer-notice) { padding: 12px 16px; border-radius: var(--ui-radius-sm); font-size: 13px; }
+.app .main-content .learning-metrics article { padding: 16px; border-radius: var(--ui-radius); }
+.app .learning-metrics strong { margin-top: 8px; font-size: 26px; }
+.app .learning-three > div { border: 0; padding: 8px 0; background: transparent; }
+.app .learning-tabs { gap: 8px; margin: 16px 0; }
+.app .learning-tabs button { font-size: 13px; padding: 8px 12px; }
+.app .learning-tabs button[aria-current='page'] { color: var(--primary-color); border-color: var(--primary-color); }
+.app .main-content .dashboard-page { background: transparent !important; font-family: inherit !important; }
+.app .main-content .dashboard-header-bar { padding: 0 0 20px !important; background: transparent !important; border: 0 !important; backdrop-filter: none !important; }
+.app .main-content .dashboard-heading { font-size: 26px !important; font-weight: 700 !important; }
+.app .dashboard-content { padding: 0 !important; }
+.app .dashboard-motion-card { box-shadow: none !important; border-radius: var(--ui-radius) !important; padding: 20px !important; }
+.app .dashboard-kpi-grid .dashboard-motion-card { padding: 16px !important; }
+.app .dashboard-kpi-grid .dashboard-motion-card > div:first-child[style*='absolute'] { display: none; }
+.app .dashboard-motion-card::before,.app .dashboard-motion-card::after { animation: none; }
+.app .dashboard-kpi-grid,.app .dashboard-analytics-grid,.app .dashboard-lower-grid { gap: 16px !important; }
+.app .dashboard-live-chip { box-shadow: none; }
+.app .dashboard-live-chip-icon { animation: none; }
+.app .system-mode-banner { color: var(--ui-warning); background: color-mix(in srgb,var(--ui-warning) 8%,var(--card-bg)); border: 1px solid color-mix(in srgb,var(--ui-warning) 30%,var(--border-color)); border-radius: 8px; font-size: 13px; }
+.app .system-mode-banner p { margin: 4px 0; color: inherit; }
+.app .system-mode-banner details { margin-top: 4px; }
+.app .system-mode-banner summary { cursor: pointer; }
+.app .sidebar-logo-btn:is(:hover,:focus,:active) { background: transparent !important; box-shadow: none !important; transform: none; }
+.app .sidebar-item > span { white-space: normal; line-height: 1.4; }
+.app .sidebar-group-toggle { min-height: 40px; align-items: center; padding-block: 8px; }
+.app .sidebar-group-chevron { width: 16px; height: 16px; }
+.app .main-content :is(.dashboard-motion-card,.stat-card):hover { transform: none; }
+@media(min-width:1700px) { :root { --ui-page-gutter: 32px; } }
+@media(max-width:860px) {
+  :root { --ui-page-gutter: 16px; --ui-panel-padding: 16px; }
+  .app .main-content { padding-top: 24px; }
+  .app .workspace-context { min-height: 40px; padding-left: 56px; }
+  .app .intelligence-workflow > summary > span { display: block; margin: 4px 0 0; }
+}
+@media(max-width:600px) {
+  :root { --ui-page-gutter: 12px; --ui-section-gap: 16px; }
+  .app .main-content .dashboard-header-bar { padding: 0 0 16px !important; }
+  .app .main-content :is(.page-header,.fulfillment-heading,.fi-heading,.csi-header) { flex-direction: column; }
+  .app .dashboard-kpi-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .app .dashboard-kpi-grid .dashboard-motion-card { padding: 12px !important; }
+}
+@media(pointer:coarse) { :root { --ui-control-height: 44px; } }
+@media(prefers-reduced-motion:reduce) { .workspace-disclosure > summary svg { transition: none; } }
+.app .scope-picker-field{display:grid;gap:6px;min-width:0;align-self:end;font-size:13px;font-weight:500}
+.app .scope-picker-field>.scope-picker{margin:0}
+.app .scope-picker-field .scope-picker>summary{height:40px;min-height:40px;padding:8px 12px;box-sizing:border-box;font-weight:400}
+.app .scope-picker-field .scope-picker-content{font-weight:400}
+.app .scope-picker-field .scope-picker-options label{display:flex;align-items:center;gap:8px}
+.app .main-content :is(.finance-hero,.warehouse-ops-hero){padding:16px 20px;border-radius:12px;box-shadow:none;gap:16px}
+.app .main-content :is(.finance-hero,.warehouse-ops-hero):before,.app .main-content :is(.finance-hero,.warehouse-ops-hero):after{display:none}
+.app .main-content :is(.finance-hero,.warehouse-ops-hero) h1{font-size:26px;line-height:1.25}
+.app .main-content :is(.finance-hero,.warehouse-ops-hero) p{font-size:13px;line-height:1.5}
+.app .main-content .finance-hero-icon{width:40px;height:40px;border-radius:8px;box-shadow:none}
+.app .main-content .finance-quick-actions>div{display:none}
+.app .main-content .finance-quick-actions{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.app .main-content .finance-quick-actions>button{padding:12px 16px;min-height:64px;box-shadow:none;border-radius:8px}
+.app .main-content .finance-quick-actions button span{font-weight:600}
+.app .main-content :is(.finance-tabs,.warehouse-tabs){border-radius:8px}
+.app .main-content .warehouse-ops-kpis span{padding:8px 12px;border-radius:8px;background:var(--card-bg)}
+.app .main-content .warehouse-ops-kpis strong{font-size:20px}
+.app .main-content .stock-locator-heading-icon{flex-basis:40px;height:40px;border-radius:8px;box-shadow:none}
+.app .main-content :is(.warehouse-summary,.transfer-card,.stock-warehouse-card,.warehouse-inventory-item):hover{transform:none}
+.app .main-content .warehouse-ops-hero>div:first-child{min-width:0}
+.app .main-content .users-page .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));max-width:900px;width:100%}
+.app .main-content .users-page .form-actions{grid-column:1/-1;justify-content:flex-start}
+.app .main-content .activity-log-table span[class*='bg-']{background:var(--surface-soft);color:var(--text-color);border:1px solid var(--border-color)}
+@media(max-width:600px){.app .main-content .finance-quick-actions,.app .main-content .users-page .form-grid{grid-template-columns:minmax(0,1fr)}.app .main-content .warehouse-ops-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.app .warehouse-ops-kpis span{overflow-wrap:anywhere}.app .main-content .warehouse-ops-hero{padding:16px}}
+.product-context-insight{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px;border:1px solid var(--border-color);border-left:3px solid var(--primary-color);border-radius:8px;background:var(--surface-soft);color:var(--text-color)}
+.product-context-insight p{margin:4px 0;font-size:14px}.product-context-insight small{color:var(--text-muted);font-size:12px}.product-context-insight a{flex-shrink:0;font-size:13px}
+@media(max-width:600px){.product-context-insight{align-items:flex-start;flex-direction:column}}
+.app .main-content .accounting-hero{background:var(--card-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:12px;box-shadow:none;padding:16px 20px}
+.app .main-content .accounting-hero>div>span{color:var(--primary-color)}
+.app .main-content .accounting-hero h1{color:var(--text-color);font-size:26px}
+.app .main-content .accounting-hero p{color:var(--text-muted)}
+.app .main-content .accounting-actions input{background:var(--input-bg,var(--card-bg));color:var(--text-color);border:1px solid var(--border-color)}
+.app .main-content .accounting-tabs{flex-wrap:nowrap;overflow-x:auto;border-radius:8px}
+.app .main-content .accounting-tabs button{white-space:nowrap;flex-shrink:0}
+.app .main-content .invoice-profile-gate{background:var(--card-bg);border-color:var(--border-color)}
+.app .main-content .invoice-profile-gate p{color:var(--text-muted)}
+.app .main-content .invoice-profile-gate :is(h3,strong){color:var(--text-color)}
+.app .main-content .page-stack>.card:first-child .section-header h2,.app .main-content :is(.users-page,.activity-logs-page,.categories-page,.cms-page) h1{font-size:24px;font-weight:700;line-height:1.3;margin:0 0 8px;display:flex;align-items:center;gap:8px}
+.app .main-content .page-stack>.card:first-child .section-header{align-items:center}
+.app .main-content .optimizer-form{align-items:start}
+.app .main-content .optimizer-form>.scope-picker-field{align-self:start}
+.app .main-content .optimizer-form>label:not(.optimizer-check){align-content:start;grid-template-rows:20px var(--ui-control-height) auto}
+.app .main-content .form-actions>button,.app .main-content .section-header button{display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.app .main-content .order-hub .fulfillment-panel>.fulfillment-toolbar{justify-content:flex-start}
+.app .main-content .hub-overview+details{padding-block:8px}
+.app .main-content .scope-picker-field .scope-picker>summary{height:var(--ui-control-height);min-height:var(--ui-control-height)}
+@media(max-width:600px){
+  .app .main-content .intelligence-nav{display:flex;gap:8px;overflow:auto;margin-bottom:20px}
+  .app .main-content .intelligence-nav a{flex:0 0 150px;padding:10px 12px;text-align:left}
+  .app .main-content .intelligence-nav small{display:none}
+  .app .main-content .intelligence-nav strong{font-size:13px}
+  .app .main-content .simulation-heading>svg{display:none}
+  .app .main-content .order-hub>.fulfillment-heading>.fulfillment-toolbar{justify-content:flex-start}
+}
+.app .main-content :is(.stock-page,.reports-page)>section:first-child h1,.app .main-content .page-stack>.card:first-child .section-header h1{font-size:24px;font-weight:700;line-height:1.3;margin:0 0 8px;display:flex;align-items:center;gap:8px}
+.app .main-content .shipments-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.app .main-content .shipments-toolbar h1{font-size:26px;font-weight:700;line-height:1.3;margin:0}
+.app .main-content .learning-metrics article{display:flex;flex-direction:column}
+.app .main-content .learning-metrics strong{margin-top:auto;padding-top:8px}
+.app .main-content .learning-page>.workspace-disclosure{margin-block:16px}
+.app .main-content .invoice-page-hero{padding:16px 20px;border-radius:12px;box-shadow:none;gap:16px}
+.app .main-content .invoice-page-icon{width:40px;height:40px;border-radius:8px;box-shadow:none}
+.app .main-content .invoice-page-heading h1{font-size:26px;line-height:1.3}
+.app .main-content .invoice-page-heading p{font-size:14px;line-height:1.5}
+.app .main-content .invoice-filters label>span{color:var(--text-muted);font-size:12px;font-weight:500;letter-spacing:0;text-transform:none}
+.app .main-content .invoice-eyebrow{color:var(--primary-color)}

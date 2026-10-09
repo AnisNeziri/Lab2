@@ -9,9 +9,10 @@ import { useTranslation } from '../hooks/useTranslation'
 import { useDialog } from '../hooks/useDialog'
 import { navigationContext } from '../config/navigation'
 import { openAimsAssistant } from './AskAimsButton'
+import { useSettingsStore } from '../store/settingsStore'
 
 const labels = {
-  automations:'Automations', tasks:'Tasks',
+  automations:'Automations', tasks:'Tasks', decisions:'Decisions',
   order_hub:'Orders',
   documents: 'Documents',
   sales_orders: 'Sales orders', pick_tasks: 'Pick tasks', pick_waves: 'Pick waves', dispatches: 'Dispatches / deliveries', returns: 'Customer returns',
@@ -21,15 +22,18 @@ const labels = {
   containers: 'Containers', warehouses: 'Warehouses', bins: 'Bins', journals: 'Journals',
 }
 const labelsSq = { automations:'Automatizimet', tasks:'Detyrat', order_hub:'Porositë', documents: 'Dokumentet', sales_orders: 'Porositë e shitjeve', pick_tasks: 'Detyrat e mbledhjes', pick_waves: 'Valët e mbledhjes', dispatches: 'Dërgesat / dorëzimet', returns: 'Kthimet e klientëve', products: 'Produktet', stock_movements: 'Lëvizjet e stokut', suppliers: 'Furnitorët', customers: 'Klientët', invoices: 'Faturat', purchase_orders: 'Porositë e blerjes', purchase_requests: 'Kërkesat për blerje', rfqs: 'Kërkesat për oferta', shipments: 'Dërgesat', containers: 'Kontejnerët', warehouses: 'Depot', bins: 'Lokacionet', journals: 'Ditarët kontabël' }
-const entityIcons = { products: Package, customers: Users, suppliers: Truck, shipments: Ship, containers: Ship, warehouses: Warehouse, bins: Warehouse, invoices: FileText, documents: FileText, journals: Landmark, stock_movements: Activity }
+const entityIcons = { decisions: Activity, products: Package, customers: Users, suppliers: Truck, shipments: Ship, containers: Ship, warehouses: Warehouse, bins: Warehouse, invoices: FileText, documents: FileText, journals: Landmark, stock_movements: Activity }
 const commandIcon = path => {
   const group = navigationContext(path)?.group.id
   return ({ sales: Users, inventory: Package, purchasing: Truck, shipments: Ship, finance: Landmark, intelligence: Activity, operations: ClipboardList, settings: Activity })[group] || Command
 }
+labelsSq.decisions = 'Vendimet'
 
 export default function GlobalSearch({ onNavigate }) {
   const { t, language } = useTranslation()
   const permissions = useAuthStore((state) => state.permissions)
+  const role = useAuthStore(state => state.role)
+  const enable3dMap = useSettingsStore(state => state.enable_3d_map)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState({})
   const [isOpen, setIsOpen] = useState(false)
@@ -41,7 +45,7 @@ export default function GlobalSearch({ onNavigate }) {
   const dialogRef = useDialog(() => setIsOpen(false), false, isOpen)
   const optionRefs = useRef([])
   const requestRef = useRef(0)
-  const commands = useMemo(() => matchingCommands(query, permissions, language), [query, permissions, language])
+  const commands = useMemo(() => matchingCommands(query, permissions, language, {role,enable3dMap}), [query, permissions, language,role,enable3dMap])
   const sections = useMemo(() => Object.entries(results || {}).filter(([, items]) => Array.isArray(items) && items.length), [results])
   const visibleCommands = useMemo(() => commands.slice(0, 8), [commands])
   const options = useMemo(() => [

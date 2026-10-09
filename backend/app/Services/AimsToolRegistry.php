@@ -22,6 +22,8 @@ use Illuminate\Validation\ValidationException;
  */
 class AimsToolRegistry
 {
+    public const SIMULATION_TOOLS=['create_simulation_scenario','run_strategic_simulation','get_simulation_result','compare_simulations','get_simulation_impact','run_sensitivity_analysis','get_simulation_bottlenecks','optimize_simulation_response','explain_simulation_result'];
+    private function simulationAllowed():bool {return Auth::user()?->company_id&&collect(StrategicSimulationService::PERMISSIONS)->every(fn($p)=>$this->can($p));}
     public const OPTIMIZER_TOOLS=['get_supply_optimization_summary','get_optimization_plan','compare_optimization_plans','optimize_supply_plan','simulate_commitment_limit','explain_optimization_decision','stress_test_supply_plan','get_stale_optimization_plans'];
     private function optimizerAllowed():bool {return Auth::user()?->company_id&&collect(SupplyOptimizerService::PERMISSIONS)->every(fn($p)=>$this->can($p));}
     public function __construct(
@@ -37,6 +39,7 @@ class AimsToolRegistry
     {
         return collect($this->definitions())->filter(fn ($tool) => $this->can($tool['required_permission'])
             && (!in_array($tool['name'],self::OPTIMIZER_TOOLS)||$this->optimizerAllowed())
+            && (!in_array($tool['name'],self::SIMULATION_TOOLS)||$this->simulationAllowed())
             && (!in_array($tool['name'],['get_customer_intelligence','get_customer_activity','get_customer_reorder_opportunities','get_customer_product_affinity','get_customer_trend','get_sales_opportunities','get_at_risk_customers','get_sales_concentration'])||app(CustomerSalesIntelligenceService::class)->allowed())
             && (!in_array($tool['name'],['get_cash_forecast','get_financial_pressure_periods','get_receivable_intelligence','get_upcoming_supplier_commitments','get_inventory_capital_summary','get_financial_data_health','simulate_purchase_cash_impact'])||($this->can('finance.view')&&$this->can('financial_accounts.view'))))->values()->all();
     }
@@ -48,6 +51,14 @@ class AimsToolRegistry
         abort_unless($this->can($definition['required_permission']), 403, 'You do not have permission to use this capability.');
 
         $result = match ($name) {
+            'create_simulation_scenario','run_strategic_simulation'=>isset($input['parent_id'])?app(StrategicSimulationService::class)->derive((int)$input['parent_id'],array_diff_key($input,['parent_id'=>true])):app(StrategicSimulationService::class)->submit($input),
+            'get_simulation_result'=>app(StrategicSimulationService::class)->get($this->id($input,'simulation_id')),
+            'get_simulation_impact'=>app(StrategicSimulationService::class)->impact($this->id($input,'simulation_id')),
+            'get_simulation_bottlenecks'=>app(StrategicSimulationService::class)->bottlenecks($this->id($input,'simulation_id')),
+            'explain_simulation_result'=>app(StrategicSimulationService::class)->explain($this->id($input,'simulation_id')),
+            'optimize_simulation_response'=>app(StrategicSimulationService::class)->optimize($this->id($input,'simulation_id')),
+            'compare_simulations'=>app(StrategicSimulationService::class)->compare($input['ids']),
+            'run_sensitivity_analysis'=>app(StrategicSimulationService::class)->sensitivity($this->id($input,'simulation_id'),array_intersect_key($input,array_flip(['assumption_index','values']))),
             'get_supply_optimization_summary'=>app(SupplyOptimizerService::class)->summary(),
             'get_stale_optimization_plans'=>app(SupplyOptimizerService::class)->summary(['stale'=>true]),
             'get_optimization_plan','compare_optimization_plans'=>app(SupplyOptimizerService::class)->get($this->id($input,'plan_id')),
@@ -233,6 +244,10 @@ class AimsToolRegistry
         $id = fn (string $key) => ['type' => 'object', 'required' => [$key], 'properties' => [$key => ['type' => 'integer', 'minimum' => 1]]];
         $tool = fn ($name, $description, $input, $permission) => ['name' => $name, 'description' => $description, 'input_schema' => $input, 'output_schema' => ['type' => 'object'], 'required_permission' => $permission, 'company_scoped' => true, 'read_only' => true, 'audit_required' => false];
         return [
+            ...array_map(fn($name)=>$tool($name,'Create an isolated hypothetical simulation run; no operational records or automations.',['type'=>'object','required'=>['name','horizon','assumptions'],'properties'=>['parent_id'=>['type'=>'integer','minimum'=>1],'name'=>['type'=>'string'],'description'=>['type'=>'string'],'horizon'=>['type'=>'integer','enum'=>[30,60,90,180,365]],'scope'=>['type'=>'array'],'assumptions'=>['type'=>'array'],'optimize'=>['type'=>'boolean']]],'analytics.finance'),['create_simulation_scenario','run_strategic_simulation']),
+            ...array_map(fn($name)=>$tool($name,'Read or optimize isolated simulation evidence; never prepare real workflow drafts.',$id('simulation_id'),'analytics.finance'),['get_simulation_result','get_simulation_impact','get_simulation_bottlenecks','optimize_simulation_response','explain_simulation_result']),
+            $tool('compare_simulations','Compare two to four frozen historical simulation runs.',['type'=>'object','required'=>['ids'],'properties'=>['ids'=>['type'=>'array']]],'analytics.finance'),
+            $tool('run_sensitivity_analysis','Bounded discrete sensitivity over a frozen baseline.',['type'=>'object','required'=>['simulation_id','assumption_index','values'],'properties'=>['simulation_id'=>['type'=>'integer','minimum'=>1],'assumption_index'=>['type'=>'integer','minimum'=>0],'values'=>['type'=>'array']]],'analytics.finance'),
             ...array_map(fn($name)=>$tool($name,'Read frozen coordinated purchasing plans. No draft creation or execution.',['type'=>'object','properties'=>[]],'analytics.finance'),['get_supply_optimization_summary','get_stale_optimization_plans']),
             ...array_map(fn($name)=>$tool($name,'Read frozen solver alternatives; optimality applies only to the candidate set.',$id('plan_id'),'analytics.finance'),['get_optimization_plan','compare_optimization_plans']),
             $tool('optimize_supply_plan','Queue a local advisory optimization; no operational mutation.',['type'=>'object','required'=>['horizon'],'properties'=>['horizon'=>['type'=>'integer','enum'=>[30,60,90]],'commitment_limit'=>['type'=>'number','minimum'=>0],'product_ids'=>['type'=>'array'],'warehouse_ids'=>['type'=>'array'],'supplier_ids'=>['type'=>'array'],'category_ids'=>['type'=>'array']]],'analytics.finance'),

@@ -9,7 +9,7 @@ class LocalDocumentStorage implements DocumentStorageProvider
 {
     private function disk()
     {
-        return Storage::build(['driver' => 'local', 'root' => storage_path('app/documents-private'), 'throw' => true]);
+        return Storage::build(['driver' => 'local', 'root' => config('synthetic.document_root') ?: storage_path('app/documents-private'), 'throw' => true]);
     }
 
     private function safe(string $key): string

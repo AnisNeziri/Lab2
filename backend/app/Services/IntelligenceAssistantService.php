@@ -20,8 +20,14 @@ final class IntelligenceAssistantService
     public function ask(array $input):array
     {
         abort_unless(Auth::user()?->company_id,403);
-        $v=validator($input,['question'=>'required|string|min:2|max:600','language'=>'sometimes|in:en,sq','conversation_id'=>'nullable|uuid','customer_id'=>'nullable|integer|min:1','entity'=>'nullable|array:type,id','entity.type'=>'required_with:entity|in:product,customer,supplier,shipment,decision,task','entity.id'=>'required_with:entity|integer|min:1'])->validate();
+        $v=validator($input,['question'=>'required|string|min:2|max:600','language'=>'sometimes|in:en,sq','conversation_id'=>'nullable|uuid','simulation_id'=>'nullable|integer|min:1','customer_id'=>'nullable|integer|min:1','entity'=>'nullable|array:type,id','entity.type'=>'required_with:entity|in:product,customer,supplier,shipment,decision,task','entity.id'=>'required_with:entity|integer|min:1'])->validate();
         $id=$v['conversation_id']??(string)Str::uuid();$context=$this->contextCache()->get($this->key($id),[]);$sq=($v['language']??'en')==='sq';
+        if(isset($v['simulation_id'])){app(StrategicSimulationService::class)->get($v['simulation_id']);$context['strategic_simulation_id']=$v['simulation_id'];unset($context['optimization_plan_id']);}
+        if(!isset($v['entity'])&&app(StrategicSimulationAssistant::class)->supports($v['question'],$context)) {
+            try {$reply=app(StrategicSimulationAssistant::class)->reply($v['question'],$context,$sq);}
+            catch(\Throwable $e){if($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface&&$e->getStatusCode()===403)throw $e;$reply=['intent'=>'strategic_simulation','text'=>$e instanceof \Illuminate\Validation\ValidationException?collect($e->errors())->flatten()->implode(' '):$e->getMessage(),'cards'=>[],'sources'=>[],'limitations'=>[],'choices'=>[],'provider'=>'deterministic','read_only'=>true,'scenario'=>true,'context'=>null,'state'=>'needs_clarification'];}
+            $reply['id']=(string)Str::uuid();$reply['conversation_id']=$id;$this->contextCache()->put($this->key($id),$context,config('assistant.context_minutes')*60);app(AnalyticsDataService::class)->audit('assistant.query',['response_id'=>$reply['id'],'conversation_id'=>$id,'question'=>$v['question'],'intent'=>'strategic_simulation','tools'=>[],'response_state'=>$reply['state'],'provider'=>'deterministic','follow_up'=>isset($v['conversation_id']),'scenario_isolated'=>true]);return $reply;
+        }
         $runner=app(AssistantToolRunner::class);$plan=app(AssistantPlanner::class)->plan($v['question'],$context);$provider=['state'=>'deterministic'];
         // Only unknown phrasing can ask the local classifier. It never receives stored notes or records.
         if($plan['intent']==='record'&&!$plan['term']&&app(IntelligenceProvider::class)->available()) {
@@ -90,7 +96,13 @@ final class IntelligenceAssistantService
             $answer['text']=$sq?'Dëshmi historike dhe skenarë eksperimentalë, jo prova shkakësore. Vetëm politika e miratuar është aktive; sugjerimet nuk e ndryshojnë atë.':'Historical evidence and experimental scenarios, not causal proof. Only the approved champion is production; suggestions do not change it.';
         }elseif(in_array($intent,['replenishment','stockout'])) {
             if($entity&&$entity['type']==='product'){$read($intent==='stockout'?'get_demand_forecast':'get_inventory_plan',['product_id'=>$entity['id']]);}
-            elseif($intent==='stockout'){$read('get_inventory_intelligence_recommendations',['risk'=>'high']);$read('get_inventory_intelligence_recommendations',['risk'=>'watch']);}
+            elseif($intent==='stockout'){
+                $read('get_inventory_intelligence_recommendations',['risk'=>'high']);
+                $read('get_inventory_intelligence_recommendations',['risk'=>'watch']);
+                // Observed-history decisions remain useful when no ML champion
+                // has passed promotion gates. Keep their own evidence qualification.
+                $read('get_replenishment_decisions');
+            }
             else $read('get_products_needing_replenishment');
         }elseif($intent==='suppliers')$read('get_supplier_decisions');
         elseif($intent==='shipments')$read($entity&&$entity['type']==='shipment'?'get_shipment_intelligence':'get_at_risk_shipments',$entity&&$entity['type']==='shipment'?['shipment_id'=>$entity['id']]:[]);

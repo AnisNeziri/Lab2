@@ -1,4 +1,5 @@
 import { canOpenPage } from './pageAccess.js'
+import { simulationPermissions } from '../pages/strategicSimulationPresentation.js'
 
 const item = (id, label, icon, extra = {}) => ({ id, path: `/${id}`, label, icon, ...extra })
 // Navigation is a workflow map, not a second permission system.
@@ -24,7 +25,8 @@ navigationGroups.find(g => g.id === 'intelligence').items.push(item('decision-le
 navigationGroups.find(g => g.id === 'intelligence').items.splice(2,0,item('supply-optimizer',null,'Boxes',{en:'Supply Optimizer',sq:'Optimizuesi i furnizimit',allPermissions:['analytics.view','analytics.finance','inventory.view','procurement.view','finance.view','financial_accounts.view']}))
 
 // Read evidence → plan → review decisions → coordinate supply → inspect outcomes.
-const intelligenceOrder = ['intelligence-assistant','inventory-intelligence','inventory-planning','decision-center','supply-optimizer','customer-sales-intelligence','financial-intelligence','decision-learning','analytics','reports']
+navigationGroups.find(g => g.id === 'intelligence').items.push(item('strategic-simulation',null,'Radar',{en:'Strategic Simulation',sq:'Simulimi strategjik',allPermissions:simulationPermissions}))
+const intelligenceOrder = ['intelligence-assistant','inventory-intelligence','inventory-planning','decision-center','supply-optimizer','strategic-simulation','customer-sales-intelligence','financial-intelligence','decision-learning','analytics','reports']
 navigationGroups.find(g => g.id === 'intelligence').items.sort((a,b) => intelligenceOrder.indexOf(a.id) - intelligenceOrder.indexOf(b.id))
 
 export function navigationKey(path) {

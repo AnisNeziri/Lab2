@@ -190,17 +190,18 @@ class AccountingService
     }
     public function reconciliation(bool $recordExceptions=true):array
     {
-        $invoiceDebt=\App\Models\Invoice::query()->where('document_type','invoice')->whereIn('status',['issued','partially_paid','paid'])
+        $invoiceDebt=\App\Models\Invoice::query()->where('document_type','invoice')->whereIn('status',['issued','partially_paid','paid'])->whereNull('daily_sale_id')
             ->whereNotIn('id',\App\Models\CustomerDebtTransaction::query()->whereNotNull('invoice_id')->select('invoice_id'))->get()
             ->sum(fn($invoice)=>max(0,(float)$invoice->remaining_balance));
         $ar=round((float)\App\Models\Customer::query()->sum('current_debt')+$invoiceDebt,2);
         $customerAdvances=round((float)\App\Models\Customer::query()->sum('current_credit'),2);
         $ap=round((float)\App\Models\Expense::query()->where('status','posted')->where('document_type','purchase_invoice')->get()->sum(fn($expense)=>(float)$expense->remaining_amount*(float)($expense->exchange_rate?:1)),2);
         $supplierAdvances=round((float)\App\Models\PurchaseOrderPayment::query()->where('status','completed')->with('allocations:id,purchase_order_payment_id,amount')->get()->sum(fn($payment)=>(float)$payment->unallocated_amount*(float)($payment->exchange_rate?:1)),2);
-        $inventory=round((float)\App\Models\Product::query()->get()->sum(function($product){if($product->inventory_value!==null)return (float)$product->inventory_value;$cost=$product->weighted_average_cost??$product->purchase_price;return $cost===null?0:(float)$product->quantity*(float)$cost;}),2);
+        $inventory=Money::decimal(\App\Models\Product::query()->get()->sum(function($product){if($product->inventory_value!==null)return Money::minor($product->inventory_value);$cost=$product->weighted_average_cost??$product->purchase_price;return $cost===null?0:Money::minor(Money::multiply($product->quantity,$cost,6));}));
         $baseCurrency=CompanyCurrency::forCompanyId((int)Auth::user()->company_id);
         $cash=round((float)\App\Models\FinancialAccount::query()->get()->sum(function($account)use($baseCurrency){if($account->currency!==$baseCurrency)return $account->transactions()->where('status','posted')->get()->sum(function($transaction){if(!$transaction->exchange_rate)return 0;$sign=in_array($transaction->type,['inflow','transfer_in','adjustment_in','refund_in'],true)?1:-1;return $sign*(float)$transaction->amount*(float)$transaction->exchange_rate;});$in=$account->transactions()->where('status','posted')->whereIn('type',['inflow','transfer_in','adjustment_in','refund_in'])->sum('amount');$out=$account->transactions()->where('status','posted')->whereIn('type',['outflow','transfer_out','adjustment_out','refund_out'])->sum('amount');return (float)$account->opening_balance+(float)$in-(float)$out;})
-            +(float)\App\Models\DailySale::query()->sum('total_amount')
+            +(float)\App\Models\DailySale::query()->whereDoesntHave('outboundDispatch',fn($q)=>$q->whereHas('order',fn($o)=>$o->where('payment_type','!=','cash')))->sum('total_amount')
+            -(float)\App\Models\FinancialAccountTransaction::query()->where('source_type','daily_sale')->where('status','posted')->whereIn('type',['inflow','transfer_in'])->sum('amount')
             +(float)\App\Models\PaymentTransaction::query()->where('status','completed')->whereNull('financial_account_id')->sum('amount')
             +(float)\App\Models\CustomerDebtTransaction::query()->where('type','payment')->whereNull('financial_account_id')->sum('amount')
             -(float)\App\Models\ExpensePayment::query()->where('status','completed')->whereNull('financial_account_id')->sum('amount_eur')

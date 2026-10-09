@@ -7,12 +7,14 @@ use Carbon\CarbonImmutable as Date;
  * budget comparisons use integer minor currency units. No stock/financial writes. */
 final class InventoryPlanningMath {
  public function calculate(array $i,array $s=[]):array {
+  // Frozen simulations inject their date without changing Carbon's process clock.
+  $today=isset($s['as_of'])||isset($i['as_of'])?Date::parse($s['as_of']??$i['as_of'])->startOfDay():Date::instance(today());
   $p=array_replace(['service_level'=>.95,'priority'=>3,'review_days'=>14,'maximum_stock'=>null],$i['policy'],$s);
   $level=(string)$p['service_level'];$z=['0.9'=>1.281551566,'0.95'=>1.644853627,'0.98'=>2.053748911,'0.99'=>2.326347874][$level]??1.644853627;
   $series=$i['history'];$usable=array_values(array_filter($series,fn($r)=>$r['demand']!==null&&!($r['censored']??false)));
   $values=array_map(fn($r)=>(float)$r['demand'],$usable);$n=count($values);$coverage=count($series)?$n/count($series):0;
   $mean=$n?array_sum($values)/$n:null;$variance=$n>1?array_sum(array_map(fn($v)=>($v-$mean)**2,$values))/($n-1):0;
-  $multiplier=(float)($s['demand_multiplier']??1);$latest=$usable?last($usable)['date']:null;$stale=!$latest||$latest<today()->subDays(7)->toDateString();
+  $multiplier=(float)($s['demand_multiplier']??1);$latest=$usable?last($usable)['date']:null;$stale=!$latest||$latest<$today->subDays(7)->toDateString();
   $left=array_slice($values,0,(int)floor($n/2));$right=array_slice($values,(int)floor($n/2));$older=$left?array_sum($left)/count($left):0;$newer=$right?array_sum($right)/count($right):0;
   $shift=$n>=28&&abs($newer-$older)>max(1,$older*.75);$mean=$mean===null?null:$mean*$multiplier;$variance*=$multiplier**2;
   $positives=count(array_filter($values,fn($v)=>$v>0));$intermittent=$n&&$positives/$n<.5;
@@ -32,10 +34,10 @@ final class InventoryPlanningMath {
    if(count($sums)>=20&&!$stale){sort($sums);$dynamic=max(0,$sums[(int)ceil($p['service_level']*(count($sums)-1))]*$multiplier-($mean??0)*$lead);$safety=max($safety,$dynamic);$method='empirical_lead_window';}
   }
   $demandMultiplier=(float)($s['demand_multiplier']??1);$daily=$i['daily'];
-  if(!$daily&&$n>=7&&$coverage>=.5&&!$stale){for($d=0;$d<90;$d++)$daily[]=['date'=>today()->addDays($d)->toDateString(),'quantity'=>round($mean/$multiplier,6)];}
-  $daily=array_values(array_filter($daily,fn($r)=>$r['date']>=today()->toDateString()));
+  if(!$daily&&$n>=7&&$coverage>=.5&&!$stale){for($d=0;$d<90;$d++)$daily[]=['date'=>$today->addDays($d)->toDateString(),'quantity'=>round($mean/$multiplier,6)];}
+  $daily=array_values(array_filter($daily,fn($r)=>$r['date']>=$today->toDateString()));
   foreach($daily as &$d)$d['quantity']=max(0,(float)$d['quantity']*$demandMultiplier);unset($d);
-  $orderDate=$s['order_date']??today()->toDateString();$arrival=$planningLead===null?null:Date::parse($orderDate)->addDays($planningLead+(int)($s['delay_days']??0))->toDateString();
+  $orderDate=$s['order_date']??$today->toDateString();$arrival=$planningLead===null?null:Date::parse($orderDate)->addDays($planningLead+(int)($s['delay_days']??0))->toDateString();
   $target=$arrival?Date::parse($arrival)->addDays((int)$p['review_days'])->toDateString():null;
   $supported=$daily&&$target&&$target<=last($daily)['date'];
   $firm=$i['firm_incoming'];$balance=(float)$i['stock']['available']-(float)($i['stock']['committed_outgoing']??0);
@@ -68,7 +70,7 @@ final class InventoryPlanningMath {
   return ['logic_version'=>'inventory-planning-v4.1','method'=>$method,'service_level'=>$p['service_level'],'priority'=>(int)$p['priority'],'safety_stock'=>round($safety,3),'dynamic_safety_stock'=>$dynamic===null?null:round($dynamic,3),
    'reorder_point'=>$leadDemand===null?null:round(max((float)$i['reorder_floor'],$leadDemand+$safety),3),'expected_lead_demand'=>$leadDemand===null?null:round($leadDemand,3),
    'days_of_supply'=>$average>0?round(max(0,$balance)/$average,1):null,'post_arrival_days_of_supply'=>$average>0&&$atArrival?round(max(0,$atArrival['with_order'])/$average,1):null,
-   'lead_days'=>$planningLead,'expected_arrival'=>$arrival,'reorder_date'=>$stockout&&$planningLead!==null?Date::parse($stockout)->subDays($planningLead)->max(today())->toDateString():null,
+   'lead_days'=>$planningLead,'expected_arrival'=>$arrival,'reorder_date'=>$stockout&&$planningLead!==null?Date::parse($stockout)->subDays($planningLead)->max($today)->toDateString():null,
    'stockout_date'=>$stockout,'scenario_stockout_date'=>$scenarioOut,'stockout_days'=>$stockoutDays,'scenario_stockout_days'=>$scenarioDays,
    'required_base_quantity'=>$raw===null?null:round($raw,3),'base_quantity'=>$quantity===null?null:round($quantity,3),'desired_base_quantity'=>$desired,'quantity'=>$quantity===null?null:round($quantity/$factor,3),'unit'=>$i['unit'],'factor'=>$factor,'step'=>$step/1000,'moq'=>$moq,
    'feasible'=>$feasible,'coverage_supported'=>(bool)$supported,'shortfall'=>max(0,(float)$desired-(float)$quantity),'constraints'=>$constraints,

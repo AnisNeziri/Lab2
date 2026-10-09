@@ -96,6 +96,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: python -m pip install --target ml/optimizer_vendor -r ml/supply_optimizer_requirements.txt
       - run: cp .env.example .env
       - run: php artisan key:generate --force
       - run: php artisan migrate:fresh --force

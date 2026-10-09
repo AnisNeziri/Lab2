@@ -4,7 +4,7 @@ use Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\{Auth,DB};
 use App\Contracts\DemandForecastProvider;
-use App\Models\{Product,Category,Supplier,ProductSupplier,DailySale,DailySalesDay,Invoice,AnalyticsSnapshot,AnalyticsPrediction,InventoryRecommendation,Company,User,PurchaseOrder};
+use App\Models\{Product,Category,Supplier,ProductSupplier,DailySale,DailySalesDay,Invoice,AnalyticsSnapshot,AnalyticsPrediction,InventoryRecommendation,InventoryForecastModel,Company,User,PurchaseOrder};
 use App\Services\{InventoryIntelligenceService,InventoryIntelligenceDatasetAdapter,InventoryIntelligencePlanner,AnalyticsSalesLedger};
 
 class InventoryIntelligenceTest extends TestCase {
@@ -34,9 +34,12 @@ class InventoryIntelligenceTest extends TestCase {
             'results'=>[['horizon'=>30,'algorithm'=>'seasonal_mean','artifact'=>$artifact,'evaluation'=>$metrics,'comparison'=>['seasonal_mean'=>$metrics],'retained_incumbent'=>false,'daily'=>$daily,'baseline_daily'=>$daily,'total'=>300,'status'=>'evaluated','range_reason'=>'No calibrated interval']]];
         $this->mock(DemandForecastProvider::class,function($mock)use($result){$mock->shouldReceive('train')->andReturn($result);$mock->shouldReceive('predict')->andReturn($result);});
     }
-    private function approveCandidate(Product $p):void {
-        $m=\App\Models\InventoryForecastModel::where('product_id',$p->id)->where('status','candidate')->firstOrFail();
+    private function approveCandidate(Product $p,int $horizon=30):InventoryForecastModel {
+        // The real trainer creates three horizons. Unordered first() can select
+        // a different one on MariaDB; promote the horizon this test exercises.
+        $m=InventoryForecastModel::where('product_id',$p->id)->where('horizon',$horizon)->where('status','candidate')->firstOrFail();
         app(\App\Services\InventoryLearningService::class)->decide($m->id,'promote',['reason'=>'Reviewed test evidence','expected_production_version'=>null]);
+        return $m->fresh();
     }
     private function trainForecast(Product $p):void {app(InventoryIntelligenceService::class)->train($p->id);$this->approveCandidate($p);}
     public function test_history_deduplicates_and_distinguishes_censored_unknown_and_zero():void {
@@ -123,8 +126,18 @@ class InventoryIntelligenceTest extends TestCase {
         $p=$this->fixture();for($i=1;$i<=120;$i++){if($i>1)$this->observe($p,$i,20);$this->sale($p,$i,2);}
         $response=$this->postJson('/api/analytics/intelligence/products/'.$p->id.'/train')->assertOk()->assertJsonPath('status','candidate_ready');
         $this->assertDatabaseCount('inventory_forecast_models',3);$this->assertDatabaseCount('analytics_predictions',0);
-        $this->approveCandidate($p);
+        $model=$this->approveCandidate($p,7);
+        $this->assertSame('active',$model->status);
+        $this->assertDatabaseHas('inventory_forecast_models',['product_id'=>$p->id,'horizon'=>30,'status'=>'candidate']);
+        $this->assertDatabaseHas('inventory_forecast_models',['product_id'=>$p->id,'horizon'=>90,'status'=>'candidate']);
+        $prediction=AnalyticsPrediction::where('entity_type','product')->where('entity_id',$p->id)->where('value->horizon',7)->sole();
+        $this->assertSame($model->version,$prediction->model_version);
+        $this->assertSame($model->company_id,$prediction->company_id);
+        $this->assertSame($p->unit,$prediction->value['unit']);
         $seven=$this->getJson('/api/analytics/intelligence/products/'.$p->id.'?horizon=7')->assertOk()->assertJsonPath('model.algorithm','seasonal_mean')->assertJsonPath('prediction.value.quality.observed_days',120)->json();
+        $this->assertSame($model->id,$seven['model']['id']);
+        $this->assertSame($model->version,$seven['model']['version']);
+        $this->assertSame($model->version,$seven['prediction']['model_version']);
         $this->assertEquals(0,$seven['model']['metrics']['mae']);$this->assertEquals(14,$seven['prediction']['value']['total']);
         $this->postJson('/api/analytics/intelligence/products/'.$p->id.'/train')->assertOk()->assertJsonPath('reused',true);
         $this->assertDatabaseCount('analytics_predictions',1);

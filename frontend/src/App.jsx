@@ -26,6 +26,7 @@ import PageState from "./components/PageState";
 import { useTranslation } from "./hooks/useTranslation";
 import "./App.css";
 import './styles/EnterpriseUI.css';
+import './styles/ProductMaturity.css';
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Products = lazy(() => import("./pages/Products"));
@@ -64,6 +65,7 @@ const CustomerSalesIntelligence = lazy(() => import("./pages/CustomerSalesIntell
 const IntelligenceAssistant = lazy(() => import("./pages/IntelligenceAssistant"));
 const DecisionLearning = lazy(() => import("./pages/DecisionLearning"));
 const SupplyOptimizer = lazy(() => import("./pages/SupplyOptimizer"));
+const StrategicSimulation = lazy(() => import("./pages/StrategicSimulation"));
 const ActionCenter = lazy(() => import("./pages/ActionCenter"));
 const Fulfillment = lazy(() => import("./pages/Fulfillment"));
 const OrderHub = lazy(() => import("./pages/OrderHub"));
@@ -524,6 +526,7 @@ function AppRoutes() {
           <Route path="/intelligence-assistant" element={<Suspense fallback={<PageLoader />}><IntelligenceAssistant /></Suspense>} />
           <Route path="/decision-learning" element={<PermissionRoute permission="analytics.view"><Suspense fallback={<PageLoader />}><DecisionLearning /></Suspense></PermissionRoute>} />
           <Route path="/supply-optimizer" element={<PermissionRoute permission="analytics.view"><PermissionRoute permission="analytics.finance"><PermissionRoute permission="inventory.view"><PermissionRoute permission="procurement.view"><PermissionRoute permission="finance.view"><PermissionRoute permission="financial_accounts.view"><Suspense fallback={<PageLoader />}><SupplyOptimizer /></Suspense></PermissionRoute></PermissionRoute></PermissionRoute></PermissionRoute></PermissionRoute></PermissionRoute>} />
+          <Route path="/strategic-simulation" element={<PermissionRoute permission="analytics.view"><PermissionRoute permission="analytics.finance"><PermissionRoute permission="inventory.view"><PermissionRoute permission="procurement.view"><PermissionRoute permission="finance.view"><PermissionRoute permission="financial_accounts.view"><PermissionRoute permission="customers.manage"><PermissionRoute permission="daily_sales.manage"><PermissionRoute permission="shipments.view"><Suspense fallback={<PageLoader />}><StrategicSimulation /></Suspense></PermissionRoute></PermissionRoute></PermissionRoute></PermissionRoute></PermissionRoute></PermissionRoute></PermissionRoute></PermissionRoute></PermissionRoute>} />
           <Route path="/financial-intelligence" element={<PermissionRoute permission="analytics.finance"><PermissionRoute permission="finance.view"><PermissionRoute permission="financial_accounts.view"><Suspense fallback={<PageLoader />}><FinancialIntelligence /></Suspense></PermissionRoute></PermissionRoute></PermissionRoute>} />
           <Route path="/action-center" element={<PermissionRoute permission="tasks.view"><Suspense fallback={<PageLoader />}><ActionCenter /></Suspense></PermissionRoute>} />
           <Route

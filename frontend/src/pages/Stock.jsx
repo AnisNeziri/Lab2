@@ -380,7 +380,7 @@ function Stock() {
   return (
     <main className="stock-page">
       <section className="card">
-        <h2>{tx("Adjust stock")}</h2>
+        <h1>{tx("Adjust stock")}</h1>
         <p className="card-description"> {tx("Record stock coming in or going out. On-hand and available balances update automatically.")} </p>
 
         <form className="sku-lookup-form" onSubmit={handleSkuLookup}>

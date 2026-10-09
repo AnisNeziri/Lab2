@@ -44,6 +44,7 @@ class SystemController extends Controller
 
         return response()->json([
             'mode' => $mode,
+            'synthetic' => app()->environment('synthetic'),
             'online' => $mode === 'online',
             'redis' => $redis->status(),
             'cache_available' => $cacheAvailable,

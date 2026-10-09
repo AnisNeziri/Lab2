@@ -579,10 +579,10 @@ export default function PurchaseOrders() {
       />
       <section className="card">
         <div className="section-header">
-          <h2>
+          <h1>
             <Truck size={20} />
             {t("po.title")}
-          </h2>
+          </h1>
           <button onClick={beginNew}>
             <Plus size={16} />
             {t("po.new")}

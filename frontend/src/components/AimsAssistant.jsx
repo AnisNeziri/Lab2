@@ -31,7 +31,8 @@ export default function AimsAssistant({open=true,onClose,guideRequest,request,em
     pending.current=true;setBusy(true);setQuestion('');append({kind:'user',text:value});const ticket=++sequence.current
     try{
       if(/^(how (?:do|does|to|can)|si (?:funksion|perdor|përdor|mund))/i.test(value)){const intent=assistantIntent(value);append({kind:'guide',data:guideAnswer(intent.page||location.pathname+location.search,language)});return}
-      const reply=await askIntelligence({question:value,language,conversation_id:conversation.current,entity:selected||null})
+      const simulationId=location.pathname==='/strategic-simulation'?new URLSearchParams(location.search).get('run'):null
+      const reply=await askIntelligence({question:value,language,conversation_id:conversation.current,entity:selected||null,...(simulationId?{simulation_id:Number(simulationId)}:{})})
       if(mounted.current&&ticket===sequence.current){conversation.current=reply.conversation_id;append({kind:'reply',reply,original:value})}
     }catch(error){if(mounted.current&&ticket===sequence.current)append({kind:'error',text:error.message,original:value})}
     finally{if(mounted.current&&ticket===sequence.current){pending.current=false;setBusy(false)}}

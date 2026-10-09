@@ -7,10 +7,13 @@ import {
   ShieldCheck,
   Ship,
 } from 'lucide-react'
+import { useTranslation } from '../hooks/useTranslation'
 
 const chartBars = [42, 64, 52, 78, 61, 88, 72]
 
 export default function AuthExperienceVisual({ variant = 'login' }) {
+  const { language } = useTranslation()
+  const text = (en, sq) => language === 'sq' ? sq : en
   const isRegister = variant === 'register'
 
   return (
@@ -18,17 +21,17 @@ export default function AuthExperienceVisual({ variant = 'login' }) {
       <div className="auth-showcase-copy">
         <span className="auth-showcase-eyebrow">
           <span className="auth-live-dot" />
-          AIMS digital operations
+          {text('AIMS digital operations', 'Operacionet digjitale AIMS')}
         </span>
         <h2>
           {isRegister
-            ? 'Build a smarter company workspace.'
-            : 'Run every operation from one live view.'}
+            ? text('Build a smarter company workspace.', 'Krijo një hapësirë më të mençur për kompaninë.')
+            : text('Run every operation from one live view.', 'Menaxho çdo veprim nga një pamje e vetme.')}
         </h2>
         <p>
           {isRegister
-            ? 'Connect stock, purchasing, sales, debts, and shipments from day one.'
-            : 'Inventory, sales, suppliers, purchasing, and shipments stay connected in real time.'}
+            ? text('Connect stock, purchasing, sales, debts, and shipments from day one.', 'Lidh stokun, blerjet, shitjet, borxhet dhe dërgesat që nga dita e parë.')
+            : text('Inventory, sales, suppliers, purchasing, and shipments stay connected in real time.', 'Inventari, shitjet, furnitorët, blerjet dhe dërgesat qëndrojnë të lidhura në kohë reale.')}
         </p>
       </div>
 
@@ -40,31 +43,31 @@ export default function AuthExperienceVisual({ variant = 'login' }) {
           <div className="auth-console-topline">
             <span className="auth-console-brand">
               <Activity size={14} />
-              Operations live
+              {text('Workspace preview', 'Pamje ilustruese')}
             </span>
             <span className="auth-console-signal">
               <i />
-              Synced
+              {text('Example', 'Shembull')}
             </span>
           </div>
 
           <div className="auth-console-kpis">
             <div>
-              <span>Inventory</span>
+              <span>{text('Inventory', 'Inventari')}</span>
               <strong>24,680</strong>
-              <small><Boxes size={12} /> units tracked</small>
+              <small><Boxes size={12} /> {text('units tracked', 'njësi në inventar')}</small>
             </div>
             <div>
-              <span>Sales flow</span>
+              <span>{text('Sales flow', 'Ecuria e shitjeve')}</span>
               <strong>+18.4%</strong>
-              <small><BarChart3 size={12} /> live analysis</small>
+              <small><BarChart3 size={12} /> {text('sales analysis', 'analiza e shitjeve')}</small>
             </div>
           </div>
 
           <div className="auth-console-chart">
             <div className="auth-chart-heading">
-              <span>Weekly movement</span>
-              <b>MON — SUN</b>
+              <span>{text('Weekly movement', 'Lëvizjet javore')}</span>
+              <b>{text('MON — SUN', 'HËN — DIE')}</b>
             </div>
             <div className="auth-chart-bars">
               {chartBars.map((height, index) => (
@@ -79,7 +82,7 @@ export default function AuthExperienceVisual({ variant = 'login' }) {
         </div>
 
         <div className="auth-warehouse-mini">
-          <span className="auth-rack-title">WAREHOUSE A</span>
+          <span className="auth-rack-title">{text('WAREHOUSE A', 'DEPOJA A')}</span>
           <div className="auth-rack-shelf auth-rack-shelf-one">
             <i /><i /><i />
           </div>
@@ -98,21 +101,21 @@ export default function AuthExperienceVisual({ variant = 'login' }) {
 
         <div className="auth-floating-status auth-floating-status-stock">
           <PackageCheck size={17} />
-          <span><b>Stock received</b><small>Inventory updated</small></span>
+          <span><b>{text('Stock received', 'Stoku u pranua')}</b><small>{text('Inventory updated', 'Inventari u përditësua')}</small></span>
           <CheckCircle2 size={15} />
         </div>
 
         <div className="auth-floating-status auth-floating-status-secure">
           <ShieldCheck size={17} />
-          <span><b>Workspace secured</b><small>Protected company data</small></span>
+          <span><b>{text('Workspace secured', 'Hapësirë e sigurt')}</b><small>{text('Protected company data', 'Të dhëna të mbrojtura')}</small></span>
         </div>
       </div>
 
       <div className="auth-showcase-modules">
-        <span>Inventory</span>
-        <span>Sales</span>
-        <span>Purchase orders</span>
-        <span>Shipments</span>
+        <span>{text('Inventory', 'Inventari')}</span>
+        <span>{text('Sales', 'Shitjet')}</span>
+        <span>{text('Purchase orders', 'Porositë e blerjes')}</span>
+        <span>{text('Shipments', 'Dërgesat')}</span>
       </div>
     </aside>
   )
