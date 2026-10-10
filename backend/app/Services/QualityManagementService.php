@@ -261,7 +261,7 @@ class QualityManagementService
                 'company_id'=>Auth::user()->company_id,'claim_number'=>$this->nextNumber('SC'),'supplier_id'=>$data['supplier_id'],
                 'purchase_order_id'=>$data['purchase_order_id'] ?? $inspection?->purchase_order_id,'goods_receipt_id'=>$data['goods_receipt_id'] ?? $inspection?->goods_receipt_id,
                 'quality_inspection_id'=>$inspection?->id,'status'=>'OPEN','requested_outcome'=>$data['requested_outcome'],
-                'claim_date'=>$data['claim_date'] ?? now()->toDateString(),'expected_resolution_date'=>$data['expected_resolution_date'] ?? null,
+                'claim_date'=>$data['claim_date'] ?? \App\Support\CompanyClock::today()->toDateString(),'expected_resolution_date'=>$data['expected_resolution_date'] ?? null,
                 'affected_value'=>0,'currency'=>strtoupper($data['currency'] ?? 'EUR'),'communication_notes'=>$data['communication_notes'] ?? null,
                 'created_by'=>Auth::id(),
             ]);
@@ -318,7 +318,7 @@ class QualityManagementService
     public function addClaimCommunication(SupplierClaim $claim, string $note): SupplierClaim
     {
         if ($claim->resolved_at) throw ValidationException::withMessages(['claim'=>['Resolved claim communication history cannot be changed.']]);
-        $entry='['.now('Europe/Tirane')->format('Y-m-d H:i').'] '.Auth::user()->name.': '.trim($note);
+        $entry='['.\App\Support\CompanyClock::now()->format('Y-m-d H:i').'] '.Auth::user()->name.': '.trim($note);
         $claim->update(['communication_notes'=>trim(implode("\n",array_filter([$claim->communication_notes,$entry])))]);
         $this->audit($claim,'quality.supplier_claim.communication','Supplier claim communication added.',['entry'=>$entry]);
         return $this->showClaim($claim->fresh());
@@ -444,7 +444,7 @@ class QualityManagementService
 
     private function syncOverdueClaimExceptions(): void
     {
-        SupplierClaim::query()->where('status','!=','RESOLVED')->whereDate('expected_resolution_date','<',now()->toDateString())->each(fn($claim)=>$this->upsertException($claim,'supplier_claim_overdue','warning',"Supplier claim {$claim->claim_number} is overdue.","/quality?claim={$claim->id}","supplier_claim_overdue:{$claim->id}"));
+        SupplierClaim::query()->where('status','!=','RESOLVED')->whereDate('expected_resolution_date','<',\App\Support\CompanyClock::today()->toDateString())->each(fn($claim)=>$this->upsertException($claim,'supplier_claim_overdue','warning',"Supplier claim {$claim->claim_number} is overdue.","/quality?claim={$claim->id}","supplier_claim_overdue:{$claim->id}"));
     }
 
     private function syncOverdueInspectionExceptions(): void

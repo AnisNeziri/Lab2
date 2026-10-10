@@ -15,7 +15,7 @@ class SafeBroadcast
         try {
             broadcast($event);
         } catch (\Throwable $exception) {
-            Log::warning('Broadcast skipped: '.$exception->getMessage());
+            Log::warning('Broadcast unavailable. Check the configured local broadcast service.', ['error_type'=>class_basename($exception)]);
         }
     }
 }

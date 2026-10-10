@@ -9,7 +9,7 @@ final class SafeLogTap
     public function __invoke($logger): void
     {
         $secrets = array_filter(array_map(fn ($key) => config($key), ['app.key', 'jwt.secret', 'database.connections.mysql.password', 'database.redis.default.password', 'mail.mailers.smtp.password', 'services.stripe.secret', 'tracking.aisstream.api_key', 'tracking.vessel_lookup.api_key']), fn ($value) => is_string($value) && strlen($value) >= 8);
-        $text = fn (string $value) => preg_replace('/(password|passphrase|authorization|token|secret|api[_-]?key)\s*[:=]\s*[^\s,;]+/i', '$1=[redacted]', str_replace($secrets, '[redacted]', $value));
+        $text = fn (string $value) => preg_replace('/(password|passphrase|authorization|token|secret|api[_-]?key|auth_key|auth_signature)\s*[:=]\s*[^\s,;&]+/i', '$1=[redacted]', str_replace($secrets, '[redacted]', $value));
         $sanitize = function ($value) use (&$sanitize, $text) {
             if ($value instanceof \Throwable) return ['type' => class_basename($value), 'code' => $value->getCode()];
             if (is_object($value)) return class_basename($value);

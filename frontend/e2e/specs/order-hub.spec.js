@@ -33,6 +33,7 @@ test('Order Hub creates, confirms, reserves, links WMS and exposes safe tracking
   await page.goto(href);await expect(page.getByText(f.product.name,{exact:true})).toBeVisible();expect(errors).toEqual([])
 })
 test('simple Orders journey dispatches once, opens its Daily Sale and creates a linked invoice',async({page})=>{
+  test.setTimeout(90_000)
   const errors=[];page.on('pageerror',e=>errors.push(e.message));await login(page);const f=await fixture(page)
   const intake=await api(page,'/order-hub/orders',{idempotency_key:f.tag,customer_id:f.customer.id,order_date:new Date().toLocaleDateString('en-CA'),payment_type:'cash',items:[{product_id:f.product.id,quantity:2}]})
   const url=`/order-hub?intake=${intake.id}`

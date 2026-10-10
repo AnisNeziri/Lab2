@@ -69,8 +69,9 @@ class ProductionSecurityTest extends TestCase
         $handler=new \Monolog\Handler\TestHandler(); $logger=new \Monolog\Logger('certification',[$handler]);
         (new \App\Logging\SafeLogTap())($logger);
         $logger->error('Connection password=visible-private unique-db-private-secret',['exception'=>new \RuntimeException('private document bytes'),'bindings'=>['private customer data'],'token'=>'secret-token']);
+        $logger->warning('Broadcast URL http://127.0.0.1/events?auth_key=provider-key&auth_signature=provider-signature&auth_timestamp=123');
         $serialized=json_encode($handler->getRecords());
-        foreach(['visible-private','unique-db-private-secret','private document bytes','private customer data','secret-token'] as $secret)$this->assertStringNotContainsString($secret,$serialized);
+        foreach(['visible-private','unique-db-private-secret','private document bytes','private customer data','secret-token','provider-key','provider-signature'] as $secret)$this->assertStringNotContainsString($secret,$serialized);
     }
 
     public function test_mariadb_has_no_implicitly_mutating_timestamp_columns(): void

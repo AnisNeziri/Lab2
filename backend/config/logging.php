@@ -76,6 +76,7 @@ return [
         ],
 
         'slack' => [
+            'tap' => [\App\Logging\SafeLogTap::class],
             'driver' => 'slack',
             'url' => env('LOG_SLACK_WEBHOOK_URL'),
             'username' => env('LOG_SLACK_USERNAME', env('APP_NAME', 'Laravel')),
@@ -85,6 +86,7 @@ return [
         ],
 
         'papertrail' => [
+            'tap' => [\App\Logging\SafeLogTap::class],
             'driver' => 'monolog',
             'level' => env('LOG_LEVEL', 'debug'),
             'handler' => env('LOG_PAPERTRAIL_HANDLER', SyslogUdpHandler::class),
@@ -97,6 +99,7 @@ return [
         ],
 
         'stderr' => [
+            'tap' => [\App\Logging\SafeLogTap::class],
             'driver' => 'monolog',
             'level' => env('LOG_LEVEL', 'debug'),
             'handler' => StreamHandler::class,
@@ -108,6 +111,7 @@ return [
         ],
 
         'syslog' => [
+            'tap' => [\App\Logging\SafeLogTap::class],
             'driver' => 'syslog',
             'level' => env('LOG_LEVEL', 'debug'),
             'facility' => env('LOG_SYSLOG_FACILITY', LOG_USER),
@@ -115,6 +119,7 @@ return [
         ],
 
         'errorlog' => [
+            'tap' => [\App\Logging\SafeLogTap::class],
             'driver' => 'errorlog',
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,

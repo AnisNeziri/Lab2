@@ -4,7 +4,7 @@ set -euo pipefail
 test "${CI:-}" = true && test "${AIMS_CERTIFICATION_SERVER:-}" = 1
 root=$(cd "$(dirname "$0")/.." && pwd)
 sudo apt-get update -qq
-sudo apt-get install -y nginx mariadb-server redis-server php8.3-fpm php8.3-mysql php8.3-bcmath php8.3-mbstring php8.3-xml php8.3-curl php8.3-zip gettext-base
+sudo apt-get install -y nginx mariadb-server redis-server php8.3-fpm php8.3-mysql php8.3-bcmath php8.3-mbstring php8.3-xml php8.3-curl php8.3-zip gettext-base ripgrep
 sudo systemctl start mariadb redis-server php8.3-fpm
 sudo useradd --system --user-group --home /srv/aims aims
 sudo mkdir -p /srv/aims/releases /srv/aims/shared/storage/{app/private,app/public,framework/cache/data,framework/sessions,framework/views,logs} /srv/aims/shared/{documents-private,encrypted-backups} /srv/aims/bin /etc/aims /var/lib/letsencrypt

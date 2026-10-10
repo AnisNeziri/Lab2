@@ -840,7 +840,7 @@ class InventoryCountService
 
     private function nextNumber(int $companyId): string
     {
-        $prefix = 'CNT-'.now('Europe/Tirane')->format('Y').'-';
+        $prefix = 'CNT-'.\App\Support\CompanyClock::now()->format('Y').'-';
         $sequence = InventoryCountSession::withoutGlobalScopes()
             ->where('company_id', $companyId)->where('count_number', 'like', $prefix.'%')->count() + 1;
         do {

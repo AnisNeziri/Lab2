@@ -760,7 +760,7 @@ class WarehouseOperationsService
 
     private function nextTransferNumber(int $companyId): string
     {
-        $prefix = 'TR-'.now('Europe/Tirane')->format('Y').'-';
+        $prefix = 'TR-'.\App\Support\CompanyClock::now()->format('Y').'-';
         $sequence = StockTransfer::withoutGlobalScopes()->where('company_id', $companyId)->where('transfer_number', 'like', $prefix.'%')->count() + 1;
         do {
             $number = $prefix.str_pad((string) $sequence++, 5, '0', STR_PAD_LEFT);

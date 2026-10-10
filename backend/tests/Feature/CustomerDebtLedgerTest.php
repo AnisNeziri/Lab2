@@ -13,6 +13,24 @@ class CustomerDebtLedgerTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_default_payment_date_and_retry_use_company_day_across_utc_year_end(): void
+    {
+        $this->actingAsApiUser('admin');
+        $this->getJson('/api/me')->assertOk();
+        config(['app.timezone'=>'UTC','production.timezone'=>'Asia/Tokyo']);
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-12-31T23:30:00Z'));
+        try {
+            $customer=Customer::create($this->tenantAttributes(['name'=>'Company clock buyer']));
+            $service=app(\App\Services\CustomerDebtService::class);
+            $data=['amount'=>'1.01','idempotency_key'=>'company-new-year-payment'];
+            $payment=$service->recordPayment($customer,$data);
+            $this->assertSame('2027-01-01',$payment->transaction_date->toDateString());
+            $this->assertSame($payment->id,$service->recordPayment($customer,$data)->id);
+            $this->assertSame('1.01',$customer->fresh()->current_credit);
+            $this->assertSame(1,$customer->debtTransactions()->count());
+        } finally { $this->travelBack(); }
+    }
+
     public function test_debts_and_partial_payments_keep_exact_history(): void
     {
         $this->actingAsApiUser('admin');

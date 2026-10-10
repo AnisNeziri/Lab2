@@ -39,7 +39,7 @@ class CustomerCreditService
 
     public function exposure(Customer $customer): array
     {
-        $today = now('Europe/Tirane')->startOfDay();
+        $today = \App\Support\CompanyClock::now()->startOfDay();
         $debts=$this->obligations($customer);
         $buckets = [
             'current' => '0.00',

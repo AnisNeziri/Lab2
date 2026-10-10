@@ -5,7 +5,7 @@ use Carbon\CarbonImmutable as Date;
 /** Interpretable local statistics, not a fabricated ML model. No domain writes. */
 final class ShipmentEtaCalculator {
     public function distribution(array $observations, string $field): array {
-        $valid=array_values(array_filter($observations,fn($r)=>isset($r[$field])&&$r[$field]>=0&&($r['known_at']??'')<=now()->toIso8601String()&&($r['actual_arrival']??'')<=now()->toDateString()));
+        $valid=array_values(array_filter($observations,fn($r)=>isset($r[$field])&&$r[$field]>=0&&($r['known_at']??'')<=now()->toIso8601String()&&($r['actual_arrival']??'')<=\App\Support\CompanyClock::today()->toDateString()));
         $values=array_column($valid,$field); sort($values); $n=count($values);
         $q=fn($p)=>$n?round((float)$values[(int)round(($n-1)*$p)],1):null;
         return ['samples'=>$n,'qualified'=>$n>=config('shipment_intelligence.minimum_route_samples'),

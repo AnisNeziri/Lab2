@@ -12,7 +12,7 @@ $marker=$sqlite->query('select marker,seed,status from _aims_synthetic_manifest'
 if(($marker['marker']??'')!=='AIMS_PM3_SYNTHETIC_ONLY'||(int)$marker['seed']!==20261006||$marker['status']!=='complete')throw new RuntimeException('Owned completed PM3 source required.');
 $run=$root.'/output/pr1-maria-dr-'.gmdate('Ymd-His').'-'.bin2hex(random_bytes(4));
 foreach(['A','B'] as $install)foreach(['storage/framework','documents','backups'] as $directory)mkdir($run.'/'.$install.'/'.$directory,0700,true);
-foreach(['APP_KEY'=>'base64:'.base64_encode(random_bytes(32)),'DB_CONNECTION'=>'mysql','DB_URL'=>'','CACHE_STORE'=>'array','SESSION_DRIVER'=>'array','QUEUE_CONNECTION'=>'sync','APP_CONFIG_CACHE'=>$run.'/config.php','AIMS_DOCUMENT_ROOT'=>$run.'/A/documents'] as $key=>$value) {putenv($key.'='.$value);$_ENV[$key]=$_SERVER[$key]=$value;}
+foreach(['APP_KEY'=>'base64:'.base64_encode(random_bytes(32)),'DB_CONNECTION'=>'mysql','DB_URL'=>'','CACHE_STORE'=>'array','SESSION_DRIVER'=>'array','QUEUE_CONNECTION'=>'sync','BROADCAST_CONNECTION'=>'log','APP_CONFIG_CACHE'=>$run.'/config.php','AIMS_DOCUMENT_ROOT'=>$run.'/A/documents'] as $key=>$value) {putenv($key.'='.$value);$_ENV[$key]=$_SERVER[$key]=$value;}
 require $root.'/backend/vendor/autoload.php'; require __DIR__.'/certification-common.php';
 certificationAssertBaseline($sqlite);
 $app=require $root.'/backend/bootstrap/app.php';$app->useStoragePath($run.'/A/storage');$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
@@ -25,6 +25,7 @@ try {
     if(Illuminate\Support\Facades\Artisan::call('migrate',['--force'=>true,'--path'=>$paths])!==0)throw new RuntimeException('Previous baseline schema failed.');
     $mysql=Illuminate\Support\Facades\DB::getPdo();$mysql->exec('SET FOREIGN_KEY_CHECKS=0');
     try {
+        $mysql->beginTransaction();
         foreach(Illuminate\Support\Facades\Schema::getTables(Illuminate\Support\Facades\Schema::getCurrentSchemaListing()) as $table) {
             $name=$table['name'];if($name==='migrations')continue;
             // Only this freshly created, guard-verified scratch installation:
@@ -37,7 +38,9 @@ try {
                 $statement->execute(array_values($row));
             }
         }
-    } finally {$mysql->exec('SET FOREIGN_KEY_CHECKS=1');}
+        $mysql->commit();
+    } catch(Throwable $error) {if($mysql->inTransaction())$mysql->rollBack();throw $error;}
+    finally {$mysql->exec('SET FOREIGN_KEY_CHECKS=1');}
     $sourceDocuments=dirname($source).'/documents-20261006';
     foreach(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($sourceDocuments,FilesystemIterator::SKIP_DOTS)) as $file)if($file->isFile()) {
         if($file->isLink())throw new RuntimeException('Document symlinks rejected.');$relative=substr($file->getPathname(),strlen($sourceDocuments)+1);$target=$run.'/A/documents/'.$relative;if(!is_dir(dirname($target)))mkdir(dirname($target),0700,true);copy($file->getPathname(),$target);
@@ -56,6 +59,7 @@ try {
     $login=certificationRequest('POST','/api/login',['email'=>$owner->email,'password'=>config('synthetic.password')]);
     if($login['status']!==200||!isset($login['body']['access_token']))throw new RuntimeException('Restored MariaDB login failed.');
     $report['restored_http_login_verified']=true;
+    $report['populated_business_workflows']=certificationBusinessWorkflows($owner);
     $report['tenant_route_matrix']=certificationTenantMatrix($owner->company_id);
     $report['status']='PASS';
 } catch(Throwable $error) {$report['status']='FAIL';$report['failure']=$error->getMessage();}

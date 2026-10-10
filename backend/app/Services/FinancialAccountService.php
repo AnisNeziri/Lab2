@@ -244,9 +244,9 @@ class FinancialAccountService
                 $this->audit('financial_transaction.reversed', $target, $old, $target->fresh()->toArray(), $reason);
             }
             if ($locked->source_type === 'financial_account_transfer') {
-                $this->accounting->reverseSource('banking', 'financial-transfer:'.$locked->source_id, now()->toDateString(), $reason);
+                $this->accounting->reverseSource('banking', 'financial-transfer:'.$locked->source_id, \App\Support\CompanyClock::today()->toDateString(), $reason);
             } elseif ($locked->journal_entry_id) {
-                $this->accounting->reverseSource('banking', 'financial-transaction:'.$locked->id, now()->toDateString(), $reason);
+                $this->accounting->reverseSource('banking', 'financial-transaction:'.$locked->id, \App\Support\CompanyClock::today()->toDateString(), $reason);
             }
 
             return $locked->fresh('account');

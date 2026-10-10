@@ -65,6 +65,9 @@ final class AssistantPlanner
         if (preg_match('/\bwarehouse\b/', $q)) $type='warehouse';
         if (preg_match('/\bpurchase order\b|\bpo[- ]?\d/', $q)) $type='purchase_order';
         if (!$term) $term=app(AssistantLanguage::class)->entityTerm($question);
+        // A controlled draft follow-up uses the authorized conversation decision.
+        // Preserve quoted or explicitly named records for normal entity resolution.
+        if ($intent === 'prepare' && preg_match('/^(?:prepare|pergatit)\s+(?:the\s+)?(?:recommended\s+(?:option|draft)|option|draft|opsion(?:in)?\s+e\s+rekomanduar|draftin)[?.!]*$/', $q)) $term = null;
         // Keep business references intact; question stop-words must not strip PO/SO prefixes.
         if (!preg_match('/["“]/u',$question) && preg_match('/\b(?:PO|SO)-[a-z0-9-]+\b/i',$question,$reference)) $term=$reference[0];
         if (preg_match('/\bsales order\b|\bso[- ]?\d/', $q)) $type='sales_order';
