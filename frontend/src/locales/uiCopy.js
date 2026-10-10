@@ -1,5 +1,7 @@
 // Shared wording for older workspaces that originally used inline English copy.
 export const uiCopySq = {
+  'Last verified backup':'Kopja rezervë e fundit e verifikuar',
+  'Last backup failure':'Dështimi i fundit i kopjes rezervë',
   'Could not load products. Try again.':'Produktet nuk u ngarkuan. Provo përsëri.',
   'Could not load categories. Try again.':'Kategoritë nuk u ngarkuan. Provo përsëri.',
   'Product added.':'Produkti u shtua.', 'Product updated.':'Produkti u përditësua.',

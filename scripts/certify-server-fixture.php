@@ -7,4 +7,7 @@ app(Database\Seeders\RolePermissionSeeder::class)->run(preserveExisting:true);
 $company=App\Models\Company::create(['name'=>'PR1 ephemeral server certification','address'=>'CI fixture only']);
 $user=App\Models\User::create(['company_id'=>$company->id,'name'=>'Certification owner','email'=>'owner@aims-ci.invalid','password'=>bin2hex(random_bytes(24)),'role'=>'admin','email_verified_at'=>now(),'is_active'=>true,'must_change_password'=>false]);
 App\Models\UserRole::create(['user_id'=>$user->id,'role_id'=>App\Models\Role::where('slug','admin')->value('id'),'assigned_at'=>now()]);
+$headersFile='/srv/aims/shared/certification-headers';
+file_put_contents($headersFile,'Authorization: Bearer '.app(App\Services\JwtService::class)->createAccessToken($user).PHP_EOL.'Accept: application/json'.PHP_EOL);
+chmod($headersFile,0600);
 echo 'Ephemeral server owner provisioned; no credentials written to output.'.PHP_EOL;

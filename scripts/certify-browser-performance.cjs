@@ -32,7 +32,7 @@ async function main(){
  await measure('Financial intelligence',go('/financial-intelligence'),p=>p==='/api/financial-intelligence')
  await measure('Customer intelligence',go('/customer-sales-intelligence'),p=>p==='/api/customer-sales-intelligence')
  await page.goto('http://127.0.0.1:4192/dashboard');const search=page.getByRole('combobox',{name:'Search AIMS'});let query=0
- await measure('Global search',async()=>{await search.fill('');await search.fill(query++%2?'Milano':'Milano ')},p=>p==='/api/search')
+ await measure('Global search',async()=>{await search.fill(query++%2?'Milano':'Milano 01')},p=>p==='/api/search')
  await page.keyboard.press('Escape');await page.getByRole('button',{name:'Ask AIMS',exact:true}).click();const panel=page.locator('.aims-assistant'),question=panel.getByRole('textbox',{name:'Question for AIMS',exact:true})
  await measure('Ask AIMS',async()=>{await panel.getByRole('button',{name:'Send question',exact:true}).isEnabled().catch(()=>{});await question.fill('Who owes us the most?');await panel.getByRole('button',{name:'Send question',exact:true}).click()},p=>p==='/api/intelligence-assistant/ask',()=>panel.getByRole('button',{name:'Send question',exact:true}).waitFor())
  if(errors.length)throw Error('Browser runtime errors: '+errors.join(', '));report.status='PASS'

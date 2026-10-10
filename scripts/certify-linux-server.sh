@@ -24,6 +24,7 @@ printf '%s\n' "$backup_password" | sudo tee /etc/aims/backup-passphrase >/dev/nu
 sudo chown -R aims:aims /srv/aims/shared /etc/aims "$root/backend/bootstrap/cache"
 sudo chmod 0600 /etc/aims/backup-passphrase /srv/aims/shared/production.env
 sudo chmod -R o+rX "$root" # Ephemeral CI source only; secrets remain outside checkout.
+sudo chmod o+x /home/runner /home/runner/work /home/runner/work/Lab2
 ln -s /srv/aims/shared/production.env "$root/backend/.env"
 sudo sed -i 's/^user = .*/user = aims/; s/^group = .*/group = aims/' /etc/php/8.3/fpm/pool.d/www.conf
 sudo systemctl restart php8.3-fpm
@@ -51,6 +52,13 @@ test "$(curl -ks -o /dev/null -w '%{http_code}' --resolve aims-ci.internal:443:1
 test "$(curl -ks -o /dev/null -w '%{http_code}' --resolve aims-ci.internal:443:127.0.0.1 https://aims-ci.internal/storage/private-test)" = 404
 test "$(curl -ks -o /dev/null -w '%{http_code}' --resolve aims-ci.internal:443:127.0.0.1 https://aims-ci.internal/.env)" = 403
 curl -ksSI --resolve aims-ci.internal:443:127.0.0.1 https://aims-ci.internal/index.html | rg -i 'x-frame-options: DENY|strict-transport-security'
+sudo systemctl stop redis-server
+test "$(curl -ks -o /dev/null -w '%{http_code}' --resolve aims-ci.internal:443:127.0.0.1 https://aims-ci.internal/api/readiness)" = 503
+sudo curl -ksS -H @/srv/aims/shared/certification-headers --resolve aims-ci.internal:443:127.0.0.1 https://aims-ci.internal/api/products | python -c 'import json,sys; assert isinstance(json.load(sys.stdin)["data"],list)'
+sudo systemctl start redis-server
+sudo systemctl stop mariadb
+test "$(sudo curl -ks -H @/srv/aims/shared/certification-headers -o /dev/null -w '%{http_code}' --resolve aims-ci.internal:443:127.0.0.1 https://aims-ci.internal/api/products)" = 503
+sudo systemctl start mariadb
 previous_pid=$(sudo systemctl show -p MainPID --value aims-worker@default)
 sudo systemctl kill --signal=SIGKILL aims-worker@default
 sleep 5
@@ -63,4 +71,4 @@ sleep 5
 sudo -u aims /usr/bin/php artisan aims:production-check
 sudo systemctl start aims-backup.service
 sudo find /srv/aims/shared/encrypted-backups -maxdepth 1 -name '*.aimsinstall' | rg .
-echo '{"status":"PASS","nginx":true,"https":true,"worker_crash_restart":true,"service_restart":true,"host_reboot":false,"certificate":"self-signed isolated CI fixture"}' > "$root/output/pr1-linux-server.json"
+echo '{"status":"PASS","nginx":true,"https":true,"worker_crash_restart":true,"service_restart":true,"redis_outage":true,"database_outage":true,"host_reboot":false,"certificate":"self-signed isolated CI fixture"}' > "$root/output/pr1-linux-server.json"

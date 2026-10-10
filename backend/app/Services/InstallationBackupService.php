@@ -77,7 +77,8 @@ final class InstallationBackupService
                 if (! rename($stage, $target)) throw new \RuntimeException('Verified backup cannot be finalized.');
             } finally { if (is_file($stage)) unlink($stage); }
             $result = ['file' => $name, 'created_at' => $payload['created_at'], 'version' => Release::version(), 'engine' => $engine, 'verification' => 'authenticated_and_checksums_verified', 'sha256' => hash_file('sha256', $target), 'companies' => count($payload['companies'])];
-            file_put_contents($target.'.verified.json', json_encode($result, JSON_PRETTY_PRINT), LOCK_EX);
+            $metadata=json_encode($result, JSON_PRETTY_PRINT);
+            if(file_put_contents($target.'.verified.json', $metadata, LOCK_EX)!==strlen($metadata))throw new \RuntimeException('Verified backup metadata could not be written. Free disk space and verify the archive again; no successful backup is recorded.');
             $this->health(['last_success_at' => $result['created_at'], 'last_verified_at' => $result['created_at'], 'last_failure_at' => null]);
             if ($scheduled) $this->retain($root);
             return $result;
