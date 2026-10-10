@@ -6,7 +6,7 @@ let source = process.env.AIMS_PYTHON_SOURCE || process.env.PYTHONHOME
 if (!source) {
   try { source = path.dirname(execFileSync('python', ['-I','-c','import sys; print(sys.executable)'], {encoding:'utf8',windowsHide:true}).trim()) } catch {}
 }
-if (!source || !fs.existsSync(path.join(source,'python.exe'))) throw new Error('Set AIMS_PYTHON_SOURCE to a local Python 3.10+ directory to package zero-cost local forecasting.')
+if (!source || !fs.existsSync(path.join(source,'python.exe'))) throw new Error('Set AIMS_PYTHON_SOURCE to the pinned Python 3.12.2 directory before packaging.')
 const destination = path.join(desktop,'resources','python')
 fs.mkdirSync(destination,{recursive:true})
 fs.cpSync(source,destination,{recursive:true,filter:file=>{
@@ -19,5 +19,5 @@ fs.cpSync(source,destination,{recursive:true,filter:file=>{
 const optimizerVendor=path.resolve(desktop,'../backend/ml/optimizer_vendor')
 if(!fs.existsSync(path.join(optimizerVendor,'scipy')))throw new Error('Install backend/ml/supply_optimizer_requirements.txt into backend/ml/optimizer_vendor before packaging.')
 fs.cpSync(optimizerVendor,path.join(destination,'Lib','site-packages'),{recursive:true,filter:f=>!/[\\/](tests?|__pycache__)([\\/]|$)/i.test(f)})
-execFileSync(path.join(destination,'python.exe'),['-I','-c','import sys,json,math; from scipy.optimize import milp; assert sys.version_info >= (3,10)'],{windowsHide:true})
+execFileSync(path.join(destination,'python.exe'),['-I','-c','import sys,importlib.metadata as m; from scipy.optimize import milp; assert sys.version_info[:3] == (3,12,2); assert m.version("numpy") == "2.3.5"; assert m.version("scipy") == "1.16.2"'],{windowsHide:true})
 console.log('Local Python forecasting and SciPy/HiGHS optimizer runtime bundled.')

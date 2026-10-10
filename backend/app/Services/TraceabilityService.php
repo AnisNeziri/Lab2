@@ -200,7 +200,7 @@ class TraceabilityService
             ->where('inventory_trace_balances.quantity', '>', 0)
             ->when(! $allowExpired, fn ($query) => $query->where(function ($lotQuery): void {
                 $lotQuery->whereNull('inventory_lots.expiry_at')
-                    ->orWhereDate('inventory_lots.expiry_at', '>=', now()->toDateString());
+                    ->orWhereDate('inventory_lots.expiry_at', '>=', \App\Support\CompanyClock::today()->toDateString());
             }))
             ->orderByRaw('CASE WHEN inventory_lots.expiry_at IS NULL THEN 1 ELSE 0 END')
             ->orderBy('inventory_lots.expiry_at')
@@ -326,7 +326,7 @@ class TraceabilityService
             ->when($lotIds !== [], fn ($query) => $query->whereIn('inventory_trace_balances.inventory_lot_id', $lotIds))
             ->when($allocations === [] && ! $allowExpired, fn ($query) => $query->where(function ($lotQuery): void {
                 $lotQuery->whereNull('inventory_lots.expiry_at')
-                    ->orWhereDate('inventory_lots.expiry_at', '>=', now()->toDateString());
+                    ->orWhereDate('inventory_lots.expiry_at', '>=', \App\Support\CompanyClock::today()->toDateString());
             }))
             ->orderByRaw('CASE WHEN inventory_lots.expiry_at IS NULL THEN 1 ELSE 0 END')
             ->orderBy('inventory_lots.expiry_at')

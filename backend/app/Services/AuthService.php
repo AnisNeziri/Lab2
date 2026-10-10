@@ -121,7 +121,7 @@ class AuthService
 
     public function logout(User $user): void
     {
-        $user->forceFill(['api_token' => null])->save();
+        $user->forceFill(['api_token' => null, 'token_version' => (int) $user->token_version + 1])->save();
         $this->jwt->revokeUserTokens($user);
     }
 
@@ -130,7 +130,11 @@ class AuthService
         $user->password = $data['password'];
         $user->must_change_password = false;
         $user->temporary_password_consumed = false;
+        $user->api_token = null;
+        $user->remember_token = null;
+        $user->token_version = (int) $user->token_version + 1;
         $user->save();
+        $this->jwt->revokeUserTokens($user);
 
         return $user;
     }

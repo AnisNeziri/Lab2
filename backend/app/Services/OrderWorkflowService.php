@@ -72,7 +72,7 @@ class OrderWorkflowService
             $existing=Invoice::where('daily_sale_id',$sale->id)->where('document_type','invoice')->first();
             if($existing)return app(InvoiceService::class)->find($existing);
             if($order->currency!=='EUR')$this->fail('The current invoice module supports EUR only.');
-            $data=['customer_id'=>$order->customer_id,'invoice_date'=>now('Europe/Belgrade')->toDateString(),'supply_date'=>$sale->sale_date->toDateString(),'notes'=>'Order '.$order->order_number.' / '.$sale->sale_number,'items'=>$sale->items->map(fn($i)=>['product_id'=>$i->product_id,'description'=>$i->product_name,'quantity'=>$i->quantity,'unit'=>$i->unit,'unit_price'=>$i->unit_price,'warehouse_id'=>$i->warehouse_id])->all()];
+            $data=['customer_id'=>$order->customer_id,'invoice_date'=>\App\Support\CompanyClock::today()->toDateString(),'supply_date'=>$sale->sale_date->toDateString(),'notes'=>'Order '.$order->order_number.' / '.$sale->sale_number,'items'=>$sale->items->map(fn($i)=>['product_id'=>$i->product_id,'description'=>$i->product_name,'quantity'=>$i->quantity,'unit'=>$i->unit,'unit_price'=>$i->unit_price,'warehouse_id'=>$i->warehouse_id])->all()];
             if(!$order->customer_id)$data['buyer']=['legal_name'=>$sale->customer_name];
             return app(InvoiceService::class)->createDraft($data,$sale);
         });

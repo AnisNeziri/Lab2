@@ -1,6 +1,6 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, net: electronNet, safeStorage, shell } = require('electron')
 const { autoUpdater } = require('electron-updater')
-const { execFileSync, spawn, spawnSync } = require('child_process')
+const { execFileSync, spawn: rawSpawn, spawnSync } = require('child_process')
 const crypto = require('crypto')
 const fs = require('fs')
 const http = require('http')
@@ -20,6 +20,14 @@ const frontendUrl = `http://127.0.0.1:${frontendPort}`
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 
 let backendProcess
+let processSupervisor
+let defaultProcess
+let defaultTimer
+let schedulerProcess
+let schedulerTimer
+let backendRestartTimer
+let backendRestartAttempts = 0
+function spawn(file, args, options) { return processSupervisor ? processSupervisor.spawn(file, args, options) : rawSpawn(file, args, options) }
 let documentMaintenanceProcess
 let documentMaintenanceTimer
 let automationTimer
@@ -272,7 +280,7 @@ function copyRuntime() {
   const dependenciesChanged = !fs.existsSync(targetLock) || fs.readFileSync(sourceLock, 'utf8') !== fs.readFileSync(targetLock, 'utf8')
   fs.mkdirSync(target, { recursive: true })
 
-  const directories = ['app', 'bootstrap', 'config', 'database', 'public', 'resources', 'routes']
+  const directories = ['app', 'bootstrap', 'config', 'database', 'public', 'resources', 'routes', 'ml']
   if (dependenciesChanged) directories.push('vendor')
   for (const directory of directories) {
     const sourceDirectory = path.join(source, directory)
@@ -284,7 +292,7 @@ function copyRuntime() {
     fs.cpSync(sourceDirectory, targetDirectory, { recursive: true, force: true, filter })
   }
   fs.mkdirSync(path.join(target, 'bootstrap', 'cache'), { recursive: true })
-  for (const file of ['artisan', 'composer.json', 'composer.lock']) {
+  for (const file of ['artisan', 'composer.json', 'composer.lock', 'RELEASE.json']) {
     fs.copyFileSync(path.join(source, file), path.join(target, file))
   }
   log('Laravel runtime synchronized', `dependenciesChanged=${dependenciesChanged}`)
@@ -557,14 +565,22 @@ function localEnvironment() {
     DB_CONNECTION: 'sqlite',
     DB_DATABASE: userDataPath('aims.sqlite'),
     DB_URL: '',
+    REDIS_ENABLED: 'false',
+    FRONTEND_URL: frontendUrl,
+    APP_TIMEZONE: 'UTC',
+    AIMS_COMPANY_TIMEZONE: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    APP_LOCALE: 'en',
+    AIMS_MAIL_ENABLED: 'false',
     AIMS_ML_PYTHON: fs.existsSync(resourcePath('python','python.exe')) ? resourcePath('python','python.exe') : (process.env.AIMS_ML_PYTHON || 'python'),
     CACHE_STORE: 'file',
-    QUEUE_CONNECTION: 'sync',
+    QUEUE_CONNECTION: 'database',
+    DB_QUEUE_RETRY_AFTER: '300',
     BROADCAST_CONNECTION: 'log',
     SESSION_DRIVER: 'file',
-    LOG_CHANNEL: 'single',
+    LOG_CHANNEL: 'daily',
+    LOG_DAILY_DAYS: '14',
     LOG_LEVEL: 'warning',
-    MAIL_MAILER: 'log',
+    MAIL_MAILER: 'array',
     CORS_ALLOWED_ORIGINS: frontendUrl,
     ...(phpIni ? { PHPRC: phpIni, PHP_INI_SCAN_DIR: '' } : {}),
   }
@@ -597,6 +613,24 @@ function runArtisan(runtime, args, env) {
 }
 
 function startBackend(runtime, env) {
+  const pollQueue = (queue, getChild, setChild) => {
+    if (shuttingDown || getChild()) return
+    const child = spawn(phpExecutable(), ['artisan', 'aims:work', queue, '--once'], { cwd: runtime, env, stdio: 'ignore' })
+    setChild(child)
+    child.once('error', () => setChild(null))
+    child.once('exit', () => setChild(null))
+  }
+  const runDefault = () => pollQueue('default', () => defaultProcess, child => { defaultProcess = child })
+  defaultTimer = setInterval(runDefault, 3000)
+  runDefault()
+  const runScheduler = () => {
+    if (shuttingDown || schedulerProcess) return
+    schedulerProcess = spawn(phpExecutable(), ['artisan', 'schedule:run'], { cwd: runtime, env, stdio: 'ignore' })
+    schedulerProcess.once('error', () => { schedulerProcess = null })
+    schedulerProcess.once('exit', () => { schedulerProcess = null })
+  }
+  schedulerTimer = setInterval(runScheduler, 60000)
+  runScheduler()
   const captureAnalytics=()=>{
     if(shuttingDown || analyticsProcess) return
     analyticsProcess=spawn(phpExecutable(),['artisan','analytics:capture'],{cwd:runtime,env,windowsHide:true,shell:false,stdio:'ignore'})
@@ -618,15 +652,15 @@ function startBackend(runtime, env) {
   analyticsTimer=setInterval(captureAnalytics,60*60*1000)
   captureAnalytics() // Resume bounded, idempotent observation/evaluation work after downtime.
   const runAutomations=()=>{
-    if(automationProcess && !automationProcess.killed) return
+    if(shuttingDown || automationProcess && !automationProcess.killed) return
     automationProcess=spawn(phpExecutable(),['artisan','automations:tick'],{cwd:runtime,env,windowsHide:true,shell:false,stdio:'ignore'})
     automationProcess.once('error',error=>{log('Automation scheduler',error.message);automationProcess=null})
     automationProcess.once('exit',()=>{automationProcess=null;if(shuttingDown||optimizerMaintenanceProcess)return;optimizerMaintenanceProcess=spawn(phpExecutable(),['artisan','supply-optimizer:maintain'],{cwd:runtime,env,windowsHide:true,shell:false,stdio:'ignore'});optimizerMaintenanceProcess.once('error',()=>{optimizerMaintenanceProcess=null});optimizerMaintenanceProcess.once('exit',()=>{optimizerMaintenanceProcess=null})})
   }
   automationTimer=setInterval(runAutomations,60000)
   const runOptimizer=()=>{
-    if(optimizerProcess&&!optimizerProcess.killed)return
-    optimizerProcess=spawn(phpExecutable(),['artisan','supply-optimizer:work','--once'],{cwd:runtime,env,windowsHide:true,shell:false,stdio:'ignore'})
+    if(shuttingDown||optimizerProcess&&!optimizerProcess.killed)return
+    optimizerProcess=spawn(phpExecutable(),['artisan','aims:work','supply-optimizer','--once'],{cwd:runtime,env,windowsHide:true,shell:false,stdio:'ignore'})
     optimizerProcess.once('error',error=>{log('Supply optimizer',error.message);optimizerProcess=null})
     optimizerProcess.once('exit',()=>{optimizerProcess=null})
   }
@@ -634,7 +668,7 @@ function startBackend(runtime, env) {
   runOptimizer()
   const runSimulation=()=>{
     if(shuttingDown||simulationProcess&&!simulationProcess.killed)return
-    simulationProcess=spawn(phpExecutable(),['artisan','simulation:work','--once'],{cwd:runtime,env,windowsHide:true,shell:false,stdio:'ignore'})
+    simulationProcess=spawn(phpExecutable(),['artisan','aims:work','strategic-simulation','--once'],{cwd:runtime,env,windowsHide:true,shell:false,stdio:'ignore'})
     simulationProcess.once('error',error=>{log('Strategic simulation',error.message);simulationProcess=null})
     simulationProcess.once('exit',()=>{simulationProcess=null})
   }
@@ -649,7 +683,9 @@ function startBackend(runtime, env) {
   }
   maintainDocuments()
   documentMaintenanceTimer = setInterval(maintainDocuments, 60 * 60 * 1000)
-  backendProcess = spawn(phpExecutable(), ['artisan', 'serve', '--host=127.0.0.1', `--port=${backendPort}`], {
+  const launchBackend = () => {
+  if (shuttingDown) return
+  backendProcess = spawn(phpExecutable(), ['artisan', 'serve', '--no-reload', '--host=127.0.0.1', `--port=${backendPort}`], {
     cwd: runtime,
     env,
     windowsHide: true,
@@ -661,9 +697,13 @@ function startBackend(runtime, env) {
   backendProcess.once('error', (error) => log('Backend process error', error.message))
   backendProcess.once('exit', (code, signal) => {
     log('Backend stopped', `code=${code} signal=${signal || 'none'}`)
-    if (!shuttingDown && mainWindow) dialog.showErrorBox('AIMS backend stopped', 'The local AIMS service stopped unexpectedly. Restart the application.')
+    if (!shuttingDown && backendRestartAttempts++ < 3) {
+      backendRestartTimer = setTimeout(launchBackend, 2000)
+    } else if (!shuttingDown && mainWindow) dialog.showErrorBox('AIMS backend stopped', 'The local service failed repeatedly. Your data remains saved. Restart AIMS and review System Integrity.')
   })
   log('Backend process started', `pid=${backendProcess.pid} port=${backendPort}`)
+  }
+  launchBackend()
 }
 
 function startAisWorker(runtime, env) {
@@ -843,6 +883,8 @@ async function createWindow() {
     }
     const runtime = copyRuntime()
     const env = localEnvironment()
+    processSupervisor = require('./process-supervisor.cjs').createSupervisor(userDataPath('processes'))
+    for (const directory of ['app/documents-private', 'app/private', 'app/public', 'app/installation-backups', 'framework/cache/data', 'framework/sessions', 'framework/views', 'logs']) fs.mkdirSync(path.join(runtime, 'storage', directory), { recursive: true })
     if (!await portAvailable(backendPort)) throw new Error(`Port ${backendPort} is already in use. Close another AIMS instance and try again.`)
     if (!await portAvailable(frontendPort)) throw new Error(`Port ${frontendPort} is already in use. Close another AIMS instance and try again.`)
     backupDatabase()
@@ -850,6 +892,7 @@ async function createWindow() {
     const recoveryPassword = recoveryCredential()
     const setupOutput = runArtisan(runtime, ['aims:desktop-setup'], { ...env, AIMS_DESKTOP_RECOVERY_PASSWORD: recoveryPassword })
     await acknowledgeRecovery(recoveryPassword, setupOutput)
+    runArtisan(runtime, ['aims:production-check', '--before-start'], env)
     startBackend(runtime, env)
     startAisWorker(runtime, env)
     await waitForBackend()
@@ -900,34 +943,11 @@ function shutdown() {
   if (shuttingDown) return
   shuttingDown = true
   log('AIMS shutdown started')
+  for (const timer of [documentMaintenanceTimer, automationTimer, analyticsTimer, optimizerTimer, simulationTimer, defaultTimer, schedulerTimer]) clearInterval(timer)
+  clearTimeout(backendRestartTimer)
   if (frontendServer) frontendServer.close()
-  if (aisProcess && !aisProcess.killed) {
-    if (process.platform === 'win32') {
-      spawnSync('taskkill.exe', ['/pid', String(aisProcess.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' })
-    } else {
-      aisProcess.kill('SIGTERM')
-    }
-  }
-  if (backendProcess && !backendProcess.killed) {
-    clearInterval(documentMaintenanceTimer)
-    clearInterval(automationTimer)
-    clearInterval(analyticsTimer)
-    clearInterval(optimizerTimer)
-    clearInterval(simulationTimer)
-    if(simulationProcess&&!simulationProcess.killed)simulationProcess.kill()
-    if(optimizerProcess&&!optimizerProcess.killed)optimizerProcess.kill()
-    if(optimizerMaintenanceProcess&&!optimizerMaintenanceProcess.killed)optimizerMaintenanceProcess.kill()
-    if(analyticsProcess && !analyticsProcess.killed) analyticsProcess.kill()
-    if(automationProcess && !automationProcess.killed) automationProcess.kill()
-    if(documentMaintenanceProcess && !documentMaintenanceProcess.killed) documentMaintenanceProcess.kill()
-    if (process.platform === 'win32') {
-      spawnSync('taskkill.exe', ['/pid', String(backendProcess.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' })
-    } else {
-      backendProcess.kill('SIGTERM')
-    }
-  }
+  processSupervisor?.shutdown()
 }
-
 if (!gotSingleInstanceLock) {
   app.quit()
 } else {

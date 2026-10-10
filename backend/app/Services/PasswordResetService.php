@@ -36,20 +36,22 @@ class PasswordResetService
 
     public function reset(string $email, string $token, string $password): ?User
     {
-        $record = DB::table('password_reset_tokens')->where('email', $email)->first();
+        return DB::transaction(function () use ($email, $token, $password) {
+        $record = DB::table('password_reset_tokens')->where('email', $email)->lockForUpdate()->first();
 
         if (! $record || ! hash_equals($record->token, hash('sha256', $token))) {
             return null;
         }
 
         $expiresMinutes = (int) config('auth.passwords.users.expire', 60);
-        if (now()->diffInMinutes($record->created_at) > $expiresMinutes) {
+        $created = \Carbon\Carbon::parse($record->created_at);
+        if ($created->lt(now()->subMinutes($expiresMinutes)) || $created->gt(now()->addSeconds(30))) {
             DB::table('password_reset_tokens')->where('email', $email)->delete();
 
             return null;
         }
 
-        $user = User::where('email', $email)->first();
+        $user = User::where('email', $email)->lockForUpdate()->first();
 
         if (! $user) {
             return null;
@@ -58,10 +60,15 @@ class PasswordResetService
         $user->password = $password;
         $user->must_change_password = false;
         $user->temporary_password_consumed = false;
+        $user->api_token = null;
+        $user->remember_token = null;
+        $user->token_version = (int) $user->token_version + 1;
         $user->save();
+        app(JwtService::class)->revokeUserTokens($user);
 
         DB::table('password_reset_tokens')->where('email', $email)->delete();
 
         return $user;
+        });
     }
 }

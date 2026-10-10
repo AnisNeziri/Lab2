@@ -39,7 +39,7 @@ test('image preview closes cleanly and Albanian document controls render',async(
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
   expect(await page.evaluate(()=>document.body.style.overflow)).not.toBe('hidden')
-  await page.evaluate(async()=>{const {useSettingsStore}=await import('/src/store/settingsStore.js');useSettingsStore.getState().applyPreferences({language:'sq',theme:'dark'})})
+  await page.evaluate(async()=>{const {useSettingsStore}=window.__aimsCertification;useSettingsStore.getState().applyPreferences({language:'sq',theme:'dark'})})
   await expect(page.getByRole('heading',{name:'Qendra e Dokumenteve',exact:true})).toBeVisible()
   await page.getByRole('button',{name:'Ndrysho të dhënat',exact:true}).click()
   await expect(page.getByRole('combobox',{name:'Konfidencialiteti',exact:true})).toBeVisible()

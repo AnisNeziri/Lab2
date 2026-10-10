@@ -140,6 +140,7 @@ Route::get('/status', function () {
 });
 
 Route::get('/cms/published', [CmsController::class, 'published']);
+Route::get('/readiness', [\App\Http\Controllers\Api\ProductionController::class, 'readiness'])->middleware('throttle:6,1');
 Route::get('/cms/{slug}', [CmsController::class, 'show']);
 
 Route::middleware('throttle:auth')->group(function () {
@@ -157,6 +158,7 @@ Route::middleware('auth.token')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::post('/change-password', [AuthController::class, 'changePassword']);
     Route::get('/system/mode', [SystemController::class, 'mode']);
+    Route::get('/system/diagnostics', [\App\Http\Controllers\Api\ProductionController::class, 'diagnostics'])->middleware(['password.changed', 'company.context', 'role:admin', 'permission:system_integrity.view', 'throttle:6,1']);
 
     Route::middleware('password.changed')->group(function () {
         Route::middleware('company.context')->group(function () {
@@ -344,7 +346,8 @@ Route::middleware('auth.token')->group(function () {
             Route::post('/inventory-counts/{inventoryCount}/recount', [InventoryCountController::class, 'recount'])->middleware('permission:inventory.counts.manage');
             Route::post('/inventory-counts/{inventoryCount}/submit', [InventoryCountController::class, 'submit'])->middleware('permission:inventory.counts.manage');
             Route::post('/inventory-counts/{inventoryCount}/approve', [InventoryCountController::class, 'approve'])->middleware('permission:inventory.counts.approve');
-            Route::post('/inventory-counts/{inventoryCount}/cancel', [InventoryCountController::class, 'cancel'])->middleware('permission:inventory.counts.approve');
+            Route::post('/inventory-counts/{inventoryCount}/cancel', [InventoryCountController::class, 'cancel'])->middleware('permission:inventory.counts.manage');
+            Route::delete('/inventory-counts/{inventoryCount}', [InventoryCountController::class, 'destroy'])->middleware('permission:inventory.counts.manage');
 
             Route::get('/products/lookup', [ProductController::class, 'lookup']);
             Route::get('/products/export', [ProductController::class, 'export']);

@@ -4,6 +4,7 @@
 .assistant-heading > svg { color: var(--primary-color); flex-shrink: 0; }
 .assistant-heading > div { flex: 1; min-width: 0; }
 .assistant-heading strong { font-size: 1rem; }
+.assistant-context{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.5rem 1rem;background:var(--surface-soft);color:var(--text-muted);font-size:.75rem}.assistant-context span{min-width:0;overflow-wrap:anywhere}.assistant-context button{display:inline-flex;align-items:center;gap:.25rem;flex-shrink:0;border:0;background:transparent;color:var(--text-color)}.assistant-resolution{color:var(--text-muted);font-size:.8rem}.assistant-followups{display:flex;flex-wrap:wrap;gap:.4rem;margin:.7rem 0}.assistant-followups button,.assistant-more{border:1px solid var(--border-color);background:var(--surface-soft);color:var(--text-color);border-radius:7px;padding:.4rem .6rem;text-align:start}.assistant-followups button:hover,.assistant-more:hover{border-color:var(--primary-color)}
 .assistant-heading small { display: block; color: var(--text-muted); margin-top: .2rem; }
 .aims-assistant button { cursor: pointer; font: inherit; }
 .assistant-heading button { display: grid; place-items: center; padding: .4rem; border-radius: 7px; border: 0; background: transparent; color: var(--text-muted); }

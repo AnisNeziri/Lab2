@@ -37,7 +37,7 @@ class BackupRunService
         $run->update([
             'status' => 'failed',
             'verification_result' => 'failed',
-            'error_summary' => Str::limit($error->getMessage() ?: class_basename($error), 500, ''),
+            'error_summary' => 'Backup operation failed. Check the archive, passphrase, storage capacity and permissions; contact your administrator if it persists.',
             'completed_at' => now(),
         ]);
     }

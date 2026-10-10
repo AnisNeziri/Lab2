@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Download, KeyRound, RefreshCw, Settings as SettingsIcon, ShieldCheck, X } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useTranslation } from '../hooks/useTranslation'
 import { useDialog } from '../hooks/useDialog'
+import release from '../../../RELEASE.json'
 
 export default function SettingsModal() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const location=useLocation()
+  useEffect(()=>setIsOpen(false),[location.key])
   const user = useAuthStore((state) => state.user)
   const updateUser = useAuthStore((state) => state.updateUser)
   const { theme, language, enable_3d_map, base_currency, savePreferences } = useSettingsStore()
@@ -124,6 +127,7 @@ export default function SettingsModal() {
             </div>
 
             <div className="settings-modal-body">
+              <p className="settings-save-hint">{language==='sq'?'Cilësimet ruhen dhe zbatohen menjëherë pas çdo ndryshimi.':'Settings are saved and applied immediately after each change.'}</p>
               <label className="settings-modal-field">
                 <span>{t('settings.theme')}</span>
                 <select aria-label={t('settings.theme')} value={theme} onChange={handleThemeChange} disabled={saving}>
@@ -150,6 +154,9 @@ export default function SettingsModal() {
                 </label>
               ) : null}
 
+              <div className="settings-modal-row">
+                <div><strong>AIMS {release.version}</strong><p>{release.status === 'uncertified' ? 'Release candidate · certification pending' : release.status}</p></div>
+              </div>
               <div className="settings-modal-row">
                 <div>
                   <strong>{t('settings.enable3d')}</strong>

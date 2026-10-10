@@ -43,6 +43,8 @@ class SystemController extends Controller
             && $vesselLookupConfigured;
 
         return response()->json([
+            'version' => \App\Support\Release::version(),
+            'release_status' => \App\Support\Release::metadata()['status'],
             'mode' => $mode,
             'synthetic' => app()->environment('synthetic'),
             'online' => $mode === 'online',

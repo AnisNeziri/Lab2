@@ -28,7 +28,7 @@ class AuthenticateApiToken
                 if ($payload) {
                     $user = User::find($payload->sub ?? null);
 
-                    if ($user && $user->is_active !== false) {
+                    if ($user && $user->is_active !== false && (int) $user->token_version === $payload->ver) {
                         Auth::login($user);
 
                         return $next($request);

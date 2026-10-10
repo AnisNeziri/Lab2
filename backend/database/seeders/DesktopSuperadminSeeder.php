@@ -31,7 +31,11 @@ class DesktopSuperadminSeeder extends Seeder
                 'email_verified_at' => now(),
                 'must_change_password' => true,
                 'temporary_password_consumed' => false,
+                'token_version' => (int) $user->token_version + 1,
+                'api_token' => null,
+                'remember_token' => null,
             ])->save();
+            \App\Models\RefreshToken::where('user_id', $user->id)->delete();
         }
         // The launcher keeps this candidate protected until the owner records it.
         // Repeating startup after a crash must display the same valid credential.

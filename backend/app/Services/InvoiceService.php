@@ -1012,7 +1012,7 @@ class InvoiceService
 
     private function businessNow(): CarbonImmutable
     {
-        return CarbonImmutable::now('Europe/Belgrade');
+        return \App\Support\CompanyClock::now();
     }
 
     private function requireCompanyId(): int

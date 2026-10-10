@@ -69,7 +69,9 @@ class ShipmentLogisticsController extends Controller
             'items.*.unit_weight_kg' => ['nullable', 'numeric', 'min:0'],
         ]);
 
-        return response()->json($this->logistics->update($shipment, $validated));
+        $detail = $this->logistics->update($shipment, $validated);
+        $detail->setAttribute('cargo', app(\App\Services\ShipmentCargoPresentation::class)->forShipment($detail));
+        return response()->json($detail);
     }
 
     public function uploadDocument(Request $request, Shipment $shipment): JsonResponse

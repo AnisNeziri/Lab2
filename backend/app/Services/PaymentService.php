@@ -44,7 +44,7 @@ class PaymentService
                     $mismatch = $existing->status !== 'completed'
                         || (isset($data['amount']) && Money::compare($existing->amount, $data['amount']) !== 0)
                         || $existing->payment_method !== ($data['payment_method'] ?? 'cash')
-                        || $existing->payment_date?->toDateString() !== ($data['payment_date'] ?? now('Europe/Belgrade')->toDateString())
+                        || $existing->payment_date?->toDateString() !== ($data['payment_date'] ?? \App\Support\CompanyClock::today()->toDateString())
                         || ($existing->reference_number ?? '') !== ($data['reference_number'] ?? '')
                         || ($existing->note ?? '') !== ($data['note'] ?? '')
                         || (int) ($existing->financial_account_id ?? 0) !== (int) ($data['financial_account_id'] ?? 0);
@@ -83,7 +83,7 @@ class PaymentService
                 'reference_number' => $data['reference_number'] ?? null,
                 'idempotency_key' => $data['idempotency_key'] ?? (string) Str::uuid(),
                 'note' => $data['note'] ?? null,
-                'payment_date' => $data['payment_date'] ?? now('Europe/Belgrade')->toDateString(),
+                'payment_date' => $data['payment_date'] ?? \App\Support\CompanyClock::today()->toDateString(),
                 'paid_at' => now(),
                 'financial_account_id' => $data['financial_account_id'] ?? null,
             ]);
@@ -91,7 +91,7 @@ class PaymentService
             if (! empty($data['financial_account_id'])) {
                 $ledger = $this->accounts->post((int) $data['financial_account_id'], [
                     'type' => 'inflow', 'amount' => $amount,
-                    'transaction_date' => $data['payment_date'] ?? now('Europe/Belgrade')->toDateString(),
+                    'transaction_date' => $data['payment_date'] ?? \App\Support\CompanyClock::today()->toDateString(),
                     'source_type' => 'invoice_payment', 'source_id' => $transaction->id,
                     'counterparty' => $invoice->buyer_name ?? null,
                     'reference_number' => $data['reference_number'] ?? $transaction->transaction_ref,

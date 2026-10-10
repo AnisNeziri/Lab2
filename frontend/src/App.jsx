@@ -27,6 +27,10 @@ import { useTranslation } from "./hooks/useTranslation";
 import "./App.css";
 import './styles/EnterpriseUI.css';
 import './styles/ProductMaturity.css';
+import './styles/ProductMaturityExtra.css';
+import { useLightweightMenus } from './hooks/useLightweightMenus';
+import { refreshHealth } from './lib/refreshHealth';
+import './hooks/useUnsavedNavigation';
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Products = lazy(() => import("./pages/Products"));
@@ -126,6 +130,7 @@ function ProtectedRoute({ children, adminOnly = false, allowedRoles = null }) {
 }
 
 function RoleAppGate({ children }) {
+  useLightweightMenus();
   const role = useAuthStore((state) => state.role);
   const location = useLocation();
 
@@ -147,13 +152,15 @@ function RealtimeProvider({ children }) {
 
   useEffect(() => {
     if (!isAuthenticated || mustChangePassword || !token || !user?.company_id) {
+      refreshHealth.stop();
       disconnectEcho();
       return undefined;
     }
 
+    let alive = true;
     getNotifications()
-      .then((data) => setNotifications(data.notifications || []))
-      .catch(() => setNotifications([]));
+      .then((data) => {if(alive){setNotifications(data.notifications || []);refreshHealth.report(true)}})
+      .catch(() => {if(alive)refreshHealth.report(false)});
 
     // Electron already owns the local backend and intentionally uses file
     // cache + database polling. Do not create a Reverb socket that cannot
@@ -168,13 +175,17 @@ function RealtimeProvider({ children }) {
       refreshInFlight = true;
       try {
         const data = await getNotifications();
+        if (!alive) return;
         setNotifications(data.notifications || []);
+        refreshHealth.report(true);
       } catch {
+        if (alive) refreshHealth.report(false);
         // A temporary network/database failure must not clear the current UI.
       } finally {
         refreshInFlight = false;
       }
 
+      if (!alive) return;
       window.dispatchEvent(
         new CustomEvent("database-refresh", {
           detail: { source: "background-poll", silent: true },
@@ -188,6 +199,8 @@ function RealtimeProvider({ children }) {
     document.addEventListener("visibilitychange", handleVisibilityChange);
     if (!echo) {
       return () => {
+        alive = false;
+        refreshHealth.stop();
         document.removeEventListener("visibilitychange", handleVisibilityChange);
         window.clearInterval(poll);
       };
@@ -214,6 +227,8 @@ function RealtimeProvider({ children }) {
     });
 
     return () => {
+      alive = false;
+      refreshHealth.stop();
       channel.stopListening(".notification.created");
       channel.stopListening(".dashboard.updated");
       channel.stopListening(".stock.updated");

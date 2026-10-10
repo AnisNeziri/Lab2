@@ -1,0 +1,81 @@
+name: AIMS release candidate certification
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: aims-rc-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  certification:
+    uses: ./.github/workflows/ci.yml
+    with:
+      release_certification: true
+  web-artifact:
+    needs: certification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+      - run: npm install --global npm@10.9.2
+      - run: npm ci && npm run build
+        working-directory: frontend
+      - run: |
+          mkdir -p output
+          tar --exclude=.git --exclude=node_modules --exclude=vendor --exclude=.env --exclude='*.sqlite*' --exclude=storage --exclude=output --exclude=tmp --exclude=desktop -czf output/aims-web-source.tar.gz backend frontend/dist deploy scripts RELEASE.json docs
+          sha256sum output/aims-web-source.tar.gz > output/SHA256SUMS
+          sha256sum --check output/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aims-web-uncertified-candidate-${{ github.sha }}
+          path: |
+            output/aims-web-source.tar.gz
+            output/SHA256SUMS
+            RELEASE.json
+  desktop-artifact:
+    needs: certification
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3.35'
+          tools: composer:2.8.12
+          extensions: bcmath, curl, dom, fileinfo, mbstring, openssl, pdo_sqlite, sqlite3, zip, sodium
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.2'
+      - run: npm install --global npm@10.9.2
+      - run: composer install --no-dev --no-interaction --prefer-dist
+        working-directory: backend
+      - run: python -m pip install --target backend/ml/optimizer_vendor -r backend/ml/supply_optimizer_requirements.txt
+      - run: ./scripts/download-desktop-php.ps1
+      - run: npm ci
+        working-directory: frontend
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run dist:win
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - shell: pwsh
+        run: |
+          $files = Get-ChildItem desktop/dist -File -Filter '*.exe'
+          if ($files.Count -ne 1) { throw 'Exactly one desktop installer required.' }
+          $files | ForEach-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + $_.Name } | Set-Content desktop/dist/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aims-windows-unsigned-test-candidate-${{ github.sha }}
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/SHA256SUMS
+  candidate:
+    needs: [certification, web-artifact, desktop-artifact]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Required automated checks passed. Candidate artifacts are for review; customer release still requires the signed installer and completed operational checklist.' >> "$GITHUB_STEP_SUMMARY"

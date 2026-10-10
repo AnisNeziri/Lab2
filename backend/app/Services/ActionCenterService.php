@@ -21,8 +21,9 @@ class ActionCenterService
         elseif (!empty($filters['status']) && $filters['status']!=='all') $q->where('status',$filters['status']);
         if (!empty($filters['priority'])) $q->where('priority',$filters['priority']);
         if (!empty($filters['q'])) $q->where('title','like','%'.mb_substr($filters['q'],0,100).'%');
-        return $q->orderByRaw("CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END")
-            ->orderBy('due_at')->latest('id')->paginate(50)->through(fn($task)=>$this->present($task));
+        return $q->orderByRaw("CASE WHEN status IN ('open','in_progress') AND due_at < ? THEN 0 ELSE 1 END", [now()])
+            ->orderByRaw("CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END")
+            ->orderByRaw('CASE WHEN due_at IS NULL THEN 1 ELSE 0 END')->orderBy('due_at')->latest('id')->paginate(50)->through(fn($task)=>$this->present($task));
     }
 
     public function present(OperationalTask $task): array

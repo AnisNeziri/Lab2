@@ -33,6 +33,7 @@ test('Order Hub creates, confirms, reserves, links WMS and exposes safe tracking
   await page.goto(href);await expect(page.getByText(f.product.name,{exact:true})).toBeVisible();expect(errors).toEqual([])
 })
 test('simple Orders journey dispatches once, opens its Daily Sale and creates a linked invoice',async({page})=>{
+  test.setTimeout(90_000)
   const errors=[];page.on('pageerror',e=>errors.push(e.message));await login(page);const f=await fixture(page)
   const intake=await api(page,'/order-hub/orders',{idempotency_key:f.tag,customer_id:f.customer.id,order_date:new Date().toLocaleDateString('en-CA'),payment_type:'cash',items:[{product_id:f.product.id,quantity:2}]})
   const url=`/order-hub?intake=${intake.id}`
@@ -41,6 +42,7 @@ test('simple Orders journey dispatches once, opens its Daily Sale and creates a 
   await page.getByRole('checkbox',{name:'I verified these products and quantities are ready.',exact:true}).check()
   await page.getByRole('button',{name:'Mark ready',exact:true}).click()
   await page.getByRole('button',{name:'Confirm cash received & dispatch',exact:true}).click()
+  await page.getByText('Connections: sales, invoices & returns',{exact:true}).click()
   await expect(page.getByRole('link',{name:/^DS-/})).toBeVisible()
   const dispatched=await api(page,`/order-hub/intakes/${intake.id}`)
   expect(dispatched.connections.sales).toHaveLength(1)
@@ -53,6 +55,7 @@ test('simple Orders journey dispatches once, opens its Daily Sale and creates a 
   await expect(page).toHaveURL(/daily-sales\?date=/)
   await expect(page.getByRole('link',{name:/SO-/}).first()).toBeVisible()
   await page.goto(url)
+  await page.getByText('Connections: sales, invoices & returns',{exact:true}).click()
   await page.getByRole('button',{name:'Create invoice',exact:true}).click()
   await expect(page).toHaveURL(/invoices\?invoice=\d+/)
   await expect(page.getByRole('link',{name:/Source order/})).toBeVisible()

@@ -19,7 +19,7 @@ class InventorySnapshotService
         $other=\Brick\Math\BigDecimal::of($q($snapshot['committed_outgoing']??0))->minus($q($ownUnreserved));
         if($other->isLessThan(0))$other=\Brick\Math\BigDecimal::of('0');
         $available=\Brick\Math\BigDecimal::of($q($snapshot['available']??0))->minus($other);
-        $today=now('Europe/Tirane')->toDateString();
+        $today=\App\Support\CompanyClock::today()->toDateString();
         if($required->isLessThanOrEqualTo(0)||$available->isGreaterThanOrEqualTo($required))return $today;
         foreach($snapshot['incoming_schedule']??[] as $receipt){
             if(empty($receipt['expected_at'])||$receipt['expected_at']<$today)continue;
@@ -62,7 +62,7 @@ class InventorySnapshotService
         // "Incoming" remains a planning total for backward compatibility.
         // ATP is deliberately stricter: a PO with no expected receipt date,
         // or one expected after the requested date, cannot be promised yet.
-        $planningDate = CarbonImmutable::parse($asOf ?? now('Europe/Tirane')->toDateString(), 'Europe/Tirane')->startOfDay();
+        $planningDate = CarbonImmutable::parse($asOf ?? \App\Support\CompanyClock::today()->toDateString(), \App\Support\CompanyClock::timezone())->startOfDay();
         $incoming = PurchaseOrderItem::query()
             ->with('purchaseOrder:id,expected_at')
             ->whereIn('product_id', $productIds)
@@ -108,7 +108,7 @@ class InventorySnapshotService
             $incomingQuantity = round((float) $incomingPlan['total'], 3);
             $incomingByPlanningDate = round((float) collect($incomingPlan['schedule'])
                 ->filter(fn (array $event) => $event['expected_at'] !== null
-                    && CarbonImmutable::parse($event['expected_at'], 'Europe/Tirane')->lessThanOrEqualTo($planningDate))
+                    && CarbonImmutable::parse($event['expected_at'], \App\Support\CompanyClock::timezone())->lessThanOrEqualTo($planningDate))
                 ->sum('quantity'), 3);
             // Reserved stock is already excluded from available. Only outstanding
             // unreserved order demand is subtracted here; issued sales are not counted twice.

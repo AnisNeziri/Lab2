@@ -9,6 +9,8 @@ permissions:
 jobs:
   validation:
     uses: ./.github/workflows/ci.yml
+    with:
+      release_certification: true
     permissions:
       contents: read
 

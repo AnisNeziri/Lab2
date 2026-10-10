@@ -1,12 +1,12 @@
 {
   "name": "aims-desktop",
-  "version": "1.1.0",
+    "version": "1.1.1-rc.1",
   "description": "AIMS offline desktop inventory system",
   "author": "AIMS",
   "main": "src/main.cjs",
   "private": true,
   "scripts": {
-    "test": "node --test tests/*.test.cjs",
+    "test": "node ../scripts/run-node-tests.cjs",
     "prepare-assets": "node scripts/prepare-assets.cjs",
     "test:startup": "npm run prepare-assets && node scripts/startup-check.cjs",
     "start": "npm run prepare-assets && electron .",

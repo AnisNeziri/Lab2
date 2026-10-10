@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Anchor, Navigation, Ship } from 'lucide-react'
+import {useTranslation} from '../hooks/useTranslation'
 
 const STORAGE_KEY = 'aims.shipments-intro.v1'
 
 export default function ShipmentsPageIntro({ message = 'Loading shipment network' }) {
+  const {language}=useTranslation()
   const [visible, setVisible] = useState(() => {
     try {
       return sessionStorage.getItem(STORAGE_KEY) !== 'seen'
@@ -32,7 +34,7 @@ export default function ShipmentsPageIntro({ message = 'Loading shipment network
       <div className="shipments-intro-port shipments-intro-port-end"><Navigation size={15} /></div>
       <div className="shipments-intro-ship"><Ship size={44} strokeWidth={1.5} /></div>
       <strong>{message}</strong>
-      <span className="shipments-intro-caption">Connecting ports, cargo, and inventory</span>
+      <span className="shipments-intro-caption">{language==='sq'?'Duke lidhur portet, ngarkesën dhe inventarin':'Connecting ports, cargo, and inventory'}</span>
     </div>
   )
 }

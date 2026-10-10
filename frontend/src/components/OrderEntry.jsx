@@ -3,6 +3,7 @@ import { orderHub as api } from '../api/orderHub'
 import { apiRequest } from '../api/client'
 import { useAuthStore } from '../store/authStore'
 import { isMeterUnit } from '../utils/formatQuantity'
+import { useUnsavedNavigation } from '../hooks/useUnsavedNavigation'
 
 function SearchPicker({kind,t,onSelect,label}) {
   const [search,setSearch]=useState(''),[rows,setRows]=useState([]),[open,setOpen]=useState(false),[active,setActive]=useState(0),[error,setError]=useState(''),[loading,setLoading]=useState(false)
@@ -26,6 +27,11 @@ function SearchPicker({kind,t,onSelect,label}) {
 export default function OrderEntry({t,busy,channels,initial,onSubmit,onCancel}) {
   const permissions=useAuthStore(s=>s.permissions)
   const [form,setForm]=useState(()=>({...initial,channel_id:'',order_date:initial?.order_date||new Date().toLocaleDateString('en-CA'),payment_type:initial?.payment_type||'cash',customer:initial?.customer||{},items:initial?.items||[]}))
+  const original=useRef(JSON.stringify(form))
+  const dirty=JSON.stringify(form)!==original.current
+  const discardMessage=t('Discard unsaved order changes?','Të hidhen poshtë ndryshimet e paruajtura të porosisë?')
+  useUnsavedNavigation(dirty,discardMessage)
+  const cancel=()=>{if(!dirty||window.confirm(discardMessage))onCancel()}
   const [selectedCustomer,setSelectedCustomer]=useState(null),[review,setReview]=useState(false),[reason,setReason]=useState(''),[error,setError]=useState(''),[addingCustomer,setAddingCustomer]=useState(false),[customerBusy,setCustomerBusy]=useState(false)
   const key=useRef(initial?.idempotency_key||crypto.randomUUID()),quantities=useRef([])
   const field=(k,v)=>{setReview(false);setForm(f=>({...f,[k]:v}))}
@@ -60,6 +66,6 @@ export default function OrderEntry({t,busy,channels,initial,onSubmit,onCancel}) 
     </div><label>{t('Delivery address (optional)','Adresa e dorëzimit (opsionale)')}<input maxLength={1000} value={form.delivery_address||''} onChange={e=>field('delivery_address',e.target.value)}/></label></fieldset>
     <details><summary>{t('More details','Më shumë hollësi')}</summary><label>{t('Notes','Shënime')}<textarea maxLength={4000} value={form.notes||''} onChange={e=>field('notes',e.target.value)}/></label>{!initial&&<label>{t('Channel','Kanali')}<select value={form.channel_id} onChange={e=>field('channel_id',e.target.value)}><option value="">{t('Manual order','Porosi manuale')}</option>{channels.filter(c=>c.enabled&&c.type!=='manual').map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>}<label>{t('External reference','Referenca e jashtme')}<input maxLength={150} value={form.external_id||''} onChange={e=>field('external_id',e.target.value)}/></label>{initial&&<label>{t('Reason for agreed price change','Arsyeja e ndryshimit të çmimit')}<input value={reason} onChange={e=>setReason(e.target.value)}/></label>}</details>
     <div className="order-entry-review"><strong>{t('Preview total','Totali paraprak')}: {total.toFixed(2)}</strong><p>{t('Prices, availability and credit are verified by the server. Stock and the Daily Sale are posted once when goods are dispatched.','Çmimet, disponueshmëria dhe kredia verifikohen nga serveri. Stoku dhe shitja ditore regjistrohen një herë kur mallrat nisen.')}</p>{review&&<p role="status">{t('Review complete. Save this draft, then follow the next action on the order.','Shqyrtimi përfundoi. Ruani draftin, pastaj ndiqni veprimin e radhës në porosi.')}</p>}</div>
-    <div className="fulfillment-toolbar"><button disabled={busy||!form.items.length}>{review?t('Save order','Ruaj porosinë'):t('Review order','Shqyrto porosinë')}</button>{review&&<button type="button" onClick={()=>setReview(false)}>{t('Back to editing','Kthehu te ndryshimi')}</button>}<button type="button" disabled={busy} onClick={onCancel}>{t('Cancel','Anulo')}</button></div>
+    <div className="fulfillment-toolbar"><button disabled={busy||!form.items.length}>{review?t('Save order','Ruaj porosinë'):t('Review order','Shqyrto porosinë')}</button>{review&&<button type="button" onClick={()=>setReview(false)}>{t('Back to editing','Kthehu te ndryshimi')}</button>}<button type="button" disabled={busy} onClick={cancel}>{t('Cancel','Anulo')}</button></div>
   </form>
 }
