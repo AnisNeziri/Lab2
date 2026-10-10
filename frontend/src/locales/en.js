@@ -1616,4 +1616,6 @@ export const en = {
   "backup.module.finance": "Finance & invoices",
   "backup.module.shipments": "Shipments",
   "backup.module.quality": "Quality management",
+  "Last verified backup": "Last verified backup",
+  "Last backup failure": "Last backup failure",
 };

@@ -1608,4 +1608,6 @@ export const sq = {
   "backup.module.finance": "Financat dhe faturat",
   "backup.module.shipments": "Dërgesat",
   "backup.module.quality": "Menaxhimi i cilësisë",
+  "Last verified backup": "Kopja rezervë e fundit e verifikuar",
+  "Last backup failure": "Dështimi i fundit i kopjes rezervë",
 };

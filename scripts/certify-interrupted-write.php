@@ -30,7 +30,7 @@ $item=$order->items->first(fn($i)=>$i->quantity>$i->received_quantity);
 $journal=App\Models\JournalEntry::where('source_key','pr1-interrupted-journal')->firstOrFail();
 DB::listen(function($query)use($target){if(DB::transactionLevel()>0&&preg_match('/^\s*(insert|update|delete)\b/i',$query->sql)){file_put_contents($target.'.pending','Authoritative SQL executed inside open transaction.');sleep(120);throw new RuntimeException('Parent did not interrupt the process.');}});
 match($operation){
-    'stock_movement'=>app(App\Services\StockMovementService::class)->store(['product_id'=>$product->id,'warehouse_id'=>$stock->warehouse_id,'location_id'=>$stock->location_id,'type'=>'in','quantity'=>1,'movement_code'=>'manual_adjustment_in','note'=>'PR1 interruption','idempotency_key'=>'pr1-stock-interrupted']),
+    'stock_movement'=>app(App\Services\StockMovementService::class)->store(['product_id'=>$product->id,'warehouse_id'=>$stock->warehouse_id,'location_id'=>$stock->location_id,'type'=>'in','quantity'=>1,'movement_code'=>'manual_adjustment_in','reason'=>'PR1 interrupted adjustment certification','note'=>'PR1 interruption','idempotency_key'=>'pr1-stock-interrupted']),
     'customer_payment'=>app(App\Services\CustomerDebtService::class)->recordPayment($customer,['amount'=>'1.00','transaction_date'=>'2026-10-11','idempotency_key'=>'pr1-payment-interrupted']),
     'journal_posting'=>app(App\Services\AccountingService::class)->post($journal),
     'goods_receipt'=>app(App\Services\PurchaseOrderService::class)->receive($order,['items'=>[['id'=>$item->id,'quantity'=>1]],'idempotency_key'=>'pr1-receipt-interrupted']),
