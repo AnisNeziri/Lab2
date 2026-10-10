@@ -74,6 +74,14 @@ class ProductionSecurityTest extends TestCase
         foreach(['visible-private','unique-db-private-secret','private document bytes','private customer data','secret-token','provider-key','provider-signature'] as $secret)$this->assertStringNotContainsString($secret,$serialized);
     }
 
+    public function test_disabled_realtime_transport_never_logs_business_event_payloads(): void
+    {
+        config(['broadcasting.default'=>'log']);
+        \Illuminate\Support\Facades\Broadcast::shouldReceive('event')->never();
+        \App\Support\SafeBroadcast::dispatch(new \stdClass());
+        $this->assertTrue(true);
+    }
+
     public function test_mariadb_has_no_implicitly_mutating_timestamp_columns(): void
     {
         if(DB::connection()->getDriverName()!=='mysql') { $this->assertTrue(true); return; }

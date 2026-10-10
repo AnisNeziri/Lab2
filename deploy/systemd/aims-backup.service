@@ -2,5 +2,5 @@
 Description=AIMS verified encrypted scheduled backup
 [Service]
 Type=oneshot
-ExecStart=/srv/aims/current/deploy/backup.sh
+ExecStart=/srv/aims/bin/backup.sh
 UMask=0077

@@ -69,6 +69,9 @@ sudo systemctl stop aims-worker@default aims-worker@supply-optimizer aims-worker
 sudo systemctl start aims-worker@default aims-worker@supply-optimizer aims-worker@strategic-simulation aims-scheduler.timer
 sleep 5
 sudo -u aims /usr/bin/php artisan aims:production-check
-sudo systemctl start aims-backup.service
+if ! sudo systemctl start aims-backup.service; then
+  sudo journalctl -u aims-backup.service --no-pager -n 40
+  exit 1
+fi
 sudo find /srv/aims/shared/encrypted-backups -maxdepth 1 -name '*.aimsinstall' | rg .
 echo '{"status":"PASS","nginx":true,"https":true,"worker_crash_restart":true,"service_restart":true,"redis_outage":true,"database_outage":true,"host_reboot":false,"certificate":"self-signed isolated CI fixture"}' > "$root/output/pr1-linux-server.json"

@@ -8,7 +8,9 @@ class SafeBroadcast
 {
     public static function dispatch(object $event): void
     {
-        if (config('broadcasting.default') === 'null') {
+        // Laravel's log broadcaster writes complete business event payloads.
+        // A disabled realtime transport must not turn private records into logs.
+        if (in_array(config('broadcasting.default'), ['null', 'log'], true)) {
             return;
         }
 

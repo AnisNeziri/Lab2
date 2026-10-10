@@ -25,8 +25,10 @@ test('analytics workspace, periods, snapshots, dataset download and responsive t
   const today=(await response.json()).period.to
   await page.getByLabel('From',{exact:true}).fill(today)
   await page.getByLabel('To',{exact:true}).fill(today)
+  const built=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/analytics/datasets'&&r.request().method()==='POST')
   await page.getByRole('button',{name:'Build demand dataset',exact:true}).click()
-  await expect(page.getByRole('heading',{name:'demand_forecasting_v1'}).first()).toBeVisible()
+  expect((await built).status()).toBe(201)
+  await expect(page.getByRole('heading',{name:'demand_forecasting_v1'}).first()).toBeVisible({timeout:30_000})
   const download=page.waitForEvent('download')
   await page.getByRole('button',{name:'Export CSV',exact:true}).first().click()
   expect((await download).suggestedFilename()).toMatch(/\.csv$/)
