@@ -13,7 +13,7 @@ test('workspace visual and responsive review', async ({ page }, testInfo) => {
     for (const route of routes) {
       await page.goto(route)
       await page.waitForLoadState('networkidle')
-      await page.evaluate(async theme => { const {useSettingsStore} = await import('/src/store/settingsStore.js'); useSettingsStore.getState().applyPreferences({theme, language: theme === 'dark' ? 'sq' : 'en'}) }, theme)
+      await page.evaluate(async theme => { const {useSettingsStore} = window.__aimsCertification; useSettingsStore.getState().applyPreferences({theme, language: theme === 'dark' ? 'sq' : 'en'}) }, theme)
       await expect(page.locator('.main-content')).toBeVisible()
       await expectNoDocumentOverflow(page)
       if (['/dashboard', '/products', '/finance', '/inventory-intelligence', '/suppliers', '/warehouse-mobile'].includes(route)) {

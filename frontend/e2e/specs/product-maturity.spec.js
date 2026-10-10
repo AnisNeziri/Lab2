@@ -9,7 +9,7 @@ const routes = ['dashboard','order-hub','products','stock','categories','supplie
 
 async function preferences(page, theme, language) {
   await page.evaluate(async ({theme, language}) => {
-    const { useSettingsStore } = await import('/src/store/settingsStore.js')
+    const { useSettingsStore } = window.__aimsCertification
     useSettingsStore.getState().applyPreferences({theme, language})
   }, {theme, language})
 }

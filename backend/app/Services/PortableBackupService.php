@@ -312,7 +312,9 @@ class PortableBackupService
                 'name' => $company->name,
                 'address' => $company->address,
             ],
-            'app_version' => (string) config('app.version', '1.0.0'),
+            'app_version' => \App\Support\Release::version(),
+            'database_engine' => DB::connection()->getDriverName(),
+            'verification' => 'authenticated_and_checksums_verified',
             'database_schema' => 'AIMS-'.self::VERSION,
         ];
         $payload = ['data' => $data, 'encodings' => $encodings];
@@ -338,6 +340,7 @@ class PortableBackupService
             $json = $this->encryptArchive($json, $passphrase);
         }
 
+        $this->verifyContents($json, $passphrase);
         return response($json, 200, [
             'Content-Type' => $passphrase === null
                 ? 'application/vnd.aims.backup+json'
@@ -573,6 +576,29 @@ class PortableBackupService
         ];
     }
 
+    public function verifyContents(string $contents, ?string $passphrase = null): array
+    {
+        try {
+            $archive = json_decode($contents, true, 512, JSON_THROW_ON_ERROR);
+            if (($archive['format'] ?? '') === self::ENCRYPTED_FORMAT) {
+                if ($passphrase === null) throw new \RuntimeException();
+                $archive = json_decode($this->decryptArchive($archive, $passphrase), true, 512, JSON_THROW_ON_ERROR);
+            }
+            $this->validateArchive($archive);
+            $total = 0;
+            foreach ($archive['payload']['data']['document_versions'] ?? [] as $version) {
+                $entry = $archive['payload']['document_files'][$version['storage_key']] ?? null;
+                $bytes = $entry ? base64_decode($entry['bytes'] ?? '', true) : false;
+                if ($bytes === false || strlen($bytes) !== (int) $version['size'] || ! hash_equals($version['checksum'], hash('sha256', $bytes))) throw new \RuntimeException();
+                $total += strlen($bytes);
+                if ($total > DocumentBackupService::MAX_BYTES) throw new \RuntimeException();
+            }
+            return ['created_at' => $archive['created_at'], 'manifest' => $archive['manifest'], 'verification' => 'checksum_verified'];
+        } catch (\Throwable) {
+            throw ValidationException::withMessages(['file' => 'Backup verification failed. Check the passphrase, archive integrity and compatible AIMS version.']);
+        }
+    }
+
     private function normalizeModules(?array $modules): array
     {
         if ($modules === null || $modules === [] || in_array('full', $modules, true)) {
@@ -749,6 +775,7 @@ class PortableBackupService
         }
 
         $allowedTables = array_fill_keys(array_unique(array_merge(...array_values(self::MODULES))), true);
+        \App\Support\Release::assertBackupCompatible((string) ($archive['manifest']['app_version'] ?? '1.0.0'));
         $modules = $archive['manifest']['modules'] ?? null;
         if (! is_array($modules) || $modules === [] || array_diff($modules, array_keys(self::MODULES)) !== []) {
             throw ValidationException::withMessages(['file' => 'The backup module manifest is invalid.']);

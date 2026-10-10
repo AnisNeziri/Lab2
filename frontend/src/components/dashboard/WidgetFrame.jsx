@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { GripVertical, ChevronUp, ChevronDown, X, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from '../../hooks/useTranslation'
@@ -8,6 +8,8 @@ import WidgetContent, { widgetSource } from './WidgetContent'
 export default function WidgetFrame({widget,definition,editing,busy,index,count,onMove,onRemove,onChange,onDrag,onDrop,dragged}) {
   const {language}=useTranslation(),t=(en,sq)=>language==='sq'?sq:en
   const [config,setConfig]=useState(false),[target,setTarget]=useState(false)
+  const configRef=useRef(null),menuRef=useRef(null)
+  useEffect(()=>{if(!config||editing)return;const pointer=e=>{if(!configRef.current?.contains(e.target)&&e.target.closest('.widget-menu')!==menuRef.current?.parentElement)setConfig(false)};const key=e=>{if(e.key==='Escape'){setConfig(false);menuRef.current?.focus({preventScroll:true})}};document.addEventListener('pointerdown',pointer,true);document.addEventListener('keydown',key);return()=>{document.removeEventListener('pointerdown',pointer,true);document.removeEventListener('keydown',key)}},[config,editing])
   const resource=useWidgetData(widgetSource(definition,widget.settings)),title=language==='sq'?definition.sq:definition.en
   return <section ref={resource.ref} className={`workspace-widget widget-size-${widget.size} ${editing?'is-editing':''} ${target?'is-drop-target':''} ${dragged===widget.id?'is-dragging':''}`} style={{'--widget-min-height':`${definition.minHeight}px`}} data-widget={widget.id} aria-label={title}
     onDragOver={e=>{if(editing&&dragged){e.preventDefault();e.dataTransfer.dropEffect='move';setTarget(true)}}}
@@ -17,12 +19,12 @@ export default function WidgetFrame({widget,definition,editing,busy,index,count,
       <button type="button" disabled={busy||index===0} onClick={()=>onMove(index,index-1)} aria-label={`${t('Move earlier','Zhvendos më lart')}: ${title}`}><ChevronUp size={16}/></button>
       <button type="button" disabled={busy||index===count-1} onClick={()=>onMove(index,index+1)} aria-label={`${t('Move later','Zhvendos më poshtë')}: ${title}`}><ChevronDown size={16}/></button>
       <button type="button" disabled={busy} onClick={()=>onRemove(widget.id)} aria-label={`${t('Remove widget','Hiq panelin')}: ${title}`}><X size={16}/></button>
-    </div>:<details className="widget-menu"><summary aria-label={`${t('Widget options','Opsionet e panelit')}: ${title}`}><MoreHorizontal size={18}/></summary><div>
+    </div>:<details className="widget-menu"><summary ref={menuRef} aria-label={`${t('Widget options','Opsionet e panelit')}: ${title}`}><MoreHorizontal size={18}/></summary><div>
       <button type="button" onClick={e=>{e.currentTarget.closest('details').open=false;setConfig(v=>!v)}}>{t('Configure / resize','Konfiguro / ndrysho madhësinë')}</button>
       <button type="button" disabled={resource.loading} onClick={e=>{e.currentTarget.closest('details').open=false;resource.retry()}}>{t('Refresh','Përditëso')}</button><Link to={definition.path}>{t('View details','Shiko hollësitë')}</Link>
       <button type="button" onClick={()=>onRemove(widget.id)}>{t('Remove widget','Hiq panelin')}</button>
     </div></details>}</header>
-    {(editing||config)&&<div className="widget-settings"><label>{t('Size','Madhësia')}<select disabled={busy} value={widget.size} onChange={e=>onChange({...widget,size:e.target.value})}>{definition.sizes.map(size=><option key={size} value={size}>{({small:t('Small','E vogël'),medium:t('Medium','Mesatare'),large:t('Large','E madhe')})[size]}</option>)}</select></label>
+    {(editing||config)&&<div ref={configRef} className="widget-settings"><label>{t('Size','Madhësia')}<select disabled={busy} value={widget.size} onChange={e=>onChange({...widget,size:e.target.value})}>{definition.sizes.map(size=><option key={size} value={size}>{({small:t('Small','E vogël'),medium:t('Medium','Mesatare'),large:t('Large','E madhe')})[size]}</option>)}</select></label>
       {'period' in definition.settings&&<label>{t('Period','Periudha')}<select disabled={busy} value={widget.settings.period} onChange={e=>onChange({...widget,settings:{...widget.settings,period:e.target.value}})}><option value="week">{t('This calendar week','Kjo javë kalendarike')}</option><option value="month">{t('This calendar month','Ky muaj kalendarik')}</option><option value="year">{t('This calendar year','Ky vit kalendarik')}</option></select></label>}
       {'supplier_id' in definition.settings&&<SupplierSetting widget={widget} onChange={onChange} disabled={busy} t={t}/>}{!editing&&<button type="button" onClick={()=>setConfig(false)}>{t('Close','Mbyll')}</button>}
     </div>}

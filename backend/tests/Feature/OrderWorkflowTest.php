@@ -36,6 +36,7 @@ class OrderWorkflowTest extends TestCase
         $body=['idempotency_key'=>'dispatch','package_ids'=>[$ready['order']['packages'][0]['id']]];
         $this->postJson($dispatch,$body)->assertOk();$this->postJson($dispatch,$body)->assertOk();
         $this->assertDatabaseCount('daily_sales',1);$this->assertEquals(16,Product::find($p['id'])->quantity);
+        $this->getJson($path)->assertOk()->assertJsonPath('states.paid_amount','20.00')->assertJsonPath('states.remaining_amount','0.00');
         $sale=DailySale::first();
         $this->getJson('/api/daily-sales?source=order')->assertOk()->assertJsonPath('0.outbound_dispatch.order.intake.id',$i['id']);
         $this->deleteJson('/api/daily-sales/'.$sale->id)->assertUnprocessable();
@@ -90,7 +91,7 @@ class OrderWorkflowTest extends TestCase
         $this->postJson('/api/sales-orders/'.$i['order']['id'].'/dispatch',['idempotency_key'=>'depart','package_ids'=>[$ready['order']['packages'][0]['id']]])->assertOk();
         $this->assertEquals(0,$c->fresh()->current_credit);$this->assertEquals(0,$c->fresh()->current_debt);
         $this->assertEquals('0.00',DailySale::firstOrFail()->paid_amount);
-        $this->getJson($path)->assertOk()->assertJsonPath('states.payment','paid');
+        $this->getJson($path)->assertOk()->assertJsonPath('states.payment','paid')->assertJsonPath('states.paid_amount','20.00')->assertJsonPath('states.remaining_amount','0.00');
         $this->assertDatabaseCount('daily_sales',1);$this->assertEquals(16,Product::find($p['id'])->quantity);
     }
 
@@ -110,6 +111,7 @@ class OrderWorkflowTest extends TestCase
         $this->getJson('/api/invoices?payment_status=partially_paid')->assertOk()->assertJsonPath('data.0.id',$invoice['id']);
         $this->getJson('/api/invoices?payment_status=paid')->assertOk()->assertJsonCount(0,'data');
         $this->getJson('/api/order-hub?view=partially_paid')->assertOk()->assertJsonPath('data.0.id',$i['id']);
+        $this->getJson($path)->assertOk()->assertJsonPath('states.paid_amount','10.00')->assertJsonPath('states.remaining_amount','10.00');
         $this->getJson('/api/order-hub?view=paid')->assertOk()->assertJsonCount(0,'data');
         $this->postJson($path.'/payment',$payment)->assertOk();
         $this->assertDatabaseCount('financial_account_transactions',1);

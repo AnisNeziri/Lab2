@@ -58,7 +58,7 @@ class PurchaseOrderService
             $query->whereDate('due_at', $filters['due_at']);
         }
 
-        $businessDate = now('Europe/Tirane')->toDateString();
+        $businessDate = \App\Support\CompanyClock::today()->toDateString();
         match ($filters['payment_status'] ?? null) {
             'paid' => $query->whereColumn('total_paid', '>=', 'total_amount'),
             'partially_paid' => $query->where('total_paid', '>', 0)->whereColumn('total_paid', '<', 'total_amount')->where(fn ($q) => $q->whereNull('due_at')->orWhereDate('due_at', '>=', $businessDate)),
@@ -777,7 +777,7 @@ class PurchaseOrderService
 
     private function nextNumber(): string
     {
-        $prefix = 'PO-'.now('Europe/Tirane')->format('Y').'-';
+        $prefix = 'PO-'.\App\Support\CompanyClock::now()->format('Y').'-';
         $sequence = PurchaseOrder::query()->where('po_number', 'like', $prefix.'%')->count() + 1;
         do {
             $number = $prefix.str_pad((string) $sequence++, 4, '0', STR_PAD_LEFT);
@@ -812,7 +812,7 @@ class PurchaseOrderService
 
         return [
             'exchange_rate' => $rate,
-            'exchange_rate_date' => $data['exchange_rate_date'] ?? ($currency === $baseCurrency ? ($data['ordered_at'] ?? now()->toDateString()) : null),
+            'exchange_rate_date' => $data['exchange_rate_date'] ?? ($currency === $baseCurrency ? ($data['ordered_at'] ?? \App\Support\CompanyClock::today()->toDateString()) : null),
             'exchange_rate_source' => $data['exchange_rate_source'] ?? ($currency === $baseCurrency ? "{$baseCurrency} base currency" : null),
             // Legacy column name retained for backward compatibility; the
             // stored value is now the company's base-currency equivalent.
@@ -822,7 +822,7 @@ class PurchaseOrderService
 
     private function nextReceiptNumber(int $companyId): string
     {
-        $prefix = 'GR-'.now('Europe/Tirane')->format('Y').'-';
+        $prefix = 'GR-'.\App\Support\CompanyClock::now()->format('Y').'-';
         $sequence = GoodsReceipt::withoutGlobalScopes()->where('company_id', $companyId)->where('receipt_number', 'like', $prefix.'%')->count() + 1;
         do {
             $number = $prefix.str_pad((string) $sequence++, 5, '0', STR_PAD_LEFT);

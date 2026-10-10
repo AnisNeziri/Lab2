@@ -30,7 +30,7 @@ test('analytics workspace, periods, snapshots, dataset download and responsive t
   const download=page.waitForEvent('download')
   await page.getByRole('button',{name:'Export CSV',exact:true}).first().click()
   expect((await download).suggestedFilename()).toMatch(/\.csv$/)
-  await page.evaluate(async()=>{const {useSettingsStore}=await import('/src/store/settingsStore.js');useSettingsStore.getState().applyPreferences({theme:'dark',language:'sq'})})
+  await page.evaluate(async()=>{const {useSettingsStore}=window.__aimsCertification;useSettingsStore.getState().applyPreferences({theme:'dark',language:'sq'})})
   await expect(page.getByRole('heading',{name:'Analitika',exact:true})).toBeVisible()
   const header=page.locator('.analytics-page > header')
   expect(await header.evaluate(e=>getComputedStyle(e).backgroundColor)).not.toBe('rgb(255, 255, 255)')

@@ -33,7 +33,7 @@ test('V6 fabric shipment shows delay, exposed inventory, human reviews and respo
  await expect(page.locator('.logistics-detail')).toBeVisible()
  await page.getByRole('button',{name:'Re-evaluate evidence',exact:true}).click();await expect(page.locator('.logistics-detail')).toBeVisible()
  for(const width of [390,768,1366]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2)).toBeTruthy()}
- await page.evaluate(async()=>{const {useSettingsStore}=await import('/src/store/settingsStore.js');useSettingsStore.getState().applyPreferences({theme:'dark',language:'sq'})})
+ await page.evaluate(async()=>{const {useSettingsStore}=window.__aimsCertification;useSettingsStore.getState().applyPreferences({theme:'dark',language:'sq'})})
  await expect(page.getByRole('heading',{name:'Inteligjenca e dërgesave',exact:true})).toBeVisible()
  expect(await page.locator('.logistics-detail').evaluate(e=>getComputedStyle(e).backgroundColor)).not.toBe('rgb(255, 255, 255)')
  await page.getByRole('button',{name:'Mbyll detajet e inteligjencës',exact:true}).click();await expect(page.locator('.logistics-detail')).toHaveCount(0)

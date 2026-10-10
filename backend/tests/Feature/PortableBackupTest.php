@@ -120,7 +120,7 @@ class PortableBackupTest extends TestCase
 
         $completed = BackupRun::query()->where('operation', 'export')->latest('id')->firstOrFail();
         $this->assertSame('completed', $completed->status);
-        $this->assertSame('checksum_created', $completed->verification_result);
+        $this->assertSame('checksum_verified', $completed->verification_result);
         $this->assertGreaterThan(0, $completed->size_bytes);
         $this->assertSame(['products'], $completed->modules);
 

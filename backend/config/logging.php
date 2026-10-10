@@ -59,6 +59,7 @@ return [
         ],
 
         'single' => [
+            'tap' => [\App\Logging\SafeLogTap::class],
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
@@ -66,6 +67,7 @@ return [
         ],
 
         'daily' => [
+            'tap' => [\App\Logging\SafeLogTap::class],
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),

@@ -14,6 +14,7 @@ node_modules/
 vendor/
 .pnpm-store/
 frontend/dist/
+frontend/dist-certification/
 frontend/playwright-report/
 frontend/test-results/
 backend/public/build/

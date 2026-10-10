@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { CheckCircle2, PackageCheck, ScanLine, Ship, Sparkles, X } from 'lucide-react'
+import { useTranslation } from '../hooks/useTranslation'
 
 const ICONS = {
   product: PackageCheck,
@@ -15,6 +16,7 @@ export default function SuccessAnimation({
   duration = 2200,
   onClose,
 }) {
+  const { language } = useTranslation()
   const onCloseRef = useRef(onClose)
 
   useEffect(() => {
@@ -39,7 +41,7 @@ export default function SuccessAnimation({
         <div className="success-animation-particles" aria-hidden="true">
           {Array.from({ length: 8 }, (_, index) => <span key={index} style={{ '--particle-index': index }} />)}
         </div>
-        <button type="button" className="success-animation-close" onClick={onClose} aria-label="Dismiss success message">
+        <button type="button" className="success-animation-close" onClick={onClose} aria-label={language === 'sq' ? 'Mbyll konfirmimin' : 'Dismiss success message'}>
           <X size={15} />
         </button>
         <div className="success-animation-icon"><Icon size={34} strokeWidth={1.8} /></div>

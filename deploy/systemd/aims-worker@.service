@@ -1,0 +1,25 @@
+[Unit]
+Description=AIMS %i database queue worker
+After=network-online.target mariadb.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aims
+Group=aims
+WorkingDirectory=/srv/aims/current/backend
+ExecStartPre=/usr/bin/php artisan aims:production-check --before-start
+ExecStart=/usr/bin/php artisan aims:work %i
+Restart=always
+RestartSec=3
+TimeoutStopSec=270
+KillSignal=SIGTERM
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/srv/aims/shared /srv/aims/current/backend/storage /srv/aims/current/backend/bootstrap/cache
+
+[Install]
+WantedBy=multi-user.target

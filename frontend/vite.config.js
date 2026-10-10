@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: { include: ['pdfjs-dist/legacy/build/pdf.mjs'] },
+  preview: { proxy: { '/api': { target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:8000', changeOrigin: true } } },
   server: {
     port: 5173,
     proxy: {

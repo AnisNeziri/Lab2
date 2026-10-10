@@ -7,6 +7,7 @@ export default function globalSetup() {
   const e2eDir = path.dirname(fileURLToPath(import.meta.url))
   const backendDir = path.resolve(e2eDir, '../../backend')
   const databasePath = path.join(backendDir, 'database', 'e2e.sqlite')
+  if (process.env.DB_URL || (process.env.APP_ENV === 'production')) throw new Error('Browser certification requires its isolated E2E database; production overrides are rejected.')
 
   if (!existsSync(databasePath)) writeFileSync(databasePath, '')
 

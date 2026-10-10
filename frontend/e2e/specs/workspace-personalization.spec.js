@@ -7,17 +7,17 @@ const output=path.resolve('../output/pm2')
 const widget=(page,id)=>page.locator(`[data-widget="${id}"]`)
 const order=page=>page.locator('[data-widget]').evaluateAll(nodes=>nodes.map(n=>n.dataset.widget))
 const preferences=(page,theme,language)=>page.evaluate(async values=>{
-  const {useSettingsStore}=await import('/src/store/settingsStore.js')
+  const {useSettingsStore}=window.__aimsCertification
   useSettingsStore.getState().applyPreferences(values)
 },{theme,language})
 async function start(page,role='admin') {
   await login(page,role)
   await expect(page.getByRole('button',{name:'Customize Dashboard',exact:true})).toBeEnabled()
   await page.evaluate(async()=>{
-    const {apiRequest}=await import('/src/api/client.js')
-    const {useAuthStore}=await import('/src/store/authStore.js')
-    const {defaultDashboard}=await import('/src/config/dashboardWidgets.js')
-    const {defaultNavigation}=await import('/src/config/workspaceNavigation.js')
+    const {apiRequest}=window.__aimsCertification
+    const {useAuthStore}=window.__aimsCertification
+    const {defaultDashboard}=window.__aimsCertification
+    const {defaultNavigation}=window.__aimsCertification
     const auth=useAuthStore.getState(),saved=await apiRequest('/settings/workspace')
     await apiRequest('/settings/workspace',{method:'PUT',body:JSON.stringify({revision:saved.revision,dashboard:defaultDashboard(auth.permissions,auth.role),navigation:defaultNavigation(auth.role)})})
   })
@@ -128,7 +128,7 @@ test('a failed widget is isolated and retryable; permissions revoke saved widget
   await orders.getByRole('button',{name:'Try again',exact:true}).click()
   await expect(orders.locator('.widget-error')).toHaveCount(0)
   await page.evaluate(async()=>{
-    const {useAuthStore}=await import('/src/store/authStore.js')
+    const {useAuthStore}=window.__aimsCertification
     useAuthStore.setState({permissions:useAuthStore.getState().permissions.filter(p=>p!=='analytics.finance'&&p!=='fulfillment.view')})
   })
   await expect(widget(page,'inventory-value')).toHaveCount(0)

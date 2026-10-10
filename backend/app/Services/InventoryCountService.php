@@ -443,6 +443,7 @@ class InventoryCountService
     {
         return DB::transaction(function () use ($session, $reason): InventoryCountSession {
             $session = InventoryCountSession::query()->lockForUpdate()->findOrFail($session->id);
+            $this->authorizeCancellation($session);
             if (in_array($session->status, ['approved', 'cancelled'], true)) {
                 throw ValidationException::withMessages(['status' => ['An approved or cancelled count cannot be cancelled.']]);
             }
@@ -450,8 +451,35 @@ class InventoryCountService
                 'status' => 'cancelled', 'cancelled_at' => now(), 'cancelled_by' => Auth::id(),
                 'cancellation_reason' => $reason,
             ]);
+            $this->events->record('inventory.count_cancelled', $session, $session->count_number, ['reason' => $reason], "inventory-count:{$session->id}:cancelled");
 
             return $this->find($session->fresh());
+        });
+    }
+
+    private function authorizeCancellation(InventoryCountSession $session): void
+    {
+        $approver = app(PermissionService::class)->roleHasPermission(Auth::user()->role, 'inventory.counts.approve');
+        abort_unless($approver || ((int) $session->created_by === (int) Auth::id() && $session->status === 'in_progress' && ! $session->submitted_at), 403);
+    }
+
+    public function deleteDraft(InventoryCountSession $session): void
+    {
+        DB::transaction(function () use ($session): void {
+            $session = InventoryCountSession::query()->lockForUpdate()->findOrFail($session->id);
+            $this->authorizeCancellation($session);
+            $used = $session->items()->where(function ($query) {
+                $query->whereNotNull('counted_quantity')->orWhereNotNull('adjustment_movement_id')->orWhereHas('entries');
+            })->exists();
+            $movement = \App\Models\StockMovement::query()->where('source_type', 'inventory_count')->where('source_id', $session->id)->exists();
+            $reference = \App\Models\OperationalTask::query()->where('source_type', 'InventoryCountSession')->where('source_id', $session->id)->exists();
+            if ($session->status !== 'in_progress' || $session->submitted_at || $session->approved_at || $used || $movement || $reference) {
+                throw ValidationException::withMessages(['status' => ['Only an unused, unsubmitted stock-count draft may be deleted. Cancel the request instead; completed count history must be kept.']]);
+            }
+            // Snapshot-only items cascade. Audit evidence retains the reference,
+            // count number, actor and explicit draft-deletion reason.
+            $this->events->record('inventory.count_draft_deleted', $session, $session->count_number, ['reason' => 'Unused count draft removed', 'warehouse_id' => $session->warehouse_id], "inventory-count:{$session->id}:draft-deleted");
+            $session->delete();
         });
     }
 

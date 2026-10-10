@@ -26,14 +26,16 @@ class EnsureCompanyContext
         // may have been offline. The first tenant request catches alerts up;
         // the durable state and cache throttle make this safe and unobtrusive.
         $cacheKey = "inventory-expiry-sync:{$companyId}";
-        if (Cache::add($cacheKey, true, now()->addMinutes(10))) {
+        try { $runCatchup = Cache::add($cacheKey, true, now()->addMinutes(10)); }
+        catch (\Throwable) { $runCatchup = false; }
+        if ($runCatchup) {
             try {
                 $this->expiryAlerts->syncCompany((int) $companyId);
             } catch (\Throwable $exception) {
-                Cache::forget($cacheKey);
+                try { Cache::forget($cacheKey); } catch (\Throwable) { }
                 Log::warning('Inventory expiry startup catch-up failed.', [
                     'company_id' => (int) $companyId,
-                    'error' => $exception->getMessage(),
+                    'error_code' => 'expiry_catchup_failed',
                 ]);
             }
         }

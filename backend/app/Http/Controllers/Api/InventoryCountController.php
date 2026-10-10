@@ -65,4 +65,10 @@ class InventoryCountController extends Controller
     {
         return response()->json($this->counts->cancel($inventoryCount, $request->validated('reason')));
     }
+
+    public function destroy(InventoryCountSession $inventoryCount): JsonResponse
+    {
+        $this->counts->deleteDraft($inventoryCount);
+        return response()->json(['message' => 'Stock-count draft deleted.']);
+    }
 }

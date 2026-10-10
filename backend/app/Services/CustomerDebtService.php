@@ -119,7 +119,7 @@ class CustomerDebtService
             if($dispatch->customer_debt_transaction_id)return CustomerDebtTransaction::query()->findOrFail($dispatch->customer_debt_transaction_id);
             app(OutboundCreditService::class)->authorize($locked);
             $customer=Customer::query()->lockForUpdate()->findOrFail($locked->customer_id);
-            $data=$this->applyPaymentTerms($customer,['amount'=>$dispatch->total_amount,'transaction_date'=>now()->toDateString(),'daily_sale_id'=>$dispatch->daily_sale_id,'source'=>'manual','reference_number'=>$dispatch->reference,'note'=>'Fulfilled order '.$locked->order_number,'idempotency_key'=>'fulfillment-debt-'.$dispatch->id,'metadata'=>['sales_order_id'=>$locked->id,'outbound_dispatch_id'=>$dispatch->id]]);
+            $data=$this->applyPaymentTerms($customer,['amount'=>$dispatch->total_amount,'transaction_date'=>\App\Support\CompanyClock::today()->toDateString(),'daily_sale_id'=>$dispatch->daily_sale_id,'source'=>'manual','reference_number'=>$dispatch->reference,'note'=>'Fulfilled order '.$locked->order_number,'idempotency_key'=>'fulfillment-debt-'.$dispatch->id,'metadata'=>['sales_order_id'=>$locked->id,'outbound_dispatch_id'=>$dispatch->id]]);
             $transaction=$this->record($customer,$data,'debt_added',true);
             $this->accounting->postCustomerDebt($transaction);
             $locked->update(['committed_amount'=>Money::maximum('0',Money::subtract($locked->committed_amount,$dispatch->total_amount))]);
@@ -262,7 +262,7 @@ class CustomerDebtService
                     $same = (int) $existing->customer_id === (int) $locked->id
                         && $existing->type === $type
                         && Money::compare($existing->amount, $amount) === 0
-                        && $existing->transaction_date?->toDateString() === (string) ($data['transaction_date'] ?? now()->toDateString())
+                        && $existing->transaction_date?->toDateString() === (string) ($data['transaction_date'] ?? \App\Support\CompanyClock::today()->toDateString())
                         && ($existing->due_date?->toDateString() ?? '') === ($data['due_date'] ?? '')
                         && ($existing->payment_method ?? '') === ($data['payment_method'] ?? '')
                         && ($existing->reference_number ?? '') === ($data['reference_number'] ?? '')
@@ -318,7 +318,7 @@ class CustomerDebtService
                 'balance_after' => $after,
                 'credit_before' => $creditBefore,
                 'credit_after' => $creditAfter,
-                'transaction_date' => $data['transaction_date'] ?? now()->toDateString(),
+                'transaction_date' => $data['transaction_date'] ?? \App\Support\CompanyClock::today()->toDateString(),
                 'due_date' => $data['due_date'] ?? null,
                 'payment_method' => $data['payment_method'] ?? null,
                 'reference_number' => $data['reference_number'] ?? null,
@@ -376,8 +376,8 @@ class CustomerDebtService
         }
 
         $transactionDate = CarbonImmutable::parse(
-            $data['transaction_date'] ?? now('Europe/Tirane'),
-            'Europe/Tirane',
+            $data['transaction_date'] ?? \App\Support\CompanyClock::now(),
+            \App\Support\CompanyClock::timezone(),
         );
         $data['due_date'] = $transactionDate
             ->addDays((int) $customer->payment_terms_days)
@@ -469,7 +469,7 @@ class CustomerDebtService
         $legacyMatch = (int) $existing->customer_id === (int) $customer->id
             && $existing->type === $type
             && Money::compare($existing->amount, $data['amount']) === 0
-            && $existing->transaction_date?->toDateString() === (string) ($data['transaction_date'] ?? now()->toDateString())
+            && $existing->transaction_date?->toDateString() === (string) ($data['transaction_date'] ?? \App\Support\CompanyClock::today()->toDateString())
             && (! array_key_exists('due_date', $data)
                 || ($existing->due_date?->toDateString() ?? '') === ($data['due_date'] ?? ''))
             && ($existing->payment_method ?? '') === ($data['payment_method'] ?? '')
@@ -500,7 +500,7 @@ class CustomerDebtService
         $increase = ! in_array($transaction->type, self::INCREASE_TYPES, true);
         $reversal = $this->record($transaction->customer, [
             'amount' => $transaction->amount,
-            'transaction_date' => now('Europe/Tirane')->toDateString(),
+            'transaction_date' => \App\Support\CompanyClock::today()->toDateString(),
             'note' => $reason,
             'source' => 'reversal',
             'reversed_transaction_id' => $transaction->id,
@@ -514,7 +514,7 @@ class CustomerDebtService
                 $this->accounts->reverse($ledger, 'Customer debt transaction reversal: '.$reason);
             }
         }
-        $this->accounting->reverseSource('customer_credit', 'customer-debt:'.$transaction->id, now('Europe/Tirane')->toDateString(), $reason);
+        $this->accounting->reverseSource('customer_credit', 'customer-debt:'.$transaction->id, \App\Support\CompanyClock::today()->toDateString(), $reason);
 
         return $reversal;
     }

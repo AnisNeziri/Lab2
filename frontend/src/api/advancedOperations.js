@@ -15,6 +15,7 @@ export const requestInventoryRecount = (id, payload) => apiRequest(`/inventory-c
 export const submitInventoryCount = (id) => apiRequest(`/inventory-counts/${id}/submit`, { method: "POST" });
 export const approveInventoryCount = (id, reason) => apiRequest(`/inventory-counts/${id}/approve`, json("POST", { reason }));
 export const cancelInventoryCount = (id, reason) => apiRequest(`/inventory-counts/${id}/cancel`, json("POST", { reason }));
+export const deleteInventoryCountDraft = (id) => apiRequest(`/inventory-counts/${id}`, { method: "DELETE" });
 
 export const getReplenishment = (filters = {}) => apiRequest(buildApiUrl("/replenishment", filters));
 export const createReplenishmentDrafts = (payload) => apiRequest("/replenishment/draft-purchase-orders", json("POST", payload));

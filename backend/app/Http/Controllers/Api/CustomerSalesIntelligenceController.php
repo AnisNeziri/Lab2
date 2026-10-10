@@ -4,7 +4,7 @@ use App\Http\Controllers\Controller;
 use App\Services\CustomerSalesIntelligenceService as Service;
 use Illuminate\Http\Request;
 final class CustomerSalesIntelligenceController extends Controller {
- public function index(Service $s){return $s->latest();}
+ public function index(Request $r,Service $s){$r->validate(['summary_only'=>'sometimes|boolean']);$data=$s->latest();return $r->boolean('summary_only')?\App\Services\WorkspaceSummaryPresentation::customers($data):$data;}
  public function refresh(Service $s){return $s->refresh();}
  public function customer(int $customer,Service $s){return $s->customer($customer);}
  public function review(int $prediction,Request $r,Service $s){return $s->review($prediction,$r->all());}

@@ -78,6 +78,9 @@ function findPhpSource() {
 }
 
 const phpSource = findPhpSource()
+const release = JSON.parse(fs.readFileSync(path.join(root, 'RELEASE.json'), 'utf8'))
+const phpVersion = execFileSync(path.join(phpSource, 'php.exe'), ['-n', '-r', 'echo PHP_VERSION;'], {encoding:'utf8',windowsHide:true}).trim()
+if (phpVersion !== release.toolchain.php) throw new Error(`Packaging requires PHP ${release.toolchain.php}; found ${phpVersion}. Download the pinned official portable runtime.`)
 
 if (!fs.existsSync(frontendSource)) throw new Error('The frontend build output is missing.')
 if (!fs.existsSync(path.join(backendSource, 'vendor', 'autoload.php'))) throw new Error('Laravel vendor dependencies are missing.')
@@ -86,6 +89,7 @@ if (!fs.existsSync(path.join(phpSource, 'php.exe'))) throw new Error(`Portable P
 fs.rmSync(path.join(desktop, 'resources'), { recursive: true, force: true })
 fs.mkdirSync(path.join(desktop, 'resources'), { recursive: true })
 const packagedBackend = path.join(desktop, 'resources', 'backend')
+if (require('../package.json').version !== release.version) throw new Error('Desktop version must match RELEASE.json before packaging.')
 
 function includeBackendSource(source) {
   const normalizedSource = source.replace(/^\\\\\?\\/, '')
@@ -167,14 +171,23 @@ fs.cpSync(phpSource, packagedPhp, {
       return parts.length === 2 && requiredExtensions.has(parts[1].toLowerCase())
     }
     const requiredRuntimeFiles = new Set([
-      'php.exe', 'php-win.exe', 'php8ts.dll', 'php.ini',
+      'php.exe', 'php-win.exe', 'php8.dll', 'php8ts.dll', 'php.ini',
       'libcrypto-3-x64.dll', 'libssl-3-x64.dll', 'libsqlite3.dll',
       'libsodium.dll', 'libssh2.dll', 'nghttp2.dll', 'zlib1.dll',
     ])
-    return parts.length === 1 && !fs.lstatSync(normalizedSource).isDirectory() && requiredRuntimeFiles.has(parts[0].toLowerCase())
+    return parts.length === 1 && !fs.lstatSync(normalizedSource).isDirectory() && (requiredRuntimeFiles.has(parts[0].toLowerCase()) || parts[0].toLowerCase().endsWith('.dll'))
   },
 })
+// Write a portable configuration; never package build-machine paths/settings.
+fs.writeFileSync(path.join(packagedPhp,'php.ini'), [
+  '[PHP]', 'extension_dir="ext"', 'variables_order="EGPCS"', 'memory_limit=1024M',
+  'max_execution_time=300', 'post_max_size=110M', 'upload_max_filesize=100M',
+  'display_errors=Off', 'log_errors=On', 'expose_php=Off', 'date.timezone=UTC',
+  ...['curl','fileinfo','mbstring','openssl','pdo_mysql','pdo_sqlite','sodium','sqlite3','zip'].map(name=>`extension=${name}`),
+  '',
+].join('\n'))
 fs.copyFileSync(path.join(root, 'frontend', 'public', 'aims-logo.svg'), path.join(desktop, 'resources', 'frontend', 'aims-logo.svg'))
 fs.copyFileSync(path.join(root, 'frontend', 'public', 'aims-logo.png'), path.join(desktop, 'resources', 'frontend', 'aims-logo.png'))
 require('./create-icon.cjs')
+fs.copyFileSync(path.join(root, 'RELEASE.json'), path.join(packagedBackend, 'RELEASE.json'))
 require('./prepare-python.cjs')

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { changePassword } from '../api/password'
 import AimsLogo from '../components/AimsLogo'
+import { useAuthStore } from '../store/authStore'
 import '../styles/AuthPages.css'
 
 function ChangePassword({ onPasswordChanged, onLogout, requiresChange = true }) {
@@ -31,6 +32,7 @@ function ChangePassword({ onPasswordChanged, onLogout, requiresChange = true }) 
           }
 
       const data = await changePassword(payload)
+      if (data.access_token) useAuthStore.getState().setTokens(data.access_token, data.refresh_token)
       onPasswordChanged(data)
     } catch (err) {
       if (err.errors) {
