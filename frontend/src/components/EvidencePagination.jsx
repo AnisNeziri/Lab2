@@ -9,4 +9,3 @@ export default function EvidencePagination({ pagination = {}, page, onPage, lang
     <button type="button" disabled={page >= lastPage} onClick={() => onPage(page + 1)}>{sq ? 'Tjetra' : 'Next'}</button>
   </nav>
 }
-

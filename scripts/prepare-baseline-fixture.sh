@@ -7,7 +7,8 @@ target="$PWD/output/pr1-baseline-$baseline"
 test ! -e "$target" || { echo 'Baseline directory already exists; preserve it and choose a fresh checkout.'; exit 1; }
 mkdir -p "$target"
 git archive "$baseline" backend | tar -x -C "$target"
-ln -s "$PWD/backend/vendor" "$target/backend/vendor"
+# Each release needs its own Composer loader; a vendor symlink loads current app classes.
+composer install --working-dir="$target/backend" --no-interaction --prefer-dist --no-progress
 ln -s "$PWD/backend/ml/optimizer_vendor" "$target/backend/ml/optimizer_vendor"
 (
   cd "$target/backend"

@@ -108,4 +108,3 @@ main().catch(error=>{report.failure=error.message;process.exitCode=1}).finally(a
  const output=path.join(root,'output/pr2-concurrency-'+fixture.state.engine+'.json');fs.writeFileSync(output,JSON.stringify(report,null,2))
  console.log(JSON.stringify({status:report.status,failure:report.failure,errors:report.errors,checks:report.checks,integrity:report.integrity,db_before:report.db_before,db_after:report.db_after,summary:report.summary}))
 })
-

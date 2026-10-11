@@ -10,14 +10,17 @@ export function createDashboardResources(fetcher) {
     }
   }
   const record = key => {
-    if (!records.has(key)) records.set(key, {state:{data:null,error:'',loading:false},listeners:new Set(),promise:null,at:0})
+    if (!records.has(key)) records.set(key, {state:{data:null,error:'',loading:false},listeners:new Set(),activeListeners:new Set(),promise:null,at:0})
     return records.get(key)
   }
   const publish = r => { r.listeners.forEach(fn => fn({...r.state}));healthListeners.forEach(fn=>fn(![...records.values()].some(row=>row.failures>=2))) }
   return {
     state: key => ({...record(key).state}),
     subscribeHealth(fn){healthListeners.add(fn);return()=>healthListeners.delete(fn)},
-    subscribe(key, fn) { const r=record(key); r.listeners.add(fn); return () => r.listeners.delete(fn) },
+    subscribe(key, fn, active=true) {
+      const r=record(key);r.listeners.add(fn);if(active)r.activeListeners.add(fn)
+      return () => {r.listeners.delete(fn);r.activeListeners.delete(fn)}
+    },
     load(key, force=false) {
       if (disposed) return Promise.resolve(null)
       const r=record(key)
@@ -40,12 +43,12 @@ export function createDashboardResources(fetcher) {
       }))
       pump();return r.promise
     },
-    refresh() { records.forEach((r,key) => { if(r.listeners.size) this.load(key,true) }) },
+    refresh() { records.forEach((r,key) => { if(r.activeListeners.size) this.load(key,true) }) },
     dispose() {
       disposed=true
       queue.splice(0).forEach(task=>task.cancel())
       controllers.forEach(controller=>controller.abort())
-      records.forEach(r=>r.listeners.clear())
+      records.forEach(r=>{r.listeners.clear();r.activeListeners.clear()})
       healthListeners.clear()
     },
   }

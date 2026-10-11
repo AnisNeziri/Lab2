@@ -58,7 +58,7 @@ async function main(){
  for(const count of [5,10,18,25]){
   const workspace=await api('GET','/settings/workspace'),widgets=widgetCatalog.slice(0,count).map((w,position)=>({id:w.id,position,size:w.defaultSize,settings:w.settings}))
   await api('PUT','/settings/workspace',{revision:workspace.revision,dashboard:{version:1,widgets}})
-  let inflight=0,peak=0;const reads=[],pending=new Set()
+  let inflight=0,peak=0;const reads=[],pending=new Set();report.active_reads=reads
   const requested=r=>{if(r.url().includes('/api/')){pending.add(r);inflight++;peak=Math.max(peak,inflight)}}
   const finished=r=>{if(pending.delete(r))inflight--}
   const responded=async r=>{if(r.url().includes('/api/')){let bytes=0;try{bytes=Buffer.byteLength(await r.body())}catch{}reads.push({path:new URL(r.url()).pathname+new URL(r.url()).search,bytes,status:r.status()})}}
@@ -68,8 +68,8 @@ async function main(){
   await page.waitForFunction(n=>document.querySelectorAll('[data-widget]').length===n,count)
   await page.locator('.workspace-widget-grid').waitFor();const gridMs=performance.now()-t
   for(const widget of widgets){
-   const item=page.locator('[data-widget="'+widget.id+'"]');await item.evaluate(el=>el.scrollIntoView({block:'center'}))
-   await item.locator('.widget-skeleton').waitFor({state:'hidden',timeout:60000})
+   const item=page.locator('[data-widget="'+widget.id+'"]');await item.evaluate(el=>el.scrollIntoView({block:'center',behavior:'instant'}))
+   report.active_widget=widget.id;await page.waitForTimeout(200);await item.evaluate(el=>el.scrollIntoView({block:'center',behavior:'instant'}));await item.locator('.widget-skeleton').waitFor({state:'hidden',timeout:60000})
   }
   for(let n=0;n<180&&pending.size;n++)await page.waitForTimeout(200)
   await page.waitForTimeout(300);page.off('request',requested);page.off('requestfinished',finished);page.off('requestfailed',finished);page.off('response',responded)
@@ -87,8 +87,8 @@ async function main(){
    if(route==='/dashboard'){await page.locator('.workspace-widget-grid').waitFor();await page.waitForTimeout(2000)}
   }await heap('Navigation cycle '+cycle)
  }
+ delete report.active_reads;delete report.active_widget;
  if(report.runtime_errors.length||report.http_errors.length||Object.values(report.dashboard).some(r=>r.widget_errors||r.remaining_skeletons))throw Error('Browser errors occurred')
  report.status='PASS'
 }
 main().catch(async e=>{report.failure=e.message;process.exitCode=1;if(page){report.failed_url=page.url();report.failed_text=(await page.locator('body').innerText().catch(()=>'' )).slice(-4000);await page.screenshot({path:path.join(root,'output/pr2-browser-failure.png')}).catch(()=>{})}}).finally(async()=>{if(browser)await browser.close();for(const c of children){if(process.platform==='win32')spawnSync('taskkill.exe',['/pid',String(c.pid),'/t','/f'],{windowsHide:true,stdio:'ignore'});else c.kill('SIGTERM')}fs.writeFileSync(path.join(root,'output/pr2-browser-'+fixture.state.engine+'.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({status:report.status,failure:report.failure,errors:report.runtime_errors,http_errors:report.http_errors,routes:report.routes,tabs:report.tabs,dashboard:report.dashboard,memory:report.memory}))})
-
