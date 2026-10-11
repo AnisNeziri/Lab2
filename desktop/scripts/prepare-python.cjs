@@ -9,7 +9,9 @@ if (!source) {
 if (!source || !fs.existsSync(path.join(source,'python.exe'))) throw new Error('Set AIMS_PYTHON_SOURCE to the pinned Python 3.12.2 directory before packaging.')
 const destination = path.join(desktop,'resources','python')
 fs.mkdirSync(destination,{recursive:true})
-fs.cpSync(source,destination,{recursive:true,filter:file=>{
+// Runner Python aliases can be symlinks to the build machine's interpreter.
+// Bundle their bytes so the installer has no external links to that machine.
+fs.cpSync(source,destination,{recursive:true,dereference:true,filter:file=>{
   const clean=value=>path.resolve(value.replace(/^\\\\\?\\/,''))
   const relative=path.relative(clean(source),clean(file)).replace(/\\/g,'/')
   if (!relative) return true
