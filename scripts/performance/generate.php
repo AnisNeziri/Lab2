@@ -1,5 +1,12 @@
 <?php
 
+use App\Models\User;
+use App\Services\AccountingService;
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+
 /**
  * PR2 fast scale fixture. All inserted records are PERFORMANCE / TEST DATA.
  * Bulk inserts intentionally skip the chronological ML lifecycle; never use for accuracy claims.
@@ -96,12 +103,6 @@ require $root.'/backend/vendor/autoload.php';
 $app = require $root.'/backend/bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
 performanceErrors();
-use App\Models\User;
-use App\Services\AccountingService;
-use Illuminate\Contracts\Console\Kernel;
-use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 
 $start = hrtime(true);
 Artisan::call('migrate', ['--force' => true]);

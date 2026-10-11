@@ -1,6 +1,5 @@
 <?php
 
-require __DIR__.'/bootstrap.php';
 use App\Models\Customer;
 use App\Models\User;
 use App\Services\JwtService;
@@ -9,6 +8,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+
+require __DIR__.'/bootstrap.php';
 
 $token = app(JwtService::class)->createAccessToken($owner);
 function fixtureRequest(string $method, string $path, array $data = []): array

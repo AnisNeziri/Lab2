@@ -34,7 +34,8 @@ function performanceDirectory(string $path): string
 function performanceErrors(): void
 {
     set_exception_handler(function (Throwable $error): void {
-        fwrite(STDERR, 'Performance check failed: '.get_class($error).' (code '.(int) $error->getCode().'). Review the bounded application diagnostics.'.PHP_EOL);
+        $detail=$error instanceof Illuminate\Contracts\Container\BindingResolutionException ? ' '.substr($error->getMessage(),0,300) : '';
+        fwrite(STDERR, 'Performance check failed: '.get_class($error).$detail.' (code '.(int) $error->getCode().'). Review the bounded application diagnostics.'.PHP_EOL);
         exit(1);
     });
 }

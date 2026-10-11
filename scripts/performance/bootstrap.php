@@ -5,6 +5,7 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
 
+
 /**
  * Only a marked disposable fixture under this checkout's output, or an internally
  * named local MariaDB fixture, may be bootstrapped. Never read the app's .env.

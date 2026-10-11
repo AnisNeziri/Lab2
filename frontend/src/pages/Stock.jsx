@@ -116,7 +116,7 @@ function Stock() {
     movementPageRef.current = value.current_page || 1
   }
   const [form, setForm] = useState(emptyForm)
-  const [filters, setFilters] = useState({ product_id: '', type: '' })
+  const [filters, setFilters] = useState({ product_id: '', type: '', from: '', to: '' })
   const [skuLookup, setSkuLookup] = useState('')
   const [lookupMessage, setLookupMessage] = useState('')
   const [loading, setLoading] = useState(true)
@@ -238,7 +238,7 @@ function Stock() {
 
   function clearFilters() {
     movementPageRef.current = 1
-    const cleared = { product_id: '', type: '' }
+    const cleared = { product_id: '', type: '', from: '', to: '' }
     setFilters(cleared)
     setLoading(true)
     loadMovements(cleared)
@@ -326,9 +326,11 @@ function Stock() {
       if (filters.type) {
         exportFilters.type = filters.type
       }
+      if (filters.from) exportFilters.from = filters.from
+      if (filters.to) exportFilters.to = filters.to
       await exportStockMovements(exportFilters)
-    } catch {
-      setError('Could not export stock movements.')
+    } catch (error) {
+      if (error.name !== 'AbortError') setError(error.message || 'Could not export stock movements.')
     } finally {
       setExporting(false)
     }
@@ -562,6 +564,8 @@ function Stock() {
         </div>
 
         <form className="filter-form" onSubmit={applyFilters}>
+          <label>{tx("From date")}<input type="date" name="from" value={filters.from} onChange={handleFilterChange} /></label>
+          <label>{tx("To date")}<input type="date" name="to" value={filters.to} min={filters.from || undefined} onChange={handleFilterChange} /></label>
           <label> {tx("Product")} <select name="product_id" value={filters.product_id} onChange={handleFilterChange}>
               <option value="">{tx("All products")}</option>
               {products.map((product) => (

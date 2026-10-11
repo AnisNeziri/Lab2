@@ -6,6 +6,7 @@ use App\Services\FinancialForecastMath;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
+
 /** Expanded frozen read shapes, deliberately separate from actual ML training/evaluation. */
 function addPerformanceEvidence(int $company): array
 {

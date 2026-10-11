@@ -1,9 +1,10 @@
 <?php
 
-require __DIR__.'/bootstrap.php';
 use App\Models\Product;
 use App\Services\AssistantEntityResolver;
 use Illuminate\Support\Facades\DB;
+
+require __DIR__.'/bootstrap.php';
 
 $company = $owner->company_id;
 $report = ['method' => 'Bounded resolver candidates; performance-only SQLite fixture; 1 cold plus 3 warm samples at each scale; no accuracy claim.', 'status' => 'PASS', 'scales' => []];

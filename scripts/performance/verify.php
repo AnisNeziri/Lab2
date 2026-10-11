@@ -1,11 +1,12 @@
 <?php
 
-require __DIR__.'/bootstrap.php';
 use App\Models\Customer;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\SalesOrder;
 use Illuminate\Support\Facades\DB;
+
+require __DIR__.'/bootstrap.php';
 
 $statePath = realpath($argv[2] ?? '');
 if (! $statePath || ! str_starts_with($statePath, $owned.DIRECTORY_SEPARATOR) || is_link($argv[2])) {

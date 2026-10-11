@@ -1,5 +1,11 @@
 <?php
 
+use App\Services\JwtService;
+use Illuminate\Contracts\Http\Kernel;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+
 require __DIR__.'/bootstrap.php';
 $reportPath = $argv[2] ?? '';
 $reportDir = realpath(dirname($reportPath));
@@ -8,11 +14,6 @@ if (! $reportDir || ! str_starts_with($reportDir.DIRECTORY_SEPARATOR, $owned.DIR
 }
 $token = app(JwtService::class)->createAccessToken($owner);
 $company = $owner->company_id;
-use App\Services\JwtService;
-use Illuminate\Contracts\Http\Kernel;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 
 $id = fn ($t) => DB::table($t)->where('company_id', $company)->value('id');
 $routes = [

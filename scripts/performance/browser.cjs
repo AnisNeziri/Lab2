@@ -29,7 +29,7 @@ async function main(){
  await Promise.all([ready('http://127.0.0.1:8036/up'),ready('http://127.0.0.1:4196/login')])
  browser=await chromium.launch({headless:true});page=await browser.newPage({viewport:{width:1440,height:1000}});page.setDefaultTimeout(60000);cdp=await page.context().newCDPSession(page);await cdp.send('Performance.enable')
  page.on('pageerror',e=>report.runtime_errors.push(e.message))
- page.on('response',r=>{if(r.url().includes('/api/')&&r.status()>=400)report.http_errors.push({path:new URL(r.url()).pathname,status:r.status()})})
+ page.on('response',r=>{if(r.url().includes('/api/')&&r.status()>=400&&!(report.injecting_fault&&new URL(r.url()).pathname==='/api/dashboard'))report.http_errors.push({path:new URL(r.url()).pathname,status:r.status()})})
  const start=performance.now();await page.goto('http://127.0.0.1:4196/login');await page.getByLabel('Email address').waitFor()
  report.login_load_ms=Math.round(performance.now()-start)
  report.login_assets=await page.evaluate(()=>performance.getEntriesByType('resource').map(r=>({url:new URL(r.name).pathname,bytes:r.transferSize})))
@@ -75,6 +75,26 @@ async function main(){
   await page.waitForTimeout(300);page.off('request',requested);page.off('requestfinished',finished);page.off('requestfailed',finished);page.off('response',responded)
   report.dashboard[count]={widgets:await page.locator('[data-widget]').count(),grid_ready_ms:Math.round(gridMs),all_requested_widgets_ms:Math.round(performance.now()-t),api_reads:reads.length,peak_api_inflight:peak,payload_bytes:reads.reduce((n,r)=>n+r.bytes,0),reads,widget_errors:await page.locator('.widget-error').count(),remaining_skeletons:await page.locator('.widget-skeleton').count()}
  }
+ const sampleWidget=page.locator('[data-widget="product-count"]')
+ await sampleWidget.evaluate(el=>el.scrollIntoView({block:'center',behavior:'instant'}));await page.waitForTimeout(700)
+ const priorMetric=await sampleWidget.locator('.widget-metric').innerText()
+ report.injecting_fault=true
+ await page.route('**/api/dashboard',route=>route.fulfill({status:500,contentType:'application/json',body:JSON.stringify({message:'Intentional PR2 retry probe'})}))
+ await sampleWidget.locator('.widget-menu summary').click();await sampleWidget.getByRole('button',{name:'Refresh',exact:true}).click()
+ await sampleWidget.locator('.widget-error').waitFor()
+ const retained=await sampleWidget.locator('.widget-metric').innerText()===priorMetric
+ await page.unroute('**/api/dashboard');report.injecting_fault=false
+ const retried=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/dashboard');retried.catch(()=>{})
+ await sampleWidget.getByRole('button',{name:'Try again',exact:true}).click();await (await retried).finished();await sampleWidget.locator('.widget-error').waitFor({state:'hidden'})
+ report.widget_retry={status:retained?'PASS':'FAIL',retained_known_data:retained,app_url_preserved:page.url().endsWith('/dashboard')}
+ let hiddenReads=0
+ const hiddenRequest=r=>{if(new URL(r.url()).pathname==='/api/dashboard')hiddenReads++}
+ page.on('request',hiddenRequest)
+ await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));window.dispatchEvent(new Event('dashboard-refresh'));window.dispatchEvent(new Event('stock-refresh'))})
+ await page.waitForTimeout(1000);page.off('request',hiddenRequest)
+ const resumed=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/dashboard');resumed.catch(()=>{})
+ await page.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event('visibilitychange'))});await (await resumed).finished()
+ report.visibility={method:'Simulated document.hidden and visibility events in real Chromium, without changing timers.',hidden_widget_reads:hiddenReads,resume:'PASS'}
  await page.getByRole('button',{name:'Search AIMS Ctrl K',exact:true}).click();const search=page.getByRole('combobox',{name:'Search AIMS'});const searched=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/search');searched.catch(()=>{});await search.fill('Performance Product 19');await searched;await page.keyboard.press('Escape')
  await page.getByRole('button',{name:'Ask AIMS',exact:true}).click();const asked=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/intelligence-assistant/ask');asked.catch(()=>{});await page.locator('.aims-assistant').getByRole('textbox',{name:'Question for AIMS',exact:true}).fill('Who owes us the most?');await page.locator('.aims-assistant').getByRole('button',{name:'Send question',exact:true}).click();const answer=await asked;await answer.finished();report.ask_status=answer.status()
  await heap('Warm all routes and widgets')
@@ -82,13 +102,13 @@ async function main(){
   for(const route of ['/products?product='+fixture.product_detail_id,'/shipments/my-shipments?shipment='+fixture.shipment_id,'/order-hub','/financial-intelligence','/customer-sales-intelligence','/dashboard']){
    await page.evaluate(route=>{history.pushState({},'',route);window.dispatchEvent(new PopStateEvent('popstate'))},route)
    await page.waitForTimeout(1000)
-   await page.locator('main').first().waitFor()
+   await page.locator('#root').waitFor()
    if(route.startsWith('/products')){await page.getByRole('dialog').waitFor();await page.getByRole('dialog').getByRole('button',{name:/close/i}).first().click().catch(()=>{})}
    if(route==='/dashboard'){await page.locator('.workspace-widget-grid').waitFor();await page.waitForTimeout(2000)}
   }await heap('Navigation cycle '+cycle)
  }
  delete report.active_reads;delete report.active_widget;
- if(report.runtime_errors.length||report.http_errors.length||Object.values(report.dashboard).some(r=>r.widget_errors||r.remaining_skeletons))throw Error('Browser errors occurred')
+ if(report.widget_retry.status!=='PASS'||report.visibility.hidden_widget_reads||report.runtime_errors.length||report.http_errors.length||Object.values(report.dashboard).some(r=>r.widget_errors||r.remaining_skeletons))throw Error('Browser errors occurred')
  report.status='PASS'
 }
 main().catch(async e=>{report.failure=e.message;process.exitCode=1;if(page){report.failed_url=page.url();report.failed_text=(await page.locator('body').innerText().catch(()=>'' )).slice(-4000);await page.screenshot({path:path.join(root,'output/pr2-browser-failure.png')}).catch(()=>{})}}).finally(async()=>{if(browser)await browser.close();for(const c of children){if(process.platform==='win32')spawnSync('taskkill.exe',['/pid',String(c.pid),'/t','/f'],{windowsHide:true,stdio:'ignore'});else c.kill('SIGTERM')}fs.writeFileSync(path.join(root,'output/pr2-browser-'+fixture.state.engine+'.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({status:report.status,failure:report.failure,errors:report.runtime_errors,http_errors:report.http_errors,routes:report.routes,tabs:report.tabs,dashboard:report.dashboard,memory:report.memory}))})

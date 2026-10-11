@@ -1,6 +1,5 @@
 <?php
 
-require __DIR__.'/bootstrap.php';
 use App\Models\AnalyticsSnapshot;
 use App\Models\Product;
 use App\Models\ProductSupplier;
@@ -11,6 +10,8 @@ use App\Services\StrategicSimulationService;
 use App\Services\SupplyOptimizerService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+
+require __DIR__.'/bootstrap.php';
 
 $mode = $argv[2] ?? 'status';
 if ($mode === 'setup') {

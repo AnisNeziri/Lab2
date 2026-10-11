@@ -42,6 +42,43 @@ async function race(label,method,route,body,accepted=[200]){
  if(failed.length)throw Error(label+' had '+failed.length+' failed requests')
  return results.map(r=>r.value)
 }
+async function warehouseRaces(s){
+ const product=()=>request('Warehouse balance',actor,'GET','/products/'+s.product_id).then(r=>r.product)
+ async function count(){
+  const c=await request('Create count',actor,'POST','/inventory-counts',{warehouse_id:s.warehouse_id,location_id:s.location_id,stock_states:['available'],product_ids:[s.product_id]},0,[201])
+  const item=c.items.find(i=>i.product_id===s.product_id)
+  await request('Record count',actor,'POST','/inventory-counts/'+c.id+'/record',{items:[{count_item_id:item.id,counted_quantity:Number(item.expected_quantity)-2}]})
+  await request('Submit count',actor,'POST','/inventory-counts/'+c.id+'/submit',{})
+  return c
+ }
+ let before=Number((await product()).quantity),c=await count()
+ await Promise.all([
+  request('Count approval during movement',fixture.writers[1],'POST','/inventory-counts/'+c.id+'/approve',{reason:'PR2 concurrent count verification'},1,[200,422]),
+  request('Movement during count approval',actor,'POST','/stock-movements',{product_id:s.product_id,warehouse_id:s.warehouse_id,location_id:s.location_id,type:'out',stock_state:'available',quantity:1,reason:'PR2 count race',idempotency_key:uuid()},2,[201])
+ ])
+ let approved=samples.findLast(r=>r.label==='Count approval during movement').status===200
+ report.checks.count_movement_exact=Number((await product()).quantity)===before-1-(approved?2:0)
+ before=Number((await product()).quantity);c=await count()
+ await Promise.all([
+  request('Count approval during receipt',fixture.writers[1],'POST','/inventory-counts/'+c.id+'/approve',{reason:'PR2 concurrent receipt verification'},1,[200,422]),
+  request('Receipt during count approval',actor,'POST','/purchase-orders/'+s.po_id+'/receive',{warehouse_id:s.warehouse_id,location_id:s.location_id,idempotency_key:uuid(),items:[{id:s.po_item_id,quantity:1}]},2,[200])
+ ])
+ approved=samples.findLast(r=>r.label==='Count approval during receipt').status===200
+ report.checks.count_receipt_exact=Number((await product()).quantity)===before+1-(approved?2:0)
+ const destination=await request('Transfer destination',actor,'POST','/warehouses',{name:'PR2 destination '+uuid(),code:'D-'+crypto.randomBytes(4).toString('hex')},0,[201])
+ let parent=null
+ for(const type of ['zone','rack','shelf','bin']){const loc=await request('Transfer bin',actor,'POST','/warehouse-locations',{warehouse_id:destination.id,parent_id:parent,type,code:type[0].toUpperCase(),name:'PR2 '+type,is_active:true},0,[201]);parent=loc.id}
+ const transfer=await request('Transfer draft',actor,'POST','/stock-transfers',{source_warehouse_id:s.warehouse_id,destination_warehouse_id:destination.id,source_location_id:s.location_id,destination_location_id:parent,items:[{product_id:s.product_id,quantity:5}]},0,[201])
+ before=Number((await product()).quantity)
+ await Promise.all([
+  request('Transfer during sale',actor,'POST','/stock-transfers/'+transfer.id+'/dispatch',{idempotency_key:uuid()},1),
+  request('Sale during transfer',fixture.writers[1],'POST','/daily-sales',{sale_date:s.date,customer_name:'PR2 concurrent walk-in',idempotency_key:uuid(),items:[{product_id:s.product_id,product_name:'PR2 integrity product',unit:'pcs',quantity:1,unit_price:5,warehouse_id:s.warehouse_id,location_id:s.location_id}]},2,[201])
+ ])
+ await request('Receive transfer',actor,'POST','/stock-transfers/'+transfer.id+'/receive',{idempotency_key:uuid(),location_id:parent,items:[{id:transfer.items[0].id,accepted_quantity:5,damaged_quantity:0}]})
+ const final=await product();report.checks.transfer_sale_company_quantity_exact=Number(final.quantity)===before-1
+ report.warehouse={count_movement_approval_status:samples.findLast(r=>r.label==='Count approval during movement').status,count_receipt_approval_status:samples.findLast(r=>r.label==='Count approval during receipt').status,transfer_id:transfer.id,final_company_quantity:Number(final.quantity),qualification:'The 72-unit base integrity check runs before these additional count/receipt/transfer/sale races. A stale count must be rejected or post before the concurrent movement.'}
+}
+
 async function main(){
  for(let i=0;i<workers;i++){
   const child=spawn(php,['-S','127.0.0.1:'+(8100+i),'-t',path.join(root,'backend/public'),path.join(root,'backend/vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php')],{cwd:path.join(root,'backend/public'),env,windowsHide:true,stdio:'ignore'})
@@ -97,6 +134,7 @@ async function main(){
  const verified=spawnSync(php,[path.join(__dirname,'verify.php'),target,fixture.state_path],{cwd:root,env:process.env,windowsHide:true,encoding:'utf8',maxBuffer:1024*1024})
  if(verified.status!==0)throw Error('Integrity verification failed: '+verified.stdout.slice(-3000)+verified.stderr.slice(-1000))
  report.integrity=JSON.parse(verified.stdout)
+ await warehouseRaces(s)
  await observe();report.db_after=databaseStatus()
  report.status=report.errors.length||Object.values(report.checks).some(v=>v!==true)||report.integrity.status!=='PASS'?'FAIL':'PASS'
 }

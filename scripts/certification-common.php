@@ -20,13 +20,14 @@ function certificationRequest(string $method, string $path, array $data = [], ?s
     return ['status'=>$response->getStatusCode(),'body'=>$body];
 }
 
-function certificationCriticalRecords(): array
+function certificationCriticalRecords(array $baseline = []): array
 {
     $result=[];
     foreach(['companies','products','warehouse_stock','stock_movements','customers','suppliers','purchase_orders','purchase_order_items','sales_orders','sales_order_items','order_intakes','journal_entries','journal_lines','settings','document_settings','enterprise_decisions','strategic_simulations','shipment_intelligence','financial_intelligence_snapshots','financial_intelligence_policies','decision_learning_records'] as $table) {
         if(!Illuminate\Support\Facades\Schema::hasTable($table))continue;
-        $rows=Illuminate\Support\Facades\DB::table($table)->orderBy('id')->get()->toJson();
-        $result[$table]=['count'=>Illuminate\Support\Facades\DB::table($table)->count(),'sha256'=>hash('sha256',$rows)];
+        $columns=$baseline[$table]['columns']??Illuminate\Support\Facades\Schema::getColumnListing($table);
+        $rows=Illuminate\Support\Facades\DB::table($table)->orderBy('id')->get($columns)->toJson();
+        $result[$table]=['columns'=>$columns,'count'=>Illuminate\Support\Facades\DB::table($table)->count(),'sha256'=>hash('sha256',$rows)];
     }
     $result['user_preferences']=hash('sha256',Illuminate\Support\Facades\DB::table('users')->orderBy('id')->get(['id','company_id','email','password','preferences'])->toJson());
     $result['document_associations']=hash('sha256',Illuminate\Support\Facades\DB::table('documents')->orderBy('id')->get(['id','company_id','title','current_version'])->toJson());

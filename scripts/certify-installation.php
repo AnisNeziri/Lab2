@@ -54,8 +54,11 @@ try {
     config(['database.connections.sqlite.database'=>$run.'/B/aims.sqlite','synthetic.document_root'=>$run.'/B/documents','production.backup_root'=>$run.'/B/backups']);
     Illuminate\Support\Facades\Auth::forgetUser();
     $report['restore'] = $service->restore($archive, $passphrase);
-    $report['critical_records_preserved']=certificationCriticalRecords()===$criticalRecords;
+    $report['critical_records_preserved']=certificationCriticalRecords($criticalRecords)===$criticalRecords;
     if(!$report['critical_records_preserved'])throw new RuntimeException('Settings/preferences/intelligence or business records changed during restore.');
+    $report['added_schema_defaults_preserved'] = ! Illuminate\Support\Facades\DB::table('purchase_orders')->where('revision','!=',1)->exists()
+        && ! Illuminate\Support\Facades\DB::table('stock_movements')->whereRaw('effective_occurred_at != COALESCE(occurred_at, created_at)')->exists();
+    if (! $report['added_schema_defaults_preserved']) throw new RuntimeException('Upgrade revision/default or generated stock date is invalid.');
     $owner = App\Models\User::withoutGlobalScopes()->where('email','owner@aims-demo.test')->firstOrFail();
     $report['restored_login_password_valid'] = Illuminate\Support\Facades\Hash::check(config('synthetic.password'), $owner->password);
     $login=certificationRequest('POST','/api/login',['email'=>$owner->email,'password'=>config('synthetic.password')]);
