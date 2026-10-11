@@ -346,6 +346,11 @@
     "published": false,
     "workflow_executed": false,
     "workflow_upload_requires_explicit_authorization": true,
+    "upload_authorization": {
+      "approved": true,
+      "date": "2026-10-11",
+      "scope": "Review-only web source/compiled frontend archive and unsigned Windows installer in AnisNeziri/Lab2"
+    },
     "windows": {
       "status": "PASS",
       "path": "desktop/dist/AIMS-Setup-1.1.1-rc.1.exe",
@@ -388,7 +393,7 @@
     "Complete staged Linux upgrade script and HTTP upload-size boundary",
     "Off-server backup retrieval with independently escrowed backup passphrase and original APP_KEY",
     "Fresh Windows VM installer/offline/licence/update qualification and signed customer installer",
-    "Explicit authorization and successful review-artifact workflow execution"
+    "Successful explicitly authorized review-artifact workflow execution"
   ],
   "customer_deployment_performed": false,
   "pr2_started": false,

@@ -101,7 +101,7 @@ Final nine-workspace measurement: **PASS**. The harness uses the normal minified
 
 ## 16. Known release limitations
 
-Required operational evidence remains: actual Linux reboot; public-domain certificate renewal; staged Linux release switch and HTTP upload boundary; off-server archive retrieval with independent secret escrow; fresh Windows installer/licence/update/signing qualification. The review-artifact workflow upload is awaiting explicit authorization after automatic approval review rejected potential private-source egress. Other limits: same-engine restore, one operating timezone per installation, archive size ceiling, partial module-specific customer exports, insufficient predictive outcome history, unpromoted supplier ML, provider-dependent live carrier/AIS behavior and uncertified tax/fiscal integrations.
+Required operational evidence remains: actual Linux reboot; public-domain certificate renewal; staged Linux release switch and HTTP upload boundary; off-server archive retrieval with independent secret escrow; fresh Windows installer/licence/update/signing qualification. The repository owner explicitly authorized the review-artifact upload on 11 October 2026 after the earlier automatic approval rejection; execution is pending. Other limits: same-engine restore, one operating timezone per installation, archive size ceiling, partial module-specific customer exports, insufficient predictive outcome history, unpromoted supplier ML, provider-dependent live carrier/AIS behavior and uncertified tax/fiscal integrations.
 
 ## 17. Exact tests and certification
 
@@ -131,7 +131,7 @@ Local review artifacts, built from the tested runtime commit:
 - `desktop/dist/AIMS-Setup-1.1.1-rc.1.exe`: 193,582,395 bytes; SHA-256 `876fcad2f49ffe1ae98f620ff442acf2224a124cb9c9135563e52507a6b9636e`; Authenticode status **NotSigned**.
 - `output/aims-web-source.tar.gz`: 5,680,019 bytes; SHA-256 `5b871456e527746382f93d65146660c1f471c756d016bd4b0d7303a1c8d91a95`; committed source plus inspected normal frontend assets. Runtime databases, working storage, environment secrets and installed dependency trees are excluded.
 
-The artifacts have not been uploaded or published. The new artifact workflow packages committed Git source, gates both artifact jobs on the reusable full certification workflow and verifies SHA-256. Executing its upload remains pending authorization; workflow execution is not inferred from the successful local builds.
+The artifacts have not been uploaded or published. The artifact workflow packages committed Git source and gates both artifact jobs directly on all eight certification jobs. Upload was explicitly authorized by the repository owner on 11 October 2026; successful workflow execution remains pending and is not inferred from the successful local builds. The existing CI entry point exposes `build_review_artifacts=false` by default, so ordinary PR checks do not upload these review builds; the standalone RC entry point delegates to the same implementation.
 
 Raw local logs and synthetic snapshots remain ignored under `output/`; they are not committed as customer data. Remote job logs/artifacts are attached to the exact workflow run above. The compact committed evidence summary accompanies this report. The application remains `uncertified` until every required release checklist item is complete.
 
