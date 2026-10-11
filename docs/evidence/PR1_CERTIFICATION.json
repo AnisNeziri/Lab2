@@ -116,6 +116,12 @@
       "status": "PASS",
       "passed": 7
     },
+    "local_warehouse_navigation": {
+      "status": "PASS",
+      "passed": 3,
+      "retries": 0,
+      "method": "Physical click in both languages, bounded 30-second action budget for software-rendered 3D, loaded editor controls and no error/overflow assertions"
+    },
     "extra_pointer_drag": {
       "status": "PASS",
       "passed": 1,
@@ -345,6 +351,16 @@
     "uploaded": false,
     "published": false,
     "workflow_executed": false,
+    "blocked_review_attempt": {
+      "run_id": 38134281089,
+      "source_commit": "1dbf35a6eaf10dbd98918af774bcc99927a03452",
+      "conclusion": "failure",
+      "passed_gates": 7,
+      "browser_passed": 97,
+      "browser_failed": 1,
+      "artifacts_uploaded": false,
+      "diagnosis": "Warehouse click navigated, but software-rendered 3D actionability exhausted the 10-second budget; a scoped 30-second budget and loaded-editor checks passed three local repetitions"
+    },
     "workflow_upload_requires_explicit_authorization": true,
     "upload_authorization": {
       "approved": true,
