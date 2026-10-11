@@ -14,6 +14,16 @@ class SupplyOptimizerService {
  public function get(int $id):array {$this->authorize();$p=Plan::findOrFail($id);$r=$p->toArray();unset($r['input']);$r['context']=$p->input?array_intersect_key($p->input,array_flip(['currency','finance','v7','v8','policy','limitations'])):null;$r['outcome']=\App\Models\DecisionLearningRecord::where('kind','optimization_outcome')->where('source_type','SupplyOptimizationPlan')->where('source_id',$id)->first()?->payload;
   $r['stress_options']=['suppliers'=>collect($p->result['plans']??[])->flatMap(fn($a)=>collect($a['lines']??[])->flatMap(fn($c)=>$c['purchases']))->unique('supplier_id')->map(fn($b)=>['id'=>$b['supplier_id'],'name'=>$b['supplier_name']])->values()->all(),'shipments'=>$p->input['shipment_links']??[]];return $r;}
  public function state(int $id):array {$this->authorize();return Plan::findOrFail($id,['id','status','updated_at','error'])->toArray();}
+ public function cancel(int $id):array {
+  $this->authorize();
+  DB::transaction(function()use($id){
+   $p=Plan::whereKey($id)->lockForUpdate()->firstOrFail();
+   abort_unless(in_array($p->status,['QUEUED','RUNNING','CANCELLED'],true),422,'Only an active optimization can be cancelled.');
+   if($p->status!=='CANCELLED')$p->update(['status'=>'CANCELLED']);
+  });
+  return $this->get($id);
+ }
+ private function cancelled(int $id):bool {return Plan::whereKey($id)->value('status')==='CANCELLED';}
  public function submit(array $input):array {
   $this->authorize();$v=validator($input,['horizon'=>'required|integer|in:30,60,90','product_ids'=>'nullable|array|max:40','product_ids.*'=>'integer|distinct','warehouse_ids'=>'nullable|array|max:3','warehouse_ids.*'=>'integer|distinct','supplier_ids'=>'nullable|array|max:6','supplier_ids.*'=>'integer|distinct','category_ids'=>'nullable|array|max:20','category_ids.*'=>'integer|distinct','commitment_limit'=>'nullable|numeric|min:0|max:100000000','allow_transfers'=>'boolean','protect_critical'=>'boolean','transfer_lead_days'=>'nullable|integer|min:0|max:30','parent_plan_id'=>'nullable|integer'])->validate();
   foreach(['product_ids'=>Product::class,'warehouse_ids'=>Warehouse::class,'supplier_ids'=>Supplier::class,'category_ids'=>Category::class] as $key=>$class){$v[$key]=array_values(array_unique($v[$key]??[]));sort($v[$key]);if($v[$key])abort_unless($class::whereIn('id',$v[$key])->count()===count($v[$key]),422,'Scope contains unavailable company records.');}
@@ -30,10 +40,10 @@ class SupplyOptimizerService {
   $p=Plan::withoutGlobalScopes()->findOrFail($id);$actor=User::withoutGlobalScopes()->find($p->created_by);if(!$actor||!$actor->is_active||$actor->company_id!=$p->company_id){$p->update(['status'=>'FAILED','error'=>'Requester is no longer available in this company.']);return;}
   $previous=Auth::user();Auth::setUser($actor);
   try{$this->authorize();if(!Plan::whereKey($id)->where('status','QUEUED')->update(['status'=>'RUNNING','updated_at'=>now()]))return;$p->refresh();
-   $data=app(SupplyOptimizationData::class)->collect($p->scope);$payload=app(SupplyOptimizationCandidates::class)->build($data);
+   $data=app(SupplyOptimizationData::class)->collect($p->scope);if($this->cancelled($id))return;$payload=app(SupplyOptimizationCandidates::class)->build($data);if($this->cancelled($id))return;
    $p->update(['input'=>$data,'evidence_cutoff'=>$data['cutoff']]);
    if(collect($payload['groups'])->contains(fn($g)=>!$g['candidates']))$solved=['solver'=>'SciPy/HiGHS','version'=>'supply-milp-v11.1','seconds'=>0,'plans'=>[['key'=>'balanced','status'=>'INFEASIBLE','candidate_ids'=>[],'message'=>'No valid bundle satisfies the declared stock ceiling or hard critical coverage. Review supplier/transfer arrivals and demand evidence; missing forecasts cannot prove no stockout.']]];
-   else $solved=app(LocalSupplyOptimizer::class)->solve($payload);
+   else $solved=app(LocalSupplyOptimizer::class)->solve($payload,fn()=>$this->cancelled($id));
    $candidates=collect($payload['groups'])->flatMap(fn($g)=>$g['candidates'])->keyBy('id');
    foreach($solved['plans'] as &$alternative){$lines=array_map(fn($cid)=>$candidates[$cid],$alternative['candidate_ids']);
     foreach($lines as &$line){$signature=fn($c)=>[array_column($c['purchases'],'supplier_id'),$c['transfers'],array_column($c['purchases'],'order_date')];$neighbors=$candidates->filter(fn($c)=>$c['group']===$line['group']&&$c['id']!==$line['id']&&$signature($c)===$signature($line));$lower=$neighbors->filter(fn($c)=>$c['purchase_quantity']<$line['purchase_quantity'])->sortByDesc('purchase_quantity')->first();$higher=$neighbors->filter(fn($c)=>$c['purchase_quantity']>$line['purchase_quantity'])->sortBy('purchase_quantity')->first();$summary=fn($c)=>$c?array_intersect_key($c,array_flip(['purchase_quantity','cost_minor','stockout_days','unmet_target','excess_mean'])):null;$line['quantity_tradeoff']=['lower'=>$summary($lower),'higher'=>$summary($higher),'qualification'=>'Local pack-valid candidate comparison. Shared commitment and donor constraints can require displacing other products; this is not a second whole-company optimum.'];}unset($line);$alternative['lines']=$lines;
@@ -51,11 +61,16 @@ class SupplyOptimizerService {
      $alternative['resilience_basis']='ROBUST: no additional stockout-day exposure in the three named tests; ACCEPTABLE: baseline target satisfied but at least one test worsens exposure; FRAGILE: baseline target unmet and a test worsens exposure; UNKNOWN: missing forecast evidence.';
     }
    }unset($alternative);
-   $status=$solved['plans'][0]['status']??'FAILED';$p->update(['status'=>$status,'result'=>$solved]);
+   $status=$solved['plans'][0]['status']??'FAILED';
+   DB::transaction(function()use($id,$p,$solved,$status,$data){
+    $locked=Plan::whereKey($id)->lockForUpdate()->firstOrFail();
+    if($locked->status!=='RUNNING')return;
+    $locked->update(['status'=>$status,'result'=>$solved]);$p->refresh();
    app(DecisionLearningService::class)->append('supply-optimized:'.$p->version,'optimization','inventory','supply_optimization',['state'=>'OPTIMIZED','plan_id'=>$p->id,'source_version'=>$p->version,'input_hash'=>hash('sha256',json_encode($data)),'policy_version'=>$data['policy']['version'],'qualification'=>'Financial results remain in the permission-protected frozen source plan.'],'SupplyOptimizationPlan',$p->id,$p->evidence_cutoff);
    $this->event($p,$status==='INFEASIBLE'?'optimizer.plan.infeasible':'optimizer.plan.generated');$this->task($p,$status==='INFEASIBLE'?'Constraint prevents critical coverage':'Review optimized purchasing plan');
    if(($solved['plans'][0]['summary']['unresolved_scopes']??0)>0)$this->event($p,'optimizer.critical_constraint');
-  }catch(\Throwable $e){$p->refresh();$p->update(['status'=>'FAILED','error'=>Str::limit($e->getMessage(),1500)]);}
+   });
+  }catch(\Throwable $e){$p->refresh();if($p->status!=='CANCELLED')$p->update(['status'=>'FAILED','error'=>Str::limit($e->getMessage(),1500)]);}
   finally{if($previous)Auth::setUser($previous);else Auth::forgetUser();}
  }
  public function compare(int $id):array {return $this->get($id);}

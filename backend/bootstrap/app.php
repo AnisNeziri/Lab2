@@ -43,6 +43,18 @@ $application = Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(fn ($request) => $request->is('api/*') || $request->expectsJson());
 
+        $exceptions->report(function (QueryException $exception) {
+            // QueryException's message contains SQL and bound business data.
+            // Keep actionable codes/correlation without multi-MB evidence payloads.
+            \Illuminate\Support\Facades\Log::error('Database request failed.', [
+                'sql_state' => (string) $exception->getCode(),
+                'driver_code' => (int) ($exception->errorInfo[1] ?? 0),
+                'connection' => $exception->getConnectionName(),
+                'request_id' => request()->attributes->get('request_id'),
+            ]);
+            return false;
+        });
+
         $exceptions->render(function (QueryException $exception, $request) {
             if (! ($request->is('api/*') || $request->expectsJson())) {
                 return null;

@@ -149,6 +149,9 @@ class PurchaseOrderService
     {
         return DB::transaction(function () use ($order, $data) {
             $order = PurchaseOrder::query()->lockForUpdate()->findOrFail($order->id);
+            abort_if(isset($data['revision']) && (int) $data['revision'] !== (int) $order->revision,
+                409, 'This purchase order changed in another session. Reload it and review the changes before saving.');
+            unset($data['revision']);
             if (in_array($order->status, ['completed', 'cancelled'], true)) {
                 throw ValidationException::withMessages(['status' => ['Completed or cancelled orders cannot have their products changed.']]);
             }

@@ -10,6 +10,7 @@ Route::middleware(['auth.token','password.changed','company.context','throttle:1
  Route::get('/options',[$c,'options']);Route::get('/',[$c,'index']);Route::post('/',[$c,'store'])->middleware('throttle:10,1');
  Route::get('/{id}',[$c,'show'])->whereNumber('id');Route::get('/{id}/explain',[$c,'explain'])->whereNumber('id');
  Route::get('/{id}/state',[$c,'state'])->whereNumber('id');
+ Route::post('/{id}/cancel',[$c,'cancel'])->whereNumber('id');
  Route::post('/{id}/simulate',[$c,'simulate'])->whereNumber('id')->middleware('throttle:10,1');
  Route::post('/{id}/stress',[$c,'stress'])->whereNumber('id');Route::post('/{id}/prepare',[$c,'prepare'])->whereNumber('id');
 });

@@ -79,7 +79,7 @@ class StockMovementService
         private OperationalAccountingService $operationalAccounting,
     ) {}
 
-    public function list(array $filters): Collection
+    public function list(array $filters): Collection|\Illuminate\Pagination\LengthAwarePaginator
     {
         return $this->movements->list($filters);
     }

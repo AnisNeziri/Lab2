@@ -39,7 +39,7 @@ class InventoryController extends Controller
         ]);
         $query = WarehouseStock::query()
             ->with([
-                'product:id,name,sku,barcode,unit,tracking_mode,near_expiry_days,fefo_enabled',
+                'product' => fn ($query) => $query->select('id', 'company_id', 'name', 'sku', 'barcode', 'unit', 'tracking_mode', 'near_expiry_days', 'fefo_enabled', 'quantity', 'min_quantity', 'high_stock_threshold')->withStockTotals(),
                 'warehouse:id,name,code',
                 'location:id,warehouse_id,name,code,path,type,floor_level',
             ])

@@ -20,6 +20,7 @@ class PurchaseOrderRequest extends FormRequest
         $baseCurrency = CompanyCurrency::forCompanyId((int) $companyId);
 
         return [
+            'revision' => ['sometimes', 'integer', 'min:1'],
             'supplier_id' => ['required', 'integer', Rule::exists('suppliers', 'id')->where('company_id', $companyId)],
             'warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('company_id', $companyId)],
             'ordered_at' => ['required', 'date'],

@@ -10,6 +10,24 @@ use Illuminate\Support\Collection;
 
 class InventorySnapshotService
 {
+    /**
+     * Dashboard stock reads need on-hand/available only, without purchase schedules or order ATP.
+     * There is no mutable-balance cache; this is one authoritative aggregate per read.
+     */
+    public function onHandForProducts(Collection $products): Collection
+    {
+        if ($products->isEmpty()) return collect();
+        $balances = WarehouseStock::withoutGlobalScopes()
+            ->whereIn('company_id', $products->pluck('company_id')->filter()->unique())
+            ->whereIn('product_id', $products->pluck('id'))
+            ->selectRaw('product_id, SUM(quantity) as on_hand, SUM(available_quantity) as available')
+            ->groupBy('product_id')->get()->keyBy('product_id');
+        return $products->mapWithKeys(fn (Product $product) => [(int) $product->id => [
+            'on_hand' => round((float) ($balances->get($product->id)?->on_hand ?? $product->quantity), 3),
+            'available' => round((float) ($balances->get($product->id)?->available ?? $product->quantity), 3),
+        ]]);
+    }
+
     /** Earliest scheduled availability for demand, using the same ATP snapshot.
      * Undated and overdue, unreceived purchase orders are not firm promises. */
     public function expectedAvailabilityDate(array $snapshot, mixed $quantity, mixed $ownUnreserved = 0): ?string

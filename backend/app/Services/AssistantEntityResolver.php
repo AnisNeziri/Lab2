@@ -23,6 +23,25 @@ final class AssistantEntityResolver
         ];
         $needle = AssistantLanguage::identity($term);
         if (strlen($needle) < 2) return ['entity'=>null,'choices'=>[],'fuzzy'=>false];
+        // Resolve exact identifiers before the capped fuzzy candidate set.
+        // A late SKU must not disappear behind hundreds of common bigrams.
+        $exactMatches = [];
+        $literal = mb_strtolower(trim($term));
+        foreach ($definitions as $kind=>[$model,$permission,$fields,$title,$url]) {
+            if ($type && $kind !== $type || !app(PermissionService::class)->roleHasPermission(Auth::user()->role,$permission)) continue;
+            $rows = $model::query()->where(function ($query) use ($fields,$literal) {
+                foreach ($fields as $field) $query->orWhereRaw('LOWER('.$query->getQuery()->getGrammar()->wrap($field).') = ?', [$literal]);
+            })->orderBy('id')->limit(2)->get();
+            foreach ($rows as $row) $exactMatches[] = [
+                'type'=>$kind,'id'=>$row->id,'title'=>$row->$title ?: $row->tracking_number ?: $row->tracking_reference,
+                'subtitle'=>$kind==='product' ? $row->sku : ($kind==='shipment' ? $row->origin_port.' → '.$row->destination_port : null),
+                'url'=>$url.$row->id,
+            ];
+        }
+        if ($exactMatches) return ['entity'=>count($exactMatches)===1 ? $exactMatches[0] : null,
+            'choices'=>count($exactMatches)===1 ? [] : array_slice($exactMatches,0,6),'fuzzy'=>false];
+
+
         $tokens = preg_split('/\s+/', Str::lower(Str::ascii($term)));
         $grams = [];
         foreach ($tokens as $token) for ($i=0; $i<strlen($token)-1; $i++) $grams[] = substr($token,$i,2);
@@ -52,7 +71,7 @@ final class AssistantEntityResolver
                     }
                     $score=max($score,1-$distance/max(strlen($needle),strlen($candidate)));
                 }
-                if ($score>=.65) $matches[]=['type'=>$kind,'id'=>$row->id,'title'=>$row->$title?:$row->tracking_number?:$row->tracking_reference,'subtitle'=>$kind==='product'?$row->sku:($kind==='shipment'?($row->origin_port.' → '.$row->destination_port):null),'url'=>$url.$row->id,'score'=>$score,'exact'=>$exact];
+                if ($score>=.65) $matches[]=['type'=>$kind,'id'=>$row->id,'title'=>$row->$title?:$row->tracking_number?:$row->tracking_reference,'subtitle'=>$kind==='product'?$row->sku:($kind==='shipment'?($row->origin_port.' â†’ '.$row->destination_port):null),'url'=>$url.$row->id,'score'=>$score,'exact'=>$exact];
             }
         }
         usort($matches,fn($a,$b)=>$b['score']<=>$a['score']);

@@ -31,13 +31,19 @@ class SearchService
         $term = trim($term);
         $like = '%'.addcslashes($term, '%_\\').'%';
         $result = [];
+        // Resolve a bounded candidate set once; avoid a product lookup for every history row.
+        $productIds = ($this->can('inventory.view') || $this->can('products.manage'))
+            ? \App\Models\Product::where(fn($q)=>$q->where('name','like',$like)->orWhere('sku','like',$like))->orderBy('id')->limit(200)->pluck('id')
+            : collect();
         if ($this->can('automations.view')) $result['automations']=app(AutomationService::class)->visibleRules()->where('name','like',$like)->limit(8)->get()->map(fn($a)=>$this->item($a->id,$a->name,'v'.$a->version,'/automation-studio?automation='.$a->id));
         if ($this->can('tasks.view')) $result['tasks']=collect(app(ActionCenterService::class)->tasks(['q'=>$term,'status'=>'all'])->items())->take(8)->map(fn($a)=>$this->item($a['id'],$a['title'],$a['status'],'/action-center?status=all&task='.$a['id']));
         if ($this->can('documents.view')) {
             $result['documents']=app(DocumentService::class)->listing(['q'=>$term])->getCollection()->take(8)->map(fn($d)=>$this->item($d->id,$d->title,$d->reference.' · v'.$d->current_version,'/documents?document='.$d->id));
         }
         if ($this->can('fulfillment.view')) {
-            $result['order_hub']=\App\Models\OrderIntake::with(['channel:id,name','order:id,order_number'])->where(fn($q)=>$q->where('external_id','like',$like)->orWhereHas('channel',fn($c)=>$c->where('external_reference','like',$like))->orWhereHas('order',fn($o)=>$o->where('order_number','like',$like)))->limit(8)->get()->map(fn($i)=>$this->item($i->id,$i->order?->order_number ?: ($i->external_id ?: 'Order #'.$i->id),$i->channel?->name.' · '.$i->state,'/order-hub?intake='.$i->id));
+            $channelIds=\App\Models\OrderChannel::where('external_reference','like',$like)->limit(200)->pluck('id');
+            $orderIds=\App\Models\SalesOrder::where('order_number','like',$like)->limit(200)->pluck('id');
+            $result['order_hub']=\App\Models\OrderIntake::with(['channel:id,name','order:id,order_number'])->where(fn($q)=>$q->where('external_id','like',$like)->orWhereIn('order_channel_id',$channelIds)->orWhereIn('sales_order_id',$orderIds))->limit(8)->get()->map(fn($i)=>$this->item($i->id,$i->order?->order_number ?: ($i->external_id ?: 'Order #'.$i->id),$i->channel?->name.' · '.$i->state,'/order-hub?intake='.$i->id));
             $result['sales_orders'] = \App\Models\SalesOrder::query()->with('customer:id,name')->where(fn($q)=>$q->where('order_number','like',$like)->orWhereHas('customer',fn($c)=>$c->where('name','like',$like)))->limit(8)->get()->map(fn($x)=>$this->item($x->id,$x->order_number,$x->customer?->name.' · '.$x->status,'/fulfillment?order='.$x->id));
             foreach (['pick_tasks'=>\App\Models\PickTask::class,'dispatches'=>\App\Models\OutboundDispatch::class,'returns'=>\App\Models\OutboundReturn::class] as $key=>$class) {
                 $result[$key]=$class::query()->where('reference','like',$like)->limit(6)->get()->map(fn($x)=>$this->item($x->id,$x->reference,$x->status,'/fulfillment?order='.$x->sales_order_id));
@@ -50,7 +56,7 @@ class SearchService
                 ->map(fn ($x) => $this->item($x->id, $x->name, $x->sku ?: $x->barcode, '/products?product='.$x->id) + ['sku'=>$x->sku,'unit'=>$x->unit,'available_quantity'=>$x->available_quantity]);
             $result['stock_movements'] = StockMovement::query()->with('product:id,name,sku')
                 ->where(fn ($q) => $q->where('reason', 'like', $like)->orWhere('type', 'like', $like)
-                    ->orWhereHas('product', fn ($p) => $p->where('name', 'like', $like)->orWhere('sku', 'like', $like)))
+                    ->orWhereIn('product_id',$productIds))
                 ->latest()->limit(5)->get()
                 ->map(fn ($x) => $this->item($x->id, $x->product?->name ?: 'Stock movement', strtoupper($x->type).' '.$x->quantity, '/stock?movement='.$x->id));
         }
@@ -128,7 +134,7 @@ class SearchService
             $decisionTypes=array_keys(array_filter($decisionNames,fn($names)=>in_array($businessTerm,array_map(fn($name)=>\Illuminate\Support\Str::lower(\Illuminate\Support\Str::ascii($name)),$names),true)));
             if(in_array($businessTerm,['decision','decisions','recommendation','recommendations','vendim','vendimet','rekomandim','rekomandimet'],true))$decisionTypes=array_keys($decisionNames);
             $result['decisions'] = \App\Models\EnterpriseDecision::query()->with('product:id,name,sku')
-                ->where(fn ($q) => $q->where('decision_type', 'like', $like)->orWhereIn('decision_type',$decisionTypes)->orWhereHas('product', fn ($p) => $p->where('name', 'like', $like)->orWhere('sku', 'like', $like)))
+                ->where(fn ($q) => $q->where('decision_type', 'like', $like)->orWhereIn('decision_type',$decisionTypes)->orWhereIn('product_id',$productIds))
                 ->latest('id')->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->product?->name ?: 'Decision', $x->decision_type.' · '.$x->status, '/inventory-intelligence?view=decisions&decision='.$x->id));
         }
 

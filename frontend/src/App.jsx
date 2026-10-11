@@ -14,7 +14,7 @@ import VerifyEmail from "./pages/VerifyEmail";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import ChangePassword from "./pages/ChangePassword";
-import AppLayout from "./components/AppLayout";
+const AppLayout = lazy(() => import("./components/AppLayout"));
 import { useAuthStore } from "./store/authStore";
 import { useSettingsStore } from "./store/settingsStore";
 import { logout } from "./api/login";
@@ -456,7 +456,7 @@ function AppRoutes() {
               <RoleAppGate>
                 <PreferencesProvider>
                   <RealtimeProvider>
-                    <AppLayout />
+                    <Suspense fallback={<PageLoader />}><AppLayout /></Suspense>
                   </RealtimeProvider>
                 </PreferencesProvider>
               </RoleAppGate>

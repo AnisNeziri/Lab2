@@ -9,6 +9,8 @@ export function getShipments(params = {}) {
   if (params.archived !== undefined) search.set('archived', params.archived ? '1' : '0')
   if (params.saved) search.set('saved', '1')
   if (params.favorite) search.set('favorite', '1')
+  if (params.page !== undefined) search.set('page', String(params.page))
+  if (params.per_page !== undefined) search.set('per_page', String(params.per_page))
   const query = search.toString()
   return apiRequest(`/shipments${query ? `?${query}` : ''}`, {}, 'Failed to load shipments')
 }

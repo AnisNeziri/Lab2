@@ -11,6 +11,8 @@ class StockMovement extends Model
 {
     use BelongsToCompany;
 
+    protected $hidden = ['effective_occurred_at'];
+
     protected $fillable = [
         'company_id',
         'product_id',

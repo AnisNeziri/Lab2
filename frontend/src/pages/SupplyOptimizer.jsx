@@ -28,6 +28,7 @@ export default function SupplyOptimizer(){
  const optimize=()=>act(async()=>{const payload={...form};for(const k of ['commitment_limit','transfer_lead_days']){if(payload[k]==='')delete payload[k];else payload[k]=Number(payload[k])}const p=await post(root,payload);if(alive.current){setPlan(p);setParams({plan:String(p.id)})}})
  const toggle=(key,value)=>setForm(f=>({...f,[key]:f[key].includes(value)?f[key].filter(v=>v!==value):[...f[key],value]}))
  const select=(key,collection,title)=><ScopePicker label={title} options={collection} value={form[key]} disabled={busy} onChange={value=>setForm(f=>({...f,[key]:value}))}/>
+ const cancel=()=>act(async()=>{const selected=id;const p=await post(root+'/'+selected+'/cancel',{});if(alive.current&&String(p.id)===String(selected)){setPlan(p);apiRequest(root).then(h=>alive.current&&setHistory(h.rows)).catch(()=>{})}})
  const prepare=()=>act(async()=>{const p=await post(`${root}/${plan.id}/prepare`,{alternative:alternative.key,confirm:confirmed});if(alive.current){setPlan(p);setReview(false);setConfirmed(false)}})
  const testStress=()=>act(async()=>{const r=await post(`${root}/${plan.id}/stress`,stressPayload(stressForm,alternative.key));if(alive.current)setStress(r)})
  const simulateLimit=()=>act(async()=>{const p=await post(`${root}/${plan.id}/simulate`,{commitment_limit:Number(scenarioLimit)});if(alive.current){setPlan(p);setParams({plan:String(p.id)})}})
@@ -52,6 +53,7 @@ export default function SupplyOptimizer(){
     <button className="optimizer-primary" disabled={busy||!options||optimizerPending(plan?.status)} onClick={optimize}>{busy?t('Working…','Duke punuar…'):t('Generate plans','Gjenero planet')}</button></div>
   </section></details>
   {plan&&<section className="optimizer-panel"><div className="optimizer-title"><h2>{t('Plan','Plani')} #{plan.id}</h2><span className={'optimizer-status status-'+plan.status}>{label(plan.status)}</span><small>{plan.evidence_cutoff?new Date(plan.evidence_cutoff).toLocaleString():t('Background job queued','Puna në sfond është në radhë')}</small></div>
+   {optimizerPending(plan.status)&&<button disabled={busy} onClick={cancel}>{t('Cancel optimization','Anulo optimizimin')}</button>}
    {optimizerPending(plan.status)&&<p role="status">{t('Optimization is running in the background. You can continue working; only this status updates.','Optimizimi kryhet në sfond. Mund të vazhdosh punën; përditësohet vetëm ky status.')}</p>}
    {plan.error&&<p role="alert">{plan.error}</p>}
    {plan.scope.parent_plan_id&&<p><Link to={'/supply-optimizer?plan='+plan.scope.parent_plan_id}>{t('Open original plan','Hap planin origjinal')} #{plan.scope.parent_plan_id}</Link></p>}

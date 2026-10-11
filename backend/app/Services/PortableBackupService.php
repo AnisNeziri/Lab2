@@ -953,7 +953,7 @@ class PortableBackupService
     ): array {
         $sourceId = $row['id'] ?? null;
         unset($row['id']);
-        $columns = collect(Schema::getColumns($table))->pluck('name')->flip();
+        $columns = collect(Schema::getColumns($table))->reject(fn (array $column) => $column['generation'] !== null)->pluck('name')->flip();
         $row = array_intersect_key($row, $columns->all());
         // Restored definitions require review and explicit re-enabling. Never
         // replay stale jobs or captured action results into another installation.

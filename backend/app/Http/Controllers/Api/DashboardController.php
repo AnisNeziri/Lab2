@@ -53,8 +53,8 @@ class DashboardController extends Controller
     {
         // Redis is only an acceleration layer. Re-check the database so a
         // stale cache can never make the dashboard report healthy inventory.
-        $products = Product::with('category')->get();
-        $snapshots = $this->inventorySnapshots->forProducts($products);
+        $products = Product::withStockTotals()->with('category')->get();
+        $snapshots = $this->inventorySnapshots->onHandForProducts($products);
         $alerts = $products->filter(function (Product $product) use ($snapshots): bool {
             return $snapshots->get((int) $product->id)['available'] <= (float) $product->min_quantity;
         })->map(function (Product $product) use ($snapshots): Product {

@@ -98,4 +98,24 @@ class SupplyOptimizerTest extends TestCase {
   $p=$this->setupProduct();$plan=$this->plan($p,['product_ids'=>[]]);Product::create(['name'=>'New active product','sku'=>'OPT-NEW','category_id'=>$p->category_id,'unit'=>'pcs','quantity'=>10,'min_quantity'=>20,'price'=>5,'purchase_price'=>2]);
   $this->postJson('/api/supply-optimizer/'.$plan->id.'/prepare',['alternative'=>'balanced','confirm'=>true])->assertUnprocessable()->assertJsonValidationErrors('plan');$this->assertDatabaseCount('purchase_requests',0);
  }
+ public function test_cancelled_queued_and_running_plans_cannot_publish_results_or_operational_effects():void {
+  $p=$this->setupProduct();$before=$this->counts();
+  $first=app(Optimizer::class)->submit($this->scope($p));
+  $this->postJson('/api/supply-optimizer/'.$first['id'].'/cancel')->assertOk()->assertJsonPath('status','CANCELLED');
+  app(Optimizer::class)->run($first['id']);$this->assertNull(Plan::findOrFail($first['id'])->result);
+  $second=app(Optimizer::class)->submit($this->scope($p));
+  $this->mock(LocalSupplyOptimizer::class,fn($m)=>$m->shouldReceive('solve')->once()->andReturnUsing(function($payload,$cancelled)use($second){
+   app(Optimizer::class)->cancel($second['id']);$this->assertTrue($cancelled());throw new \RuntimeException('Optimization cancelled.');
+  }));
+  app(Optimizer::class)->run($second['id']);
+  $this->getJson('/api/supply-optimizer/'.$second['id'])->assertOk()->assertJsonPath('status','CANCELLED')->assertJsonPath('result',null);
+  $this->assertSame($before,$this->counts());
+  $this->assertDatabaseMissing('decision_learning_records',['source_type'=>'SupplyOptimizationPlan','source_id'=>$second['id']]);
+ }
+ public function test_local_solver_cancellation_stops_the_child_and_returns_worker_capacity():void {
+  $calls=0;$start=microtime(true);
+  try {app(LocalSupplyOptimizer::class)->solve(['groups'=>[]],function()use(&$calls){return ++$calls>=2;});$this->fail('Solver ignored cancellation.');}
+  catch(\RuntimeException $e){$this->assertSame('Optimization cancelled.',$e->getMessage());}
+  $this->assertGreaterThanOrEqual(2,$calls);$this->assertLessThan(5,microtime(true)-$start);
+ }
 }
