@@ -24,7 +24,9 @@ jobs:
         working-directory: frontend
       - run: |
           mkdir -p output
-          tar --exclude=.git --exclude=node_modules --exclude=vendor --exclude=.env --exclude='*.sqlite*' --exclude=storage --exclude=output --exclude=tmp --exclude=desktop -czf output/aims-web-source.tar.gz backend frontend/dist deploy scripts RELEASE.json docs
+          git archive --format=tar --output=output/aims-web-source.tar HEAD backend deploy scripts RELEASE.json docs
+          tar --append --file=output/aims-web-source.tar frontend/dist
+          gzip -n output/aims-web-source.tar
           sha256sum output/aims-web-source.tar.gz > output/SHA256SUMS
           sha256sum --check output/SHA256SUMS
       - uses: actions/upload-artifact@v4

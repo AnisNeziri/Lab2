@@ -117,6 +117,7 @@ jobs:
           path: backend/vendor
           key: ${{ runner.os }}-php-${{ hashFiles('backend/composer.lock') }}
       - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: composer audit --locked --no-dev
       - run: cp .env.example .env
       - run: php artisan key:generate --force
       - run: php artisan migrate:fresh --database=sqlite --force
@@ -150,6 +151,7 @@ jobs:
       - run: npm install --global npm@10.9.2
       - run: npm ci
       - run: npm test
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run build
 
   backend-mariadb-migrations:
@@ -313,6 +315,8 @@ jobs:
         working-directory: frontend
       - run: npm install --global npm@10.9.2
       - run: npm ci
+        working-directory: desktop
+      - run: npm audit --omit=dev --audit-level=high
         working-directory: desktop
       - run: python -m pip install --target backend/ml/optimizer_vendor -r backend/ml/supply_optimizer_requirements.txt
       - run: ./scripts/download-desktop-php.ps1
