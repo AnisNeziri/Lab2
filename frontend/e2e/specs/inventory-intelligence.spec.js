@@ -19,7 +19,7 @@ test('local inventory intelligence review, honest sparse-data fallback and respo
     await page.setViewportSize({width,height:900})
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2)).toBeTruthy()
   }
-  await page.evaluate(async()=>{const {useSettingsStore}=await import('/src/store/settingsStore.js');useSettingsStore.getState().applyPreferences({theme:'dark',language:'sq'})})
+  await page.evaluate(async()=>{const {useSettingsStore}=window.__aimsCertification;useSettingsStore.getState().applyPreferences({theme:'dark',language:'sq'})})
   await expect(page.getByRole('heading',{name:'Inteligjenca e inventarit',exact:true})).toBeVisible()
   await expect(page.locator('.intelligence-message')).toContainText('Të dhëna të pamjaftueshme')
   await expect(page.getByText('Konfigurimi dhe saktësia e parashikimit',{exact:true})).toBeVisible()

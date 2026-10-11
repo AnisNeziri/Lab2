@@ -47,7 +47,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'php artisan serve --host=127.0.0.1 --port=8010',
+      command: 'php artisan serve --no-reload --host=127.0.0.1 --port=8010',
       cwd: backendDir,
       url: 'http://127.0.0.1:8010/up',
       env: backendEnvironment,
@@ -55,7 +55,7 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: 'node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4173 --strictPort',
+      command: 'node ../scripts/serve-e2e.cjs',
       cwd: frontendDir,
       url: 'http://127.0.0.1:4173/login',
       env: { VITE_API_PROXY_TARGET: 'http://127.0.0.1:8010' },

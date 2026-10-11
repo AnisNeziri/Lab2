@@ -1,4 +1,5 @@
 import { useUiText } from '../hooks/useUiText'
+import WorkspaceModal from '../components/WorkspaceModal'
 import { collectPages } from '../lib/collectPages'
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import EntityDocuments from "../components/EntityDocuments";
@@ -10,7 +11,7 @@ import { getCustomerDebts } from "../api/customerDebts";
 import { getPurchaseOrder, getPurchaseOrders } from "../api/purchaseOrders";
 import { getGoodsReceipt, getGoodsReceipts, getWarehouseLocations, getWarehouses } from "../api/warehouseOperations";
 import {
-  allocateSupplierInvoicePayment, approveSupplierInvoice, cancelInventoryCount, createInventoryCount, createInventoryReturn, createLandedCost,
+  allocateSupplierInvoicePayment, approveSupplierInvoice, cancelInventoryCount, deleteInventoryCountDraft, createInventoryCount, createInventoryReturn, createLandedCost,
   createProductSupplier, createReplenishmentDrafts, createSupplierInvoice, getBinInventory,
   deactivateProductSupplier, deleteInventoryReturn, deleteLandedCost, getExpiringInventory, getFinancialAccounts,
   getInventoryCount, getInventoryCounts, getInventoryReturn, getInventoryReturns, getInventoryReturnSources,
@@ -143,12 +144,29 @@ function Locator({ data, meta, run, t, can }) {
 
 function Counts({ data, meta, run, t, can }) {
  const tx = useUiText()
+  const user=useAuthStore(s=>s.user),[deleting,setDeleting]=useState(false),[countNotice,setCountNotice]=useState(''),[deleteBusy,setDeleteBusy]=useState(false),deleteLock=useRef(false)
 
   const [form, setForm] = useState({ warehouse_id: "", location_id: "", product_ids: [], stock_states: ["available"], notes: "" });
   const [selected, setSelected] = useState(null);
   const [values, setValues] = useState({});
   const [recountItems, setRecountItems] = useState([]);
   const [reason, setReason] = useState("");
+  const deleteDraft = () => {
+    if (deleteLock.current) return;
+    deleteLock.current = true;
+    setDeleteBusy(true);
+    run(async () => {
+      try {
+        await deleteInventoryCountDraft(selected.id);
+        setSelected(null);
+        setDeleting(false);
+        setCountNotice(label(t, 'Stock-count draft deleted.', 'Drafti i numërimit u fshi.'));
+      } finally {
+        deleteLock.current = false;
+        setDeleteBusy(false);
+      }
+    });
+  };
   const open = async (id) => {
     const session = await getInventoryCount(id);
     setSelected(session);
@@ -176,6 +194,7 @@ function Counts({ data, meta, run, t, can }) {
     </aside>
     <div className="ops-panel">
       <h2>{selected?.count_number || t.counts}</h2>
+      {countNotice&&<p role="status">{countNotice}</p>}
       {selected ? <>
         <p className="ops-summary">{t.countSnapshot}: {selected.snapshot_at || selected.frozen_at ? new Date(selected.snapshot_at || selected.frozen_at).toLocaleString() : "—"} · {t.countScope}: {(selected.stock_states || []).join(", ")}</p>
         <p className="ops-summary"><small>{t.countSnapshotHint}</small></p>
@@ -192,9 +211,11 @@ function Counts({ data, meta, run, t, can }) {
           {active && <button className="secondary" onClick={() => refreshAfter(() => submitInventoryCount(selected.id))}>{tx("Submit")}</button>}
           {can("inventory.counts.manage") && recountItems.length > 0 && !["approved", "cancelled"].includes(selected.status) && <button className="secondary" disabled={reason.trim().length < 3} onClick={() => refreshAfter(() => requestInventoryRecount(selected.id, { item_ids: recountItems, reason }))}>{tx("Request recount")}</button>}
           {can("inventory.counts.approve") && selected.status === "submitted" && <button disabled={reason.trim().length < 3} onClick={() => refreshAfter(() => approveInventoryCount(selected.id, reason))}>{tx("Approve & adjust")}</button>}
-          {can("inventory.counts.approve") && !["approved", "cancelled"].includes(selected.status) && <button className="danger" disabled={reason.trim().length < 3} onClick={() => refreshAfter(() => cancelInventoryCount(selected.id, reason))}>{tx("Cancel")}</button>}
+          {(can("inventory.counts.approve")||selected.status==='in_progress'&&selected.created_by===user?.id&&!selected.submitted_at) && !["approved", "cancelled"].includes(selected.status) && <button className="danger" disabled={reason.trim().length < 3} onClick={() => refreshAfter(async() => {await cancelInventoryCount(selected.id, reason);setCountNotice(label(t,'Stock-count request cancelled.','Kërkesa e numërimit u anulua.'))})}>{label(t,'Cancel request','Anulo kërkesën')}</button>}
+          {selected.status==='in_progress'&&!selected.submitted_at&&(can('inventory.counts.approve')||selected.created_by===user?.id)&&!(selected.items||[]).some(i=>i.counted_quantity!==null||i.adjustment_movement_id||i.entries?.length)&&<button className="danger" onClick={()=>setDeleting(true)}>{label(t,'Delete Draft','Fshi draftin')}</button>}
         </div>
         <details className="ops-history"><summary>{label(t, "Count and recount history", "Historia e numërimit")}</summary>{(selected.items || []).flatMap((item) => (item.entries || []).map((entry) => <article key={entry.id}><strong>{item.product?.name} {tx("· round")} {entry.count_round} · {entry.entry_type}</strong><span>{entry.counted_quantity ?? "—"} · {entry.user?.name || "—"} · {entry.entered_at ? new Date(entry.entered_at).toLocaleString() : "—"}</span>{entry.notes && <p>{entry.notes}</p>}</article>))}</details>
+        {deleting&&<WorkspaceModal title={label(t,'Delete stock-count draft?','Të fshihet drafti i numërimit?')} onClose={()=>setDeleting(false)} busy={deleteBusy} closeOnBackdrop={false}><p>{label(t,'This unused draft has not produced any stock movement or approved count. This cannot be undone.','Ky draft i papërdorur nuk ka krijuar lëvizje stoku ose numërim të miratuar. Kjo nuk mund të zhbëhet.')}</p><div className="workspace-actions"><button disabled={deleteBusy} onClick={()=>setDeleting(false)}>{tx('Cancel')}</button><button className="danger" disabled={deleteBusy} onClick={deleteDraft}>{label(t,'Delete Draft','Fshi draftin')}</button></div></WorkspaceModal>}
       </> : <p>{t.empty}</p>}
     </div>
   </section>;

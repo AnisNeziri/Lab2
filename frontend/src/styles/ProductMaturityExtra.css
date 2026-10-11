@@ -1,0 +1,30 @@
+/* PM4: quiet semantic accents reuse the shared light/dark tokens. */
+:root{--ui-info:var(--primary-color);--ui-intelligence:#6957a5;--ui-logistics:#287f96}
+html.dark,html[data-theme='dark']{--ui-intelligence:#b5a4e5;--ui-logistics:#80c8dd}
+.app .shipment-compact-map{position:relative;isolation:isolate;z-index:0}
+.app .shipments-layout{grid-template-columns:minmax(220px,260px) minmax(0,1fr)}
+.app .shipments-form{align-self:start;align-content:start}
+.app .shipments-form .vessel-link-workflow,.app .shipments-form .vessel-lookup-form{align-content:start}
+.app .shipment-key-facts{align-content:start;font-size:.85rem}
+.app .cargo-heading{scroll-margin-block-start:14px}
+.app .shipment-compact-map{max-height:160px}
+.app .shipment-compact-map .shipment-map{height:160px!important;min-height:160px!important}
+.app .shipment-compact-map .map-shell{height:160px;min-height:160px}
+.app .cargo-po-group>header{padding:.4rem .7rem;font-size:.85rem;line-height:1.35}
+.app .cargo-totals{padding:.4rem 0}
+.app .cargo-po-group{margin:.45rem 0}
+.app .cargo-quantity>strong{display:block}
+.app .shipments-list{max-height:54vh;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;grid-auto-rows:max-content;align-content:start}
+.app .shipments-list-item{height:auto;min-height:70px;gap:.35rem;justify-content:flex-start;overflow-wrap:anywhere}
+.app .shipments-list-item small{color:var(--text-muted);font-size:.75rem;line-height:1.45}
+.app .main-content .assistant-feedback select{width:auto;max-width:100%;flex:0 1 230px}
+.app .shipment-cargo .cargo-status[data-state=received],.app .cargo-impact [data-state=ON_TRACK]{border-color:var(--ui-success);background:color-mix(in srgb,var(--ui-success) 8%,var(--card-bg))}
+.app .shipment-cargo .cargo-status[data-state=partially_received],.app .cargo-impact [data-state=AT_RISK]{border-color:var(--ui-warning);background:color-mix(in srgb,var(--ui-warning) 9%,var(--card-bg))}
+.app .cargo-heading [data-state=CRITICAL],.app .cargo-heading [data-state=DELAYED]{border-color:var(--ui-danger);background:color-mix(in srgb,var(--ui-danger) 8%,var(--card-bg))}
+.app .assistant-choices small{display:block;color:var(--text-muted);font-size:.75rem;margin-top:.2rem}
+.app .assistant-evidence-card .assistant-status{border-radius:6px;line-height:1.4}
+.app .main-content :is(.cargo-section-header,.procurement-card>header,.auto-panel>header){align-items:center;gap:.75rem}
+.app .cargo-product-list .cargo-product:hover{background:color-mix(in srgb,var(--ui-logistics) 4%,var(--card-bg))}
+@media(min-width:1001px){.app .cargo-product{padding:.55rem .8rem}}
+@media(max-width:1000px){.app .shipments-layout{grid-template-columns:1fr}.app .shipments-list{max-height:160px}.app .shipments-form{margin-bottom:.7rem}.app .cargo-heading,.app .shipment-cargo{scroll-margin-block-start:64px}}
+@media(prefers-reduced-motion:reduce){.app .shipment-workspace *{scroll-behavior:auto!important}}

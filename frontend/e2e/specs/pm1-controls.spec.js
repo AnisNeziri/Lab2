@@ -5,7 +5,7 @@ import { login } from '../helpers/auth.mjs'
 
 const output = path.resolve('../output/pm1/controls')
 const preferences = (page, theme, language) => page.evaluate(async values => {
-  const { useSettingsStore } = await import('/src/store/settingsStore.js')
+  const { useSettingsStore } = window.__aimsCertification
   useSettingsStore.getState().applyPreferences(values)
 }, { theme, language })
 

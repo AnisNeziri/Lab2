@@ -4,8 +4,8 @@ import { login } from '../helpers/auth.mjs'
 test('dashboard order placement and full-width search work on desktop and mobile', async ({page},testInfo) => {
   await login(page)
   await page.goto('/dashboard')
-  await expect(page.locator('.dashboard-attention-bottom')).toBeVisible()
-  expect(await page.locator('.dashboard-attention-bottom').evaluate(element => element.compareDocumentPosition(document.querySelector('.dashboard-lower-grid')) & Node.DOCUMENT_POSITION_PRECEDING)).toBeTruthy()
+  await expect(page.getByRole('region', {name:'Action Center', exact:true})).toBeVisible()
+  await expect(page.locator('.workspace-widget-grid')).toBeVisible()
   await page.getByRole('button',{name:'Search AIMS Ctrl K',exact:true}).click()
   const palette=page.locator('.command-palette'), search=page.locator('.command-palette-search')
   await expect(palette).toBeVisible()
@@ -25,7 +25,7 @@ test('shared assistant explains workflows and reads stock and movements from rea
   const errors=[];page.on('pageerror',error=>errors.push(error.message))
   await login(page)
   await page.goto('/products')
-  await page.getByRole('button',{name:'Ask AIMS Assistant',exact:true}).click()
+  await page.getByRole('button',{name:'Ask AIMS',exact:true}).click()
   const assistant=page.locator('.aims-assistant')
   await expect(assistant).toBeVisible()
   await expect(assistant).toContainText('Browse product records')
@@ -42,8 +42,8 @@ test('shared assistant explains workflows and reads stock and movements from rea
   await expect(assistant).toContainText('advisory stock forecasts')
   await expect(assistant).toContainText('Choose a product and forecast period')
   await page.setViewportSize({width:390,height:844})
-  await page.evaluate(async()=>{const {useSettingsStore}=await import('/src/store/settingsStore.js');useSettingsStore.getState().applyPreferences({theme:'dark',language:'sq'})})
-  await expect(assistant).toContainText('Asistenti inteligjent')
+  await page.evaluate(async()=>{const {useSettingsStore}=window.__aimsCertification;useSettingsStore.getState().applyPreferences({theme:'dark',language:'sq'})})
+  await expect(assistant).toContainText('Pyet AIMS')
   expect(await assistant.evaluate(element=>getComputedStyle(element).backgroundColor)).not.toBe('rgb(255, 255, 255)')
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2)).toBeTruthy()
   await page.screenshot({path:testInfo.outputPath('assistant-mobile-dark.png')})
@@ -55,7 +55,7 @@ test('shared assistant explains workflows and reads stock and movements from rea
 
 test('assistant prevents duplicate requests, preserves errors and never fakes facts', async ({page}) => {
   await login(page);await page.goto('/products')
-  await page.getByRole('button',{name:'Ask AIMS Assistant',exact:true}).click()
+  await page.getByRole('button',{name:'Ask AIMS',exact:true}).click()
   let requests=0
   await page.route('**/api/intelligence-assistant/ask',async route=>{
     if(!/stock for/i.test(route.request().postDataJSON().question))return route.continue()

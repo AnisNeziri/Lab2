@@ -24,4 +24,4 @@ export function shipmentTimeline(product){
   {key:'stockout',date:product.requirement_date,quantity:null},
   {key:'arrival',date:product.arrival,quantity:product.quantity}]
 }
-export function etaRange(eta){if(!eta?.predicted)return '—';return eta.range_start&&eta.range_end&&eta.range_start!==eta.range_end?`${eta.range_start} – ${eta.range_end}`:eta.predicted}
+export function etaRange(eta,format=value=>value){if(!eta?.predicted)return '—';return eta.range_start&&eta.range_end&&eta.range_start!==eta.range_end?`${format(eta.range_start)} – ${format(eta.range_end)}`:format(eta.predicted)}

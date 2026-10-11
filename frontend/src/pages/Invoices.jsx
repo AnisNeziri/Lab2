@@ -54,6 +54,8 @@ import { getFinancialAccounts } from "../api/advancedOperations";
 import { getAllProducts } from "../api/products";
 import { getCustomerDebts } from "../api/customerDebts";
 import { useTranslation } from "../hooks/useTranslation";
+import { useDialog } from '../hooks/useDialog';
+import { useUnsavedNavigation } from '../hooks/useUnsavedNavigation';
 import { useAuthStore } from "../store/authStore";
 import { formatQuantity, isMeterUnit } from "../utils/formatQuantity";
 import { getInventoryQuantity } from "../utils/inventoryQuantity";
@@ -382,39 +384,19 @@ function apiError(error, fallback) {
   return error?.message || fallback;
 }
 
-function Modal({ open, title, description, onClose, wide = false, drawer = false, children }) {
-  const closeRef = useRef(null);
-  const dialogRef = useRef(null);
+function Modal({ open, title, description, onClose, wide = false, drawer = false, children, busy=false, closeOnBackdrop=false, closeOnEscape=true, warnOnUnsaved=true }) {
+  const {language}=useTranslation();
+  const [dirty,setDirty]=useState(false);
   const titleId = useId();
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const handleKey = (event) => {
-      if (event.key === "Escape") onClose?.();
-      if (event.key === "Tab") {
-        const focusable = dialogRef.current?.querySelectorAll(
-          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
-        );
-        if (!focusable?.length) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    document.addEventListener("keydown", handleKey);
-    window.setTimeout(() => closeRef.current?.focus(), 0);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [open, onClose]);
+  const message=language==='sq'?'Të hidhen poshtë ndryshimet e paruajtura?':'Discard unsaved changes?';
+  const close=()=>{if(busy)return;if(warnOnUnsaved&&dirty&&!window.confirm(message))return;onClose?.()};
+  const dialogRef=useDialog(close,busy,open,{closeOnEscape});
+  useUnsavedNavigation(open&&dirty,message);
+  useEffect(()=>{if(open)setDirty(false)},[open]);
 
   if (!open) return null;
   return createPortal(
-    <div className={`invoice-overlay ${drawer ? "is-drawer" : ""}`} onMouseDown={onClose}>
+    <div className={`invoice-overlay ${drawer ? "is-drawer" : ""}`} onMouseDown={event=>{if(closeOnBackdrop&&event.target===event.currentTarget)close()}} onChangeCapture={()=>{if(!drawer)setDirty(true)}}>
       <section
         ref={dialogRef}
         className={`invoice-dialog ${wide ? "is-wide" : ""} ${drawer ? "invoice-drawer" : ""}`}
@@ -428,7 +410,7 @@ function Modal({ open, title, description, onClose, wide = false, drawer = false
             <h2 id={titleId}>{title}</h2>
             {description ? <p>{description}</p> : null}
           </div>
-          <button ref={closeRef} type="button" className="invoice-icon-button" onClick={onClose} aria-label="Close">
+          <button type="button" disabled={busy} className="invoice-icon-button" onClick={close} aria-label={language==='sq'?'Mbyll':'Close'}>
             <X size={19} />
           </button>
         </header>
@@ -475,6 +457,7 @@ function CompanyProfileModal({ open, profile, onClose, onSave, t }) {
     <Modal
       open={open}
       title={t("invoice.profileTitle")}
+      busy={saving}
       description={t("invoice.profileDescription")}
       onClose={onClose}
       wide
@@ -859,6 +842,7 @@ function InvoiceEditor({ open, invoice, profile, products, customers, canSaveCus
     <Modal
       open={open}
       title={invoice ? t("invoice.editDraft") : t("invoice.newInvoice")}
+      busy={saving}
       description={t("invoice.editorDescription")}
       onClose={onClose}
       wide
@@ -1213,7 +1197,7 @@ function PaymentModal({ invoice, open, onClose, onSuccess, money, t }) {
   };
 
   return (
-    <Modal open={open} title={t("invoice.recordPayment")} description={`${invoice?.invoice_number || ""} · ${money(balance)} ${t("invoice.remaining").toLowerCase()}`} onClose={onClose}>
+    <Modal open={open} busy={saving} title={t("invoice.recordPayment")} description={`${invoice?.invoice_number || ""} · ${money(balance)} ${t("invoice.remaining").toLowerCase()}`} onClose={onClose}>
       <form className="invoice-payment-form" onSubmit={submit}>
         {error ? <div className="invoice-alert is-error">{error}</div> : null}
         <label>
@@ -1293,6 +1277,7 @@ function PaymentReversalModal({ payment, open, onClose, onConfirm, money, date, 
     <Modal
       open={open}
       title={t("invoice.reversePaymentTitle")}
+      busy={saving}
       description={t("invoice.reversePaymentDescription")}
       onClose={onClose}
     >
@@ -1353,6 +1338,7 @@ function ReasonModal({ action, invoice, open, onClose, onConfirm, t }) {
     <Modal
       open={open}
       title={isCredit ? t("invoice.creditNoteTitle") : t("invoice.voidTitle")}
+      busy={saving}
       description={isCredit ? t("invoice.creditNoteDescription") : t("invoice.voidDescription")}
       onClose={onClose}
     >
@@ -1437,7 +1423,7 @@ function InvoiceDetail({ invoice, profile, open, onClose, onEdit, onIssue, onPay
   const canCredit = !invoice.daily_sale_id && documentType === "invoice" && documentStatus === "issued" && paid <= 0;
 
   return (
-    <Modal open={open} title={invoice.invoice_number || t("invoice.draftInvoice")} description={buyer.name} onClose={onClose} drawer>
+    <Modal open={open} title={invoice.invoice_number || t("invoice.draftInvoice")} description={buyer.name} onClose={onClose} drawer closeOnBackdrop>
       <div className="invoice-detail"><EntityDocuments entityType="invoice" entityId={invoice.id}/>
         {invoice.daily_sale?.outbound_dispatch?.order?.intake&&<p><Link to={`/order-hub?intake=${invoice.daily_sale.outbound_dispatch.order.intake.id}`}>{language==='sq'?'Porosia burimore':'Source order'} {invoice.daily_sale.outbound_dispatch.order.order_number}</Link> · {invoice.daily_sale.sale_number}</p>}
         <div className="invoice-detail-status"><StatusPills invoice={invoice} t={t} /></div>

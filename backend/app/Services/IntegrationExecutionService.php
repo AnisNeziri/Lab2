@@ -41,7 +41,7 @@ class IntegrationExecutionService
 
             return $result;
         } catch (Throwable $exception) {
-            $message = mb_substr($exception->getMessage(), 0, 2000);
+            $message = 'Integration request failed. Review connectivity, provider credentials and retry policy with your administrator.';
             $log->update([
                 'status' => 'failed', 'completed_at' => now(), 'error' => $message,
                 'next_retry_at' => now()->addMinutes(5),

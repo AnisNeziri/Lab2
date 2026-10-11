@@ -2,7 +2,7 @@
 namespace App\Services;
 
 use App\Contracts\IntelligenceProvider;
-use App\Models\{ActivityLog,Customer,EnterpriseDecision,Product,Shipment,Supplier};
+use App\Models\{ActivityLog,Customer,EnterpriseDecision,Product,Shipment,Supplier,PurchaseOrder,SalesOrder,Warehouse};
 use App\Support\CompanyCurrency;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\{Auth,Cache};
@@ -20,8 +20,9 @@ final class IntelligenceAssistantService
     public function ask(array $input):array
     {
         abort_unless(Auth::user()?->company_id,403);
-        $v=validator($input,['question'=>'required|string|min:2|max:600','language'=>'sometimes|in:en,sq','conversation_id'=>'nullable|uuid','simulation_id'=>'nullable|integer|min:1','customer_id'=>'nullable|integer|min:1','entity'=>'nullable|array:type,id','entity.type'=>'required_with:entity|in:product,customer,supplier,shipment,decision,task','entity.id'=>'required_with:entity|integer|min:1'])->validate();
+        $v=validator($input,['question'=>'required|string|min:2|max:600','language'=>'sometimes|in:en,sq','conversation_id'=>'nullable|uuid','clear_context'=>'sometimes|boolean','simulation_id'=>'nullable|integer|min:1','customer_id'=>'nullable|integer|min:1','entity'=>'nullable|array:type,id','entity.type'=>'required_with:entity|in:product,customer,supplier,shipment,decision,task,purchase_order,sales_order,warehouse','entity.id'=>'required_with:entity|integer|min:1'])->validate();
         $id=$v['conversation_id']??(string)Str::uuid();$context=$this->contextCache()->get($this->key($id),[]);$sq=($v['language']??'en')==='sq';
+        if($v['clear_context']??false)$context=[];
         if(isset($v['simulation_id'])){app(StrategicSimulationService::class)->get($v['simulation_id']);$context['strategic_simulation_id']=$v['simulation_id'];unset($context['optimization_plan_id']);}
         if(!isset($v['entity'])&&app(StrategicSimulationAssistant::class)->supports($v['question'],$context)) {
             try {$reply=app(StrategicSimulationAssistant::class)->reply($v['question'],$context,$sq);}
@@ -30,7 +31,7 @@ final class IntelligenceAssistantService
         }
         $runner=app(AssistantToolRunner::class);$plan=app(AssistantPlanner::class)->plan($v['question'],$context);$provider=['state'=>'deterministic'];
         // Only unknown phrasing can ask the local classifier. It never receives stored notes or records.
-        if($plan['intent']==='record'&&!$plan['term']&&app(IntelligenceProvider::class)->available()) {
+        if($plan['intent']==='record'&&!$plan['type']&&!preg_match('/["“]/u',$v['question'])&&app(IntelligenceProvider::class)->available()) {
             $provider=app(IntelligenceProvider::class)->respond([['role'=>'user','content'=>$v['question']]]);
             if(isset($provider['intent'])&&!in_array($provider['intent'],['prepare','scenario','record']))$plan['intent']=$provider['intent'];
         }
@@ -43,17 +44,29 @@ final class IntelligenceAssistantService
                 else $failures[]=$tool.': '.($e instanceof \Illuminate\Validation\ValidationException?collect($e->errors())->flatten()->implode(' '):($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface?$e->getMessage():'The source could not be read. Please open the source page or try again.'));return null;}
         };
         $entity=$v['entity']??null;
+        if(!$entity && empty($plan['term']) && preg_match('/\b(first|second|third)\s+(?:one|result|product)\b/', $plan['normalized']??'', $ordinal)) {
+            $index=array_search($ordinal[1],['first','second','third']);
+            $entity=$context['result_entities'][$index]??null;
+        }
         if(!$entity&&!empty($plan['term'])&&!str_starts_with($plan['intent'],'optimization_')&&!in_array($plan['intent'],['learning','overrides','policy_suggestions','challengers','brief','risks','cash','inactive','opportunities','decisions','sales','changes'])) {
-            $groups=['products'=>'product','customers'=>'customer','suppliers'=>'supplier','shipments'=>'shipment','tasks'=>'task'];$matches=[];
-            foreach(app(SearchService::class)->search(mb_substr($plan['term'],0,80)) as $group=>$rows)if(isset($groups[$group])&&(!$plan['type']||$plan['type']===$groups[$group]))foreach($rows as $row)$matches[]=['type'=>$groups[$group],'id'=>$row['id'],'title'=>$row['title'],'url'=>$row['url']];
-            $exact=array_values(array_filter($matches,fn($row)=>Str::lower(Str::ascii($row['title']))===Str::lower(Str::ascii($plan['term']))));
-            if(count($exact)===1)$entity=$exact[0];elseif(count($matches)===1)$entity=$matches[0];else{
-                $answer['choices']=array_slice($matches,0,12);$answer['text']=$sq?'Zgjidh regjistrimin e saktë; nuk do ta hamendësoj.':'Choose the exact record; I will not guess.';
-                $plan['intent']='clarification';unset($context['entity'],$context['scenario']);
+            $resolution=app(AssistantEntityResolver::class)->resolve($plan['term'],$plan['type']);
+            if($resolution['entity']){
+                $entity=$resolution['entity'];
+                if($resolution['fuzzy'])$answer['resolution']=$sq?'Gjeta '.$entity['title'].' dhe e përdora për këtë përgjigje.':'I found '.$entity['title'].' and used it for this answer.';
+            }else{
+                $answer['choices']=$resolution['choices'];$answer['text']=$answer['choices']?($sq?'Cilin regjistrim nënkupton? Zgjidhe më poshtë; nuk do ta hamendësoj.':'Which record did you mean? Choose below; I will not guess.'):($sq?'Nuk gjeta një regjistrim të lejuar me këtë emër. Provo emrin ose SKU-në.':'I could not find an authorized record with that name. Try its name or SKU.');
+                $plan['intent']='clarification';unset($context['entity'],$context['scenario'],$context['first_decision'],$context['result_entities']);
+                if($plan['type']!=='shipment')unset($context['product']);
             }
         }
-        if($entity){$entity=$this->authorizeEntity($entity);if(($context['entity']??null)!==$entity){$pendingCapacity=$context['pending_capacity']??null;$optimizationId=$context['optimization_plan_id']??null;$context=[];if(str_starts_with($plan['intent'],'optimization_')&&$optimizationId)$context['optimization_plan_id']=$optimizationId;if($pendingCapacity&&$entity['type']==='product'){$context['pending_capacity']=$pendingCapacity;$plan['intent']='capacity';}}$context['entity']=$entity;}
+        if($entity){$entity=$this->authorizeEntity($entity);if(($context['entity']??null)!==$entity){$pendingCapacity=$context['pending_capacity']??null;$optimizationId=$context['optimization_plan_id']??null;$relatedProduct=$context['product']??null;$context=[];if($relatedProduct&&$entity['type']==='shipment')$context['product']=$relatedProduct;if(str_starts_with($plan['intent'],'optimization_')&&$optimizationId)$context['optimization_plan_id']=$optimizationId;if($pendingCapacity&&$entity['type']==='product'){$context['pending_capacity']=$pendingCapacity;$plan['intent']='capacity';}}$context['entity']=$entity;}
         $entity=$context['entity']??null;$intent=$plan['intent'];
+        if(($entity['type']??null)==='product')$context['product']=$entity;
+        if(($entity['type']??null)==='decision'){
+            $decision=EnterpriseDecision::findOrFail($entity['id']);
+            if($decision->product_id)$context['product']=$this->authorizeEntity(['type'=>'product','id'=>$decision->product_id]);
+        }
+        if(in_array($intent,['replenishment','stockout','compare'])&&isset($context['product']))$entity=$context['entity']=$context['product'];
         $needEntity=function(array $types)use($entity,$sq,&$answer):bool {
             if($entity&&in_array($entity['type'],$types))return false;
             $answer['text']=$sq?'Zgjidh '.implode(' / ',$types).' ose shkruaj emrin në thonjëza.':'Select a '.implode(' / ',$types).' or put its name in quotes.';return true;
@@ -95,17 +108,27 @@ final class IntelligenceAssistantService
             if($intent==='learning')$read('get_recommendation_performance');
             $answer['text']=$sq?'Dëshmi historike dhe skenarë eksperimentalë, jo prova shkakësore. Vetëm politika e miratuar është aktive; sugjerimet nuk e ndryshojnë atë.':'Historical evidence and experimental scenarios, not causal proof. Only the approved champion is production; suggestions do not change it.';
         }elseif(in_array($intent,['replenishment','stockout'])) {
-            if($entity&&$entity['type']==='product'){$read($intent==='stockout'?'get_demand_forecast':'get_inventory_plan',['product_id'=>$entity['id']]);}
+            if($entity&&$entity['type']==='product'){
+                $read('get_product_availability',['product_id'=>$entity['id']]);
+                $read('get_inventory_plan',['product_id'=>$entity['id']]);
+                $read('get_product_incoming_risk',['product_id'=>$entity['id']]);
+            }
             elseif($intent==='stockout'){
                 $read('get_inventory_intelligence_recommendations',['risk'=>'high']);
                 $read('get_inventory_intelligence_recommendations',['risk'=>'watch']);
                 // Observed-history decisions remain useful when no ML champion
                 // has passed promotion gates. Keep their own evidence qualification.
                 $read('get_replenishment_decisions');
+                if(preg_match('/incoming|shipment|arriv/', $plan['normalized']??''))$read('get_at_risk_shipments');
             }
             else $read('get_products_needing_replenishment');
         }elseif($intent==='suppliers')$read('get_supplier_decisions');
         elseif($intent==='shipments')$read($entity&&$entity['type']==='shipment'?'get_shipment_intelligence':'get_at_risk_shipments',$entity&&$entity['type']==='shipment'?['shipment_id'=>$entity['id']]:[]);
+        elseif($intent==='orders'){
+            if(($entity['type']??null)==='purchase_order')$read('get_purchase_order',['purchase_order_id'=>$entity['id']]);
+            elseif(($entity['type']??null)==='sales_order')$read('get_sales_order',['sales_order_id'=>$entity['id']]);
+            else $read('get_orders_needing_attention');
+        }
         elseif($intent==='cash')$read('get_cash_forecast',['horizon'=>preg_match('/\b(7|30|60|90)\b/',$v['question'],$m)?(int)$m[1]:30]);
         elseif($intent==='debt')$read($entity&&$entity['type']==='customer'?'get_customer':'get_receivable_intelligence',$entity&&$entity['type']==='customer'?['customer_id'=>$entity['id']]:[]);
         elseif($intent==='inactive')$read('get_at_risk_customers');
@@ -127,8 +150,8 @@ final class IntelligenceAssistantService
                 $candidate=$context['first_decision']??null;
                 if($candidate)$entity=$context['entity']=$this->authorizeEntity(['type'=>'decision','id'=>$candidate]);
             }
-            if(!$needEntity(['product','customer','supplier','shipment','decision','task'])) {
-                $type=$entity['type'];$tool=match($type){'product'=>$intent==='movements'?'get_stock_movements':($intent==='forecast'?'get_demand_forecast':($intent==='compare'?'get_supplier_options':($intent==='explain'?'get_inventory_plan':'get_product_availability'))),'customer'=>$intent==='record'?'get_customer':'get_customer_intelligence','supplier'=>$intent==='explain'?'get_supplier_performance':'get_supplier','shipment'=>'get_shipment_intelligence','decision'=>$intent==='compare'?'compare_decision_alternatives':'get_decision','task'=>'get_task'};
+            if(!$needEntity(['product','customer','supplier','shipment','decision','task','purchase_order','sales_order','warehouse'])) {
+                $type=$entity['type'];$tool=match($type){'product'=>$intent==='movements'?'get_stock_movements':($intent==='forecast'?'get_demand_forecast':($intent==='compare'?'get_supplier_options':($intent==='explain'?'get_inventory_plan':'get_product_availability'))),'customer'=>$intent==='record'?'get_customer':'get_customer_intelligence','supplier'=>$intent==='explain'?'get_supplier_performance':'get_supplier','shipment'=>'get_shipment_intelligence','decision'=>$intent==='compare'?'compare_decision_alternatives':'get_decision','task'=>'get_task','purchase_order'=>'get_purchase_order','sales_order'=>'get_sales_order','warehouse'=>'get_warehouse_stock'};
                 $read($tool,[$type.'_id'=>$entity['id']]);
                 if($intent==='explain'&&$type==='decision')$read('get_decision_changes',['decision_id'=>$entity['id']]);
             }
@@ -146,13 +169,25 @@ final class IntelligenceAssistantService
                     $product=$type==='product'?Product::findOrFail($entity['id']):EnterpriseDecision::findOrFail($entity['id'])->product;
                     if(isset($scenario['requested_unit'])&&!$this->unitMatches($scenario['requested_unit'],$product->unit))$answer['text']=$sq?'Njësia nuk përputhet me njësinë bazë. Zgjidh njësinë e saktë në planifikim.':'That unit does not match the base unit. Choose the exact unit in planning.';
                     else {
+                        if(isset($scenario['arrival_delay_days'])) {
+                            $incoming=$read('get_product_incoming_risk',['product_id'=>$product->id]);
+                            $shipments=collect($incoming['shipments']??[])->filter(fn($s)=>!($s['evidence']['completed']??false))->unique('shipment_id')->values();
+                            if($shipments->count()===1){
+                                $shipment=$this->authorizeEntity(['type'=>'shipment','id'=>$shipments[0]['shipment_id']]);
+                                $context['entity']=$shipment;
+                                $read('simulate_shipment_delay',['shipment_id'=>$shipment['id'],'delay_days'=>$scenario['arrival_delay_days']]);
+                            }else{
+                                $answer['text']=$shipments->isEmpty()?($sq?'Nuk ka dërgesë hyrëse të vlerësuar për këtë produkt.':'No evaluated incoming shipment is recorded for this product.'):($sq?'Cilën dërgesë duhet ta vonojmë në këtë skenar?':'Which incoming shipment should be delayed in this scenario?');
+                                $answer['choices']=$shipments->take(6)->map(fn($s)=>['type'=>'shipment','id'=>$s['shipment_id'],'title'=>$s['evidence']['reference'],'url'=>'/shipments/my-shipments?shipment='.$s['shipment_id']])->all();
+                            }
+                        }
                         unset($scenario['requested_unit']);$allowed=array_intersect_key($scenario,array_flip(['base_quantity','delay_days','demand_multiplier']));
                         if($intent==='scenario_cash') {
                             $planData=$read('get_inventory_plan',['product_id'=>$product->id]);$supplier=$planData['plan']['supplier_id']??null;
                             if(!$supplier)$answer['text']=$sq?'Mungon furnitori me çmim për të llogaritur ndikimin në para.':'A priced supplier is required to calculate the cash impact.';
                             else $read('simulate_purchase_cash_impact',array_merge(['currency'=>CompanyCurrency::current(),'product_id'=>$product->id,'supplier_id'=>$supplier,'horizon'=>30],array_intersect_key($allowed,array_flip(['base_quantity','demand_multiplier']))));
                             if(isset($allowed['delay_days']))$answer['limitations'][]=$sq?'Vonesa e furnizimit nuk është ndryshim i afatit kontraktual të pagesës.':'Supply delay is not a change to contractual payment terms.';
-                        }else{$read($type==='decision'?'simulate_decision_change':'simulate_inventory_scenario',[$type.'_id'=>$entity['id'],'scenarios'=>[[], $allowed]]);$context['scenario']=$allowed;}
+                        }elseif(!isset($scenario['arrival_delay_days'])){$read($type==='decision'?'simulate_decision_change':'simulate_inventory_scenario',[$type.'_id'=>$entity['id'],'scenarios'=>[[], $allowed]]);$context['scenario']=$allowed;}
                     }
                 }elseif($type==='shipment'&&isset($scenario['arrival_delay_days']))$read('simulate_shipment_delay',['shipment_id'=>$entity['id'],'delay_days'=>$scenario['arrival_delay_days']]);
                 else $answer['text']=$sq?'Ky skenar nuk mbështetet nga një mjet ekzistues.':'No existing tool supports this exact scenario.';
@@ -191,9 +226,19 @@ final class IntelligenceAssistantService
         foreach($failures as $failure)$answer['limitations'][]=str_starts_with($failure,'permission:')?($sq?'Një burim nuk është i disponueshëm me lejet e tua.':'A source is unavailable with your permissions.'):$failure;
         if(!$answer['text'])$answer['text']=$answer['cards']?($sq?'Dëshmi nga regjistrimet e kompanisë. Vlerësimet janë këshilluese, jo garanci.':'Evidence from company records. Forecasts are advisory, not guarantees.'):($sq?'Nuk ka dëshmi të mjaftueshme për këtë pyetje.':'There is insufficient recorded evidence for this question.');
         if(!$entity)foreach($answer['cards'] as $card)if(($card['entity']['type']??'')==='decision'){$context['first_decision']=$card['entity']['id'];break;}
-        $answer['context']=$context['entity']??null;$context['last_intent']=$intent;
+        if($answer['cards'])$context['result_entities']=array_values(array_filter(array_column($answer['cards'],'entity')));
+        if($answer['choices'])$context['result_entities']=$answer['choices'];
+        $answer['context']=$context['entity']??null;
+        $answer['context_entities']=array_values(collect([$context['product']??null,$context['entity']??null])->filter()->unique(fn($e)=>$e['type'].':'.$e['id'])->all());
+        $answer['follow_ups']=match($intent){
+            'shipments','scenario'=>[$sq?'Cilat produkte kan me mbet pa stok?':'Which products are at stock risk?',$sq?'Po nëse dërgesa vonohet 10 ditë?':'What if shipment is 10 days late?',$sq?'Çfarë duhet me porosit?':'How much should I order?'],
+            'stockout','replenishment','explain','compare'=>[$sq?'Pse i pari?':'Why the first one?',$sq?'Cili furnitor mund ta mbulojë?':'Which supplier can cover?',$sq?'Po nëse dërgesa vonohet 10 ditë?':'What if shipment is 10 days late?'],
+            'debt'=>[$sq?'Cili klient ka borxhin ma të madh?':'Which customer owes most?',$sq?'Parashikimi i parasë për 30 ditë':'Cash forecast for 30 days'],
+            default=>[$sq?'Çfarë kërkon vëmendjen sot?':'What needs my attention today?',$sq?'Çfarë duhet me porosit?':'What should I order?'],
+        };
+        $context['last_intent']=$intent;
         $this->contextCache()->put($this->key($id),$context,config('assistant.context_minutes')*60);
-        $state=$failures?'partial':($answer['cards']?'success':'insufficient');
+        $state=$failures?'partial':($answer['choices']?'needs_clarification':($answer['cards']?'success':'insufficient'));
         app(AnalyticsDataService::class)->audit('assistant.query',['response_id'=>$answer['id'],'conversation_id'=>$id,'question'=>$v['question'],'intent'=>$intent,'entities'=>$answer['context'],'tools'=>$runner->executions,'scenario'=>$context['scenario']??null,'action_preview'=>isset($answer['action']),'response_state'=>$state,'provider'=>$provider['state'],'follow_up'=>isset($v['conversation_id']),'duration_ms'=>(int)((microtime(true)-$start)*1000),'language'=>$sq?'sq':'en']);
         $answer['state']=$state;$answer['limitations']=array_values(array_unique($answer['limitations']));
         return $answer;
@@ -209,10 +254,11 @@ final class IntelligenceAssistantService
     }
     private function authorizeEntity(array $entity):array
     {
-        $type=$entity['type'];$id=(int)$entity['id'];$permission=match($type){'product'=>'inventory.view','customer'=>'debts.view','supplier'=>'supplier_catalogue.view','shipment'=>'shipments.view','decision'=>'analytics.view','task'=>'tasks.view'};
+        $type=$entity['type'];$id=(int)$entity['id'];$permission=match($type){'product'=>'inventory.view','customer'=>'debts.view','supplier'=>'supplier_catalogue.view','shipment'=>'shipments.view','decision'=>'analytics.view','task'=>'tasks.view','purchase_order'=>'purchase_orders.view','sales_order'=>'fulfillment.view','warehouse'=>'inventory.view'};
         abort_unless($this->can($permission),403);
-        match($type){'product'=>Product::findOrFail($id),'customer'=>Customer::findOrFail($id),'supplier'=>Supplier::findOrFail($id),'shipment'=>Shipment::findOrFail($id),'decision'=>app(EnterpriseDecisionService::class)->detail($id),'task'=>app(ActionCenterService::class)->tasks(['task'=>$id,'status'=>'all'])->getCollection()->firstOrFail()};
-        return ['type'=>$type,'id'=>$id];
+        $row=match($type){'product'=>Product::findOrFail($id),'customer'=>Customer::findOrFail($id),'supplier'=>Supplier::findOrFail($id),'shipment'=>Shipment::findOrFail($id),'decision'=>app(EnterpriseDecisionService::class)->detail($id),'task'=>app(ActionCenterService::class)->tasks(['task'=>$id,'status'=>'all'])->getCollection()->firstOrFail(),'purchase_order'=>PurchaseOrder::findOrFail($id),'sales_order'=>SalesOrder::findOrFail($id),'warehouse'=>Warehouse::findOrFail($id)};
+        $title=data_get($row,'name')??data_get($row,'vessel_name')??data_get($row,'po_number')??data_get($row,'order_number')??data_get($row,'tracking_number')??data_get($row,'product.name')??data_get($row,'evidence.product.name')??data_get($row,'title');
+        return ['type'=>$type,'id'=>$id,'title'=>$title];
     }
     public function confirm(array $input):array
     {

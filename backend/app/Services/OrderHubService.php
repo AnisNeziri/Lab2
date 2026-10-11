@@ -185,6 +185,7 @@ class OrderHubService {
     public function state(SalesOrder $o, bool $includeLedger = false, ?\Illuminate\Support\Collection $obligations = null): array {
         $dispatched=$o->dispatches->reduce(fn($n,$d)=>Money::add($n,$d->total_amount),'0.00');
         $payment=$o->payment_type==='cash'&&Money::compare($dispatched,0)>0?(Money::compare($dispatched,$o->total_amount)>=0?'paid':'partially_paid'):'unpaid';
+        $paid=$o->payment_type==='cash'?$dispatched:'0.00';
         if($includeLedger&&$o->customer_id&&$o->payment_type!=='cash'&&Money::compare($dispatched,0)>0){
             $ids=$o->dispatches->pluck('customer_debt_transaction_id')->filter();
             $open=($obligations ?? app(CustomerCreditService::class)->obligations($o->customer))->whereIn('id',$ids)->reduce(fn($sum,$d)=>Money::add($sum,$d->outstanding_amount),'0.00');
@@ -200,7 +201,7 @@ class OrderHubService {
         $delivery=$o->dispatches->contains('status','failed')?'failed':($o->status==='delivered'?'delivered':($o->dispatches->isNotEmpty()?'in_transit':'planned'));
         $backorder=$o->confirmed_at&&$o->status!=='cancelled'&&$o->items->contains(fn($i)=>\Brick\Math\BigDecimal::of($i->base_quantity)->isGreaterThan(\Brick\Math\BigDecimal::of($i->reserved_quantity)->plus($i->dispatched_quantity)));
         $late=$o->requested_delivery_date?->isBefore(today())&&!in_array($o->status,['delivered','cancelled']);
-        return ['order'=>$o->status==='cancelled'?'cancelled':($o->confirmed_at?'confirmed':'draft'),'payment'=>$payment,'fulfillment'=>$o->status,'delivery'=>$delivery,'backordered'=>$backorder,'health'=>$late?'late':($delivery==='failed'||$backorder?'attention':'on_track')];
+        return ['order'=>$o->status==='cancelled'?'cancelled':($o->confirmed_at?'confirmed':'draft'),'payment'=>$payment,'paid_amount'=>Money::normalize($paid),'remaining_amount'=>Money::compare($paid,$o->total_amount)>=0?'0.00':Money::subtract($o->total_amount,$paid),'fulfillment'=>$o->status,'delivery'=>$delivery,'backordered'=>$backorder,'health'=>$late?'late':($delivery==='failed'||$backorder?'attention':'on_track')];
     }
     public function detail(OrderIntake $intake): array {
         $intake->load('channel','order.items','order.dispatches'); $data=$intake->toArray();

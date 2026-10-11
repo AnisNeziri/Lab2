@@ -28,6 +28,7 @@ import { useTranslation } from '../hooks/useTranslation'
 import { formatQuantity, isMeterUnit } from '../utils/formatQuantity'
 import { getInventoryQuantity } from '../utils/inventoryQuantity'
 import './WarehouseOperations.css'
+import { useSessionState } from '../hooks/useSessionState'
 
 const warehouseBlank = {
   name: '',
@@ -81,6 +82,7 @@ export default function WarehouseOperations() {
   const navigate = useNavigate()
   const [documentParams] = useSearchParams()
   const linkedReceiptId = documentParams.get('receipt')
+  const linkedWarehouseId = documentParams.get('warehouse')
   const { t } = useTranslation()
   const permissions = useAuthStore((state) => state.permissions)
   const enable3dMap = useSettingsStore((state) => state.enable_3d_map)
@@ -92,17 +94,17 @@ export default function WarehouseOperations() {
   const canManageTransfers = permissions.includes('transfers.manage')
   const canDispatch = permissions.includes('transfers.dispatch')
   const canReceive = permissions.includes('transfers.receive')
-  const [tab, setTab] = useState('locator')
+  const [tab, setTab] = useSessionState('warehouse.tab', 'locator')
   const [warehouses, setWarehouses] = useState([])
   const [locations, setLocations] = useState([])
   const [products, setProducts] = useState([])
-  const [locatorMode, setLocatorMode] = useState('product')
-  const [locatorQuery, setLocatorQuery] = useState('')
-  const [locatorCategoryId, setLocatorCategoryId] = useState('')
-  const [locatorSupplierId, setLocatorSupplierId] = useState('')
-  const [locatorLowOnly, setLocatorLowOnly] = useState(false)
+  const [locatorMode, setLocatorMode] = useSessionState('warehouse.mode', linkedWarehouseId ? 'warehouse' : 'product')
+  const [locatorQuery, setLocatorQuery] = useSessionState('warehouse.search', '')
+  const [locatorCategoryId, setLocatorCategoryId] = useSessionState('warehouse.category', '')
+  const [locatorSupplierId, setLocatorSupplierId] = useSessionState('warehouse.supplier', '')
+  const [locatorLowOnly, setLocatorLowOnly] = useSessionState('warehouse.low', false)
   const [locatedProductId, setLocatedProductId] = useState('')
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState('')
+  const [selectedWarehouseId, setSelectedWarehouseId] = useSessionState('warehouse.selected', linkedWarehouseId || '')
   const [transfers, setTransfers] = useState([])
   const [receipts, setReceipts] = useState([])
   const [warehouseForm, setWarehouseForm] = useState(warehouseBlank)
@@ -138,6 +140,13 @@ export default function WarehouseOperations() {
   }, [t])
 
   useEffect(() => { void load() }, [load])
+  useEffect(() => { const target=documentParams.get('tab'); if(['locator','warehouses','locations','transfers','receipts'].includes(target))setTab(target) }, [documentParams.get('tab')])
+  useEffect(() => { const id=documentParams.get('product'); if(id){setTab('locator');setLocatorMode('product');setLocatedProductId(id);setLocatorQuery('');setLocatorCategoryId('');setLocatorSupplierId('');setLocatorLowOnly(false)} }, [documentParams.get('product')])
+  useEffect(() => {
+    if (linkedWarehouseId) {
+      setTab('locator'); setLocatorMode('warehouse'); setSelectedWarehouseId(linkedWarehouseId)
+    }
+  }, [linkedWarehouseId])
   useEffect(() => {
     if (!linkedReceiptId) return
     let active = true
@@ -146,6 +155,7 @@ export default function WarehouseOperations() {
   }, [linkedReceiptId])
   useEffect(() => {
     if (warehouses.length === 0) {
+      if (loading) return;
       setSelectedWarehouseId('')
       return
     }
@@ -199,19 +209,19 @@ export default function WarehouseOperations() {
     }
     return true
   }, [locatorCategoryId, locatorLowOnly, locatorSupplierId])
-  const locatorProducts = useMemo(() => {
+  const matchingLocatorProducts = useMemo(() => {
     const query = locatorQuery.trim().toLocaleLowerCase()
     const sorted = [...products].sort((left, right) => left.name.localeCompare(right.name))
     return sorted.filter((product) => matchesLocatorFilters(product))
       .filter((product) => !query || [product.name, product.sku, product.barcode]
         .some((value) => String(value || '').toLocaleLowerCase().includes(query)))
-      .slice(0, 20)
   }, [locatorQuery, matchesLocatorFilters, products])
+  const locatorProducts=matchingLocatorProducts.slice(0,20)
   useEffect(() => {
-    if (locatedProductId && !locatorProducts.some((product) => String(product.id) === String(locatedProductId))) {
+    if (!loading && locatedProductId && !matchingLocatorProducts.some((product) => String(product.id) === String(locatedProductId))) {
       setLocatedProductId('')
     }
-  }, [locatedProductId, locatorProducts])
+  }, [loading,locatedProductId, matchingLocatorProducts])
   const locatedProduct = useMemo(
     () => products.find((product) => String(product.id) === String(locatedProductId)) || null,
     [locatedProductId, products],
@@ -447,6 +457,7 @@ export default function WarehouseOperations() {
 
           {!locatedProduct ? <div className="stock-locator-prompt"><LocateFixed size={34} /><strong>{t('warehouseOps.locatorSelect')}</strong></div> : (
             <div className="stock-locator-overview">
+              <header><h3>{locatedProduct.name}</h3><small>{locatedProduct.sku || locatedProduct.barcode || "—"} · {locatedProduct.unit}</small></header>
               <div className="stock-locator-summary">
                 <div><small>{t('warehouseOps.locatorTotalStock')}</small><strong>{formatQuantity(locatedTotal, locatedProduct.unit)} <span>{locatedProduct.unit}</span></strong></div>
                 <div><small>{t('warehouseOps.locatorInWarehouses')}</small><strong>{locatedBalances.length}</strong></div>
@@ -563,7 +574,7 @@ export default function WarehouseOperations() {
         </section>
       )}
 
-      {receiveTarget && <div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) { receiveKeyRef.current = null; setReceiveTarget(null) } }}><section className="modal warehouse-action-modal" role="dialog" aria-modal="true"><header className="modal-header"><h2>{t('warehouseOps.receive')} {receiveTarget.transfer_number}</h2><button className="modal-close-btn" disabled={busy} onClick={() => { receiveKeyRef.current = null; setReceiveTarget(null) }}><X /></button></header><div className="modal-body"><p>{receiveTarget.destination_warehouse?.name}</p>{receiveLines.map((line, index) => <div className="receive-line" key={line.id}><strong>{line.name}</strong><small>{t('warehouseOps.remaining')}: {formatQuantity(line.remaining, line.unit)} {line.unit}</small><label>{t('warehouseOps.accepted')}<input type="number" min="0" max={line.remaining} step="0.001" value={line.accepted_quantity} onChange={(event) => setReceiveLines((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, accepted_quantity: event.target.value } : row))}/></label><label>{t('warehouseOps.damaged')}<input type="number" min="0" max={line.remaining} step="0.001" value={line.damaged_quantity} onChange={(event) => setReceiveLines((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, damaged_quantity: event.target.value } : row))}/></label></div>)}<button disabled={busy} onClick={() => perform(async () => { const key = receiveKeyRef.current || requestKey(); receiveKeyRef.current = key; await receiveStockTransfer(receiveTarget.id, { idempotency_key: key, items: receiveLines.map((row) => ({ id: row.id, accepted_quantity: Number(row.accepted_quantity || 0), damaged_quantity: Number(row.damaged_quantity || 0) })) }); receiveKeyRef.current = null; setReceiveTarget(null) }, t('warehouseOps.receivedSaved'))}>{t('warehouseOps.confirmReceipt')}</button></div></section></div>}
+      {receiveTarget && <div className="modal-overlay"><section className="modal warehouse-action-modal" role="dialog" aria-modal="true"><header className="modal-header"><h2>{t('warehouseOps.receive')} {receiveTarget.transfer_number}</h2><button className="modal-close-btn" disabled={busy} onClick={() => { receiveKeyRef.current = null; setReceiveTarget(null) }}><X /></button></header><div className="modal-body"><p>{receiveTarget.destination_warehouse?.name}</p>{receiveLines.map((line, index) => <div className="receive-line" key={line.id}><strong>{line.name}</strong><small>{t('warehouseOps.remaining')}: {formatQuantity(line.remaining, line.unit)} {line.unit}</small><label>{t('warehouseOps.accepted')}<input type="number" min="0" max={line.remaining} step="0.001" value={line.accepted_quantity} onChange={(event) => setReceiveLines((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, accepted_quantity: event.target.value } : row))}/></label><label>{t('warehouseOps.damaged')}<input type="number" min="0" max={line.remaining} step="0.001" value={line.damaged_quantity} onChange={(event) => setReceiveLines((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, damaged_quantity: event.target.value } : row))}/></label></div>)}<button disabled={busy} onClick={() => perform(async () => { const key = receiveKeyRef.current || requestKey(); receiveKeyRef.current = key; await receiveStockTransfer(receiveTarget.id, { idempotency_key: key, items: receiveLines.map((row) => ({ id: row.id, accepted_quantity: Number(row.accepted_quantity || 0), damaged_quantity: Number(row.damaged_quantity || 0) })) }); receiveKeyRef.current = null; setReceiveTarget(null) }, t('warehouseOps.receivedSaved'))}>{t('warehouseOps.confirmReceipt')}</button></div></section></div>}
 
       {receiptDetail && <div className="modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && setReceiptDetail(null)}><section className="modal warehouse-action-modal" role="dialog" aria-modal="true"><header className="modal-header"><div><h2>{receiptDetail.receipt_number}</h2><small>{receiptDetail.purchase_order?.po_number} · {receiptDetail.warehouse?.name}</small></div><button className="modal-close-btn" onClick={() => setReceiptDetail(null)}><X /></button></header><div className="modal-body"><EntityDocuments entityType="goods-receipt" entityId={receiptDetail.id}/><div className="table-wrap"><table><thead><tr><th>{t('warehouseOps.product')}</th><th>{t('warehouseOps.accepted')}</th><th>{t('warehouseOps.damaged')}</th><th>{t('warehouseOps.rejected')}</th></tr></thead><tbody>{receiptDetail.items?.map((item) => <tr key={item.id}><td>{item.product?.name || item.purchase_order_item?.description}</td><td>{formatQuantity(item.accepted_quantity)} {item.inventory_unit}</td><td>{formatQuantity(item.damaged_quantity)} {item.inventory_unit}</td><td>{formatQuantity(item.rejected_quantity)} {item.inventory_unit}</td></tr>)}</tbody></table></div><button onClick={() => downloadGoodsReceiptPdf(receiptDetail.id, receiptDetail.receipt_number)}><FileDown size={16}/> {t('warehouseOps.downloadPdf')}</button></div></section></div>}
     </main>

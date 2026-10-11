@@ -12,8 +12,10 @@ import WorkspaceContext from './WorkspaceContext';
 import { navigationKey } from '../config/navigation';
 import AimsAssistant from './AimsAssistant';
 import SystemStatusBanner from './SystemStatusBanner';
+import { useWorkspaceHistory } from '../hooks/useWorkspaceHistory';
 
 export default function AppLayout() {
+  useWorkspaceHistory();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
@@ -35,6 +37,7 @@ export default function AppLayout() {
   const activeNavigation = navigationKey(location.pathname + location.search);
 
   const handlePageChange = (page, item = null) => {
+    if(!window.dispatchEvent(new Event('aims:before-navigate',{cancelable:true})))return;
     if (typeof page === "string" && page.startsWith("/")) {
       navigate(page);
       setSidebarOpen(false);
@@ -46,6 +49,7 @@ export default function AppLayout() {
   };
 
   const handleLogout = async () => {
+    if(!window.dispatchEvent(new Event('aims:before-navigate',{cancelable:true})))return;
     if (logoutPending.current) return;
     logoutPending.current = true;
     setLoggingOut(true);

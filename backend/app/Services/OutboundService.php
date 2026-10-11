@@ -23,7 +23,7 @@ class OutboundService
             ->when($filters['status']??null,fn($q,$v)=>$q->where('status',$v))
             ->when($filters['view']??null,function($q,$view){
                 if($view==='returns')$q->whereHas('returns',fn($r)=>$r->whereNotIn('status',['resolved','cancelled']));
-                if($view==='late')$q->whereNotIn('status',['delivered','cancelled'])->whereDate('requested_delivery_date','<',now()->toDateString());
+                if($view==='late')$q->whereNotIn('status',['delivered','cancelled'])->whereDate('requested_delivery_date','<',\App\Support\CompanyClock::today()->toDateString());
             })
             ->when($filters['product_id']??null,fn($q,$v)=>$q->whereHas('items',fn($i)=>$i->where('product_id',$v)))
             ->when($filters['wave']??null,fn($q,$v)=>$q->whereHas('tasks',fn($t)=>$t->where('pick_wave_id',$v)))
@@ -140,7 +140,7 @@ class OutboundService
         $o=$item->order; $p=$item->product; $rows=[];
         if($p->tracking_mode && $p->tracking_mode!=='none'){
             $balances=InventoryTraceBalance::query()->with(['lot','warehouse:id,name','location:id,name,path'])->where('stock_state','available')->where('quantity','>',0)->whereHas('warehouse',fn($q)=>$q->where('is_active',true))->where(fn($q)=>$q->whereNull('location_id')->orWhereHas('location',fn($l)=>$l->where('is_active',true)))
-                ->whereHas('lot',fn($q)=>$q->where('product_id',$p->id)->where('status','active')->where(fn($x)=>$x->whereNull('expiry_at')->orWhereDate('expiry_at','>=',now()->toDateString())))
+                ->whereHas('lot',fn($q)=>$q->where('product_id',$p->id)->where('status','active')->where(fn($x)=>$x->whereNull('expiry_at')->orWhereDate('expiry_at','>=',\App\Support\CompanyClock::today()->toDateString())))
                 ->when($o->warehouse_id,fn($q,$id)=>$q->where('warehouse_id',$id))->get()
                 ->sortBy(fn($b)=>($b->lot->expiry_at?->format('Y-m-d')??'9999-12-31').'|'.$b->lot->created_at->format('YmdHis').'|'.str_pad($b->id,12,'0',STR_PAD_LEFT));
             foreach($balances as $b)$rows[]=['warehouse_id'=>$b->warehouse_id,'location_id'=>$b->location_id,'inventory_lot_id'=>$b->inventory_lot_id,'warehouse'=>$b->warehouse->name,'location'=>$b->location?->path,'lot'=>$b->lot->lot_number?:$b->lot->serial_number,'expiry'=>$b->lot->expiry_at?->toDateString(),'available'=>$b->quantity];
@@ -280,7 +280,7 @@ class OutboundService
             $lines[]=['product_id'=>$item->product_id,'quantity'=>$pi->quantity,'unit'=>$item->product->unit,'unit_price'=>$basePrice,'warehouse_id'=>$a->warehouse_id,'location_id'=>$a->location_id,'trace_allocations'=>$this->trace($a,$pi->quantity)];
             $a->update(['dispatched_quantity'=>$this->add($a->dispatched_quantity,$pi->quantity)]);
         }$p->update(['outbound_dispatch_id'=>$dispatch->id]);}
-        $sale=app(DailySaleService::class)->create(['sale_date'=>now()->toDateString(),'notes'=>'Fulfillment '.$o->order_number.' / '.$dispatch->reference,'items'=>$lines,'idempotency_key'=>'outbound-sale-'.$dispatch->id],$values);
+        $sale=app(DailySaleService::class)->create(['sale_date'=>\App\Support\CompanyClock::today()->toDateString(),'notes'=>'Fulfillment '.$o->order_number.' / '.$dispatch->reference,'items'=>$lines,'idempotency_key'=>'outbound-sale-'.$dispatch->id],$values);
         foreach($sale->items()->orderBy('id')->get() as $index=>$saleItem)$packageItems[$index]->update(['daily_sale_item_id'=>$saleItem->id]);
         $sale->update(['customer_id'=>$o->customer_id,'customer_name'=>$o->customer?->name??data_get($o->metadata,'guest_customer.name'),'status'=>'finalized','paid_amount'=>$o->payment_type==='cash'?$sale->total_amount:'0.00','payment_method'=>$o->payment_type==='cash'?'cash':null]);
         $dispatch->update(['daily_sale_id'=>$sale->id,'total_amount'=>$sale->total_amount]);

@@ -149,6 +149,7 @@ class AimsToolRegistry
             'get_documents_awaiting_review' => app(DocumentService::class)->listing(['status'=>'under_review'])->toArray(),
             'get_product' => $this->product($input),
             'get_inventory_status', 'get_product_availability' => $this->availability($input),
+            'get_warehouse_stock' => $this->warehouseStock($input),
             'get_stock_movements' => $this->movements($input),
             'get_replenishment_recommendations' => $this->replenishment->suggestions(['product_ids' => isset($input['product_id']) ? [(int) $input['product_id']] : null])
                 + ($this->can('analytics.view')&&$this->can('inventory.view')?['intelligence'=>app(InventoryIntelligenceService::class)->listing($input)]:[]),
@@ -208,6 +209,13 @@ class AimsToolRegistry
     {
         $x = PurchaseOrder::query()->with(['supplier:id,name', 'warehouse:id,name,code'])->withCount(['items', 'goodsReceipts', 'shipments'])->findOrFail($this->id($input, 'purchase_order_id'));
         return ['id' => $x->id, 'po_number' => $x->po_number, 'status' => $x->status, 'supplier' => $x->supplier?->only(['id', 'name']), 'warehouse' => $x->warehouse?->only(['id', 'name', 'code']), 'total_amount' => $x->total_amount, 'currency' => $x->currency, 'payment_status' => $x->payment_status, 'remaining_balance' => $x->remaining_balance, 'ordered_at' => $x->ordered_at?->toDateString(), 'expected_at' => $x->expected_at?->toDateString(), 'items_count' => $x->items_count, 'receipts_count' => $x->goods_receipts_count, 'shipments_count' => $x->shipments_count];
+    }
+
+    private function warehouseStock(array $input): array
+    {
+        $warehouse=\App\Models\Warehouse::findOrFail($this->id($input,'warehouse_id'));
+        return ['name'=>$warehouse->name,'address'=>$warehouse->address,'url'=>'/warehouse-operations?warehouse='.$warehouse->id,
+            'rows'=>$warehouse->stock()->with('product:id,name,sku,unit')->limit(50)->get()->map(fn($s)=>['name'=>$s->product?->name,'quantity'=>$s->quantity,'available_to_promise'=>$s->available_quantity,'unit'=>$s->product?->unit,'url'=>'/products?product='.$s->product_id])->all()];
     }
 
     private function shipment(array $input): array
@@ -314,6 +322,7 @@ class AimsToolRegistry
             $tool('get_outbound_exceptions','Actionable fulfillment exceptions.',['type'=>'object'],'fulfillment.view'),
             $tool('get_product', 'Concise product identity and stock summary.', $id('product_id'), 'inventory.view'),
             $tool('get_inventory_status', 'Product stock state by warehouse and bin.', $id('product_id'), 'inventory.view'),
+            $tool('get_warehouse_stock','Recorded stock in the selected warehouse.',$id('warehouse_id'),'inventory.view'),
             $tool('get_product_availability', 'Sellable and non-sellable product quantities.', $id('product_id'), 'inventory.view'),
             $tool('get_stock_movements', 'Latest controlled product movements.', $id('product_id'), 'inventory.view'),
             $tool('get_replenishment_recommendations', 'Authoritative replenishment calculation.', ['type' => 'object', 'properties' => ['product_id' => ['type' => 'integer']]], 'replenishment.view'),

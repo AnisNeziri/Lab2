@@ -22,7 +22,7 @@ test('purchase request edit → supplier quote → award review → created PO d
   await row.getByRole('button',{name:'Submit',exact:true}).click()
   await expect(page.locator('.supplier-choice')).toBeVisible()
   await page.locator('.supplier-choice input').first().check()
-  await page.getByRole('button',{name:'Create & issue RFQ'}).click()
+  await page.getByRole('button',{name:'Send request for quotes'}).click()
   const quoteForm=page.locator('form').filter({has:page.getByRole('heading',{name:'Record supplier quote'})})
   await expect(quoteForm).toBeVisible()
   await quoteForm.getByLabel('Supplier',{exact:true}).selectOption({index:1})

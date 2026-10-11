@@ -8,16 +8,16 @@ use Illuminate\Support\Str;
 /** A question is input data, never code or a tool name. */
 final class AssistantPlanner
 {
-    public const INTENTS = ['optimization_run','optimization_limit','optimization_compare','optimization_stress','optimization_explain','optimization_stale','learning','overrides','policy_suggestions','challengers','brief','risks','replenishment','stockout','suppliers','shipments','cash','debt','inactive','opportunities','decisions','changes','explain','compare','scenario','capacity','prepare','record','movements','forecast','sales'];
+    public const INTENTS = ['optimization_run','optimization_limit','optimization_compare','optimization_stress','optimization_explain','optimization_stale','learning','overrides','policy_suggestions','challengers','brief','risks','replenishment','stockout','suppliers','shipments','orders','cash','debt','inactive','opportunities','decisions','changes','explain','compare','scenario','capacity','prepare','record','movements','forecast','sales'];
 
     public function plan(string $question, array $context = []): array
     {
-        $q = Str::lower(Str::ascii(trim($question)));
+        $q = app(AssistantLanguage::class)->normalize($question);
         if (preg_match('/\b(sql|select\s+\*|ignore.*instructions|system prompt|execute|shell|bankrupt|faliment|delete|fshi|approve|mirato|send email)\b/', $q)) return ['intent'=>'unsupported'];
         $rules = [
             'optimization_stale'=>'/\b(stale.*supply|stale.*optim|plan.*vjetruar)/',
             'optimization_compare'=>'/\b(compare|krahaso).*(balanced|service.first|commitment|supply plan|planet)/',
-            'optimization_explain'=>'/\b(why|pse|explain|shpjego).*(buying only|not purchasing|not buying|didn.t.*purchase|instead of|optimizer|supply plan|blejme vetem|nuk.*ble)|\b(which products|cilat produkte).*(not purchasing|not buying|nuk.*ble)/',
+            'optimization_explain'=>'/\b(why|pse|explain|shpjego).*(buying only|not purchasing|not buying|didn.?t.*purchase|instead of|optimizer|supply plan|blejme vetem|nuk.*ble)|\b(which products|cilat produkte).*(not purchasing|not buying|nuk.*ble)/',
             'optimization_stress'=>'/\b(what if|po nese).*(supplier.*late|furnitor.*von|demand.*%|shipment.*days|derges.*dite|collections.*delay|arketime.*von)/',
             'optimization_limit'=>'/\b(increase.*limit|change.*limit|give it|keep new commitments|what if.*(?:limit|commitment|eur)|po nese.*kufi|rris.*kufi)/',
             'optimization_run'=>'/\b(optimize|optimise|optimizo|build.*purchasing plan|supply optimizer|best.*purchasing plan|reduce purchases using.*transfer)/',
@@ -26,20 +26,20 @@ final class AssistantPlanner
             'policy_suggestions'=>'/\b(policy change|policy suggest|safety.*policy|ndryshim.*politik|sugjerim.*politik)/',
             'learning'=>'/\b(how good.*recommend|recommend.*performance|poor.*recommend|recommend.*poor|aims improving|decision learning|mesimi i vendimeve|ciles.*rekomand|aims.*permireso)/',
             'prepare'=>'/\b(prepare|pergatit).*(option|recommend|draft|opsion|rekomand|kerkes)/',
-            'scenario'=>'/\b(what if|po nese|simulate|simulo|only\s+[0-9]|vetem\s+[0-9])/',
+            'scenario'=>'/\b(what if|what happens if|po nese|simulate|simulo|only\s+[0-9]|vetem\s+[0-9])/',
             'changes'=>'/\b(what changed|changes since|changed since|cfare ndryshoi|ndryshimet|ndryshuar)/',
-            'brief'=>'/\b(daily brief|morning brief|executive brief|business brief|brief today|summarize my business|what needs my attention|what should i focus on|permbledhje|prioritetet sot|cfare.*vemendjen)/',
+            'brief'=>'/\b(daily brief|morning brief|executive brief|business brief|brief today|summarize my business|what needs my attention|what should i focus on|permbledhje|prioritetet sot|(?:cfare|what).*(?:vemendjen|attention))/',
             'capacity'=>'/\b(can we|can i|a mund).*(sell|fulfil|supply|handle|shes|plotes|furniz)/',
             'cash'=>'/\b(cash|cashflow|cash-flow|para|likuiditet|arke|cash forecast)/',
             'debt'=>'/\b(owes|owing|owe|receivable|borxh|debt)/',
             'inactive'=>'/\b(inactive|inactivity|stopped buying|joaktiv|nuk.*ble)/',
-            'opportunities'=>'/\b(sales opportun|reorder opportun|customers.*(?:reorder|buy.*again)|mundesi.*shit|mundesi.*ri|klient.*riporos)/',
+            'opportunities'=>'/\b(sales opportun|reorder opportun|customer.*(?:reorder|buy.*again|riporos)|mundesi.*shit|mundesi.*ri|klient.*riporos)/',
             'compare'=>'/\b(compare|instead of|versus| vs |krahaso|ne vend|supplier b.*supplier a)/',
             'explain'=>'/\b(why|explain|pse|shpjego)/',
-            'shipments'=>'/\b(shipment|vessel|container|derges|anije|logistics)/',
+            'stockout'=>'/\b(stockout|run out|running out|out of stock|stock risk|risk.*stock|stock.*risk|stock.*finish|when.*finish|mbar.*stok|munges.*stok)/',
+            'shipments'=>'/\b(shipment|vessel|container|derges|anije|logistics|china|incoming stock|stock.*incoming)/',
             'suppliers'=>'/\b(supplier.*attention|supplier.*risk|supplier.*should.*consider|furnitor.*vemend|furnitor.*rrezik|furnitor.*duhet.*konsider)/',
-            'replenishment'=>'/\b(what.*buy|should.*buy|what.*order|sa.*porosi|cfare.*ble|replenish|riporosi)/',
-            'stockout'=>'/\b(stockout|run out|running out|out of stock|stock risk|risk.*stock|mbar.*stok|munges.*stok)/',
+            'replenishment'=>'/\b(what.*buy|should.*buy|what.*order|how much.*order|sa.*porosi|cfare.*ble|replenish|riporosi)/',
             'decisions'=>'/\b(waiting decision|pending decision|decisions|vendime|vendimet|miratime)/',
             'risks'=>'/\b(top risk|biggest risk|critical risk|rreziqet|rrezik)/',
             'movements'=>'/\b(movement|movements|levizje|levizjet)/',
@@ -48,6 +48,8 @@ final class AssistantPlanner
         ];
         $intent = 'record';
         foreach ($rules as $name=>$pattern) if (preg_match($pattern,$q)) { $intent=$name; break; }
+        if ($intent==='record' && preg_match('/supplier.*(?:better|best|cover|for)|which supplier/', $q)) $intent='compare';
+        if ($intent==='record' && preg_match('/\border\b/', $q)) $intent='orders';
         if(!isset($context['optimization_plan_id'])&&!preg_match('/\bplan\s*#?\s*\d+/',$q)&&$intent==='optimization_stress')$intent='scenario';
         if(!isset($context['optimization_plan_id'])&&$intent==='optimization_limit')$intent='optimization_run';
         if(isset($context['optimization_plan_id'])&&in_array($intent,['explain','compare']))$intent='optimization_'.$intent;
@@ -59,6 +61,19 @@ final class AssistantPlanner
         elseif ($intent === 'explain' && preg_match('/^(?:why\s+is|pse\s+(?:është|eshte))\s+(.+?)\s+(?:at\s+risk|në\s+rrezik|ne\s+rrezik)[?.!]*$/iu', $question, $m)) $term=trim($m[1]);
         $type = preg_match('/\b(customer|klient)/',$q)?'customer':(preg_match('/\b(supplier|furnitor)/',$q)?'supplier':(preg_match('/\b(shipment|vessel|derges|anije)/',$q)?'shipment':null));
         if (in_array($intent,['forecast','movements','replenishment','stockout','capacity']) && !$type) $type='product';
+        if ($intent==='compare' && preg_match('/supplier/', $q)) $type='product';
+        if (preg_match('/\bwarehouse\b/', $q)) $type='warehouse';
+        if (preg_match('/\bpurchase order\b|\bpo[- ]?\d/', $q)) $type='purchase_order';
+        if (!$term) $term=app(AssistantLanguage::class)->entityTerm($question);
+        // A controlled draft follow-up uses the authorized conversation decision.
+        // Preserve quoted or explicitly named records for normal entity resolution.
+        if ($intent === 'prepare' && preg_match('/^(?:prepare|pergatit)\s+(?:the\s+)?(?:recommended\s+(?:option|draft)|option|draft|opsion(?:in)?\s+e\s+rekomanduar|draftin)[?.!]*$/', $q)) $term = null;
+        // Keep business references intact; question stop-words must not strip PO/SO prefixes.
+        if (!preg_match('/["“]/u',$question) && preg_match('/\b(?:PO|SO)-[a-z0-9-]+\b/i',$question,$reference)) $term=$reference[0];
+        if (preg_match('/\bsales order\b|\bso[- ]?\d/', $q)) $type='sales_order';
+        if (in_array($type,['purchase_order','sales_order']) && in_array($intent,['record','sales'])) $intent='orders';
+        if ($term && $type==='supplier' && $intent==='compare') $type='product';
+        if (!preg_match('/["“]/u',$question) && preg_match('/\b(first|second|third)\s+(?:one|result|product)\b/', $q)) $term=null;
         $scenario=[];
         if ($intent==='scenario') {
             if(preg_match('/(?:buy|purchase|blej|only|vetem)\s*([0-9][0-9,. ]*)\s*(m|metres|meters|metra|pcs|pieces|cope)?\b/',$q,$m)) {

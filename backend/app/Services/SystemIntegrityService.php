@@ -29,6 +29,7 @@ class SystemIntegrityService
             $this->inventoryBalanceCheck($companyId),
             $this->backupRecencyCheck($companyId),
             $this->backupFailureCheck($companyId),
+            $this->restoreDrillCheck(),
             $this->analyticsHealthCheck($companyId),
             $this->relationshipIntegrityCheck($companyId),
             $this->countCheck('outbound_quantities','Outbound quantity integrity',\App\Models\OutboundAllocation::query()->where(fn($q)=>$q->whereColumn('picked_quantity','>','quantity')->orWhereColumn('packed_quantity','>','picked_quantity')->orWhereColumn('dispatched_quantity','>','packed_quantity')->orWhereColumn('delivered_quantity','>','dispatched_quantity')->orWhereColumn('returned_quantity','>','delivered_quantity'))->count(),'/fulfillment'),
@@ -62,6 +63,11 @@ class SystemIntegrityService
             $checks[]=$this->countCheck('document_relationships','Broken document relationships',$broken,'/documents');
         }
         $checks[]=$this->countCheck('outbound_missing_sale','Dispatches missing their authoritative sale',\App\Models\OutboundDispatch::query()->whereNull('daily_sale_id')->count(),'/fulfillment');
+        if (app()->environment('production')) {
+            foreach (app(ProductionReadinessService::class)->inspect()['checks'] as $row) {
+                $checks[] = $this->check('production_'.$row['key'], ucwords(str_replace('_', ' ', $row['key'])), $row['status'], $row['status'] === 'critical' ? 1 : 0, '/system-integrity', $row['detail']);
+            }
+        }
         $critical = collect($checks)->where('status', 'critical')->count();
         $attention = collect($checks)->where('status', 'attention')->count();
 
@@ -83,11 +89,21 @@ class SystemIntegrityService
         if (! Schema::hasTable('backup_runs')) {
             return $this->check('backup_recency', 'Recent verified backup', 'attention', 1, '/reports', 'Backup history is not initialized.');
         }
-        $recent = BackupRun::query()->where('company_id', $companyId)->where('status', 'completed')
-            ->whereIn('verification_result', ['checksum_created', 'checksum_verified'])
+        $recent = BackupRun::query()->where('company_id', $companyId)->where('status', 'completed')->where('operation', 'export')->where('backup_type', 'full')
+            ->where('verification_result', 'checksum_verified')
             ->where('completed_at', '>=', now()->subDays(30))->exists();
 
-        return $this->check('backup_recency', 'Recent verified backup', $recent ? 'healthy' : 'attention', $recent ? 0 : 1, '/reports', $recent ? 'A verified backup completed within the last 30 days.' : 'No verified backup completed within the last 30 days.');
+        return $this->check('backup_recency', 'Recent verified full backup', $recent ? 'healthy' : 'attention', $recent ? 0 : 1, '/reports', $recent ? 'A full backup was reopened and verified within the last 30 days.' : 'No reopened and verified full backup completed within the last 30 days.');
+    }
+
+    private function restoreDrillCheck(): array
+    {
+        $file = storage_path('framework/aims-backup-health.json');
+        $health = is_file($file) ? json_decode(file_get_contents($file), true) : [];
+        $last = $health['last_restore_verified_at'] ?? null;
+        $fresh = $last && \Carbon\Carbon::parse($last)->gte(now()->subDays(30));
+        return $this->check('restore_drill', 'Independent installation restore', $fresh ? 'healthy' : 'attention', $fresh ? 0 : 1, '/reports', $fresh ? 'This installation passed restoration, attachment verification and inventory/finance reconciliation.' : 'No successful independent installation restore recorded within 30 days. Test an encrypted backup on an empty Installation B.')
+            + ['last_success_at' => $last, 'last_verified_backup_at' => $health['last_verified_at'] ?? null, 'last_backup_failure_at' => $health['last_failure_at'] ?? null];
     }
 
     private function analyticsHealthCheck(int $companyId): array

@@ -97,7 +97,12 @@ class IntelligenceAssistantTest extends TestCase
     }
     public function test_draft_preview_explicit_confirmation_idempotency_and_no_stock_or_finance_writes():void{
         $this->login();$d=$this->decision();$counts=collect(['stock_movements','purchase_orders','journal_entries'])->mapWithKeys(fn($t)=>[$t=>DB::table($t)->count()])->all();
-        $r=$this->ask('Prepare the recommended option',['entity'=>['type'=>'decision','id'=>$d->id]])->assertOk()->assertJsonPath('action.confirmation_required',true)->json();$this->assertDatabaseCount('purchase_requests',0);
+        $planner = app(AssistantPlanner::class);
+        $this->assertNull($planner->plan('Prepare the recommended option')['term']);
+        $this->assertNull($planner->plan('Përgatit opsionin e rekomanduar')['term']);
+        $this->assertSame('Recommended option', $planner->plan('Prepare draft for "Recommended option"')['term']);
+        $context=$this->ask('Explain this record',['entity'=>['type'=>'decision','id'=>$d->id]])->assertOk()->json();
+        $r=$this->ask('Prepare the recommended option',['conversation_id'=>$context['conversation_id']])->assertOk()->assertJsonPath('action.confirmation_required',true)->json();$this->assertDatabaseCount('purchase_requests',0);
         $this->ask('yes',['conversation_id'=>$r['conversation_id']])->assertOk()->assertJsonPath('intent','confirmation_required');$this->assertDatabaseCount('purchase_requests',0);
         $this->postJson('/api/intelligence-assistant/confirm',['token'=>$r['action']['token']])->assertUnprocessable();
         $payload=['token'=>$r['action']['token'],'confirm'=>true];$created=$this->postJson('/api/intelligence-assistant/confirm',$payload)->assertOk()->assertJsonPath('draft_only',true)->json();

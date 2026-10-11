@@ -3,15 +3,17 @@ import { useEffect, useRef } from 'react'
 // Focus handling is scoped to the dialog and restored on every close/unmount.
 const dialogs = []
 let previousOverflow = ''
+let originalFocus = null
 
-export function useDialog(onClose, busy = false, open = true) {
+export function useDialog(onClose, busy = false, open = true, { closeOnEscape = true } = {}) {
   const ref = useRef(null), closeRef = useRef(onClose), busyRef = useRef(busy)
-  closeRef.current = onClose; busyRef.current = busy
+  closeRef.current = onClose; busyRef.current = busy || !closeOnEscape
   useEffect(() => {
     if (!open) return undefined
     const token = Symbol('dialog')
     if (!dialogs.length) {
       previousOverflow = document.body.style.overflow
+      originalFocus = document.activeElement
       document.body.style.overflow = 'hidden'
     }
     dialogs.push(token)
@@ -35,8 +37,11 @@ export function useDialog(onClose, busy = false, open = true) {
       document.removeEventListener('keydown', handle, true)
       const top = dialogs.at(-1) === token
       dialogs.splice(dialogs.indexOf(token), 1)
-      if (!dialogs.length) document.body.style.overflow = previousOverflow
-      if (top && previous?.isConnected) previous.focus({ preventScroll: true })
+      if (!dialogs.length) {
+        document.body.style.overflow = previousOverflow
+        const focus=originalFocus;originalFocus=null
+        if(focus?.isConnected)focus.focus({preventScroll:true})
+      } else if (top && previous?.isConnected) previous.focus({ preventScroll: true })
     }
   }, [open])
   return ref

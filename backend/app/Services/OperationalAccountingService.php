@@ -54,7 +54,7 @@ class OperationalAccountingService
             ->where('source_type', 'daily_sale')->where('source_id', $sale->id)
             ->where('status', 'posted')->latest('id')->first();
 
-        return $entry ? $this->accounting->reverse($entry, now()->toDateString(), $reason) : null;
+        return $entry ? $this->accounting->reverse($entry, \App\Support\CompanyClock::today()->toDateString(), $reason) : null;
     }
 
     public function postInvoice(Invoice $invoice): ?JournalEntry
@@ -269,7 +269,7 @@ class OperationalAccountingService
         $customerReturn = $return->type === 'customer';
         $entry = $this->accounting->postMapped(
             'returns', 'inventory_return', $return->id, 'inventory-return-refund:'.$return->id,
-            now()->toDateString(), ($customerReturn ? 'Customer refund ' : 'Supplier refund ').$return->return_number,
+            \App\Support\CompanyClock::today()->toDateString(), ($customerReturn ? 'Customer refund ' : 'Supplier refund ').$return->return_number,
             $customerReturn
                 ? [['mapping' => 'sales_revenue', 'debit' => $amount], ['accounting_account_id' => $cashAccount->id, 'credit' => $amount]]
                 : [['accounting_account_id' => $cashAccount->id, 'debit' => $amount], ['mapping' => 'supplier_advances', 'credit' => $amount]],
@@ -281,7 +281,7 @@ class OperationalAccountingService
 
     public function reverseSource(string $module, string $key, string $reason): ?JournalEntry
     {
-        return $this->accounting->reverseSource($module, $key, now()->toDateString(), $reason);
+        return $this->accounting->reverseSource($module, $key, \App\Support\CompanyClock::today()->toDateString(), $reason);
     }
 
     private function settlementLine(?int $financialAccountId, string $mapping, string $side, string $amount): array

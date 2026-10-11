@@ -25,7 +25,7 @@ class ReplenishmentService
 
     public function suggestions(array $filters = []): array
     {
-        $asOf = CarbonImmutable::parse($filters['as_of'] ?? now('Europe/Tirane')->toDateString(), 'Europe/Tirane')->startOfDay();
+        $asOf = CarbonImmutable::parse($filters['as_of'] ?? \App\Support\CompanyClock::today()->toDateString(), \App\Support\CompanyClock::timezone())->startOfDay();
         $products = Product::query()
             ->with(['warehouseStock', 'supplier:id,name', 'supplierCatalogue' => fn ($query) => $query->where('is_active', true)->with('supplier:id,name')])
             ->where('lifecycle_status', 'active')

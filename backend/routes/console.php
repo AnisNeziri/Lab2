@@ -44,6 +44,8 @@
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
+Artisan::command('aims:heartbeat {queue=scheduler}', function () { app(\App\Services\ProductionReadinessService::class)->heartbeat($this->argument('queue')); });
+Schedule::command('aims:heartbeat scheduler')->everyMinute()->withoutOverlapping();
 
 Artisan::command('analytics:setup',function(){\App\Services\AnalyticsPermissions::install();$this->info('Analytics permissions installed.');});
 Artisan::command('analytics:capture',function(){$this->info(app(\App\Services\AnalyticsDataService::class)->scheduled().' analytics observations captured.');});

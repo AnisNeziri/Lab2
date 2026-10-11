@@ -186,7 +186,7 @@ class ExpenseService
                 'status' => 'reversed', 'reversed_at' => now(), 'reversed_by' => Auth::id(),
                 'reversal_reason' => trim($reason), 'updated_by' => Auth::id(),
             ]);
-            $this->accounting->reverseSource('supplier_accounting', 'expense:'.$expense->id, now()->toDateString(), $reason);
+            $this->accounting->reverseSource('supplier_accounting', 'expense:'.$expense->id, \App\Support\CompanyClock::today()->toDateString(), $reason);
 
             return $this->find($expense->fresh());
         });
@@ -289,7 +289,7 @@ class ExpenseService
                     $this->accounts->reverse($ledger, 'Expense payment reversal: '.trim($reason));
                 }
             }
-            $this->accounting->reverseSource('supplier_accounting', 'expense-payment:'.$payment->id, now()->toDateString(), $reason);
+            $this->accounting->reverseSource('supplier_accounting', 'expense-payment:'.$payment->id, \App\Support\CompanyClock::today()->toDateString(), $reason);
 
             return $this->find($expense->fresh());
         });

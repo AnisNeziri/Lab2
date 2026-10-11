@@ -1,0 +1,14 @@
+name: AIMS release candidate certification
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: aims-rc-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  certification:
+    uses: ./.github/workflows/ci.yml
+    with:
+      release_certification: true
+      build_review_artifacts: true

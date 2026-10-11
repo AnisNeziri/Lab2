@@ -37,7 +37,7 @@ class SearchService
             $result['documents']=app(DocumentService::class)->listing(['q'=>$term])->getCollection()->take(8)->map(fn($d)=>$this->item($d->id,$d->title,$d->reference.' · v'.$d->current_version,'/documents?document='.$d->id));
         }
         if ($this->can('fulfillment.view')) {
-            $result['order_hub']=\App\Models\OrderIntake::with('channel:id,name')->where(fn($q)=>$q->where('external_id','like',$like)->orWhereHas('channel',fn($c)=>$c->where('external_reference','like',$like))->orWhereHas('order',fn($o)=>$o->where('order_number','like',$like)))->limit(8)->get()->map(fn($i)=>$this->item($i->id,$i->external_id?:'#'.$i->id,$i->channel?->name.' · '.$i->state,'/order-hub?intake='.$i->id));
+            $result['order_hub']=\App\Models\OrderIntake::with(['channel:id,name','order:id,order_number'])->where(fn($q)=>$q->where('external_id','like',$like)->orWhereHas('channel',fn($c)=>$c->where('external_reference','like',$like))->orWhereHas('order',fn($o)=>$o->where('order_number','like',$like)))->limit(8)->get()->map(fn($i)=>$this->item($i->id,$i->order?->order_number ?: ($i->external_id ?: 'Order #'.$i->id),$i->channel?->name.' · '.$i->state,'/order-hub?intake='.$i->id));
             $result['sales_orders'] = \App\Models\SalesOrder::query()->with('customer:id,name')->where(fn($q)=>$q->where('order_number','like',$like)->orWhereHas('customer',fn($c)=>$c->where('name','like',$like)))->limit(8)->get()->map(fn($x)=>$this->item($x->id,$x->order_number,$x->customer?->name.' · '.$x->status,'/fulfillment?order='.$x->id));
             foreach (['pick_tasks'=>\App\Models\PickTask::class,'dispatches'=>\App\Models\OutboundDispatch::class,'returns'=>\App\Models\OutboundReturn::class] as $key=>$class) {
                 $result[$key]=$class::query()->where('reference','like',$like)->limit(6)->get()->map(fn($x)=>$this->item($x->id,$x->reference,$x->status,'/fulfillment?order='.$x->sales_order_id));
@@ -47,7 +47,7 @@ class SearchService
 
         if ($this->can('products.manage', 'inventory.view')) {
             $result['products'] = $this->products->searchGlobal($term, 8)
-                ->map(fn ($x) => $this->item($x->id, $x->name, $x->sku ?: $x->barcode, '/products?product='.$x->id));
+                ->map(fn ($x) => $this->item($x->id, $x->name, $x->sku ?: $x->barcode, '/products?product='.$x->id) + ['sku'=>$x->sku,'unit'=>$x->unit,'available_quantity'=>$x->available_quantity]);
             $result['stock_movements'] = StockMovement::query()->with('product:id,name,sku')
                 ->where(fn ($q) => $q->where('reason', 'like', $like)->orWhere('type', 'like', $like)
                     ->orWhereHas('product', fn ($p) => $p->where('name', 'like', $like)->orWhere('sku', 'like', $like)))
@@ -62,11 +62,10 @@ class SearchService
         }
 
         if ($this->can('customers.manage', 'debts.view', 'invoices.manage')) {
-            $customerSignals=app(CustomerSalesIntelligenceService::class)->allowed()?collect(\App\Models\CustomerSalesSnapshot::whereNull('evidence->archived')->latest('id')->first()?->evidence['profiles']??[])->keyBy('id'):collect();
             $result['customers'] = Customer::query()
                 ->where(fn ($q) => $q->where('name', 'like', $like)->orWhere('business_registration_number', 'like', $like)
                     ->orWhere('fiscal_number', 'like', $like)->orWhere('email', 'like', $like))
-                ->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->name, ($x->business_registration_number ?: $x->email).(isset($customerSignals[$x->id])?' · '.$customerSignals[$x->id]['state']:''), '/customer-debts?customer='.$x->id));
+                ->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->name, $x->business_registration_number ?: ($x->email ?: $x->phone), '/customer-debts?customer='.$x->id));
         }
 
         if ($this->can('invoices.manage')) {
@@ -116,11 +115,35 @@ class SearchService
         }
 
         if ($this->can('analytics.view') && $this->can('inventory.view')) {
+            // Match the business labels users see, not only internal decision codes.
+            $decisionNames = [
+                'REPLENISHMENT_DECISION'=>['stockout','restocking','restocking review','replenishment','mungesë stoku','mungese stoku','rishikim i furnizimit'],
+                'TRANSFER_VS_PURCHASE'=>['transfer or purchase','transfer or purchase review','transfer apo blerje'],
+                'SUPPLIER_SELECTION'=>['supplier choice','supplier review','zgjedhja e furnitorit'],
+                'PURCHASE_TIMING'=>['purchase timing','koha e blerjes'],
+                'INCOMING_STOCK_RISK'=>['incoming stock risk','rreziku i stokut në ardhje','rreziku i stokut ne ardhje'],
+                'EXCESS_INVENTORY_ACTION'=>['excess stock','excess stock review','stok i tepërt','stok i tepert'],
+            ];
+            $businessTerm=\Illuminate\Support\Str::lower(\Illuminate\Support\Str::ascii($term));
+            $decisionTypes=array_keys(array_filter($decisionNames,fn($names)=>in_array($businessTerm,array_map(fn($name)=>\Illuminate\Support\Str::lower(\Illuminate\Support\Str::ascii($name)),$names),true)));
+            if(in_array($businessTerm,['decision','decisions','recommendation','recommendations','vendim','vendimet','rekomandim','rekomandimet'],true))$decisionTypes=array_keys($decisionNames);
             $result['decisions'] = \App\Models\EnterpriseDecision::query()->with('product:id,name,sku')
-                ->where(fn ($q) => $q->where('decision_type', 'like', $like)->orWhereHas('product', fn ($p) => $p->where('name', 'like', $like)->orWhere('sku', 'like', $like)))
+                ->where(fn ($q) => $q->where('decision_type', 'like', $like)->orWhereIn('decision_type',$decisionTypes)->orWhereHas('product', fn ($p) => $p->where('name', 'like', $like)->orWhere('sku', 'like', $like)))
                 ->latest('id')->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->product?->name ?: 'Decision', $x->decision_type.' · '.$x->status, '/inventory-intelligence?view=decisions&decision='.$x->id));
         }
 
+        // Suggest close matches, but never silently select a different record.
+        if (collect($result)->every(fn (Collection $items) => $items->isEmpty()) && strlen($term) >= 3) {
+            $lookup = app(AssistantEntityResolver::class)->resolve($term);
+            $suggestions = $lookup['entity'] ? [$lookup['entity']] : $lookup['choices'];
+            $groups = ['product'=>'products','customer'=>'customers','supplier'=>'suppliers','shipment'=>'shipments','purchase_order'=>'purchase_orders','sales_order'=>'sales_orders','warehouse'=>'warehouses'];
+            foreach ($suggestions as $suggestion) {
+                $key = $groups[$suggestion['type']] ?? null;
+                if (!$key) continue;
+                $result[$key] ??= collect();
+                $result[$key]->push($this->item($suggestion['id'],$suggestion['title'],$suggestion['subtitle'],$suggestion['url']) + ['similar_match'=>true]);
+            }
+        }
         return collect($result)->map(fn (Collection $items) => $items->values()->all())
             ->filter(fn (array $items) => $items !== [])->all();
     }

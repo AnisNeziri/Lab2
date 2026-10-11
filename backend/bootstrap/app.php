@@ -13,7 +13,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 
-return Application::configure(basePath: dirname(__DIR__))
+$application = Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
         api: __DIR__.'/../routes/api.php',
@@ -23,6 +23,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(RequestCorrelationId::class);
+        $middleware->append(\App\Http\Middleware\ProductionConfiguration::class);
+        // Resolve the authenticated tenant before implicit route-model binding.
+        // Otherwise the company global scope has no user on a fresh request.
+        $middleware->prependToPriorityList(\Illuminate\Routing\Middleware\SubstituteBindings::class, AuthenticateApiToken::class);
         $middleware->alias([
             'order.channel' => \App\Http\Middleware\AuthenticateOrderChannel::class,
             'auth.token' => AuthenticateApiToken::class,
@@ -44,11 +48,19 @@ return Application::configure(basePath: dirname(__DIR__))
                 return null;
             }
 
-            report($exception);
+            // Connection errors are availability failures, never empty business data.
+            $unavailable = str_starts_with((string) $exception->getCode(), '08') || in_array((int) ($exception->errorInfo[1] ?? 0), [2002, 2006, 2013], true);
 
             return response()->json([
-                'message' => 'The request could not be completed. Please try again.',
+                'message' => $unavailable ? 'Database connection unavailable. Contact your administrator; no empty data is being substituted.' : 'The request could not be completed. Please try again.',
                 'request_id' => $request->attributes->get('request_id'),
-            ], 500);
+            ], $unavailable ? 503 : 500);
         });
     })->create();
+
+// PHP's built-in HTTP SAPI may omit custom environment variables from
+// $_SERVER/$_ENV. Resolve the shared storage root before loading configuration
+// so HTTP, workers and CLI all use the same heartbeat and maintenance files.
+$storageRoot = $_ENV['LARAVEL_STORAGE_PATH'] ?? $_SERVER['LARAVEL_STORAGE_PATH'] ?? getenv('LARAVEL_STORAGE_PATH');
+if (is_string($storageRoot) && $storageRoot !== '') $application->useStoragePath($storageRoot);
+return $application;

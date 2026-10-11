@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { useSessionState } from '../hooks/useSessionState';
+import { businessDate, businessMoney } from '../utils/businessFormat';
 import { Plus, Truck } from "lucide-react";
 import { getAllProducts } from "../api/products";
 import { getSuppliers } from "../api/suppliers";
@@ -25,10 +27,6 @@ import EntityContext from "../components/EntityContext";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const dateOnly = (value) => (value ? String(value).slice(0, 10) : "—");
-const money = (value, currency = "EUR") =>
-  new Intl.NumberFormat("de-DE", { style: "currency", currency }).format(
-    Number(value || 0),
-  );
 const emptyLine = () => ({
   id: null,
   product_id: "",
@@ -109,7 +107,10 @@ const traceAllocationsFor = (line, state) => {
 };
 
 export default function PurchaseOrders() {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
+  const [detailParams, setDetailParams] = useSearchParams();
+  const money = (value, currency = 'EUR') => businessMoney(value, currency, language);
+  const displayDate = value => businessDate(value, language);
   const permissions = useAuthStore((state) => state.permissions);
   const canOverrideExpiredReceipt = permissions.includes("inventory.expired.override");
   const [orders, setOrders] = useState([]);
@@ -123,6 +124,7 @@ export default function PurchaseOrders() {
   const [locations, setLocations] = useState([]);
   const [financialAccounts, setFinancialAccounts] = useState([]);
   const [selected, setSelected] = useState(null);
+  const detailRequest = useRef(0);
   const [mode, setMode] = useState("");
   const [form, setForm] = useState(emptyOrder());
   const [payment, setPayment] = useState(emptyPayment());
@@ -133,14 +135,14 @@ export default function PurchaseOrders() {
     status: "ordered",
     reason: "",
   });
-  const [search, setSearch] = useState("");
-  const [supplierFilter, setSupplierFilter] = useState("");
-  const [orderStatus, setOrderStatus] = useState("");
-  const [paymentStatus, setPaymentStatus] = useState("");
-  const [orderedDate, setOrderedDate] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [sort, setSort] = useState("recent");
-  const [page, setPage] = useState(1);
+  const [search, setSearch] = useSessionState('purchases.search', "");
+  const [supplierFilter, setSupplierFilter] = useSessionState('purchases.supplier', "");
+  const [orderStatus, setOrderStatus] = useSessionState('purchases.status', "");
+  const [paymentStatus, setPaymentStatus] = useSessionState('purchases.payment', "");
+  const [orderedDate, setOrderedDate] = useSessionState('purchases.ordered', "");
+  const [dueDate, setDueDate] = useSessionState('purchases.due', "");
+  const [sort, setSort] = useSessionState('purchases.sort', "recent");
+  const [page, setPage] = useSessionState('purchases.page', 1);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -221,9 +223,13 @@ export default function PurchaseOrders() {
     return () => { active = false; };
   }, []);
 
+  const filterKey = JSON.stringify([search, supplierFilter, orderStatus, paymentStatus, orderedDate, dueDate, sort]);
+  const previousFilters = useRef(filterKey);
   useEffect(() => {
-    setPage(1);
-    loadList(1);
+    const changed = previousFilters.current !== filterKey;
+    previousFilters.current = filterKey;
+    if (changed) setPage(1);
+    loadList(changed ? 1 : page);
   }, [
     search,
     supplierFilter,
@@ -273,25 +279,34 @@ export default function PurchaseOrders() {
     if (id) setSelected(await getPurchaseOrder(id));
   };
 
-  const openOrder = async (id) => {
+  const loadOrder = async (id) => {
+    const ticket = ++detailRequest.current;
     setLoading(true);
     try {
-      setSelected(await getPurchaseOrder(id));
+      const order = await getPurchaseOrder(id);
+      if (ticket !== detailRequest.current) return;
+      setSelected(order);
       setMode("");
       setError("");
     } catch (e) {
-      setError(errorText(e));
+      if (ticket === detailRequest.current) setError(errorText(e));
     } finally {
-      setLoading(false);
+      if (ticket === detailRequest.current) setLoading(false);
     }
   };
 
+  const openOrder = id => setDetailParams(current => { const next = new URLSearchParams(current); next.set('po', id); next.delete('new'); return next; });
+  const backToOrders = () => { detailRequest.current++; setLoading(false); setSelected(null); setMode(''); setDetailParams(current => { const next = new URLSearchParams(current); next.delete('po'); next.delete('new'); return next; }); };
   useEffect(() => {
-    const requestedOrder = Number(new URLSearchParams(window.location.search).get("po"));
-    if (Number.isInteger(requestedOrder) && requestedOrder > 0) openOrder(requestedOrder);
-  }, []);
+    const requestedOrder = Number(detailParams.get('po'));
+    if (Number.isInteger(requestedOrder) && requestedOrder > 0) loadOrder(requestedOrder);
+    else { detailRequest.current++; setSelected(null); setMode(detailParams.get('new')==='1'?'order':''); setLoading(false); }
+    return () => { detailRequest.current++; };
+  }, [detailParams.get('po'),detailParams.get('new')]);
 
   const beginNew = () => {
+    detailRequest.current++;
+    setDetailParams(current=>{const next=new URLSearchParams(current);next.delete('po');next.set('new','1');return next;});
     setSelected(null);
     const primary = warehouses.find((warehouse) => warehouse.is_default);
     setForm({ ...emptyOrder(), warehouse_id: primary ? String(primary.id) : "" });
@@ -308,7 +323,7 @@ export default function PurchaseOrders() {
       currency: selected.currency,
       warehouse_id: selected.warehouse_id ? String(selected.warehouse_id) : "",
       exchange_rate: selected.exchange_rate || "",
-      exchange_rate_date: dateOnly(selected.exchange_rate_date) === "â€”" ? today() : dateOnly(selected.exchange_rate_date),
+      exchange_rate_date: selected.exchange_rate_date ? dateOnly(selected.exchange_rate_date) : today(),
       exchange_rate_source: selected.exchange_rate_source || "",
       status: ["draft", "confirmed", "ordered"].includes(selected.status)
         ? selected.status
@@ -420,6 +435,7 @@ export default function PurchaseOrders() {
         ? await updatePurchaseOrder(selected.id, payload)
         : await createPurchaseOrder(payload);
       setSelected(saved);
+      openOrder(saved.id);
       setMode("");
       setMessage(t("po.saved"));
       await refreshSelected(saved.id);
@@ -552,8 +568,7 @@ export default function PurchaseOrders() {
     setError("");
     try {
       await deletePurchaseOrder(selected.id);
-      setSelected(null);
-      setMode("");
+      backToOrders();
       setMessage(t("po.deleted"));
       await loadList(page);
     } catch (e) {
@@ -820,7 +835,7 @@ export default function PurchaseOrders() {
               <button
                 type="button"
                 className="secondary"
-                onClick={() => setMode("")}
+                onClick={()=>{if(selected)setMode("");else backToOrders();}}
               >
                 {t("po.close")}
               </button>
@@ -1098,7 +1113,7 @@ export default function PurchaseOrders() {
             <div>
               <h2>{selected.po_number}</h2>
               <p>
-                {selected.supplier?.name} · {statusText(selected.status)} ·{" "}
+                {permissions.includes('suppliers.manage')||permissions.includes('supplier_catalogue.view')?<Link to={`/suppliers?supplier=${selected.supplier_id}`}>{selected.supplier?.name}</Link>:selected.supplier?.name} · {statusText(selected.status)} ·{" "}
                 {paymentStatusText(selected.payment_status)}
               </p>
             </div>
@@ -1172,10 +1187,7 @@ export default function PurchaseOrders() {
               )}
               <button
                 className="secondary"
-                onClick={() => {
-                  setSelected(null);
-                  setMode("");
-                }}
+                onClick={backToOrders}
               >
                 {t("po.back")}
               </button>
@@ -1184,14 +1196,14 @@ export default function PurchaseOrders() {
           <div className="form-row">
             <p>
               {t("po.orderDate")}:{" "}
-              <strong>{dateOnly(selected.ordered_at)}</strong>
+              <strong>{displayDate(selected.ordered_at)}</strong>
             </p>
             <p>
               {t("po.expectedDate")}:{" "}
-              <strong>{dateOnly(selected.expected_at)}</strong>
+              <strong>{displayDate(selected.expected_at)}</strong>
             </p>
             <p>
-              {t("po.dueDate")}: <strong>{dateOnly(selected.due_at)}</strong>
+              {t("po.dueDate")}: <strong>{displayDate(selected.due_at)}</strong>
             </p>
             <p>
               {t("po.total")}:{" "}
@@ -1271,7 +1283,7 @@ export default function PurchaseOrders() {
               {selected.payments.length ? (
                 selected.payments.map((row) => (
                   <tr key={row.id}>
-                    <td>{dateOnly(row.payment_date)}</td>
+                    <td>{displayDate(row.payment_date)}</td>
                     <td>{money(row.amount, selected.currency)}</td>
                     <td>{paymentMethodText(row.payment_method)}</td>
                     <td>{row.reference_number || "—"}</td>
@@ -1302,7 +1314,7 @@ export default function PurchaseOrders() {
               {selected.changes.length ? (
                 selected.changes.map((row) => (
                   <tr key={row.id}>
-                    <td>{dateOnly(row.created_at)}</td>
+                    <td>{displayDate(row.created_at)}</td>
                     <td>{t(`po.action.${row.action}`)}</td>
                     <td>{row.user?.name || "—"}</td>
                     <td>{row.reason || "—"}</td>
@@ -1413,8 +1425,8 @@ export default function PurchaseOrders() {
                       <tr key={order.id}>
                         <td>{order.po_number}</td>
                         <td>{order.supplier?.name || "—"}</td>
-                        <td>{dateOnly(order.ordered_at)}</td>
-                        <td>{dateOnly(order.due_at)}</td>
+                        <td>{displayDate(order.ordered_at)}</td>
+                        <td>{displayDate(order.due_at)}</td>
                         <td>{money(order.total_amount, order.currency)}</td>
                         <td>{money(order.total_paid, order.currency)}</td>
                         <td>

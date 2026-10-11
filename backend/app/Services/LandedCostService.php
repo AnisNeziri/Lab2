@@ -105,7 +105,7 @@ class LandedCostService
                 'currency' => strtoupper($data['currency']),
                 'base_currency' => $baseCurrency,
                 'exchange_rate_to_base' => $rate,
-                'exchange_rate_date' => $data['exchange_rate_date'] ?? (strtoupper($data['currency']) === $baseCurrency ? now()->toDateString() : null),
+                'exchange_rate_date' => $data['exchange_rate_date'] ?? (strtoupper($data['currency']) === $baseCurrency ? \App\Support\CompanyClock::today()->toDateString() : null),
                 'base_currency_amount' => $baseAmount,
                 'allocation_method' => $method,
                 'status' => 'draft',
@@ -276,7 +276,7 @@ class LandedCostService
                 $currentInventory += $inventoryAmount;
             }
 
-            $date = now()->toDateString();
+            $date = \App\Support\CompanyClock::today()->toDateString();
             $this->operationalAccounting->reverseLandedCost(
                 $locked, $reason, $date, (string) round($currentInventory - $originalInventory, 6),
             );

@@ -16,6 +16,7 @@ import { getSupplierScorecard } from '../api/quality'
 import EntityContext from '../components/EntityContext'
 import SupplierIntelligence from '../components/SupplierIntelligence'
 import { useSearchParams } from 'react-router-dom'
+import { useSessionState } from '../hooks/useSessionState'
 import './QualityManagement.css'
 import './SupplierScorecard.css'
 
@@ -33,7 +34,7 @@ function Suppliers() {
   const permissions = useAuthStore(state => state.permissions)
   const canManage = permissions.includes('suppliers.manage')
   const canScore = permissions.includes('supplier_performance.view')
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useSessionState('suppliers.search', '')
   const [formOpen, setFormOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')

@@ -443,7 +443,7 @@ class ImportService
             'exchange_rate_date' => $currency === $baseCurrency ? null : $rateDate,
             'is_preferred' => $active,
             'is_active' => $active,
-            'price_effective_at' => $rateDate ?: now()->toDateString(),
+            'price_effective_at' => $rateDate ?: \App\Support\CompanyClock::today()->toDateString(),
             'price_change_reason' => "Product CSV import row {$rowNumber}.",
         ];
         $optionalFields = [

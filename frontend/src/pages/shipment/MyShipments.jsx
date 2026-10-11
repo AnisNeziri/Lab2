@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Archive,
@@ -11,11 +11,12 @@ import {
   Ship,
   X,
 } from 'lucide-react'
-import { ShipmentRouteMap } from '../../components/tracking/GlobalVesselMap'
 import ShipmentsPageIntro from '../../components/ShipmentsPageIntro'
 import ShipmentIntelligence from '../../components/ShipmentIntelligence'
+import ShipmentWorkspace from '../../components/ShipmentWorkspace'
 import EntityDocuments from '../../components/EntityDocuments'
 import { useTranslation } from '../../hooks/useTranslation'
+import { businessDate } from '../../utils/businessFormat'
 import {
   archiveShipment,
   createAisShipment,
@@ -61,9 +62,8 @@ function responseItems(payload) {
   return []
 }
 
-function formatDate(value) {
-  if (!value) return '—'
-  return new Date(value).toLocaleString()
+function formatDate(value, language, withTime = false) {
+  return businessDate(value, language, withTime)
 }
 
 export default function MyShipments() {
@@ -79,6 +79,8 @@ export default function MyShipments() {
   const [purchaseOrders, setPurchaseOrders] = useState([])
   const [trackingCapabilities, setTrackingCapabilities] = useState(null)
   const [selectedId, setSelectedId] = useState(null)
+  const [focusShipmentId, setFocusShipmentId] = useState(requestedShipmentId)
+  const shipmentDetail = useRef(null)
   const [vesselIdentifier, setVesselIdentifier] = useState('')
   const [vesselLookup, setVesselLookup] = useState(null)
   const [lookingUp, setLookingUp] = useState(false)
@@ -94,12 +96,24 @@ export default function MyShipments() {
     [shipments, selectedId]
   )
 
+  useEffect(() => {
+    if (!requestedShipmentId) return
+    setSelectedId(requestedShipmentId)
+    setFocusShipmentId(requestedShipmentId)
+  }, [requestedShipmentId])
+
+  useEffect(() => {
+    if (!focusShipmentId || selected?.id !== focusShipmentId || !selected.cargo) return
+    shipmentDetail.current?.querySelector('.cargo-heading')?.scrollIntoView({ block: 'start', behavior: 'auto' })
+    setFocusShipmentId(null)
+  }, [focusShipmentId, selected?.id, selected?.cargo])
+
   async function loadShipments(nextView = view) {
     const data = await getShipments({ archived: nextView === 'archived' })
     const items = responseItems(data)
     // Background polling returns compact list records. Merge them into any
     // open detailed record so containers and history-backed fields
-    // do not visibly disappear every 30 seconds.
+    // do not visibly disappear during background refreshes.
     setShipments((current) => items.map((item) => ({
       ...(current.find((existing) => existing.id === item.id) || {}),
       ...item,
@@ -140,11 +154,14 @@ export default function MyShipments() {
       setHistory([])
       return
     }
+    let active=true
     Promise.all([getShipmentHistory(selected.id), getShipment(selected.id)])
       .then(([events, detail]) => {
+        if(!active)return
         setHistory(events)
         setShipments((current) => current.map((row) => row.id === detail.id ? detail : row))
-      }).catch(() => setHistory([]))
+      }).catch(() => {if(active)setHistory([])})
+    return()=>{active=false}
   }, [selected?.id])
 
   function openLogistics() {
@@ -307,7 +324,6 @@ export default function MyShipments() {
   return (
     <div className="page">
       <ShipmentsPageIntro message={t('shipments.networkLoading')} />
-      {selected&&<EntityDocuments entityType="shipment" entityId={selected.id}/>}
       <div className="shipments-toolbar no-print">
         <h1>{t('nav.myShipments')}</h1>
         <div className="shipments-view-tabs">
@@ -400,7 +416,15 @@ export default function MyShipments() {
                 key={item.id}
                 type="button"
                 className={`shipments-list-item${item.id === selected?.id ? ' active' : ''}`}
-                onClick={() => setSelectedId(item.id)}
+                onClick={() => {
+                  setSelectedId(item.id)
+                  setFocusShipmentId(item.id)
+                  setSearchParams(current => {
+                    const next = new URLSearchParams(current)
+                    next.set('shipment', item.id)
+                    return next
+                  })
+                }}
               >
                 <span>
                   {item.is_favorite ? <Star size={14} className="inline-star" /> : null}
@@ -416,9 +440,11 @@ export default function MyShipments() {
           </div>
         </div>
 
-        <div className="shipments-detail">
+        <div className="shipments-detail" ref={shipmentDetail}>
           {selected ? (
             <>
+              <ShipmentWorkspace shipment={selected}/>
+              <details className="shipment-technical"><summary>{language==='sq'?'Veprimet, detajet teknike dhe historiku':'Actions, technical details & history'}</summary>
               <div className="shipments-detail-header">
                 <div>
                   <h2>{selected.tracking_number || selected.tracking_reference}</h2>
@@ -457,8 +483,8 @@ export default function MyShipments() {
               <div className="shipments-meta">
                 <div><span>{t('shipments.status')}</span><strong>{statusLabel}</strong></div>
                 {selectedProvider === 'aisstream' ? <div><span>{t('shipments.aisPositionState')}</span><strong className={`ais-state-badge ${selectedPositionState}`}>{aisPositionLabel(selected, t)}</strong></div> : null}
-                {selected.eta ? <div><span>{t('shipments.eta')}</span><strong>{formatDate(selected.eta)}</strong></div> : null}
-                {selected.previous_eta ? <div><span>{t('shipments.previousEta')}</span><strong>{formatDate(selected.previous_eta)}</strong></div> : null}
+                {selected.eta ? <div><span>{t('shipments.eta')}</span><strong>{formatDate(selected.eta, language)}</strong></div> : null}
+                {selected.previous_eta ? <div><span>{t('shipments.previousEta')}</span><strong>{formatDate(selected.previous_eta, language)}</strong></div> : null}
                 {selected.distance_to_port_km != null ? <div><span>{t('shipments.distance')}</span><strong>{selected.distance_to_port_km} {t('common.km')}</strong></div> : null}
                 <div><span>{t('shipments.location')}</span><strong>{selected.last_location_label || '—'}</strong></div>
                 <div><span>{t('tracking.my.origin')}</span><strong>{selected.origin_port || t('shipments.originNotBroadcast')}</strong></div>
@@ -474,20 +500,18 @@ export default function MyShipments() {
                 {selected.course != null ? <div><span>{t('shipments.course')}</span><strong>{selected.course}°</strong></div> : null}
                 {selected.heading != null ? <div><span>{t('shipments.heading')}</span><strong>{selected.heading}°</strong></div> : null}
                 {selected.navigation_status != null ? <div><span>{t('shipments.navigationStatus')}</span><strong>{navigationStatusLabel(selected.navigation_status, t)}</strong></div> : null}
-                {selected.position_updated_at ? <div><span>{t('tracking.global.lastUpdate')}</span><strong title={formatDate(selected.position_updated_at)}>{relativeAisTime(selected.position_updated_at, t)}</strong></div> : null}
-                {selected.last_refreshed_at && selected.last_refreshed_at !== selected.position_updated_at ? <div><span>{t('shipments.lastAisMessage')}</span><strong title={formatDate(selected.last_refreshed_at)}>{relativeAisTime(selected.last_refreshed_at, t)}</strong></div> : null}
+                {selected.position_updated_at ? <div><span>{t('tracking.global.lastUpdate')}</span><strong title={formatDate(selected.position_updated_at, language, true)}>{relativeAisTime(selected.position_updated_at, t)}</strong></div> : null}
+                {selected.last_refreshed_at && selected.last_refreshed_at !== selected.position_updated_at ? <div><span>{t('shipments.lastAisMessage')}</span><strong title={formatDate(selected.last_refreshed_at, language, true)}>{relativeAisTime(selected.last_refreshed_at, t)}</strong></div> : null}
                 {selectedDimensions.length_m ? <div><span>{t('shipments.vesselLength')}</span><strong>{selectedDimensions.length_m} m</strong></div> : null}
                 {selectedDimensions.beam_m ? <div><span>{t('shipments.vesselBeam')}</span><strong>{selectedDimensions.beam_m} m</strong></div> : null}
                 {selectedAisDetails?.voyage?.maximum_static_draught_m ? <div><span>{t('shipments.vesselDraught')}</span><strong>{selectedAisDetails.voyage.maximum_static_draught_m} m</strong></div> : null}
                 {selected.purchase_order?.po_number ? <div><span>{t('shipments.purchaseOrder')}</span><strong>{selected.purchase_order.po_number}</strong></div> : null}
-                <div><span>{t('shipments.incomingItems')}</span><strong>{selected.items_count ?? selected.items?.length ?? 0} · {selected.incoming_quantity || 0}</strong></div>
               </div>
 
               {(selected.containers?.length || canManageLogistics) ? <section className="shipment-logistics-summary"><h3>{t('shipments.logistics')}</h3>
                 {selected.containers?.length ? <div className="shipment-container-chips">{selected.containers.map((container) => <span key={container.id}><strong>{container.container_number}</strong><small>{container.container_type || t('shipments.container')} · {container.seal_number || t('shipments.noSeal')}</small></span>)}</div> : <p>{t('shipments.noContainers')}</p>}
               </section> : null}
 
-              <ShipmentRouteMap shipment={selected} pendingLabel={selected.tracking_provider === 'synthetic' ? (language === 'sq' ? 'Regjistrim logjistik sintetik — pa pozicion të drejtpërdrejtë AIS.' : 'Synthetic logistics record — no live AIS position.') : t('shipments.awaitingAisDetails')} />
 
               <section className="shipment-history">
                 <h3>{t('shipments.history')}</h3>
@@ -496,19 +520,21 @@ export default function MyShipments() {
                     {history.map((event) => (
                       <li key={event.id}>
                         <strong>{event.description}</strong>
-                        <span>{formatDate(event.created_at)}</span>
+                        <span>{formatDate(event.created_at, language, true)}</span>
                       </li>
                     ))}
                   </ol>
                 )}
               </section>
+              </details>
+              <details className="shipment-technical"><summary>{language==='sq'?'Dokumentet':'Documents'}</summary><EntityDocuments entityType="shipment" entityId={selected.id}/></details>
             </>
           ) : (
             <p className="page-message">{loading ? t('common.loading') : t('shipments.empty')}</p>
           )}
         </div>
       </div>
-      {logisticsOpen && logistics ? <div className="modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && !submitting && setLogisticsOpen(false)}><section className="modal shipment-logistics-modal" role="dialog" aria-modal="true"><header className="modal-header"><h2>{t('shipments.logistics')}</h2><button className="modal-close-btn" disabled={submitting} onClick={() => setLogisticsOpen(false)}><X /></button></header><form className="modal-body form-grid" onSubmit={saveLogistics}>
+      {logisticsOpen && logistics ? <div className="modal-overlay"><section className="modal shipment-logistics-modal" role="dialog" aria-modal="true"><header className="modal-header"><h2>{t('shipments.logistics')}</h2><button className="modal-close-btn" disabled={submitting} onClick={() => setLogisticsOpen(false)}><X /></button></header><form className="modal-body form-grid" onSubmit={saveLogistics}>
         <label>{t('shipments.purchaseOrder')}<select value={logistics.purchase_order_id} onChange={(event) => setLogistics({ ...logistics, purchase_order_id: event.target.value })}><option value="">{t('common.none')}</option>{purchaseOrders.filter((po) => logistics.purchase_order_ids.includes(Number(po.id))).map((po) => <option key={po.id} value={po.id}>{po.po_number}</option>)}</select></label>
         <fieldset className="shipment-po-links form-span-full"><legend>{t('shipments.linkedPurchaseOrders')}</legend>{purchaseOrders.map((po) => <label key={po.id}><input type="checkbox" checked={logistics.purchase_order_ids.includes(Number(po.id))} onChange={() => toggleLogisticsOrder(po.id)}/><span>{po.po_number}<small>{po.supplier?.name || ''}</small></span></label>)}</fieldset>
         <label>{t('shipments.billOfLading')}<input value={logistics.bill_of_lading} onChange={(event) => setLogistics({ ...logistics, bill_of_lading: event.target.value })} /></label>
