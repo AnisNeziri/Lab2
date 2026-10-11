@@ -1,8 +1,8 @@
 # AIMS PR1 certification report
 
-Assessment date: **11 October 2026, Europe/Budapest**. Release: **1.1.1-rc.1, uncertified**. Runtime and certification code: `13635712a1d7d475408e4073f3b58bd0863c2093`. The owner selected **`5db86866`** as the supported upgrade baseline; there are no release tags. Documentation-only commits after this assessment do not change the tested runtime.
+Assessment date: **11 October 2026, Europe/Budapest**. Release: **1.1.1-rc.1, uncertified**. Application runtime: `13635712a1d7d475408e4073f3b58bd0863c2093`. Final certification and uploaded artifact source: `f84e2fb9517ef2adc952c5289797dae69b17fad3`; frontend/backend/database application source is unchanged between them. The owner selected **`5db86866`** as the supported upgrade baseline; there are no release tags. Documentation-only commits after this assessment do not change the tested runtime.
 
-The earlier PM1–PM5 work was retained. This continuation changes certification fixtures/interactions, compatible dependency locks and build configuration; it does not reset or revert the earlier application source. Customer deployment, release publishing, PR2 and V13 were not performed.
+The earlier PM1–PM5 work was retained. This continuation changes certification fixtures/interactions, compatible dependency locks, build configuration and portable Python alias handling; it does not reset or revert the earlier application source. Customer deployment, release publishing, PR2 and V13 were not performed.
 
 ## Explicit release gates
 
@@ -21,7 +21,7 @@ The earlier PM1–PM5 work was retained. This continuation changes certification
 | Attachments restored | **YES** — 31 files, checksums and record associations |
 | Tenant isolation verified | **YES** — two-company authenticated route matrix plus regression suites |
 | Critical security issues remaining | **NONE identified in the focused application review**; remaining build-only advisories are listed below |
-| Production Release Candidate | **NO** — remaining operational and artifact gates are incomplete |
+| Production Release Candidate | **NO** — remaining operational gates are incomplete |
 
 ## 1. Supported deployment modes
 
@@ -33,9 +33,9 @@ Pinned toolchain: PHP 8.3.35, Composer 2.9.8, Node 22.14.0, npm 10.9.2, Python 3
 
 ## 3. CI status
 
-The final manual dispatch is [AIMS CI run 38130266616](https://github.com/AnisNeziri/Lab2/actions/runs/38130266616), for the code commit above. It explicitly runs the browser release and Windows startup jobs. Final result: **PASS — all eight required jobs succeeded**, including 98 browser tests and independently regenerated populated SQLite/MariaDB recovery. PR checks also passed in [run 38130268803](https://github.com/AnisNeziri/Lab2/actions/runs/38130268803). Earlier failed/cancelled runs are diagnostic history and do not satisfy this gate. The conditional backend Redis round-trip skip is recorded explicitly; the separate Linux job exercises actual required Redis, its outage and restoration.
+The final approved review dispatch is [AIMS CI run 38137917071](https://github.com/AnisNeziri/Lab2/actions/runs/38137917071), for `f84e2fb9517ef2adc952c5289797dae69b17fad3`. **PASS — all eight required certification jobs, both artifact jobs and the candidate summary succeeded.** All 98 browser tests passed in 16.1 minutes without retries or skips. The run independently regenerated populated SQLite/MariaDB recovery and ran Windows startup plus the new executable-symlink packaging regression. [Scheduled PR checks also passed](https://github.com/AnisNeziri/Lab2/actions/runs/38137909920). The conditional backend Redis round-trip skip is recorded explicitly; the separate Linux job exercises required Redis, its outage and restoration.
 
-The explicitly approved artifact recheck [run 38134281089](https://github.com/AnisNeziri/Lab2/actions/runs/38134281089) passed seven gates but blocked uploads after one browser test failed (97 passed). Its trace shows the real warehouse click navigated while software-rendered 3D actionability consumed the 10-second budget. That single interaction now has a bounded 30-second budget and an additional loaded-editor assertion; three local repetitions passed without retries. Application source is unchanged. A fresh full gated run is required before upload; the earlier passing run is not used to skip this requirement.
+Diagnostic history remains visible: [run 38134281089](https://github.com/AnisNeziri/Lab2/actions/runs/38134281089) blocked builds on a warehouse interaction timeout. A bounded 30-second physical-click budget and loaded-editor assertion resolved it without changing application source. [Run 38136102823](https://github.com/AnisNeziri/Lab2/actions/runs/38136102823) passed all eight certification jobs and uploaded the web archive, but Windows packaging rejected a runner-specific Python executable symlink. The packaging script now copies its bytes; the final run verifies that behavior and builds both review artifacts from the same passing commit.
 
 ## 4. Upgrade result
 
@@ -47,7 +47,7 @@ Fresh and populated forward migrations preserve data on both engines. PR1 adds t
 
 ## 6. Desktop clean-start result
 
-The fresh bundled startup covers database initialization, unique recovery credentials, first password change, owner login, local Python and all workers, backend termination/restart, an idempotent subsequent migration and child cleanup. Local tests also cover normal/forced parent exit and duplicate-worker prevention. Final remote result: **PASS**. The local NSIS artifact is an unsigned review build; a real fresh-VM installer, Microsoft VC runtime prerequisite, licence activation, update entitlement and signed customer delivery are not certified.
+The fresh bundled startup covers database initialization, unique recovery credentials, first password change, owner login, local Python and all workers, backend termination/restart, an idempotent subsequent migration and child cleanup. Local tests also cover normal/forced parent exit and duplicate-worker prevention. Final remote result: **PASS**. The uploaded NSIS artifact is an unsigned review build; a real fresh-VM installer, Microsoft VC runtime prerequisite, licence activation, update entitlement and signed customer delivery are not certified.
 
 ## 7. Server deployment result
 
@@ -103,7 +103,7 @@ Final nine-workspace measurement: **PASS**. The harness uses the normal minified
 
 ## 16. Known release limitations
 
-Required operational evidence remains: actual Linux reboot; public-domain certificate renewal; staged Linux release switch and HTTP upload boundary; off-server archive retrieval with independent secret escrow; fresh Windows installer/licence/update/signing qualification. The repository owner explicitly authorized the review-artifact upload on 11 October 2026 after the earlier automatic approval rejection; execution is pending. Other limits: same-engine restore, one operating timezone per installation, archive size ceiling, partial module-specific customer exports, insufficient predictive outcome history, unpromoted supplier ML, provider-dependent live carrier/AIS behavior and uncertified tax/fiscal integrations.
+Required operational evidence remains: actual Linux reboot; public-domain certificate renewal; staged Linux release switch and HTTP upload boundary; off-server archive retrieval with independent secret escrow; fresh Windows installer/licence/update/signing qualification. The explicitly authorized review-artifact workflow and independent downloaded-file verification passed on 11 October 2026 in run 38137917071; both artifacts are available for review. Other limits: same-engine restore, one operating timezone per installation, archive size ceiling, partial module-specific customer exports, insufficient predictive outcome history, unpromoted supplier ML, provider-dependent live carrier/AIS behavior and uncertified tax/fiscal integrations.
 
 ## 17. Exact tests and certification
 
@@ -114,10 +114,10 @@ Required operational evidence remains: actual Linux reboot; public-domain certif
 | Frontend `npm test` | PASS — 87 tests |
 | Frontend `npm run build` and desktop asset preparation | PASS — normal minified build; chunk-size warnings retained |
 | `npm run test:e2e:smoke` in CI | PASS — 10 tests |
-| `npm run test:e2e:release` in CI | PASS — all 98 tests in 17.8 minutes, no retries or skips |
+| `npm run test:e2e:release` in CI | PASS — all 98 tests in 16.1 minutes, no retries or skips |
 | Patched local Playwright analytics/optimizer/simulation/workspace flows | PASS — 7 tests |
 | Additional local physical `handle.dragTo` check against the adjacent dashboard widget | PASS — actual pointer gesture preserves the existing handle interaction; temporary diagnostic removed after completion |
-| Windows `npm run test:startup` and `npm test` in CI | PASS — startup plus four process/publishing safeguards |
+| Windows `npm run test:startup` and `npm test` in CI | PASS — startup plus four process/publishing safeguards and the executable-symlink packaging regression |
 | Python `unittest discover -s ml -p 'test_*.py'` | PASS — 16 forecasting tests in final CI |
 | Python `unittest discover -s ml/tests -p 'test_*.py'` | PASS — 14 customer/optimizer/simulation tests locally |
 | `php -d memory_limit=2048M scripts/certify-installation.php` | PASS — populated SQLite upgrade and independent restore |
@@ -128,15 +128,19 @@ Required operational evidence remains: actual Linux reboot; public-domain certif
 | Composer production audit; frontend/desktop production npm audits | PASS — zero advisories |
 | Local unsigned NSIS installer; web source/production-assets archive; SHA-256 inspection | PASS — production-only vendor, patched bundled runtimes, normal frontend without certification bridge; web archive has 1,070 inspected entries |
 
-Local review artifacts, built from the tested runtime commit:
+Uploaded review artifacts, built from `f84e2fb9517ef2adc952c5289797dae69b17fad3` after all eight certification gates passed:
 
-- `desktop/dist/AIMS-Setup-1.1.1-rc.1.exe`: 193,582,395 bytes; SHA-256 `876fcad2f49ffe1ae98f620ff442acf2224a124cb9c9135563e52507a6b9636e`; Authenticode status **NotSigned**.
-- `output/aims-web-source.tar.gz`: 5,680,019 bytes; SHA-256 `5b871456e527746382f93d65146660c1f471c756d016bd4b0d7303a1c8d91a95`; committed source plus inspected normal frontend assets. Runtime databases, working storage, environment secrets and installed dependency trees are excluded.
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| [Unsigned Windows installer](https://github.com/AnisNeziri/Lab2/actions/runs/38137917071/artifacts/11702139108) | 181,012,583 | `523828681bc2b4db77d7d80038ad2bd0277daf616e6e32963b9e11b8a61c297e` |
+| [Web source and compiled frontend](https://github.com/AnisNeziri/Lab2/actions/runs/38137917071/artifacts/11701964122) | 5,688,554 | `f408be2a72413d7a8a28a8d20a0331baca0f53e5f0073041ef3151abf8a0c5fe` |
 
-The artifacts have not been uploaded or published. The artifact workflow packages committed Git source and gates both artifact jobs directly on all eight certification jobs. Upload was explicitly authorized by the repository owner on 11 October 2026; successful workflow execution remains pending and is not inferred from the successful local builds. The existing CI entry point exposes `build_review_artifacts=false` by default, so ordinary PR checks do not upload these review builds; the standalone RC entry point delegates to the same implementation.
+Both downloaded ZIPs match GitHub's artifact digests, and both payloads match their uploaded `SHA256SUMS`. Contents inspection confirms `1.1.1-rc.1` remains `uncertified`, normal compiled frontend assets have no certification bridge, and runtime databases/environment secrets are excluded. The Windows installer has production-only Composer dependencies and bundled PHP/Python; Authenticode status is **NotSigned**. The web archive has 1,073 inspected entries. GitHub currently retains these artifacts until **2027-01-09T12:04:54Z**. Earlier local builds and their different checksums remain explicitly labelled as local reference evidence in the JSON summary.
+
+The artifacts are uploaded for review and are not a published customer release. Both build jobs depend directly on all eight certification jobs. `build_review_artifacts=false` is the CI default, so ordinary PR checks do not upload review builds; the standalone RC entry point delegates to the same implementation.
 
 Raw local logs and synthetic snapshots remain ignored under `output/`; they are not committed as customer data. Remote job logs/artifacts are attached to the exact workflow run above. The compact committed evidence summary accompanies this report. The application remains `uncertified` until every required release checklist item is complete.
 
 ## 18. Release-candidate recommendation
 
-**Production Release Candidate: NO.** All eight final automated CI jobs passed, and the engineering changes are ready for review in [draft PR #1](https://github.com/AnisNeziri/Lab2/pull/1). PR1 is not fully complete under the requested completion standard: the remaining operational checks and artifact-workflow execution must be recorded before customer release. Local review artifacts are not a signed or published customer release. Use [the operations runbook](PR1_OPERATIONS.md), [the authoritative checklist](PR1_RELEASE_CHECKLIST.md) and [release notes](RELEASE_NOTES_1.1.1_RC1.md) for the remaining qualification steps.
+**Production Release Candidate: NO.** All eight final automated CI jobs passed, and the engineering changes are ready for review in [draft PR #1](https://github.com/AnisNeziri/Lab2/pull/1). PR1 is not fully complete under the requested completion standard: the remaining operational checks must be recorded before customer release. Verified uploaded review artifacts are available; the installer is unsigned and no customer release was published. Use [the operations runbook](PR1_OPERATIONS.md), [the authoritative checklist](PR1_RELEASE_CHECKLIST.md) and [release notes](RELEASE_NOTES_1.1.1_RC1.md) for the remaining qualification steps.

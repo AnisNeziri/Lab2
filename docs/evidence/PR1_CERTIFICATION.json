@@ -12,7 +12,11 @@
     "comparison_commit": "ffc83aac7071306ac4a5d94a89bd1aeb90664405",
     "command": "git diff ffc83aac HEAD -- frontend/src backend/app backend/database",
     "application_source_diff_empty": true,
-    "reset_or_revert_performed": false
+    "reset_or_revert_performed": false,
+    "latest_comparison_commit": "13635712a1d7d475408e4073f3b58bd0863c2093",
+    "latest_command": "git diff 13635712 HEAD -- frontend/src backend/app backend/database",
+    "latest_application_source_diff_empty": true,
+    "continuation_scope": "Certification interaction, gated workflow, portable Python packaging and evidence; existing application source retained"
   },
   "toolchain": {
     "php": "8.3.35",
@@ -25,56 +29,161 @@
     "electron": "41.10.7"
   },
   "ci": {
-    "run_id": 38130266616,
-    "url": "https://github.com/AnisNeziri/Lab2/actions/runs/38130266616",
+    "run_id": 38137917071,
+    "url": "https://github.com/AnisNeziri/Lab2/actions/runs/38137917071",
+    "source_commit": "f84e2fb9517ef2adc952c5289797dae69b17fad3",
     "event": "workflow_dispatch",
     "conclusion": "success",
+    "certification_jobs_passed": 8,
+    "artifact_jobs_passed": 2,
+    "candidate_summary_passed": true,
     "jobs": [
       {
-        "id": 114442947536,
+        "id": 114465513961,
         "name": "Backend tests (SQLite portable path)",
-        "conclusion": "success"
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-11T12:04:56Z",
+        "completed_at": "2026-10-11T12:07:50Z"
       },
       {
-        "id": 114442947615,
-        "name": "Frontend build",
-        "conclusion": "success"
-      },
-      {
-        "id": 114442947648,
-        "name": "Browser smoke (Chromium + SQLite)",
-        "conclusion": "success"
-      },
-      {
-        "id": 114442947676,
-        "name": "Linux Nginx and supervised workers",
-        "conclusion": "success"
-      },
-      {
-        "id": 114442947685,
-        "name": "Browser release certification",
-        "conclusion": "success"
-      },
-      {
-        "id": 114442947722,
-        "name": "Backend migrations (MariaDB server path)",
-        "conclusion": "success"
-      },
-      {
-        "id": 114442947749,
-        "name": "Desktop bundled startup (Windows + SQLite)",
-        "conclusion": "success"
-      },
-      {
-        "id": 114442947756,
+        "id": 114465514131,
         "name": "Independent populated upgrade and recovery",
-        "conclusion": "success"
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-11T12:04:56Z",
+        "completed_at": "2026-10-11T12:22:50Z"
+      },
+      {
+        "id": 114465514134,
+        "name": "Frontend build",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-11T12:04:57Z",
+        "completed_at": "2026-10-11T12:05:37Z"
+      },
+      {
+        "id": 114465514151,
+        "name": "Backend migrations (MariaDB server path)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-11T12:04:56Z",
+        "completed_at": "2026-10-11T12:12:53Z"
+      },
+      {
+        "id": 114465514189,
+        "name": "Linux Nginx and supervised workers",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-11T12:04:56Z",
+        "completed_at": "2026-10-11T12:07:24Z"
+      },
+      {
+        "id": 114465514234,
+        "name": "Desktop bundled startup (Windows + SQLite)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-11T12:04:56Z",
+        "completed_at": "2026-10-11T12:10:47Z"
+      },
+      {
+        "id": 114465514244,
+        "name": "Browser release certification",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-11T12:04:56Z",
+        "completed_at": "2026-10-11T12:22:16Z"
+      },
+      {
+        "id": 114465514252,
+        "name": "Browser smoke (Chromium + SQLite)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-11T12:04:56Z",
+        "completed_at": "2026-10-11T12:06:50Z"
+      },
+      {
+        "id": 114468856845,
+        "name": "desktop-artifact",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-11T12:22:52Z",
+        "completed_at": "2026-10-11T12:26:47Z"
+      },
+      {
+        "id": 114468856877,
+        "name": "web-artifact",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-11T12:22:52Z",
+        "completed_at": "2026-10-11T12:23:24Z"
+      },
+      {
+        "id": 114469597515,
+        "name": "candidate",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-11T12:26:49Z",
+        "completed_at": "2026-10-11T12:26:51Z"
       }
     ],
     "pull_request_run": {
-      "id": 38130268803,
+      "id": 38137909920,
       "conclusion": "success",
-      "url": "https://github.com/AnisNeziri/Lab2/actions/runs/38130268803"
+      "url": "https://github.com/AnisNeziri/Lab2/actions/runs/38137909920"
+    },
+    "previous_successful_validation": {
+      "run_id": 38130266616,
+      "url": "https://github.com/AnisNeziri/Lab2/actions/runs/38130266616",
+      "event": "workflow_dispatch",
+      "conclusion": "success",
+      "jobs": [
+        {
+          "id": 114442947536,
+          "name": "Backend tests (SQLite portable path)",
+          "conclusion": "success"
+        },
+        {
+          "id": 114442947615,
+          "name": "Frontend build",
+          "conclusion": "success"
+        },
+        {
+          "id": 114442947648,
+          "name": "Browser smoke (Chromium + SQLite)",
+          "conclusion": "success"
+        },
+        {
+          "id": 114442947676,
+          "name": "Linux Nginx and supervised workers",
+          "conclusion": "success"
+        },
+        {
+          "id": 114442947685,
+          "name": "Browser release certification",
+          "conclusion": "success"
+        },
+        {
+          "id": 114442947722,
+          "name": "Backend migrations (MariaDB server path)",
+          "conclusion": "success"
+        },
+        {
+          "id": 114442947749,
+          "name": "Desktop bundled startup (Windows + SQLite)",
+          "conclusion": "success"
+        },
+        {
+          "id": 114442947756,
+          "name": "Independent populated upgrade and recovery",
+          "conclusion": "success"
+        }
+      ],
+      "pull_request_run": {
+        "id": 38130268803,
+        "conclusion": "success",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/38130268803"
+      }
     }
   },
   "tests": {
@@ -110,7 +219,7 @@
       "passed": 98,
       "skipped": 0,
       "retried": 0,
-      "minutes": 17.8
+      "minutes": 16.1
     },
     "local_affected_browser_flows": {
       "status": "PASS",
@@ -167,6 +276,14 @@
       ],
       "method": "Forced process termination after authoritative SQL inside a real service transaction; no physical power cut",
       "critical_tables_unchanged": 12
+    },
+    "python_bundle_alias": {
+      "status": "PASS",
+      "passed": 1,
+      "skipped": 0,
+      "environment": "Windows CI",
+      "method": "Actual prepare-python script copies a real executable symlink as regular bytes, launches bundled Python/SciPy and preserves the original alias",
+      "local_qualification": "Local executable-symlink fixture skipped because Windows creation permission is unavailable; ordinary bundling/Python/SciPy/archive and four existing desktop safeguards passed locally"
     }
   },
   "recovery": {
@@ -348,9 +465,9 @@
     }
   },
   "review_artifacts": {
-    "uploaded": false,
+    "uploaded": true,
     "published": false,
-    "workflow_executed": false,
+    "workflow_executed": true,
     "blocked_review_attempt": {
       "run_id": 38134281089,
       "source_commit": "1dbf35a6eaf10dbd98918af774bcc99927a03452",
@@ -368,22 +485,81 @@
       "scope": "Review-only web source/compiled frontend archive and unsigned Windows installer in AnisNeziri/Lab2"
     },
     "windows": {
-      "status": "PASS",
-      "path": "desktop/dist/AIMS-Setup-1.1.1-rc.1.exe",
-      "bytes": 193582395,
-      "sha256": "876fcad2f49ffe1ae98f620ff442acf2224a124cb9c9135563e52507a6b9636e",
+      "id": 11702139108,
+      "name": "aims-windows-unsigned-test-candidate-f84e2fb9517ef2adc952c5289797dae69b17fad3",
+      "source_commit": "f84e2fb9517ef2adc952c5289797dae69b17fad3",
+      "bytes": 181012583,
+      "sha256": "523828681bc2b4db77d7d80038ad2bd0277daf616e6e32963b9e11b8a61c297e",
+      "zip_digest": "sha256:bc5ccd76c7b95b81c32caffec72bdfd1b2f93bf081fc2461961aed540b36fbd1",
+      "expires_at": "2027-01-09T12:04:54Z",
+      "checksum_verified": true,
       "signature": "NotSigned",
-      "contents_verified": true,
+      "entries": 13830,
       "production_only_vendor": true,
-      "certification_bridge_absent": true
+      "bundled_php_python": true,
+      "certification_bridge_absent": true,
+      "runtime_data_excluded": true,
+      "release_status": "uncertified",
+      "contents_verified": true,
+      "file": "AIMS-Setup-1.1.1-rc.1.exe",
+      "url": "https://github.com/AnisNeziri/Lab2/actions/runs/38137917071/artifacts/11702139108",
+      "status": "PASS"
     },
     "web": {
-      "status": "PASS",
-      "path": "output/aims-web-source.tar.gz",
-      "bytes": 5680019,
-      "sha256": "5b871456e527746382f93d65146660c1f471c756d016bd4b0d7303a1c8d91a95",
-      "entries": 1070,
-      "source": "Committed runtime source plus normal frontend dist; no runtime DB/storage/environment secrets/installed dependency trees"
+      "id": 11701964122,
+      "name": "aims-web-uncertified-candidate-f84e2fb9517ef2adc952c5289797dae69b17fad3",
+      "source_commit": "f84e2fb9517ef2adc952c5289797dae69b17fad3",
+      "bytes": 5688554,
+      "sha256": "f408be2a72413d7a8a28a8d20a0331baca0f53e5f0073041ef3151abf8a0c5fe",
+      "zip_digest": "sha256:dd4836462fd70107c611ecfabaa35e7f2b833057745db4d405ca3ff8b5bd21f6",
+      "expires_at": "2027-01-09T12:04:54Z",
+      "checksum_verified": true,
+      "entries": 1073,
+      "certification_bridge_absent": true,
+      "runtime_data_excluded": true,
+      "release_status": "uncertified",
+      "contents_verified": true,
+      "file": "aims-web-source.tar.gz",
+      "url": "https://github.com/AnisNeziri/Lab2/actions/runs/38137917071/artifacts/11701964122",
+      "status": "PASS"
+    },
+    "local_reference_builds": {
+      "source_commit": "13635712a1d7d475408e4073f3b58bd0863c2093",
+      "uploaded": false,
+      "windows": {
+        "status": "PASS",
+        "path": "desktop/dist/AIMS-Setup-1.1.1-rc.1.exe",
+        "bytes": 193582395,
+        "sha256": "876fcad2f49ffe1ae98f620ff442acf2224a124cb9c9135563e52507a6b9636e",
+        "signature": "NotSigned",
+        "contents_verified": true,
+        "production_only_vendor": true,
+        "certification_bridge_absent": true
+      },
+      "web": {
+        "status": "PASS",
+        "path": "output/aims-web-source.tar.gz",
+        "bytes": 5680019,
+        "sha256": "5b871456e527746382f93d65146660c1f471c756d016bd4b0d7303a1c8d91a95",
+        "entries": 1070,
+        "source": "Committed runtime source plus normal frontend dist; no runtime DB/storage/environment secrets/installed dependency trees"
+      }
+    },
+    "workflow_conclusion": "success",
+    "run_id": 38137917071,
+    "source_commit": "f84e2fb9517ef2adc952c5289797dae69b17fad3",
+    "verified_at": "2026-10-11T12:30:30.1612862Z",
+    "blocked_packaging_attempt": {
+      "run_id": 38136102823,
+      "url": "https://github.com/AnisNeziri/Lab2/actions/runs/38136102823",
+      "source_commit": "227a0e76a42929353f50871f33a9efe8929270e2",
+      "conclusion": "failure",
+      "certification_jobs_passed": 8,
+      "browser_passed": 98,
+      "browser_retried": 0,
+      "web_uploaded": true,
+      "windows_uploaded": false,
+      "diagnosis": "Hosted Python executable alias was copied as an external symlink and rejected by the installer archiver; runtime copying now dereferences aliases, with a real Windows CI regression"
     }
   },
   "explicit_gates": {
@@ -408,10 +584,10 @@
     "Public-domain certificate issuance/renewal",
     "Complete staged Linux upgrade script and HTTP upload-size boundary",
     "Off-server backup retrieval with independently escrowed backup passphrase and original APP_KEY",
-    "Fresh Windows VM installer/offline/licence/update qualification and signed customer installer",
-    "Successful explicitly authorized review-artifact workflow execution"
+    "Fresh Windows VM installer/offline/licence/update qualification and signed customer installer"
   ],
   "customer_deployment_performed": false,
   "pr2_started": false,
-  "v13_started": false
+  "v13_started": false,
+  "certification_and_artifact_commit": "f84e2fb9517ef2adc952c5289797dae69b17fad3"
 }

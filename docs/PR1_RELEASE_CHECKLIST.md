@@ -2,7 +2,7 @@
 
 Version: `RELEASE.json`. Upgrade baseline: `5db86866` (explicitly selected by the owner). Every required box must have dated evidence for the **same Git commit**. An absent, skipped or failed required check blocks certification. Keep `RELEASE.json.status=uncertified` until completion.
 
-Assessment: **11 October 2026**, runtime commit `13635712a1d7d475408e4073f3b58bd0863c2093`; [all eight manual CI jobs passed](https://github.com/AnisNeziri/Lab2/actions/runs/38130266616). See [the full report](PR1_CERTIFICATION_REPORT.md) and [sanitized evidence](evidence/PR1_CERTIFICATION.json). Later documentation commits do not alter this runtime. Backend suites each discover 577 tests: 576 pass and one conditional live-Redis round-trip is skipped; actual required Redis outage/recovery is exercised separately in Linux CI. No required CI job was skipped.
+Assessment: **11 October 2026**, certification/artifact commit `f84e2fb9517ef2adc952c5289797dae69b17fad3`; [all eight manual certification jobs and both review builds passed](https://github.com/AnisNeziri/Lab2/actions/runs/38137917071). Application source remains unchanged from `13635712`. See [the full report](PR1_CERTIFICATION_REPORT.md) and [sanitized evidence](evidence/PR1_CERTIFICATION.json). Later documentation commits do not alter this runtime. Backend suites each discover 577 tests: 576 pass and one conditional live-Redis round-trip is skipped; actual required Redis outage/recovery is exercised separately in Linux CI. No required CI job was skipped.
 
 - [x] Full SQLite backend suite passes (5,015 assertions; conditional skip disclosed above).
 - [x] Full populated MariaDB migration/backend suite passes (5,016 assertions; conditional skip disclosed above).
@@ -29,7 +29,7 @@ Assessment: **11 October 2026**, runtime commit `13635712a1d7d475408e4073f3b58bd
 - [x] Nine production-build performance timings are recorded against representative PM3 data.
 - [x] Safe diagnostics, customer export gaps, upgrade/rollback/DR runbook and release notes are reviewed.
 - [x] Local web/unsigned Windows review artifact SHA-256 and contents checks pass.
-- [ ] The RC artifact workflow successfully executes all eight required jobs and creates review artifacts; upload was explicitly authorized on 11 October 2026 and execution is pending.
+- [x] The explicitly authorized RC artifact workflow executes all eight required jobs and uploads both review artifacts; independent downloaded ZIP/payload checksums and contents pass on 11 October 2026 (run 38137917071).
 - [x] Final `PR1_CERTIFICATION_REPORT.md` provides all 18 requested findings and explicit PASS/FAIL, YES/NO and remaining blockers.
 
 Run the existing **AIMS CI** using workflow dispatch to execute Browser Release Certification and Desktop bundled startup. Set its `build_review_artifacts` boolean only when the repository owner has authorized review uploads; it defaults to false. Both artifact jobs depend directly on all eight certification jobs. Before the new workflow is merged into the default branch, dispatch this existing CI entry point on the reviewed branch. **AIMS release candidate certification** delegates to the same implementation with certification and artifact building enabled. The separate signed desktop publishing workflow is not triggered by PR1 automatically. Do not certify from red CI, an untested restore, reconciliation mismatch, tenant breach or broken desktop startup.
