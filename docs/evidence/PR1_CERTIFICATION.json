@@ -1,0 +1,396 @@
+{
+  "schema_version": 1,
+  "assessment_date": "2026-10-11",
+  "release": "1.1.1-rc.1",
+  "certification_status": "uncertified",
+  "runtime_commit": "13635712a1d7d475408e4073f3b58bd0863c2093",
+  "upgrade_baseline": {
+    "commit": "5db868660dcf70247b557c755580f888167f0fce",
+    "selection": "Explicitly selected by the owner; no release tags"
+  },
+  "prior_work_preservation": {
+    "comparison_commit": "ffc83aac7071306ac4a5d94a89bd1aeb90664405",
+    "command": "git diff ffc83aac HEAD -- frontend/src backend/app backend/database",
+    "application_source_diff_empty": true,
+    "reset_or_revert_performed": false
+  },
+  "toolchain": {
+    "php": "8.3.35",
+    "composer": "2.9.8",
+    "node": "22.14.0",
+    "npm": "10.9.2",
+    "python": "3.12.2",
+    "numpy": "2.3.5",
+    "scipy": "1.16.2",
+    "electron": "41.10.7"
+  },
+  "ci": {
+    "run_id": 38130266616,
+    "url": "https://github.com/AnisNeziri/Lab2/actions/runs/38130266616",
+    "event": "workflow_dispatch",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "id": 114442947536,
+        "name": "Backend tests (SQLite portable path)",
+        "conclusion": "success"
+      },
+      {
+        "id": 114442947615,
+        "name": "Frontend build",
+        "conclusion": "success"
+      },
+      {
+        "id": 114442947648,
+        "name": "Browser smoke (Chromium + SQLite)",
+        "conclusion": "success"
+      },
+      {
+        "id": 114442947676,
+        "name": "Linux Nginx and supervised workers",
+        "conclusion": "success"
+      },
+      {
+        "id": 114442947685,
+        "name": "Browser release certification",
+        "conclusion": "success"
+      },
+      {
+        "id": 114442947722,
+        "name": "Backend migrations (MariaDB server path)",
+        "conclusion": "success"
+      },
+      {
+        "id": 114442947749,
+        "name": "Desktop bundled startup (Windows + SQLite)",
+        "conclusion": "success"
+      },
+      {
+        "id": 114442947756,
+        "name": "Independent populated upgrade and recovery",
+        "conclusion": "success"
+      }
+    ],
+    "pull_request_run": {
+      "id": 38130268803,
+      "conclusion": "success",
+      "url": "https://github.com/AnisNeziri/Lab2/actions/runs/38130268803"
+    }
+  },
+  "tests": {
+    "sqlite": {
+      "status": "PASS",
+      "discovered": 577,
+      "passed": 576,
+      "skipped": 1,
+      "assertions": 5015
+    },
+    "mariadb": {
+      "status": "PASS",
+      "discovered": 577,
+      "passed": 576,
+      "skipped": 1,
+      "assertions": 5016
+    },
+    "conditional_skip": "RedisCacheTest::test_dashboard_stats_round_trip_when_redis_up; actual required Redis outage/recovery is tested in the separate Linux job",
+    "frontend_units": {
+      "status": "PASS",
+      "passed": 87
+    },
+    "production_frontend_build": {
+      "status": "PASS",
+      "chunk_size_warnings": true
+    },
+    "browser_smoke": {
+      "status": "PASS",
+      "passed": 10
+    },
+    "browser_release": {
+      "status": "PASS",
+      "passed": 98,
+      "skipped": 0,
+      "retried": 0,
+      "minutes": 17.8
+    },
+    "local_affected_browser_flows": {
+      "status": "PASS",
+      "passed": 7
+    },
+    "extra_pointer_drag": {
+      "status": "PASS",
+      "passed": 1,
+      "method": "Physical handle.dragTo against adjacent widget; temporary diagnostic removed",
+      "log": "output/pr1-pointer-drag.log"
+    },
+    "windows_startup": {
+      "status": "PASS",
+      "clean_sqlite": true,
+      "bundled_php_python": true,
+      "recovery_login": true,
+      "workers": 3,
+      "scheduler": true,
+      "backend_crash_restart": true,
+      "idempotent_upgrade": true
+    },
+    "windows_process_safeguards": {
+      "status": "PASS",
+      "passed": 4
+    },
+    "python_forecasting": {
+      "status": "PASS",
+      "passed": 16,
+      "environment": "final CI"
+    },
+    "python_optimizer": {
+      "status": "PASS",
+      "passed": 8,
+      "environment": "final CI"
+    },
+    "python_intelligence_all": {
+      "status": "PASS",
+      "passed": 14,
+      "environment": "local final dependencies; customer, optimizer and simulation"
+    },
+    "interrupted_writes": {
+      "status": "PASS",
+      "operations": [
+        "stock_movement",
+        "customer_payment",
+        "journal_posting",
+        "goods_receipt"
+      ],
+      "method": "Forced process termination after authoritative SQL inside a real service transaction; no physical power cut",
+      "critical_tables_unchanged": 12
+    }
+  },
+  "recovery": {
+    "status": "PASS",
+    "engines": [
+      "sqlite",
+      "mariadb"
+    ],
+    "final_ci_regenerates_archived_baseline": true,
+    "source": "Owned representative 90-day synthetic PM3 company; no customer data",
+    "pre_upgrade_backup_verified": true,
+    "forward_migration": true,
+    "independent_empty_target": true,
+    "critical_record_hashes_preserved": true,
+    "encrypted_backup_verified": true,
+    "wrong_key_rejected": true,
+    "corruption_rejected": true,
+    "future_version_rejected": true,
+    "attachments_restored": 31,
+    "document_records_preserved": 10,
+    "users_preserved": 5,
+    "tenant_matrix": {
+      "status": "PASS",
+      "other_company_objects_denied": 10,
+      "expected_direct_object_status": 404,
+      "forged_workspace_status": 422
+    },
+    "local_sqlite_reconciliation": {
+      "inventory_quantity": "16058.020",
+      "controls": {
+        "accounts_receivable": {
+          "operational": "54792.59",
+          "gl": "54792.59",
+          "difference": "0.00"
+        },
+        "customer_advances": {
+          "operational": "2613.54",
+          "gl": "2613.54",
+          "difference": "0.00"
+        },
+        "accounts_payable": {
+          "operational": "0.00",
+          "gl": "0.00",
+          "difference": "0.00"
+        },
+        "supplier_advances": {
+          "operational": "162246.98",
+          "gl": "162246.98",
+          "difference": "0.00"
+        },
+        "inventory": {
+          "operational": "94175.62",
+          "gl": "94175.62",
+          "difference": "0.00"
+        },
+        "cash_bank": {
+          "operational": "186381.28",
+          "gl": "186381.28",
+          "difference": "0.00"
+        }
+      },
+      "system_integrity": {
+        "status": "attention",
+        "healthy": 21,
+        "attention": 3,
+        "critical": 0,
+        "qualification": "Existing operational exceptions/stale observations and new backup requirement on B remain visible"
+      }
+    },
+    "mariadb_post_restore_business_writes": {
+      "status": "PASS",
+      "operations": [
+        "stock_movement",
+        "customer_payment",
+        "goods_receipt",
+        "journal_posting",
+        "order_through_dispatch"
+      ],
+      "idempotency": true,
+      "all_six_controls_reconciled": true
+    },
+    "raw_local_reports": [
+      "output/pr1-independent-restore.json",
+      "output/pr1-mariadb-populated-restore.json"
+    ]
+  },
+  "linux": {
+    "status": "PASS",
+    "environment": "Disposable Ubuntu 24.04 CI with Nginx, PHP-FPM, MariaDB, Redis and systemd",
+    "https": true,
+    "certificate": "Self-signed isolated fixture",
+    "private_storage_denied": true,
+    "environment_file_denied": true,
+    "readiness": true,
+    "redis_outage": {
+      "readiness_status": 503,
+      "authenticated_products_status": 200
+    },
+    "database_outage": {
+      "authenticated_products_status": 503
+    },
+    "worker_crash_restart": true,
+    "service_restart": true,
+    "scheduled_backup_verified": true,
+    "host_reboot": false,
+    "public_domain_renewal": false,
+    "complete_staged_upgrade": false,
+    "http_upload_boundary": false
+  },
+  "security": {
+    "critical_application_findings_remaining": [],
+    "scope": "Focused application review and regression suites; not an exhaustive OS or penetration assessment",
+    "production_dependency_advisories": {
+      "composer": 0,
+      "frontend": 0,
+      "desktop": 0
+    },
+    "build_dependency_affected_packages": {
+      "frontend": {
+        "high": 5,
+        "moderate": 2,
+        "critical": 0,
+        "total": 7
+      },
+      "desktop": {
+        "high": 0,
+        "moderate": 8,
+        "critical": 0,
+        "total": 8
+      }
+    },
+    "qualification": "Counts include transitive advisory propagation; untrusted build patterns/CSS/proxy configuration must not be consumed"
+  },
+  "performance": {
+    "status": "PASS",
+    "workspaces": 9,
+    "samples_per_workspace": 3,
+    "units": "milliseconds",
+    "method": "Warm actions in normal minified build against verified PM3 restore; required HTTP completion plus two animation frames",
+    "environment": "Single-process loopback PHP; synthetic E2E environment; local load",
+    "qualification": "Dashboard layout/grid readiness and required requests only; not every lazy widget, a load test or SLA",
+    "timings": {
+      "dashboard": {
+        "median": 3882.43,
+        "max": 4896.95
+      },
+      "order_hub": {
+        "median": 2116.35,
+        "max": 4398.86
+      },
+      "product_detail": {
+        "median": 4882,
+        "max": 4882.83
+      },
+      "inventory_planning": {
+        "median": 2382.61,
+        "max": 4417.33
+      },
+      "shipment_detail": {
+        "median": 3465.57,
+        "max": 3866.24
+      },
+      "financial_intelligence": {
+        "median": 1683.07,
+        "max": 1683.41
+      },
+      "customer_intelligence": {
+        "median": 1683.2,
+        "max": 1782.33
+      },
+      "global_search": {
+        "median": 1752.29,
+        "max": 2482.03
+      },
+      "ask_aims": {
+        "median": 798.98,
+        "max": 868.23
+      }
+    }
+  },
+  "review_artifacts": {
+    "uploaded": false,
+    "published": false,
+    "workflow_executed": false,
+    "workflow_upload_requires_explicit_authorization": true,
+    "windows": {
+      "status": "PASS",
+      "path": "desktop/dist/AIMS-Setup-1.1.1-rc.1.exe",
+      "bytes": 193582395,
+      "sha256": "876fcad2f49ffe1ae98f620ff442acf2224a124cb9c9135563e52507a6b9636e",
+      "signature": "NotSigned",
+      "contents_verified": true,
+      "production_only_vendor": true,
+      "certification_bridge_absent": true
+    },
+    "web": {
+      "status": "PASS",
+      "path": "output/aims-web-source.tar.gz",
+      "bytes": 5680019,
+      "sha256": "5b871456e527746382f93d65146660c1f471c756d016bd4b0d7303a1c8d91a95",
+      "entries": 1070,
+      "source": "Committed runtime source plus normal frontend dist; no runtime DB/storage/environment secrets/installed dependency trees"
+    }
+  },
+  "explicit_gates": {
+    "sqlite_full_suite": "PASS",
+    "mariadb_full_suite": "PASS",
+    "browser_release_certification": "PASS",
+    "windows_desktop_startup": "PASS",
+    "fresh_installation_verified": "YES",
+    "fresh_vm_installer_qualified": "NO",
+    "supported_baseline_upgrade_verified": "YES",
+    "encrypted_backup_verified": "YES",
+    "independent_restore_verified": "YES",
+    "inventory_reconciled": "YES",
+    "finance_reconciled": "YES",
+    "attachments_restored": "YES",
+    "tenant_isolation_verified": "YES",
+    "critical_security_issues_remaining": "NONE identified in focused application review",
+    "production_release_candidate": "NO"
+  },
+  "remaining_required_evidence": [
+    "Actual Linux host reboot and automatic worker/timer recovery",
+    "Public-domain certificate issuance/renewal",
+    "Complete staged Linux upgrade script and HTTP upload-size boundary",
+    "Off-server backup retrieval with independently escrowed backup passphrase and original APP_KEY",
+    "Fresh Windows VM installer/offline/licence/update qualification and signed customer installer",
+    "Explicit authorization and successful review-artifact workflow execution"
+  ],
+  "customer_deployment_performed": false,
+  "pr2_started": false,
+  "v13_started": false
+}
