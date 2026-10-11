@@ -35,7 +35,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3.35'
-          tools: composer:2.8.12
+          tools: composer:2.9.8
           extensions: bcmath, curl, dom, fileinfo, mbstring, openssl, pdo_mysql, pdo_sqlite, sqlite3, zip
       - uses: actions/setup-python@v5
         with:
@@ -76,7 +76,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3.35'
-          tools: composer:2.8.12
+          tools: composer:2.9.8
           extensions: bcmath, curl, dom, fileinfo, mbstring, openssl, pdo_mysql, pdo_sqlite, sqlite3, zip
       - uses: actions/setup-python@v5
         with:
@@ -109,7 +109,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3.35'
-          tools: composer:2.8.12
+          tools: composer:2.9.8
           extensions: bcmath, curl, openssl, zip, mbstring, dom, fileinfo, pdo_sqlite, sqlite3
           coverage: none
       - uses: actions/cache@v4
@@ -178,7 +178,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3.35'
-          tools: composer:2.8.12
+          tools: composer:2.9.8
           extensions: bcmath, curl, openssl, zip, mbstring, dom, fileinfo, pdo_mysql
           coverage: none
       - uses: actions/setup-python@v5
@@ -219,7 +219,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3.35'
-          tools: composer:2.8.12
+          tools: composer:2.9.8
           extensions: bcmath, curl, openssl, zip, mbstring, dom, fileinfo, pdo_sqlite, sqlite3
           coverage: none
       - uses: actions/setup-node@v4
@@ -257,7 +257,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3.35'
-          tools: composer:2.8.12
+          tools: composer:2.9.8
           extensions: bcmath, curl, openssl, zip, mbstring, dom, fileinfo, pdo_sqlite, sqlite3
           coverage: none
       - uses: actions/setup-node@v4
@@ -296,7 +296,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3.35'
-          tools: composer:2.8.12
+          tools: composer:2.9.8
           extensions: bcmath, curl, openssl, zip, mbstring, dom, fileinfo, pdo_sqlite, sqlite3, sodium
           coverage: none
       - uses: actions/setup-node@v4
