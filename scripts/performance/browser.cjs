@@ -36,6 +36,9 @@ async function main(){
  await page.getByLabel('Email address').fill('actor0@performance.aims.test');await page.getByLabel('Password',{exact:true}).fill('Aims.Performance.2026!');await page.getByRole('button',{name:'Enter workspace'}).click();await page.waitForURL('**/dashboard')
  await goto('Dashboard','/dashboard',u=>u.pathname==='/api/settings/workspace',()=>page.locator('.workspace-widget-grid').waitFor())
  await goto('Products','/products?product='+fixture.product_detail_id,u=>u.pathname==='/api/products/'+fixture.product_detail_id,()=>page.getByRole('dialog').waitFor())
+ await goto('Documents','/documents',u=>u.pathname==='/api/documents',()=>page.locator('.doc-list .doc-card').first().waitFor())
+ report.documents={rendered_rows:await page.locator('.doc-list .doc-card').count(),initial_previews:await page.locator('iframe').count()}
+ if(report.documents.rendered_rows>25||report.documents.initial_previews!==0)throw Error('Document listing eagerly rendered files or exceeded page size')
  await goto('Order Hub','/order-hub',u=>u.pathname==='/api/order-hub')
  await goto('Stock movements','/stock',u=>u.pathname==='/api/stock-movements',()=>page.locator('table tbody tr').first().waitFor())
  if(await page.getByRole('button',{name:'Next',exact:true}).count()){const waiting=page.waitForResponse(r=>r.url().includes('/stock-movements?')&&new URL(r.url()).searchParams.get('page')==='2');await page.getByRole('button',{name:'Next',exact:true}).click();await waiting;report.stock_pagination='PASS'}
