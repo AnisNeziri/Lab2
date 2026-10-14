@@ -16,6 +16,8 @@ $token = app(JwtService::class)->createAccessToken($owner);
 $company = $owner->company_id;
 
 $id = fn ($t) => DB::table($t)->where('company_id', $company)->value('id');
+$optimizerId = DB::table('supply_optimization_plans')->where('company_id', $company)->where('status', 'OPTIMAL')->whereNotNull('result')->orderBy('id')->value('id');
+$simulationId = DB::table('strategic_simulations')->where('company_id', $company)->where('status', 'COMPLETED')->whereNotNull('result')->orderBy('id')->value('id');
 $routes = [
     'Dashboard' => ['GET', '/api/dashboard'], 'Product reference picker' => ['GET', '/api/products?reference_only=1&per_page=50'], 'Order Hub' => ['GET', '/api/order-hub'], 'Product detail' => ['GET', '/api/products/'.$id('products')],
     'Inventory / Stock' => ['GET', '/api/inventory/locator'], 'Stock movements' => ['GET', '/api/stock-movements?page=1&per_page=50'], 'Customer debt' => ['GET', '/api/customers'],
@@ -23,8 +25,8 @@ $routes = [
     'Financial Intelligence' => ['GET', '/api/financial-intelligence'], 'Finance page overview' => ['GET', '/api/financial-intelligence?view=overview'], 'Finance receivables page' => ['GET', '/api/financial-intelligence?view=receivables&page=2'], 'Financial dashboard summary' => ['GET', '/api/financial-intelligence?summary_only=1'],
     'Customer/Sales Intelligence' => ['GET', '/api/customer-sales-intelligence'], 'Customer page overview' => ['GET', '/api/customer-sales-intelligence?view=overview'], 'Customer trends page' => ['GET', '/api/customer-sales-intelligence?view=trends&page=2'], 'Customer dashboard summary' => ['GET', '/api/customer-sales-intelligence?summary_only=1'],
     'Inventory Intelligence' => ['GET', '/api/analytics/intelligence'], 'Supply Optimizer list' => ['GET', '/api/supply-optimizer'],
-    'Supply Optimizer detail' => ['GET', '/api/supply-optimizer/'.$id('supply_optimization_plans')], 'Strategic Simulation list' => ['GET', '/api/strategic-simulation'],
-    'Strategic Simulation detail' => ['GET', '/api/strategic-simulation/'.$id('strategic_simulations')], 'Global Search' => ['GET', '/api/search?q=Milano'], 'Global Search positive' => ['GET', '/api/search?q=Performance'], 'Global Search exact order' => ['GET', '/api/search?q=PERF-SO-4000'],
+    'Supply Optimizer detail' => ['GET', '/api/supply-optimizer/'.$optimizerId], 'Strategic Simulation list' => ['GET', '/api/strategic-simulation'],
+    'Strategic Simulation detail' => ['GET', '/api/strategic-simulation/'.$simulationId], 'Global Search' => ['GET', '/api/search?q=Milano'], 'Global Search positive' => ['GET', '/api/search?q=Performance'], 'Global Search exact order' => ['GET', '/api/search?q=PERF-SO-4000'],
     'Ask AIMS' => ['POST', '/api/intelligence-assistant/ask', ['question' => 'Who owes us the most?']], 'Action Center' => ['GET', '/api/action-center']];
 $queries = [];
 DB::listen(function ($q) use (&$queries) {
