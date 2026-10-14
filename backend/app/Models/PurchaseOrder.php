@@ -19,11 +19,19 @@ class PurchaseOrder extends Model
         'due_at', 'notes', 'created_by', 'updated_by',
     ];
 
+    protected static function booted(): void
+    {
+        static::updating(function (self $order) {
+            $order->revision = ((int) $order->getOriginal('revision')) + 1;
+        });
+    }
+
     protected $appends = ['remaining_balance', 'payment_status', 'is_overdue'];
 
     protected function casts(): array
     {
         return [
+            'revision' => 'integer',
             'total_amount' => 'decimal:2',
             'total_paid' => 'decimal:2',
             'total_amount_eur' => 'decimal:2',

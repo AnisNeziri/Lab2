@@ -316,6 +316,7 @@ export default function PurchaseOrders() {
   };
   const beginEdit = () => {
     setForm({
+      revision: selected.revision,
       supplier_id: String(selected.supplier_id),
       ordered_at: dateOnly(selected.ordered_at),
       expected_at: selected.expected_at || "",

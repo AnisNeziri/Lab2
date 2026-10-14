@@ -115,8 +115,10 @@ class ActionCenterService
         if ($this->can('purchase_orders.view')) foreach(\App\Models\PurchaseOrder::whereNotIn('status',['completed','received','cancelled'])->where('expected_at','<',today())->oldest('expected_at')->limit(25)->get() as $o) $items[]=['kind'=>'procurement','id'=>$o->id,'title'=>$o->po_number,'description'=>'Purchase order overdue','url'=>'/purchase-orders?po='.$o->id,'due_at'=>$o->expected_at];
         if ($this->can('documents.view')) foreach(app(DocumentService::class)->visibleQuery()->where('status','!=','archived')->whereNotNull('expiry_date')->where('expiry_date','<=',today()->addDays(30))->oldest('expiry_date')->limit(25)->get() as $d) $items[]=['kind'=>'document','id'=>$d->id,'title'=>$d->title,'description'=>'Review or replace expiring document','url'=>'/documents?document='.$d->id,'due_at'=>$d->expiry_date];
         if ($this->can('debts.view')) {
-            foreach(\App\Models\Customer::whereHas('debtTransactions',fn($q)=>$q->where('due_date','<',today()))->limit(100)->get() as $customer) {
-                $credit=app(CustomerCreditService::class)->exposure($customer);
+            $customers=\App\Models\Customer::whereHas('debtTransactions',fn($q)=>$q->where('due_date','<',today()))->limit(100)->get();
+            $credits=app(CustomerCreditService::class)->overdueForCustomers($customers);
+            foreach($customers as $customer) {
+                $credit=$credits[$customer->id];
                 if ((float)$credit['overdue']>0) $items[]=['kind'=>'customer','id'=>$customer->id,'title'=>$customer->name,'description'=>'Customer payment overdue','values'=>['overdue'=>$credit['overdue']],'url'=>'/customer-debts?customer='.$customer->id,'due_at'=>$credit['oldest_overdue_date']];
             }
         }

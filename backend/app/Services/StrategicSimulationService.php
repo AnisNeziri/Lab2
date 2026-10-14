@@ -109,7 +109,7 @@ class StrategicSimulationService
             if ($r->definition['optimize']) {
                 $this->stage($r, 'optimizing_response');
             }
-            $result = app(StrategicSimulationEngine::class)->calculate($r->baseline, $r->definition['assumptions'], $r->definition['optimize']);
+            $result = app(StrategicSimulationEngine::class)->calculate($r->baseline, $r->definition['assumptions'], $r->definition['optimize'], fn () => Run::whereKey($id)->value('status') === 'CANCELLED');
             $this->stage($r, 'evaluating_finance');
             $this->active($r);
             $audit = $r->audit;

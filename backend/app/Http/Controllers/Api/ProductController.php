@@ -29,6 +29,9 @@ class ProductController extends Controller
     public function index(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'reference_only' => ['sometimes', 'boolean'],
+            'page' => ['sometimes','integer','min:1'],
+            'per_page' => ['sometimes','integer','min:1','max:50'],
             'search' => ['nullable', 'string', 'max:255'],
             'category_id' => ['nullable', 'integer', Rule::exists('categories', 'id')->where('company_id', $request->user()->company_id)],
             'supplier_id' => ['nullable', 'integer', Rule::exists('suppliers', 'id')->where('company_id', $request->user()->company_id)],
@@ -45,7 +48,7 @@ class ProductController extends Controller
         $validated['include_archived'] = $request->boolean('include_archived');
 
         $products = $this->productService->list($validated, $perPage);
-        $this->attachInventorySnapshots($products->getCollection());
+        if (empty($validated['reference_only'])) $this->attachInventorySnapshots($products->getCollection());
 
         return response()->json($products);
     }

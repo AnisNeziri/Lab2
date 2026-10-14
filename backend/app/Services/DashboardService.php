@@ -233,8 +233,8 @@ class DashboardService
 
     private function buildMetrics(): array
     {
-        $products = Product::with('category')->get();
-        $snapshots = $this->inventorySnapshots->forProducts($products);
+        $products = Product::withStockTotals()->with('category')->get();
+        $snapshots = $this->inventorySnapshots->onHandForProducts($products);
         $snapshot = fn (Product $product): array => $snapshots->get((int) $product->id, [
             'on_hand' => (float) $product->quantity,
             'available' => (float) $product->quantity,
@@ -265,7 +265,9 @@ class DashboardService
             ->filter(fn (Product $p) => $snapshot($p)['available'] <= 0)
             ->map($asAvailableProduct)->sortBy('name')->values();
 
-        $recentMovements = StockMovement::with('product.category')->latest()->limit(50)->get();
+        $recentMovements = StockMovement::with(['product' => fn ($query) => $query
+            ->select('id', 'company_id', 'category_id', 'name', 'sku', 'unit', 'quantity', 'min_quantity', 'high_stock_threshold')
+            ->withStockTotals()->with('category:id,name')])->latest()->limit(50)->get();
 
         $categoryValues = $products->groupBy(fn (Product $p) => $p->category->name ?? 'Uncategorized')
             ->map(fn ($group, $name) => [

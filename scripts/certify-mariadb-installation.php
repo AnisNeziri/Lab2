@@ -53,7 +53,7 @@ try {
     $critical=certificationCriticalRecords();
     Illuminate\Support\Facades\DB::purge();$app->useStoragePath($run.'/B/storage');config(['database.connections.mysql.database'=>$b,'synthetic.document_root'=>$run.'/B/documents','production.backup_root'=>$run.'/B/backups']);
     $report['restore']=$service->restore($archive,$key);
-    $report['critical_records_preserved']=certificationCriticalRecords()===$critical;
+    $report['critical_records_preserved']=certificationCriticalRecords($critical)===$critical;
     if(!$report['critical_records_preserved'])throw new RuntimeException('Restored business/settings/intelligence records mismatch.');
     $owner=App\Models\User::where('email','owner@aims-demo.test')->firstOrFail();
     $login=certificationRequest('POST','/api/login',['email'=>$owner->email,'password'=>config('synthetic.password')]);

@@ -17,6 +17,7 @@ class BinTransferService
     public function move(array $data): array
     {
         return DB::transaction(function () use ($data): array {
+            DB::table('companies')->where('id', \Illuminate\Support\Facades\Auth::user()->company_id)->sharedLock()->first();
             $product = Product::query()->lockForUpdate()->findOrFail($data['product_id']);
             $source = WarehouseLocation::query()->where('is_active', true)->findOrFail($data['source_location_id']);
             $destination = WarehouseLocation::query()->where('is_active', true)->findOrFail($data['destination_location_id']);

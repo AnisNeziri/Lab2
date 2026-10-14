@@ -1,5 +1,7 @@
 // Shared wording for older workspaces that originally used inline English copy.
 export const uiCopySq = {
+  'From date':'Nga data', 'To date':'Deri më datën',
+  'Search products':'Kërko produkte',
   'Last verified backup':'Kopja rezervë e fundit e verifikuar',
   'Last backup failure':'Dështimi i fundit i kopjes rezervë',
   'Could not load products. Try again.':'Produktet nuk u ngarkuan. Provo përsëri.',

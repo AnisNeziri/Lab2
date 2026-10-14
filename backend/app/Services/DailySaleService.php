@@ -139,7 +139,7 @@ class DailySaleService
             $this->operationalAccounting->postDailySale($sale->fresh('items'));
 
             return $sale->fresh(['items.product', 'creator:id,name']);
-        });
+        }, 3);
     }
 
     public function update(DailySale $sale, array $data): DailySale

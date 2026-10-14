@@ -37,6 +37,38 @@ class CustomerCreditService
         });
     }
 
+    /** Read-only Action Center projection; same oldest-due-first allocation as obligations(). */
+    public function overdueForCustomers(\Illuminate\Support\Collection $customers): array
+    {
+        if ($customers->isEmpty()) return [];
+        $company = (int) \Illuminate\Support\Facades\Auth::user()->company_id;
+        $ids = $customers->filter(fn ($c) => (int) $c->company_id === $company)->pluck('id');
+        $base = \App\Models\CustomerDebtTransaction::query()->where('company_id', $company)
+            ->whereIn('customer_id', $ids)->whereNull('reversed_transaction_id')->whereDoesntHave('reversals');
+        $payments = (clone $base)->whereIn('type', ['payment', 'negative_adjustment', 'return', 'cancellation'])
+            ->selectRaw('customer_id, SUM(amount) AS total')->groupBy('customer_id')->pluck('total', 'customer_id');
+        $debts = (clone $base)->whereIn('type', ['debt_added', 'opening_balance', 'positive_adjustment'])
+            ->orderBy('customer_id')->orderByRaw('CASE WHEN due_date IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('due_date')->orderBy('transaction_date')->orderBy('id')->get()->groupBy('customer_id');
+        $today = \App\Support\CompanyClock::now()->startOfDay();
+        $result = [];
+        foreach ($ids as $id) {
+            $remaining = Money::normalize($payments[$id] ?? 0);
+            $overdue = '0.00'; $oldest = null;
+            foreach ($debts[$id] ?? [] as $debt) {
+                $allocated = Money::minimum($debt->amount, $remaining);
+                $open = Money::subtract($debt->amount, $allocated);
+                $remaining = Money::subtract($remaining, $allocated);
+                if (Money::compare($open, '0.00') > 0 && $debt->due_date && $debt->due_date->lt($today)) {
+                    $overdue = Money::add($overdue, $open);
+                    if (!$oldest || $debt->due_date->lt($oldest)) $oldest = $debt->due_date;
+                }
+            }
+            $result[$id] = ['overdue' => $overdue, 'oldest_overdue_date' => $oldest?->toDateString()];
+        }
+        return $result;
+    }
+
     public function exposure(Customer $customer): array
     {
         $today = \App\Support\CompanyClock::now()->startOfDay();

@@ -111,7 +111,7 @@ class OutboundService
             $this->sync($order);
             DB::table('outbound_actions')->insert(['company_id'=>$order->company_id,'sales_order_id'=>$order->id,'action'=>$action,'idempotency_key'=>$key,'fingerprint'=>$fp,'created_at'=>now(),'updated_at'=>now()]);
             return $this->detail($order->fresh());
-        });
+        }, 3);
     }
 
     private function edit(SalesOrder $o,array $d): void

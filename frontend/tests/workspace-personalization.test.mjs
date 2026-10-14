@@ -99,3 +99,16 @@ test('unmount settles queued reads and aborts active reads without publishing la
   assert.deepEqual(await Promise.all(requests),[null,null,null,null,null,null])
   assert.equal(published,0);assert.equal(await client.load('/new'),null)
 })
+
+test('offscreen subscribers receive completed reads without starting or refreshing hidden widgets',async()=>{
+  const calls=[],states=[];let finish
+  const client=createDashboardResources(key=>{calls.push(key);return new Promise(resolve=>{finish=resolve})})
+  const stop=client.subscribe('/slow',s=>states.push(s),false)
+  client.subscribe('/unseen',()=>{},false)
+  assert.equal(calls.length,0)
+  const request=client.load('/slow');finish({value:7});await request
+  assert.equal(states.at(-1).data.value,7)
+  client.refresh();await new Promise(resolve=>setImmediate(resolve))
+  assert.deepEqual(calls,['/slow'])
+  stop();client.dispose()
+})

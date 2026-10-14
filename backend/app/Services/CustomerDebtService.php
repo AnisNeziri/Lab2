@@ -24,6 +24,14 @@ class CustomerDebtService
         private readonly AccountingService $accounting,
     ) {}
 
+    // Fulfillment and stock posting lock company before customer. Payment
+    // postings insert company-referenced rows too; the inverse order caused
+    // a MariaDB deadlock in the PR2 dispatch/payment race.
+    private function lockCompany(): void
+    {
+        DB::table('companies')->where('id', Auth::user()->company_id)->lockForUpdate()->first();
+    }
+
     private const INCREASE_TYPES = ['debt_added', 'positive_adjustment', 'opening_balance'];
 
     public function addDebt(Customer $customer, array $data, string $type = 'debt_added'): CustomerDebtTransaction
@@ -33,6 +41,7 @@ class CustomerDebtService
         }
 
         return DB::transaction(function () use ($customer, $data, $type) {
+            $this->lockCompany();
             $locked = Customer::query()->lockForUpdate()->findOrFail($customer->id);
             $amount = Money::normalize($data['amount']);
             if (Money::compare($amount, '0.00') <= 0) {
@@ -114,6 +123,7 @@ class CustomerDebtService
     public function addFulfillmentDebt(\App\Models\SalesOrder $order, \App\Models\OutboundDispatch $dispatch): CustomerDebtTransaction
     {
         return DB::transaction(function() use($order,$dispatch){
+            $this->lockCompany();
             $locked=\App\Models\SalesOrder::query()->lockForUpdate()->findOrFail($order->id);
             if($dispatch->sales_order_id!==$locked->id)throw ValidationException::withMessages(['dispatch'=>['Dispatch does not belong to this order.']]);
             if($dispatch->customer_debt_transaction_id)return CustomerDebtTransaction::query()->findOrFail($dispatch->customer_debt_transaction_id);
@@ -135,6 +145,7 @@ class CustomerDebtService
         }
 
         return DB::transaction(function () use ($customer, $data, $type) {
+            $this->lockCompany();
             $locked = Customer::query()->lockForUpdate()->findOrFail($customer->id);
             $amount = Money::normalize($data['amount']);
             $data = $this->applyPaymentTerms($locked, $data);
@@ -170,6 +181,7 @@ class CustomerDebtService
     public function recordPayment(Customer $customer, array $data): CustomerDebtTransaction
     {
         return DB::transaction(function () use ($customer, $data) {
+            $this->lockCompany();
             $transaction = $this->record($customer, $data, 'payment', false);
             if (! empty($data['financial_account_id']) && ! $transaction->financial_account_transaction_id) {
                 $ledger = $this->accounts->post((int) $data['financial_account_id'], [
@@ -197,6 +209,7 @@ class CustomerDebtService
     public function reverse(CustomerDebtTransaction $transaction, string $reason): CustomerDebtTransaction
     {
         return DB::transaction(function () use ($transaction, $reason) {
+            $this->lockCompany();
             $customer = Customer::query()->lockForUpdate()->findOrFail($transaction->customer_id);
             $locked = CustomerDebtTransaction::query()
                 ->where('customer_id', $customer->id)
@@ -210,6 +223,7 @@ class CustomerDebtService
     public function correct(CustomerDebtTransaction $transaction, array $data): CustomerDebtTransaction
     {
         return DB::transaction(function () use ($transaction, $data) {
+            $this->lockCompany();
             $customer = Customer::query()->lockForUpdate()->findOrFail($transaction->customer_id);
             $locked = CustomerDebtTransaction::query()
                 ->where('customer_id', $customer->id)
@@ -248,6 +262,7 @@ class CustomerDebtService
     private function record(Customer $customer, array $data, string $type, bool $increase): CustomerDebtTransaction
     {
         return DB::transaction(function () use ($customer, $data, $type, $increase) {
+            $this->lockCompany();
             $locked = Customer::query()->lockForUpdate()->findOrFail($customer->id);
             $amount = Money::normalize($data['amount']);
 

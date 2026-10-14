@@ -1,0 +1,28 @@
+name: PR2 read performance regressions
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bounded-reads:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, sqlite3, mbstring, bcmath, gd, zip
+          coverage: none
+      - run: composer install --working-dir=backend --no-interaction --prefer-dist --no-progress
+      - run: python3 scripts/performance/guard_checks.py
+      - run: php scripts/performance/generate.php --engine=sqlite --seed=20261011 --products=1000 --customers=2000 --suppliers=100 --warehouses=10 --orders=100 --yes
+      - run: php scripts/performance/profile.php output/performance/20261011/aims-pr2.sqlite output/pr2-ci-profile.json
+      - run: php scripts/performance/budgets.php output/pr2-ci-profile.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr2-read-profile
+          path: output/pr2-ci-profile.json
+          retention-days: 14

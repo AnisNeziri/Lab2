@@ -79,7 +79,7 @@ class StockMovementService
         private OperationalAccountingService $operationalAccounting,
     ) {}
 
-    public function list(array $filters): Collection
+    public function list(array $filters): Collection|\Illuminate\Pagination\LengthAwarePaginator
     {
         return $this->movements->list($filters);
     }
@@ -92,6 +92,8 @@ class StockMovementService
 
         try {
             $movement = DB::transaction(function () use ($validated, $idempotencyKey) {
+                // Company numbering writers lock this parent first; acquire the FK lock before products.
+                DB::table('companies')->where('id', Auth::user()->company_id)->sharedLock()->first();
                 $product = Product::query()->lockForUpdate()->findOrFail($validated['product_id']);
                 $this->unitConversions->assertPrecision((float) $validated['quantity'], $product->unit);
                 $requestedQuantity = round((float) $validated['quantity'], 3);
@@ -427,6 +429,8 @@ class StockMovementService
     public function storeOutboundAllocated(array $data): Collection
     {
         return DB::transaction(function () use ($data): Collection {
+            // Company numbering writers lock this parent first; acquire the FK lock before products.
+            DB::table('companies')->where('id', Auth::user()->company_id)->sharedLock()->first();
             if (($data['type'] ?? 'out') !== 'out') {
                 throw ValidationException::withMessages(['type' => ['Allocated inventory movements must be outbound.']]);
             }
@@ -604,6 +608,8 @@ class StockMovementService
     public function transitionState(array $data): array
     {
         return DB::transaction(function () use ($data): array {
+            // Company numbering writers lock this parent first; acquire the FK lock before products.
+            DB::table('companies')->where('id', Auth::user()->company_id)->sharedLock()->first();
             $product = Product::query()->lockForUpdate()->findOrFail($data['product_id']);
             $fromState = (string) ($data['from_state'] ?? 'available');
             $toState = (string) ($data['to_state'] ?? 'reserved');
@@ -751,6 +757,7 @@ class StockMovementService
         }
 
         return DB::transaction(function () use ($product, $quantityBefore, $quantityAfter, $movementCode, $reason, $idempotencyKey, $occurredAt) {
+            DB::table('companies')->where('id', $product->company_id)->sharedLock()->first();
             $locked = Product::withoutGlobalScopes()->lockForUpdate()->findOrFail($product->id);
             $existing = StockMovement::withoutGlobalScopes()
                 ->where('company_id', $locked->company_id)

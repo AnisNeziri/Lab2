@@ -16,8 +16,7 @@ export function useWidgetData(path) {
   },[])
   useEffect(()=>{
     if(!path){setState({data:null,error:'',loading:false});return}
-    if(!visible)return
-    setState(client.state(path));const unsubscribe=client.subscribe(path,setState);client.load(path)
+    setState(client.state(path));const unsubscribe=client.subscribe(path,setState,visible);if(visible)client.load(path)
     return unsubscribe
   },[path,client,visible])
   return {...state,ref,retry:()=>path&&client.load(path,true)}

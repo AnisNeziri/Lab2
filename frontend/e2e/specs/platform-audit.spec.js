@@ -10,6 +10,8 @@ async function preferences(page, theme, language) {
   await page.reload()
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
   await expect(page.locator('html')).toHaveAttribute('lang', language)
+  // Preferences can hydrate before the lazy workspace mounts its keyboard handlers.
+  await expect(page.locator('.global-search-trigger')).toBeVisible()
 }
 
 test.afterEach(async ({ page }) => {

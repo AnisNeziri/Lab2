@@ -11,6 +11,7 @@ import {
   Ship,
   X,
 } from 'lucide-react'
+import EvidencePagination from '../../components/EvidencePagination'
 import ShipmentsPageIntro from '../../components/ShipmentsPageIntro'
 import ShipmentIntelligence from '../../components/ShipmentIntelligence'
 import ShipmentWorkspace from '../../components/ShipmentWorkspace'
@@ -75,6 +76,12 @@ export default function MyShipments() {
   const [view, setView] = useState(searchParams.get('view') === 'intelligence' ? 'intelligence' : 'active')
   useEffect(() => { setView(searchParams.get('view') === 'intelligence' ? 'intelligence' : 'active') }, [searchParams.get('view')])
   const [shipments, setShipments] = useState([])
+  const [pagination, setPagination] = useState({})
+  const [listPage, setListPage] = useState(1)
+  const listRequest = useRef(0)
+  const listPageRef = useRef(1)
+  const polling = useRef(false)
+  listPageRef.current = listPage
   const [history, setHistory] = useState([])
   const [purchaseOrders, setPurchaseOrders] = useState([])
   const [trackingCapabilities, setTrackingCapabilities] = useState(null)
@@ -109,8 +116,15 @@ export default function MyShipments() {
   }, [focusShipmentId, selected?.id, selected?.cargo])
 
   async function loadShipments(nextView = view) {
-    const data = await getShipments({ archived: nextView === 'archived' })
+    const requestId = ++listRequest.current
+    const data = await getShipments({ archived: nextView === 'archived', page: listPageRef.current, per_page: 50 })
     const items = responseItems(data)
+    if (requestedShipmentId && !items.some(row => row.id === requestedShipmentId)) {
+      const detail = await getShipment(requestedShipmentId).catch(() => null)
+      if (detail) items.unshift(detail)
+    }
+    if (requestId !== listRequest.current) return
+    setPagination(data.current_page ? { shipments: data } : {})
     // Background polling returns compact list records. Merge them into any
     // open detailed record so containers and history-backed fields
     // do not visibly disappear during background refreshes.
@@ -147,6 +161,7 @@ export default function MyShipments() {
 
   useEffect(() => {
     loadAll()
+    return () => { listRequest.current++ }
   }, [])
 
   useEffect(() => {
@@ -226,24 +241,31 @@ export default function MyShipments() {
   useEffect(() => {
     if (view !== 'active') return undefined
     const timer = setInterval(async () => {
+      if (document.visibilityState === 'hidden' || polling.current) return
+      polling.current = true
       try {
         const remoteShipments = shipments.filter((item) => {
           const provider = item.tracking_provider || item.tracking_mode
           return item.status !== 'delivered' && !['manual', 'demo', 'disabled', 'aisstream'].includes(provider)
         })
-        await Promise.allSettled(remoteShipments.map((item) => refreshShipment(item.id)))
+        // At most three requests at once; the backend enforces its existing
+        // per-shipment refresh interval and provider cache across browsers.
+        for (let offset = 0; offset < remoteShipments.length; offset += 3)
+          await Promise.allSettled(remoteShipments.slice(offset, offset + 3).map((item) => refreshShipment(item.id)))
         const [, modeData] = await Promise.all([
           loadShipments(),
           getSystemMode().catch(() => null),
         ])
         if (modeData?.tracking) setTrackingCapabilities(modeData.tracking)
       } catch {
-      }
+      } finally { polling.current = false }
     }, REFRESH_MS)
     return () => clearInterval(timer)
   }, [view, shipments.length])
 
   async function switchView(nextView) {
+    listPageRef.current = 1
+    setListPage(1)
     setView(nextView)
     setSearchParams(p => { if (nextView === 'intelligence') p.set('view', 'intelligence'); else p.delete('view'); return p })
     try {
@@ -408,6 +430,12 @@ export default function MyShipments() {
             </div>
           ) : null}
 
+          <EvidencePagination pagination={pagination} page={listPage} language={language}
+            onPage={async page => {
+              listPageRef.current = page
+              setListPage(page)
+              try { await loadShipments() } catch { setError(t('shipments.loadError')) }
+            }} />
           <div className="shipments-list">
             {loading ? <p>{t('common.loading')}</p> : null}
             {!loading && !shipments.length ? <p>{t('shipments.empty')}</p> : null}
