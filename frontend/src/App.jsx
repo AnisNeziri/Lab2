@@ -441,7 +441,9 @@ function AppRoutes() {
         <Route
           path="/change-password"
           element={
-            !isAuthenticated ? (
+            !authReady ? (
+              <PageLoader />
+            ) : !isAuthenticated ? (
               <Navigate to="/login" replace />
             ) : (
               <ChangePassword

@@ -19,6 +19,18 @@ test.describe('Authentication and route protection', () => {
   test('@smoke protected URLs redirect anonymous users', async ({ page }) => {
     await page.goto('/products')
     await expect(page).toHaveURL(/\/login$/)
+    await page.goto('/change-password')
+    await expect(page).toHaveURL(/\/login$/)
+  })
+
+  test('@smoke authenticated password page survives direct loading and refresh', async ({ page }) => {
+    await login(page)
+    await page.goto('/change-password')
+    await expect(page.getByRole('heading', { name: 'Change password', exact: true })).toBeVisible()
+    await expect(page.getByLabel('Current Password', { exact: true })).toBeVisible()
+    await page.reload()
+    await expect(page).toHaveURL(/\/change-password$/)
+    await expect(page.getByRole('heading', { name: 'Change password', exact: true })).toBeVisible()
   })
 
   test('staff cannot open administrator routes directly', async ({ page }) => {
