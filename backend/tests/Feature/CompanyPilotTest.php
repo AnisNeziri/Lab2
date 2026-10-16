@@ -80,7 +80,7 @@ class CompanyPilotTest extends TestCase
     {
         $this->travelTo(CarbonImmutable::parse('2026-10-08 12:00:00'));
         $this->actingAsApiUser();
-        $this->getJson('/api/pilot')->assertOk()->assertJsonPath('readiness.sales.business_days_with_finalized_sales.percent', null);
+        $this->getJson('/api/pilot')->assertOk()->assertJsonPath('readiness.sales.business_days_with_finalized_sales.percent', null)->assertJsonPath('readiness.sales.finalized_sheets', null)->assertJsonPath('readiness.forecast.observations', null);
         $this->putJson('/api/pilot/plan', $this->plan())->assertOk()->assertJsonPath('revision', 1);
         DailySale::create(['sale_number' => 'REAL-SOURCE-1', 'sale_date' => '2026-10-06', 'status' => 'finalized']);
         DB::table('daily_sales_days')->insert(['company_id' => $this->apiCompany->id, 'sale_date' => '2026-10-05']);
@@ -88,6 +88,15 @@ class CompanyPilotTest extends TestCase
         $response->assertJsonPath('readiness.period.elapsed_days', 3);
         $this->assertSame(['2026-10-05', '2026-10-07'], $response->json('readiness.sales.unknown_days'));
         $this->assertDatabaseCount('analytics_snapshots', 0); // A view must not manufacture learning history.
+    }
+
+    public function test_observation_dates_follow_company_timezone_at_the_utc_boundary(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-16 22:30:00','UTC'));
+        $this->actingAsApiUser();
+        $this->putJson('/api/pilot/plan',$this->plan())->assertOk();
+        $this->postJson('/api/pilot/evidence',$this->evidence(['observed_on'=>'2026-10-17']))->assertCreated();
+        $this->postJson('/api/pilot/evidence',$this->evidence(['observed_on'=>'2026-10-18']))->assertUnprocessable();
     }
 
     public function test_plan_revision_and_foreign_tenant_participants_are_checked(): void

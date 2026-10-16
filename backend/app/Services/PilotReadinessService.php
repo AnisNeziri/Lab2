@@ -23,9 +23,9 @@ class PilotReadinessService
         return DB::table($table)->where($table.'.company_id', Auth::user()->company_id);
     }
 
-    private function rate(int $numerator, ?int $denominator): array
+    private function rate(?int $numerator, ?int $denominator): array
     {
-        return ['count' => $numerator, 'total' => $denominator, 'percent' => $denominator ? round(100 * $numerator / $denominator, 1) : null];
+        return ['count' => $numerator, 'total' => $denominator, 'percent' => $denominator && $numerator !== null ? round(100 * $numerator / $denominator, 1) : null];
     }
 
     public function report(): array
@@ -52,7 +52,7 @@ class PilotReadinessService
         }
         $recorded = (clone $sales)->distinct()->pluck('sale_date')->map(fn ($d) => substr((string) $d, 0, 10))->all();
         $observed = array_values(array_intersect($days, $recorded));
-        $totalSales = (clone $sales)->count();
+        $totalSales = $start ? (clone $sales)->count() : null;
         $products = $this->table('products')->whereNull('archived_at');
         $productCount = (clone $products)->count();
         $pos = $this->table('purchase_orders')->whereNull('deleted_at');
@@ -93,12 +93,12 @@ class PilotReadinessService
             'captured_at' => now()->toIso8601String(), 'release' => Release::version(), 'source' => $source, 'profile' => $profile,
             'period' => ['start' => $start?->toDateString(), 'end' => $end->toDateString(), 'calendar' => 'Configured ISO weekdays; holidays require owner review.', 'elapsed_days' => $cutover ? max(0, (int) $cutover->diffInDays($end, false) + 1) : 0],
             'sales' => [
-                'business_days_with_finalized_sales' => $this->rate(count($observed), $start && $profile->business_days ? count($days) : null),
+                'business_days_with_finalized_sales' => $this->rate($start && $profile->business_days ? count($observed) : null, $start && $profile->business_days ? count($days) : null),
                 'unknown_days' => array_values(array_diff($days, $observed)), 'missing_days_are_zero' => false,
-                'sheets_with_product_lines' => $this->rate((clone $sales)->whereHas('items', fn ($q) => $q->whereNotNull('product_id'))->count(), $totalSales),
+                'sheets_with_product_lines' => $this->rate($start ? (clone $sales)->whereHas('items', fn ($q) => $q->whereNotNull('product_id'))->count() : null, $totalSales),
                 'customer_where_expected' => null, 'customer_basis' => 'Walk-in sales may omit customers. Confirm the company policy before measuring expected attribution.',
                 'warehouse_attribution' => null, 'warehouse_basis' => 'Check dispatch and stock-movement attribution; sales sheets have no warehouse field.',
-                'known_stockout_observations' => (clone $observations)->where('facts->stockout', true)->count(),
+                'known_stockout_observations' => $start ? (clone $observations)->where('facts->stockout', true)->count() : null,
                 'finalized_sheets' => $totalSales, 'orders' => $this->table('sales_orders')->count(),
             ],
             'inventory' => [
@@ -138,7 +138,7 @@ class PilotReadinessService
                 'source_coverage' => null, 'cashflow' => null,
                 'basis' => 'Recorded transactions do not prove full bank/cash coverage. No cashflow is inferred from incomplete opening balances.',
             ],
-            'forecast' => ['observations' => (clone $observations)->count(), 'complete_observations' => (clone $observations)->where('facts->complete', true)->count(),
+            'forecast' => ['observations' => $start ? (clone $observations)->count() : null, 'complete_observations' => $start ? (clone $observations)->where('facts->complete', true)->count() : null,
                 'evaluated_predictions' => $this->table('analytics_predictions')->where('model_key', 'inventory-demand-v1')->whereNotNull('evaluated_at')->count(),
                 'models' => $forecast, 'required_observed_days' => config('inventory_intelligence.promotion_min_days'), 'required_windows' => config('inventory_intelligence.promotion_min_windows'),
                 'bias' => null, 'mae' => null, 'wape' => null, 'basis' => 'Model metrics below come from existing holdout evidence. Overlapping live windows are not pooled into invented accuracy.'],

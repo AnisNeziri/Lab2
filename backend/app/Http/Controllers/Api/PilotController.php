@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\PilotEvidence;
 use App\Models\PilotFeedback;
+use App\Models\PilotProfile;
 use App\Models\PilotReport;
 use App\Models\User;
 use App\Services\DocumentEntityRegistry;
@@ -82,7 +83,7 @@ class PilotController extends Controller
     public function evidence(Request $request, PilotService $pilot)
     {
         return $this->json($pilot->evidence($request->validate($this->contextRules() + [
-            'kind' => ['required', Rule::in(PilotService::KINDS)], 'observed_on' => 'required|date_format:Y-m-d|before_or_equal:today',
+            'kind' => ['required', Rule::in(PilotService::KINDS)], 'observed_on' => 'required|date_format:Y-m-d|before_or_equal:'.now(PilotProfile::value('timezone') ?: config('app.timezone'))->toDateString(),
             'outcome' => ['required', Rule::in(['confirmed', 'failed', 'not_tested', 'not_applicable'])],
             'document_id' => 'nullable|integer|min:1', 'checks' => 'required|array|min:1|max:30',
             'checks.*.name' => 'required|string|max:100', 'checks.*.result' => ['required', Rule::in(['confirmed', 'failed', 'not_tested', 'not_applicable'])],

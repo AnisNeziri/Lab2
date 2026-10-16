@@ -1,4 +1,5 @@
 export const pilotCopySq = {
+  "Choose cutover and business calendar before interpreting daily coverage.": "Zgjidh datën e kalimit dhe kalendarin e punës para interpretimit të mbulimit ditor.",
   "Historical evidence; record a new local observation.": "Dëshmi historike; regjistro një vrojtim të ri lokal.",
   "Controlled rollout plan": "Plani i aktivizimit gradual",
   "Activate inventory, then sales, purchasing, receiving, finance and intelligence as the company is ready. Selected workflows remain subject to existing permissions and approvals.": "Aktivizo inventarin, pastaj shitjet, blerjet, pranimin, financat dhe inteligjencën sipas gatishmërisë së kompanisë. Rrjedhat e zgjedhura mbeten nën lejet dhe miratimet ekzistuese.",
