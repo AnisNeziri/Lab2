@@ -208,6 +208,9 @@ class CompanyPilotTest extends TestCase
         $user = $this->current();
         config(['pilot.company_id' => $user->company_id]);
         PilotProfile::create(['status' => 'active', 'timezone' => 'UTC', 'telemetry_enabled' => true, 'source_attestation' => ['declared_real' => true]]);
+        $this->assertFalse(app(PilotTelemetryService::class)->enabled()); // A restored non-production copy cannot collect real pilot usage.
+        $this->app['env'] = 'production';
+        $this->withoutMiddleware(ProductionConfiguration::class);
         $this->getJson('/api/products?search=PRIVATE_SEARCH_TERM')->assertOk();
         $aggregate = DB::table('pilot_request_aggregates')->where('company_id', $user->company_id)->first();
         $this->assertSame('api/products', $aggregate->route_key);

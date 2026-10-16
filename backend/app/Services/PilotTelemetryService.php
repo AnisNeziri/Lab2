@@ -17,7 +17,7 @@ class PilotTelemetryService
     public function enabled(): bool
     {
         $company = Auth::user()?->company_id;
-        if (! $company || (int) config('pilot.company_id') !== (int) $company) {
+        if (! $company || ! app()->environment('production') || (int) config('pilot.company_id') !== (int) $company) {
             return false;
         }
 
