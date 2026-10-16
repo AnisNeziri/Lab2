@@ -1,5 +1,7 @@
+import { pilotCopySq } from './pilotCopy.js'
 // Shared wording for older workspaces that originally used inline English copy.
 export const uiCopySq = {
+  ...pilotCopySq,
   'From date':'Nga data', 'To date':'Deri më datën',
   'Search products':'Kërko produkte',
   'Last verified backup':'Kopja rezervë e fundit e verifikuar',

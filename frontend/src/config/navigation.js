@@ -15,6 +15,8 @@ export const navigationGroups = [
   { id: 'settings', en: 'Administration', sq: 'Administrimi', items: [item('users', 'nav.users', 'Users', { roles: ['admin'] }), item('activity-logs', 'nav.activityLogs', 'Activity', { roles: ['admin'] }), item('cms', 'nav.systemSettings', 'FileEdit', { roles: ['admin'] }), item('system-integrity', 'nav.systemIntegrity', 'HeartPulse')] },
 ]
 
+navigationGroups.find(g => g.id === 'settings').items.push(item('pilot',null,'ClipboardList',{en:'Company pilot',sq:'Piloti i kompanisë',roles:['admin']}))
+
 // Finance evidence is intentionally not exposed to inventory-only roles.
 navigationGroups.find(g => g.id === 'intelligence').items.splice(3, 0,
   item('customer-sales-intelligence', null, 'Users', { en: 'Customer & Sales', sq: 'Klientët dhe shitjet', allPermissions: ['analytics.view', 'customers.manage', 'daily_sales.manage'] }))

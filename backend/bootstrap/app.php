@@ -23,6 +23,7 @@ $application = Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(RequestCorrelationId::class);
+        $middleware->append(\App\Http\Middleware\PilotTelemetry::class);
         $middleware->append(\App\Http\Middleware\ProductionConfiguration::class);
         // Resolve the authenticated tenant before implicit route-model binding.
         // Otherwise the company global scope has no user on a fresh request.
@@ -51,8 +52,19 @@ $application = Application::configure(basePath: dirname(__DIR__))
                 'driver_code' => (int) ($exception->errorInfo[1] ?? 0),
                 'connection' => $exception->getConnectionName(),
                 'request_id' => request()->attributes->get('request_id'),
+                'reference' => app(\App\Services\PilotSupportService::class)->reference(request()),
+                'company_id' => auth()->user()?->company_id,
+                'user_id' => auth()->id(),
             ]);
             return false;
+        });
+
+        $exceptions->report(function (\Throwable $exception) {
+            if (app()->environment('production') && request()->is('api/*')) {
+                // Production support never needs SQL bindings, document content or a stack trace.
+                app(\App\Services\PilotSupportService::class)->record($exception, request(), 500);
+                return false;
+            }
         });
 
         $exceptions->render(function (QueryException $exception, $request) {
@@ -66,7 +78,13 @@ $application = Application::configure(basePath: dirname(__DIR__))
             return response()->json([
                 'message' => $unavailable ? 'Database connection unavailable. Contact your administrator; no empty data is being substituted.' : 'The request could not be completed. Please try again.',
                 'request_id' => $request->attributes->get('request_id'),
+                'reference' => app(\App\Services\PilotSupportService::class)->record($exception, $request, $unavailable ? 503 : 500, false),
             ], $unavailable ? 503 : 500);
+        });
+
+        $exceptions->render(function (\Throwable $exception, $request) {
+            if (!app()->environment('production') || !$request->is('api/*') || $exception instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface || $exception instanceof \Illuminate\Validation\ValidationException || $exception instanceof \Illuminate\Auth\AuthenticationException || $exception instanceof \Illuminate\Auth\Access\AuthorizationException || $exception instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) return null;
+            return response()->json(['message'=>'Something went wrong. Please contact your administrator.', 'reference'=>app(\App\Services\PilotSupportService::class)->reference($request), 'request_id'=>$request->attributes->get('request_id')],500);
         });
     })->create();
 

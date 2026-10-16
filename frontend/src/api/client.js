@@ -114,6 +114,10 @@ export async function parseApiResponse(response, fallbackMessage) {
     error.code = payload?.code
     error.status = response.status
     error.requestId = payload?.request_id || response.headers.get('x-request-id') || null
+    if (response.status >= 500 && /^AIMS-[a-f0-9]{16}$/.test(payload?.reference || '')) {
+      error.reference = payload.reference
+      error.message += ` — ${document.documentElement.lang === 'sq' ? 'Referenca' : 'Reference'} ${error.reference}`
+    }
     throw error
   }
 
