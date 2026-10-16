@@ -40,6 +40,8 @@ Composer validation passes with constraint warnings; production locked Composer 
 
 [Bounded-read performance CI](https://github.com/AnisNeziri/Lab2/actions/runs/38933732277) also passed on `c1d377d1`. Neither run is presented as full certification of the later DR0 source. PR3 final commit `f77b0e8f` only adds its report. DR0 validation below directly exercises the small later changes. No additional complete desktop/recovery/105-case hosted run was dispatched during DR0. AIMS CI triggers automatically for main-targeted changes; release certification is manual/reusable-workflow gated. Stacked PRs run the separate bounded-read workflow automatically, so absence of an automatic full release run is a configuration fact, not an inferred green result. Hosted actions also report Node 20 action-runtime deprecation notices: maintenance work, not a failed product check.
 
+DR0 is published as [draft PR #4](https://github.com/AnisNeziri/Lab2/pull/4), targeting PR3. Its [hosted bounded-read workflow](https://github.com/AnisNeziri/Lab2/actions/runs/38958274362) passed on `e731f6028dbec6c3e41dbb064a743a13bc623b9b`, whose application code exactly matches verified `d4339886`. Dependency install, destructive-generator negative guards, fixture generation, profile, budgets and profile artifact upload all passed. This paragraph is a documentation-only follow-up; it does not change the measured application source or claim a new full release certification.
+
 PR3 corrected the audit finding by updating only Symfony HttpFoundation 7.4.16 to 7.4.21, including the vendor's follow-up fix; see [the vendor advisory](https://symfony.com/cve-2026-108082). DR0 performs no broad dependency upgrades.
 
 ## 4. Current system map
