@@ -37,7 +37,7 @@ class PortableBackupService
         'order_hub'=>['order_channels','order_channel_mappings','order_intakes','order_hub_presets','sales_orders','sales_order_items','pick_waves','pick_tasks','outbound_allocations','outbound_dispatches','outbound_packages','outbound_package_items','outbound_returns','outbound_actions'],
         'documents'=>['document_types','document_settings','documents','document_versions','document_links','document_requirements','approval_requests','approval_decisions','business_events'],
         'fulfillment' => ['sales_orders','sales_order_items','pick_waves','pick_tasks','outbound_allocations','outbound_dispatches','outbound_packages','outbound_package_items','outbound_returns','outbound_actions'],
-        'company' => [],
+        'company' => ['pilot_profiles','pilot_feedback','pilot_evidence','pilot_reports'],
         'categories' => ['categories'],
         'suppliers' => ['suppliers'],
         'products' => [
@@ -134,6 +134,7 @@ class PortableBackupService
         'order_channels','order_channel_mappings','order_intakes','order_hub_presets',
         'document_links',
         'automations','automation_versions','automation_executions','operational_tasks',
+        'pilot_profiles','pilot_feedback','pilot_evidence','pilot_reports',
     ];
 
     /** Child tables that do not carry company_id are owned through this parent. */
@@ -158,6 +159,8 @@ class PortableBackupService
     ];
 
     private const IDENTITY_COLUMNS = [
+        'pilot_profiles'=>['company_id'],
+        'pilot_reports'=>['company_id','fingerprint'],
         'decision_learning_records'=>['company_id','record_key'],
         'customer_sales_snapshots'=>['company_id','fingerprint'],
         'customer_intelligence_policies'=>['company_id','version'],
@@ -955,6 +958,16 @@ class PortableBackupService
         unset($row['id']);
         $columns = collect(Schema::getColumns($table))->reject(fn (array $column) => $column['generation'] !== null)->pluck('name')->flip();
         $row = array_intersect_key($row, $columns->all());
+        if ($table==='pilot_profiles') {
+            // A portable restore never enrolls this installation or restores consent.
+            $row['status']='draft'; $row['telemetry_enabled']=false; $row['source_attestation']=null;
+            $row['participants']='[]'; $row['cutover_date']=null;
+            \Illuminate\Support\Facades\Cache::forget('pilot-profile:'.$companyId);
+        }
+        if (in_array($table,['pilot_evidence','pilot_reports'])) $row['is_historical']=true;
+        if ($table==='pilot_evidence') { $row['reviewed_by']=null; $row['reviewed_at']=null; $row['entity_type']=null; $row['entity_id']=null; }
+        if ($table==='pilot_feedback') { $row['entity_type']=null; $row['entity_id']=null; }
+        if ($table==='pilot_reports') $row['fingerprint']=hash('sha256',$companyId.':restored:'.$row['fingerprint']);
         // Restored definitions require review and explicit re-enabling. Never
         // replay stale jobs or captured action results into another installation.
         if ($table==='automations') { $row['enabled']=false; $row['event_cursor']=0; }

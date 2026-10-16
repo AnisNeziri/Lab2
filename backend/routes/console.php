@@ -87,3 +87,9 @@ Artisan::command('documents:setup', function () {
     $this->info('Document permissions added; existing permissions preserved.');
 })->purpose('Enable Document Center without resetting existing role permissions');
 Artisan::command('documents:verify {company}',function(){ $this->line(json_encode(app(\App\Services\DocumentMaintenanceService::class)->verifyCompany((int)$this->argument('company')),JSON_PRETTY_PRINT)); });
+
+Artisan::command('pilot:prune', function () {
+    app(\App\Services\PilotTelemetryService::class)->prune();
+    $this->info('Selected-company pilot aggregate retention applied.');
+})->purpose('Retain 90 days of aggregate usage and 30 days of safe pilot incidents');
+Schedule::command('pilot:prune')->daily()->withoutOverlapping();

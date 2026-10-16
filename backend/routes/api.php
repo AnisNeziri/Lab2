@@ -85,6 +85,20 @@ use Illuminate\Support\Facades\Route;
 
 Broadcast::routes(['middleware' => ['auth.token']]);
 
+Route::prefix('pilot')->middleware(['auth.token','password.changed','company.context','throttle:60,1'])->group(function () {
+    $controller=\App\Http\Controllers\Api\PilotController::class;
+    Route::get('/context',[$controller,'context']);
+    Route::get('/',[$controller,'index']); Route::put('/plan',[$controller,'save']);
+    Route::post('/feedback',[$controller,'feedback'])->middleware('throttle:10,1');
+    Route::get('/feedback',[$controller,'feedbackList']); Route::patch('/feedback/{id}',[$controller,'triage'])->whereNumber('id');
+    Route::get('/evidence',[$controller,'evidenceList']); Route::post('/evidence',[$controller,'evidence'])->middleware('throttle:10,1');
+    Route::post('/evidence/{id}/review',[$controller,'review'])->whereNumber('id');
+    Route::post('/visit',[$controller,'visit']); Route::get('/incidents',[$controller,'incidents']);
+    Route::get('/reports',[$controller,'reports']); Route::post('/reports',[$controller,'snapshot'])->middleware('throttle:6,1');
+    Route::get('/reports/{id}',[$controller,'report'])->whereNumber('id');
+    Route::post('/imports/preflight',[$controller,'preflight'])->middleware('throttle:6,1');
+});
+
 Route::prefix('intelligence-assistant')->middleware(['auth.token','password.changed','company.context','throttle:30,1'])->group(function(){
     $c=\App\Http\Controllers\Api\IntelligenceAssistantController::class;
     Route::get('/status',[$c,'status']);Route::post('/ask',[$c,'ask']);Route::post('/feedback',[$c,'feedback']);

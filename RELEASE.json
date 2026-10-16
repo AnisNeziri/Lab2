@@ -1,5 +1,5 @@
 {
-  "version": "1.1.1-rc.1",
+  "version": "1.1.2-rc.1",
   "status": "uncertified",
   "backup_format": 1,
   "compatibility": { "api": 1, "desktop": 1, "minimum_backup_version": "1.0.0" },

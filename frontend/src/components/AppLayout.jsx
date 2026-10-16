@@ -12,6 +12,7 @@ import WorkspaceContext from './WorkspaceContext';
 import { navigationKey } from '../config/navigation';
 import AimsAssistant from './AimsAssistant';
 import SystemStatusBanner from './SystemStatusBanner';
+import PilotFeedback from './PilotFeedback';
 import { useWorkspaceHistory } from '../hooks/useWorkspaceHistory';
 
 export default function AppLayout() {
@@ -100,6 +101,7 @@ export default function AppLayout() {
         <div key={location.pathname} className="page-transition">
           {canOpenPage(currentPage, permissions) ? <Outlet /> : <PageState forbidden />}
         </div>
+        <PilotFeedback/>
       </div>
       <AimsAssistant open={assistantOpen} onClose={closeAssistant} guideRequest={assistantGuide} request={assistantRequest}/>
     </div>

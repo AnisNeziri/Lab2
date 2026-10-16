@@ -73,7 +73,7 @@ final class ProductionReadinessService
             return config('database.default').' '.$version;
         }, 'Database connection/version check failed. Verify DB_HOST, DB_PORT, database, credentials and the supported engine version.');
         $probe('production_data', function () {
-            if (\Illuminate\Support\Facades\Schema::hasTable('_aims_synthetic_manifest')) throw new \RuntimeException();
+            if (\Illuminate\Support\Facades\Schema::hasTable('_aims_synthetic_manifest') || \Illuminate\Support\Facades\Schema::hasTable('_aims_performance_manifest')) throw new \RuntimeException();
             if (DB::table('users')->where('is_active', true)->where('role', '!=', 'superadmin')->where(function ($query) {
                 $query->where('email', 'like', '%.test')->orWhere('email', 'like', '%@example.%')->orWhereIn('email', ['admin@enterprise.com', 'admin@aims.local', 'owner@aims-demo.test']);
             })->exists()) throw new \RuntimeException();
