@@ -55,7 +55,9 @@ test('pilot CSV preflight reports missing fields without importing products', as
 
 test('staff can record a routine trial while the owner dashboard stays protected', async ({page}) => {
   await login(page,'staff');await page.goto('/pilot-evidence')
-  await page.getByLabel('Trial',{exact:true}).selectOption('workflow_timing')
+  await expect(page.getByRole('heading',{name:'Pilot trials & evidence',exact:true})).toBeVisible()
+  // The wrapping label's text includes loaded options; the control's accessible name stays "Trial".
+  await page.getByRole('combobox',{name:'Trial',exact:true}).selectOption('workflow_timing')
   await page.getByLabel('Check 1',{exact:true}).fill('Stock lookup observed with warehouse staff')
   await page.getByRole('button',{name:'Save observation',exact:true}).click()
   await expect(page.getByText('Observation saved. A different authorized reviewer must confirm it.',{exact:true})).toBeVisible()
