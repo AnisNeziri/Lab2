@@ -137,6 +137,10 @@ class BankReconciliationService
     public function reconcile(BankStatementRow $row, FinancialAccountTransaction $transaction): BankStatementRow
     {
         return DB::transaction(function () use ($row, $transaction) {
+            // Every contender for this transaction must serialize before taking
+            // its individual statement-row lock. Reload status under the same
+            // lock used by money reversal; a supplied model can be stale.
+            $transaction = FinancialAccountTransaction::query()->lockForUpdate()->findOrFail($transaction->id);
             $locked = BankStatementRow::query()->lockForUpdate()->findOrFail($row->id);
             $statement = $locked->statement;
             if ((int) $transaction->financial_account_id !== (int) $statement->financial_account_id || $transaction->status !== 'posted') {
@@ -145,8 +149,14 @@ class BankReconciliationService
             if (abs($this->signedAmount($transaction) - (float) $locked->amount) >= .005) {
                 throw ValidationException::withMessages(['transaction_id' => ['The statement and system transaction amounts must match exactly.']]);
             }
+            if ($locked->status === 'reconciled') {
+                if ((int) $locked->matched_transaction_id === (int) $transaction->id) return $locked->fresh(['matchedTransaction', 'statement.account']);
+                throw ValidationException::withMessages(['transaction_id' => ['Unmatch the existing reconciliation before choosing another transaction.']]);
+            }
+            // A locking read sees the latest committed owner even under
+            // MariaDB REPEATABLE READ; suggestions deliberately remain shared.
             $used = BankStatementRow::query()->where('matched_transaction_id', $transaction->id)
-                ->where('status', 'reconciled')->whereKeyNot($locked->id)->exists();
+                ->where('status', 'reconciled')->whereKeyNot($locked->id)->lockForUpdate()->first();
             if ($used) throw ValidationException::withMessages(['transaction_id' => ['That system transaction is already reconciled.']]);
             $old = $locked->toArray();
             $locked->update([

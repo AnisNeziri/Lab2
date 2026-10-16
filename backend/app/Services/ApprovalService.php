@@ -251,6 +251,10 @@ class ApprovalService
                 ->findOrFail($request->id);
 
             if ($request->status !== 'pending') {
+                if ($request->status === $decision && (int) $request->decided_by === (int) $user->id
+                    && ($request->decision_comment ?? '') === ($comment ?? '')) {
+                    return $request->fresh('decisions');
+                }
                 throw ValidationException::withMessages(['approval' => ['This approval was already decided and cannot be changed.']]);
             }
             if (($request->required_user_id && (int) $request->required_user_id !== (int) $user->id)
@@ -264,6 +268,14 @@ class ApprovalService
             }
             if (! in_array($decision, ['approved', 'rejected', 'cancelled'], true)) {
                 throw ValidationException::withMessages(['decision' => ['Invalid approval decision.']]);
+            }
+
+            if ($request->entity_type === 'purchase_request') {
+                $parent = \App\Models\PurchaseRequest::query()->lockForUpdate()->findOrFail($request->entity_id);
+                if ((int) $parent->approval_request_id !== (int) $request->id || $parent->status !== 'submitted') {
+                    throw ValidationException::withMessages(['approval' => ['This purchase request changed. Review its current approval.']]);
+                }
+                $parent->update(['status' => $decision === 'approved' ? 'approved' : 'rejected']);
             }
 
             $request->update([
