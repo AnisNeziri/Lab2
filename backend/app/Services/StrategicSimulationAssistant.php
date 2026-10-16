@@ -44,7 +44,7 @@ final class StrategicSimulationAssistant
             if (preg_match('/#(\d+)/', $q, $m)) {
                 $other = (int) $m[1];
             }if (! $other) {
-                throw new \InvalidArgumentException('Select two saved scenarios or specify the other run number (#123).');
+                throw \Illuminate\Validation\ValidationException::withMessages(['question' => 'Select two saved scenarios or specify the other run number (#123).']);
             }$tool = 'compare_simulations';
             $data = app(AssistantToolRunner::class)->execute($tool, ['ids' => [$pid, $other]]);
         } else {
@@ -64,10 +64,10 @@ final class StrategicSimulationAssistant
             if (preg_match('/supplier|furnitor/', $q) || ($pid && $days && preg_match('/late|vone/', $q) && ! preg_match('/shipment|customer|derges|klient/', $q))) {
                 $id = $this->resolve(Supplier::class, $q);
                 $action = preg_match('/unavailable|unavailable|cannot|unavailable|padispon|mungon/', $q) ? 'unavailable' : (preg_match('/price|cmim/', $q) ? 'price_percent' : 'lead_days');
-                $assumptions[] = ['type' => 'supplier', 'action' => $action, 'supplier_id' => $id] + ($action === 'price_percent' ? ['value' => $percent ?? throw new \InvalidArgumentException('Specify the supplier price percentage.')] : ['days' => $days ?: throw new \InvalidArgumentException('Specify the supplier delay/unavailability days.')]);
+                $assumptions[] = ['type' => 'supplier', 'action' => $action, 'supplier_id' => $id] + ($action === 'price_percent' ? ['value' => $percent ?? throw \Illuminate\Validation\ValidationException::withMessages(['question' => 'Specify the supplier price percentage.'])] : ['days' => $days ?: throw \Illuminate\Validation\ValidationException::withMessages(['question' => 'Specify the supplier delay/unavailability days.'])]);
             }
             if (preg_match('/shipment|shipping|transit|derges|transport|route|sh-[a-z0-9]/', $q)) {
-                $a = ['type' => 'logistics', 'action' => 'delay', 'days' => $days ?: throw new \InvalidArgumentException('Specify the delay in days or weeks.')];
+                $a = ['type' => 'logistics', 'action' => 'delay', 'days' => $days ?: throw \Illuminate\Validation\ValidationException::withMessages(['question' => 'Specify the delay in days or weeks.'])];
                 if (preg_match('/\b(sh-[a-z0-9_-]+)\b/', $q, $m)) {
                     $a['shipment_id'] = $this->resolve(Shipment::class, $m[1], 'tracking_number');
                 } elseif (preg_match('/shipment\s+["“]?(.+?)["”]?\s+(?:is|arrives|late|delayed)/', $q, $m)) {
@@ -75,25 +75,25 @@ final class StrategicSimulationAssistant
                 }$assumptions[] = $a;
             }
             if (preg_match('/collections|payments|arketime|pages/', $q) && ! preg_match('/supplier|furnitor/', $q)) {
-                $assumptions[] = ['type' => 'financial', 'action' => 'collections_delay', 'days' => $days ?: throw new \InvalidArgumentException('Specify payment delay days.')];
+                $assumptions[] = ['type' => 'financial', 'action' => 'collections_delay', 'days' => $days ?: throw \Illuminate\Validation\ValidationException::withMessages(['question' => 'Specify payment delay days.'])];
             }
             if (preg_match('/customer|klient/', $q) && preg_match('/demand|orders|kerkesa|porosi/', $q)) {
                 $id = preg_match('/top customer|major customer|klienti kryesor/', $q) ? $this->topCustomer() : $this->resolve(Customer::class, $q);
-                $change = preg_match('/double|doubles|dyfish/', $q) ? 100 : ($percent ?? throw new \InvalidArgumentException('Specify the customer demand percentage.'));
+                $change = preg_match('/double|doubles|dyfish/', $q) ? 100 : ($percent ?? throw \Illuminate\Validation\ValidationException::withMessages(['question' => 'Specify the customer demand percentage.']));
                 $assumptions[] = ['type' => 'customer', 'action' => 'percent', 'customer_id' => $id, 'value' => $change];
             }
             if (preg_match('/reduce.*(?:inventory|stock)|ul.*stok/', $q) && $percent !== null) {
                 $assumptions[] = ['type' => 'inventory', 'action' => 'reduction_percent', 'value' => $percent];
             }
             if (preg_match('/service|sherbim/', $q)) {
-                $target = $percent ?? throw new \InvalidArgumentException('Specify an existing 90%, 95%, 98% or 99% service target.');
+                $target = $percent ?? throw \Illuminate\Validation\ValidationException::withMessages(['question' => 'Specify an existing 90%, 95%, 98% or 99% service target.']);
                 $assumptions[] = ['type' => 'inventory', 'action' => 'service_level', 'value' => $target / 100];
             }
             if (preg_match('/purchas|commitment|limit|ble|kufi/', $q) && preg_match('/(?:€|eur\s*|under\s*|below\s*)([0-9][0-9,]*(?:\.[0-9]{1,2})?)/', $q, $m)) {
                 $assumptions[] = ['type' => 'procurement', 'action' => 'commitment_limit', 'value' => (float) str_replace(',', '', $m[1])];
             }
             if (! $assumptions) {
-                throw new \InvalidArgumentException('Use the scenario builder to review this assumption; no unrecognized scenario is guessed.');
+                throw \Illuminate\Validation\ValidationException::withMessages(['question' => 'Use the scenario builder to review this assumption; no unrecognized scenario is guessed.']);
             }
             if ($pid) {
                 $old = $s->get($pid);
@@ -134,9 +134,11 @@ final class StrategicSimulationAssistant
         $needle = Str::lower(Str::ascii($text));
         $matches = $class::orderBy('id')->limit(500)->get(['id', $field])->filter(fn ($r) => str_contains($needle, Str::lower(Str::ascii($r->$field))))->sortByDesc(fn ($r) => strlen($r->$field));
         if (! $matches->count()) {
-            throw new \InvalidArgumentException('Select an exact company record in the simulation builder; the named source was not found.');
+            throw \Illuminate\Validation\ValidationException::withMessages(['question' => 'Select an exact company record in the simulation builder; the named source was not found.']);
         }$max = strlen($matches->first()->$field);
-        abort_unless($matches->filter(fn ($r) => strlen($r->$field) === $max)->count() === 1, 422, 'The source name is ambiguous. Select it in the scenario builder.');
+        if ($matches->filter(fn ($r) => strlen($r->$field) === $max)->count() !== 1) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['question' => 'The source name is ambiguous. Select it in the scenario builder.']);
+        }
 
         return (int) $matches->first()->id;
     }
@@ -146,7 +148,7 @@ final class StrategicSimulationAssistant
         $latest = CustomerSalesSnapshot::whereNull('evidence->archived')->latest('id')->first();
         $c = $latest?->evidence['concentration']['groups']['customers'][0]['id'] ?? null;
         if (! $c || ! Customer::whereKey($c)->exists()) {
-            throw new \InvalidArgumentException('Top-customer evidence is unavailable; specify the customer name.');
+            throw \Illuminate\Validation\ValidationException::withMessages(['question' => 'Top-customer evidence is unavailable; specify the customer name.']);
         }
 
         return (int) $c;

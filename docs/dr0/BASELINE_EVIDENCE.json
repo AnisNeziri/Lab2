@@ -1,0 +1,397 @@
+{
+  "source_commit": "21d4d17844819cda70563ca8918509f0242642d0",
+  "inspection_date": "2026-10-16",
+  "qualification": "Disposable fixture measurements only. No real-company readiness, predictive validity or customer SLA claim.",
+  "performance": {
+    "method": "Authenticated in-process Laravel kernel; one cold and three warm samples. Excludes process bootstrap/network/browser. No SLA or predictive validity claim.",
+    "engine": "sqlite",
+    "counts": {
+      "products": 1002,
+      "customers": 2002,
+      "suppliers": 100,
+      "warehouses": 12,
+      "sales_orders": 50000,
+      "daily_sales": 50000,
+      "stock_movements": 101002,
+      "customer_debt_transactions": 100000,
+      "purchase_orders": 5002,
+      "goods_receipts": 5000,
+      "shipments": 5000,
+      "journal_entries": 50002
+    },
+    "status": "PASS",
+    "recorded_at": "2026-10-16T19:38:34+00:00",
+    "peak_memory_bytes": 150994944,
+    "endpoints": {
+      "Dashboard": {
+        "route": "/api/dashboard",
+        "median_ms": 460.05,
+        "bytes": 79987,
+        "query_count": 12
+      },
+      "Product reference picker": {
+        "route": "/api/products?reference_only=1&per_page=50",
+        "median_ms": 9.3,
+        "bytes": 19599,
+        "query_count": 4
+      },
+      "Order Hub": {
+        "route": "/api/order-hub",
+        "median_ms": 64.16,
+        "bytes": 13372,
+        "query_count": 29
+      },
+      "Product detail": {
+        "route": "/api/products/1",
+        "median_ms": 40.87,
+        "bytes": 33282,
+        "query_count": 17
+      },
+      "Inventory / Stock": {
+        "route": "/api/inventory/locator",
+        "median_ms": 22.16,
+        "bytes": 37663,
+        "query_count": 6
+      },
+      "Stock movements": {
+        "route": "/api/stock-movements?page=1&per_page=50",
+        "median_ms": 54.59,
+        "bytes": 135500,
+        "query_count": 9
+      },
+      "Customer debt": {
+        "route": "/api/customers",
+        "median_ms": 9.35,
+        "bytes": 18419,
+        "query_count": 4
+      },
+      "Purchase Orders": {
+        "route": "/api/purchase-orders",
+        "median_ms": 35.61,
+        "bytes": 17582,
+        "query_count": 6
+      },
+      "Goods Receipts": {
+        "route": "/api/goods-receipts",
+        "median_ms": 18.83,
+        "bytes": 19086,
+        "query_count": 8
+      },
+      "Shipments": {
+        "route": "/api/shipments?page=1&per_page=50",
+        "median_ms": 39.53,
+        "bytes": 80605,
+        "query_count": 7
+      },
+      "Financial Intelligence": {
+        "route": "/api/financial-intelligence",
+        "median_ms": 96.66,
+        "bytes": 5071564,
+        "query_count": 3
+      },
+      "Finance page overview": {
+        "route": "/api/financial-intelligence?view=overview",
+        "median_ms": 56.18,
+        "bytes": 1050,
+        "query_count": 3
+      },
+      "Finance receivables page": {
+        "route": "/api/financial-intelligence?view=receivables&page=2",
+        "median_ms": 56.65,
+        "bytes": 35506,
+        "query_count": 3
+      },
+      "Financial dashboard summary": {
+        "route": "/api/financial-intelligence?summary_only=1",
+        "median_ms": 56.04,
+        "bytes": 193,
+        "query_count": 3
+      },
+      "Customer/Sales Intelligence": {
+        "route": "/api/customer-sales-intelligence",
+        "median_ms": 93.26,
+        "bytes": 4701215,
+        "query_count": 7
+      },
+      "Customer page overview": {
+        "route": "/api/customer-sales-intelligence?view=overview",
+        "median_ms": 107.55,
+        "bytes": 1018,
+        "query_count": 7
+      },
+      "Customer trends page": {
+        "route": "/api/customer-sales-intelligence?view=trends&page=2",
+        "median_ms": 123.58,
+        "bytes": 118607,
+        "query_count": 7
+      },
+      "Customer dashboard summary": {
+        "route": "/api/customer-sales-intelligence?summary_only=1",
+        "median_ms": 107.72,
+        "bytes": 107,
+        "query_count": 7
+      },
+      "Inventory Intelligence": {
+        "route": "/api/analytics/intelligence",
+        "median_ms": 18.04,
+        "bytes": 4431,
+        "query_count": 30
+      },
+      "Supply Optimizer list": {
+        "route": "/api/supply-optimizer",
+        "median_ms": 11.57,
+        "bytes": 96,
+        "query_count": 3
+      },
+      "Supply Optimizer detail": {
+        "state": "NOT_TESTED",
+        "reason": "No completed heavy-job fixture; index response is not a detail measurement."
+      },
+      "Strategic Simulation list": {
+        "route": "/api/strategic-simulation",
+        "median_ms": 12.77,
+        "bytes": 28,
+        "query_count": 3
+      },
+      "Strategic Simulation detail": {
+        "state": "NOT_TESTED",
+        "reason": "No completed heavy-job fixture; index response is not a detail measurement."
+      },
+      "Global Search": {
+        "route": "/api/search?q=Milano",
+        "median_ms": 378.53,
+        "bytes": 2,
+        "query_count": 80
+      },
+      "Global Search positive": {
+        "route": "/api/search?q=Performance",
+        "median_ms": 192.05,
+        "bytes": 7915,
+        "query_count": 80
+      },
+      "Global Search exact order": {
+        "route": "/api/search?q=PERF-SO-4000",
+        "median_ms": 274.69,
+        "bytes": 1930,
+        "query_count": 69
+      },
+      "Ask AIMS": {
+        "route": "/api/intelligence-assistant/ask",
+        "median_ms": 264,
+        "bytes": 7660,
+        "query_count": 4
+      },
+      "Action Center": {
+        "route": "/api/action-center",
+        "median_ms": 1267.52,
+        "bytes": 4885,
+        "query_count": 31
+      }
+    }
+  },
+  "assistant": {
+    "qualification": "Disposable two-company fixture; not customer data or predictive qualification.",
+    "operational_counts_unchanged": {
+      "stock_movements": 0,
+      "journal_entries": 0,
+      "purchase_orders": 1,
+      "customer_debt_transactions": 0
+    },
+    "supplier_customer_foreign_read_write_list_checks": "PASS",
+    "answers": [
+      {
+        "question": "whats low stock",
+        "follow_up": false,
+        "intent": "record",
+        "state": "insufficient",
+        "tools": [],
+        "read_only_operational": true,
+        "elapsed_ms": 34.6
+      },
+      {
+        "question": "which customer owe me most",
+        "follow_up": false,
+        "intent": "debt",
+        "state": "insufficient",
+        "tools": [
+          "get_receivable_intelligence"
+        ],
+        "read_only_operational": true,
+        "elapsed_ms": 26.8
+      },
+      {
+        "question": "milnao 04 stock",
+        "follow_up": false,
+        "intent": "record",
+        "state": "success",
+        "tools": [
+          "get_product_availability"
+        ],
+        "read_only_operational": true,
+        "elapsed_ms": 29
+      },
+      {
+        "question": "ku osht porosia prej kines",
+        "follow_up": false,
+        "intent": "shipments",
+        "state": "needs_clarification",
+        "tools": [],
+        "read_only_operational": true,
+        "elapsed_ms": 9
+      },
+      {
+        "question": "cilat produkte kan me met pa stock",
+        "follow_up": false,
+        "intent": "stockout",
+        "state": "insufficient",
+        "tools": [
+          "get_inventory_intelligence_recommendations",
+          "get_inventory_intelligence_recommendations",
+          "get_replenishment_decisions"
+        ],
+        "read_only_operational": true,
+        "elapsed_ms": 57.2
+      },
+      {
+        "question": "which suplier is better",
+        "follow_up": false,
+        "intent": "compare",
+        "state": "insufficient",
+        "tools": [],
+        "read_only_operational": true,
+        "elapsed_ms": 3
+      },
+      {
+        "question": "what if shipment late 10 days",
+        "follow_up": false,
+        "intent": "strategic_simulation",
+        "state": "success",
+        "tools": [
+          "run_strategic_simulation"
+        ],
+        "read_only_operational": true,
+        "elapsed_ms": 21.6
+      },
+      {
+        "question": "whats stock risk milano 04",
+        "follow_up": false,
+        "intent": "stockout",
+        "state": "success",
+        "tools": [
+          "get_product_availability",
+          "get_inventory_plan",
+          "get_product_incoming_risk"
+        ],
+        "read_only_operational": true,
+        "elapsed_ms": 82.6
+      },
+      {
+        "question": "why first one",
+        "follow_up": true,
+        "intent": "explain",
+        "state": "success",
+        "tools": [
+          "get_inventory_plan"
+        ],
+        "read_only_operational": true,
+        "elapsed_ms": 42.9
+      },
+      {
+        "question": "which suplier can cover",
+        "follow_up": true,
+        "intent": "compare",
+        "state": "success",
+        "tools": [
+          "get_supplier_options"
+        ],
+        "read_only_operational": true,
+        "elapsed_ms": 41.9
+      },
+      {
+        "question": "what if shipment 10 days late",
+        "follow_up": true,
+        "intent": "scenario",
+        "state": "success",
+        "tools": [
+          "get_product_incoming_risk",
+          "simulate_shipment_delay"
+        ],
+        "read_only_operational": true,
+        "elapsed_ms": 70.3
+      },
+      {
+        "question": "how much i need order",
+        "follow_up": true,
+        "intent": "replenishment",
+        "state": "success",
+        "tools": [
+          "get_product_availability",
+          "get_inventory_plan",
+          "get_product_incoming_risk"
+        ],
+        "read_only_operational": true,
+        "elapsed_ms": 79.2
+      },
+      {
+        "question": "stock for \"DR0-FOREIGN-ONLY\"",
+        "follow_up": false,
+        "intent": "record",
+        "state": "insufficient",
+        "tools": [],
+        "read_only_operational": true,
+        "elapsed_ms": 11.4
+      }
+    ]
+  },
+  "final_application_source_commit": "d4339886672cfebcd3a2dc5d99c85205b2b74f0b",
+  "checks": {
+    "sqlite_baseline": {
+      "passed": 139,
+      "assertions": 1177,
+      "seconds": 49.17
+    },
+    "sqlite_final_supplement": {
+      "passed": 49,
+      "assertions": 357,
+      "seconds": 13.34
+    },
+    "mariadb_baseline": {
+      "passed": 107,
+      "assertions": 983,
+      "seconds": 158.66
+    },
+    "mariadb_final_supplement": {
+      "passed": 81,
+      "assertions": 565,
+      "seconds": 92.0
+    },
+    "frontend_node": {
+      "passed": 89
+    },
+    "frontend_production_build": {
+      "status": "PASS",
+      "seconds": 16.58
+    },
+    "python_all_modules": {
+      "passed": 30
+    },
+    "browser_layout_interaction": {
+      "passed": 15,
+      "minutes": 11.8
+    },
+    "browser_populated_initial": {
+      "passed": 4,
+      "failed": 1,
+      "failure": "Password route redirected during session hydration; subsequently repaired and verified by final auth group."
+    },
+    "browser_final_auth_language": {
+      "passed": 7,
+      "seconds": 58.0
+    },
+    "assistant_fixture_probe": {
+      "passed": 1,
+      "assertions": 55
+    },
+    "count_note": "Backend supplements and browser auth runs overlap earlier cases. Do not sum these as unique coverage."
+  }
+}

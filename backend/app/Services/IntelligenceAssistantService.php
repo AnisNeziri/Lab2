@@ -26,7 +26,18 @@ final class IntelligenceAssistantService
         if(isset($v['simulation_id'])){app(StrategicSimulationService::class)->get($v['simulation_id']);$context['strategic_simulation_id']=$v['simulation_id'];unset($context['optimization_plan_id']);}
         if(!isset($v['entity'])&&app(StrategicSimulationAssistant::class)->supports($v['question'],$context)) {
             try {$reply=app(StrategicSimulationAssistant::class)->reply($v['question'],$context,$sq);}
-            catch(\Throwable $e){if($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface&&$e->getStatusCode()===403)throw $e;$reply=['intent'=>'strategic_simulation','text'=>$e instanceof \Illuminate\Validation\ValidationException?collect($e->errors())->flatten()->implode(' '):$e->getMessage(),'cards'=>[],'sources'=>[],'limitations'=>[],'choices'=>[],'provider'=>'deterministic','read_only'=>true,'scenario'=>true,'context'=>null,'state'=>'needs_clarification'];}
+            catch (\Throwable $e) {
+                if ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface && $e->getStatusCode() === 403) throw $e;
+                $reference = null;
+                if ($e instanceof \Illuminate\Validation\ValidationException) {
+                    $message = collect($e->errors())->flatten()->implode(' ');
+                } else {
+                    $reference = app(PilotSupportService::class)->record($e, request(), 500);
+                    $message = ($sq ? 'Skenari nuk mund të përgatitej. Provo përsëri ose kontakto mbështetjen. Referenca: ' : 'The scenario could not be prepared. Please try again or contact support. Reference: ').$reference;
+                }
+                $reply = ['intent'=>'strategic_simulation','text'=>$message,'cards'=>[],'sources'=>[],'limitations'=>[],'choices'=>[],'provider'=>'deterministic','read_only'=>true,'scenario'=>true,'context'=>null,'state'=>'needs_clarification'];
+                if ($reference !== null) $reply['reference'] = $reference;
+            }
             $reply['id']=(string)Str::uuid();$reply['conversation_id']=$id;$this->contextCache()->put($this->key($id),$context,config('assistant.context_minutes')*60);app(AnalyticsDataService::class)->audit('assistant.query',['response_id'=>$reply['id'],'conversation_id'=>$id,'question'=>$v['question'],'intent'=>'strategic_simulation','tools'=>[],'response_state'=>$reply['state'],'provider'=>'deterministic','follow_up'=>isset($v['conversation_id']),'scenario_isolated'=>true]);return $reply;
         }
         $runner=app(AssistantToolRunner::class);$plan=app(AssistantPlanner::class)->plan($v['question'],$context);$provider=['state'=>'deterministic'];
