@@ -36,7 +36,7 @@ test('DC1 synthetic company stages, reviews, resumes, restores and locks an open
     await page.getByRole('combobox',{name:'Date convention',exact:true}).selectOption(domain==='receivables'?'d/m/Y':'Y-m-d')
     await page.getByLabel('Source file',{exact:true}).first().setInputFiles({name:`synthetic-${domain}.csv`,mimeType:'text/csv',buffer:Buffer.from(csv)})
     const response=page.waitForResponse(r=>r.url().endsWith(`/onboarding/${session}/sources`)&&r.request().method()==='POST')
-    await page.getByRole('button',{name:'Upload to staging',exact:true}).click();expect((await response).ok()).toBeTruthy();await expect(page.getByRole('status').filter({hasText:'Working…'})).toHaveCount(0)
+    await page.getByRole('button',{name:'Upload to staging',exact:true}).click();expect((await response).ok()).toBeTruthy();await expect(page.getByRole('status').filter({hasText:'Working…'})).toHaveCount(0);await expect(page.getByLabel('Source file',{exact:true}).first()).toHaveValue('')
   }
   expect(JSON.parse(fixture('verify').stdout)).toEqual(before)
   const validate=async()=>{await step(2);const r=page.waitForResponse(x=>x.url().endsWith(`/onboarding/${session}/validate`));await page.getByRole('button',{name:'Validate without posting',exact:true}).click();expect((await r).ok()).toBeTruthy()}

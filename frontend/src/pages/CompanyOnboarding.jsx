@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useTranslation } from '../hooks/useTranslation'
 import { useUnsavedNavigation } from '../hooks/useUnsavedNavigation'
@@ -48,6 +48,7 @@ function RowEditor({row,preview,fields,onClose,onSave,busy,text,label,issue}) {
 }
 
 function Sources({data,busy,run,text,label,issue,onDirty,initialDomain}) {
+  const fileInputRef=useRef(null)
   const [reverseAdvance,setReverseAdvance]=useState(null),[reverseReason,setReverseReason]=useState('')
   const [domain,setDomain]=useState(initialDomain||'products'),[file,setFile]=useState(null),[decimal,setDecimal]=useState('.'),[date,setDate]=useState('Y-m-d'),[delimiter,setDelimiter]=useState('comma'),[reprocess,setReprocess]=useState(false)
   const [page,setPage]=useState(1),[status,setStatus]=useState(''),[q,setQ]=useState(''),[warnings,setWarnings]=useState(false),[rows,setRows]=useState(null),[editor,setEditor]=useState(null),[selected,setSelected]=useState([]),[bulkUnit,setBulkUnit]=useState('pcs')
@@ -72,8 +73,8 @@ function Sources({data,busy,run,text,label,issue,onDirty,initialDomain}) {
     <div className="opening-grid"><section><h2>{text('Upload to staging')}</h2><p>{text('CSV and flat AIMS JSON lists are supported. Export XLSX as UTF-8 CSV. Source files stay private.')}</p><p>{text('Unit cost is always per base inventory unit. Configure fixed conversions explicitly; no conversion is guessed.')}</p>
       <label>{text('Domain')}<select value={domain} onChange={e=>setDomainSafe(e.target.value)}>{Object.keys(openingDomains).map(d=><option value={d} key={d}>{label(d)}</option>)}</select></label>
       <button disabled={busy||!data.permissions.manage} onClick={()=>run(()=>downloadOpening(`/templates/${domain}`,`AIMS-opening-${domain}.csv`),false)}>{text('Download CSV template')}</button>
-      {editable&&<form className="opening-form" onSubmit={e=>{e.preventDefault();const body=new FormData();body.append('file',file);body.append('domain',domain);body.append('revision',session.revision);body.append('decimal_separator',decimal);body.append('date_format',date);body.append('delimiter',delimiter);body.append('reprocess',reprocess?'1':'0');run(()=>writeOpening(`/${session.id}/sources`,body)).then(ok=>{if(ok){setFile(null);onDirty(false);load()}})}}>
-        <label>{text('Source file')}<input type="file" accept=".csv,.json" required onChange={e=>{setFile(e.target.files[0]||null);onDirty(true)}}/></label><div className="opening-grid">
+      {editable&&<form className="opening-form" onSubmit={e=>{e.preventDefault();const body=new FormData();body.append('file',file);body.append('domain',domain);body.append('revision',session.revision);body.append('decimal_separator',decimal);body.append('date_format',date);body.append('delimiter',delimiter);body.append('reprocess',reprocess?'1':'0');run(()=>writeOpening(`/${session.id}/sources`,body)).then(ok=>{if(ok){setFile(null);if(fileInputRef.current)fileInputRef.current.value='';onDirty(false);load()}})}}>
+        <label>{text('Source file')}<input ref={fileInputRef} disabled={busy} type="file" accept=".csv,.json" required onChange={e=>{setFile(e.target.files[0]||null);onDirty(true)}}/></label><div className="opening-grid">
           <label>{text('Decimal convention')}<select value={decimal} onChange={e=>setDecimal(e.target.value)}><option value=".">{text('Dot (12.50)')}</option><option value=",">{text('Comma (12,50)')}</option></select></label>
           <label>{text('Date convention')}<select value={date} onChange={e=>setDate(e.target.value)}>{['Y-m-d','d/m/Y','d.m.Y'].map(d=><option key={d}>{d}</option>)}</select></label>
           <label>{text('CSV separator')}<select value={delimiter} onChange={e=>setDelimiter(e.target.value)}>{[['comma','Comma'],['semicolon','Semicolon'],['tab','Tab']].map(([v,t])=><option key={v} value={v}>{text(t)}</option>)}</select></label>
