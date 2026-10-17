@@ -461,8 +461,10 @@ Route::middleware('auth.token')->group(function () {
             Route::put('/quality/score-weights', [QualityController::class, 'scoreWeights'])->middleware('permission:quality.templates.manage');
             Route::prefix('accounting')->group(function () {
                 Route::post('/initialize', [AccountingController::class, 'initialize'])->middleware('permission:accounting.settings.manage');
+                Route::get('/control-center', [AccountingController::class, 'controlCenter'])->middleware('permission:accounting.reports.view');
                 Route::get('/overview', [AccountingController::class, 'overview'])->middleware('permission:accounting.reports.view');
                 Route::get('/accounts', [AccountingController::class, 'accounts'])->middleware('permission:accounting.journal.view');
+                Route::get('/accounts/{account}/activity', [AccountingController::class, 'accountActivity'])->middleware('permission:accounting.journal.view');
                 Route::post('/accounts', [AccountingController::class, 'storeAccount'])->middleware('permission:accounting.accounts.manage');
                 Route::put('/accounts/{account}', [AccountingController::class, 'updateAccount'])->middleware('permission:accounting.accounts.manage');
                 Route::delete('/accounts/{account}', [AccountingController::class, 'archiveAccount'])->middleware('permission:accounting.accounts.manage');

@@ -87,6 +87,15 @@ class InventoryIntegrityService
             ))
         ));
 
+        return $this->compareSnapshot($product, $stockRows, $traceRows, $inTransit);
+    }
+
+    /** Same comparisons as productSnapshot, with batched source reads. */
+    private function compareSnapshot(Product $product, Collection $stockRows, Collection $traceRows, float $inTransit): array
+    {
+        $warehouseOnHand = $this->round($stockRows->sum('quantity'));
+        $warehouseStateTotal = $this->round($stockRows->sum(fn ($row) => $this->rowStateTotal($row)));
+        $traceTotal = $this->round($traceRows->sum('quantity'));
         $productQuantity = $this->round($product->quantity);
         $expectedCompanyQuantity = $this->round($warehouseOnHand + $inTransit);
         $issues = [];
@@ -144,6 +153,36 @@ class InventoryIntegrityService
             'expected_company_quantity' => $expectedCompanyQuantity,
             'issues' => array_values(array_unique($issues)),
         ];
+    }
+
+    /** Bounded month-close inspection; never repairs inventory. */
+    public function companySummary(): array
+    {
+        $company = (int) auth()->user()->company_id;
+        $checked = 0;
+        $count = 0;
+        $examples = [];
+        Product::query()->select(['id', 'company_id', 'name', 'quantity', 'tracking_mode'])->orderBy('id')->chunkById(200, function ($products) use ($company, &$checked, &$count, &$examples) {
+            $ids = $products->pluck('id');
+            $stock = WarehouseStock::withoutGlobalScopes()->where('company_id', $company)->whereIn('product_id', $ids)->get()->groupBy('product_id');
+            $trace = DB::table('inventory_trace_balances as trace')->join('inventory_lots as lot', 'lot.id', '=', 'trace.inventory_lot_id')
+                ->where('trace.company_id', $company)->where('lot.company_id', $company)->whereIn('lot.product_id', $ids)
+                ->groupBy('lot.product_id', 'trace.warehouse_id', 'trace.location_key', 'trace.stock_state')
+                ->selectRaw('lot.product_id, trace.warehouse_id, trace.location_key, trace.stock_state, SUM(trace.quantity) quantity')->get()->groupBy('product_id');
+            $transit = DB::table('stock_transfer_items as item')->join('stock_transfers as transfer', 'transfer.id', '=', 'item.stock_transfer_id')
+                ->where('transfer.company_id', $company)->whereIn('item.product_id', $ids)->whereIn('transfer.status', ['in_transit', 'partially_received'])->groupBy('item.product_id')
+                ->selectRaw('item.product_id, SUM(CASE WHEN ROUND(item.quantity-item.received_quantity-item.damaged_quantity,3)>0 THEN ROUND(item.quantity-item.received_quantity-item.damaged_quantity,3) ELSE 0 END) remaining')->get()->keyBy('product_id');
+            foreach ($products as $product) {
+                $result = $this->compareSnapshot($product, $stock->get($product->id, collect()), $trace->get($product->id, collect()), $this->round($transit->get($product->id)?->remaining ?? 0));
+                $checked++;
+                $count += count($result['issues']);
+                if ($result['issues'] && count($examples) < 20) {
+                    $examples[] = ['product_id' => $product->id, 'product_name' => $product->name, 'issues' => $result['issues'], 'url' => '/stock?product='.$product->id];
+                }
+            }
+        });
+
+        return ['passed' => $count === 0, 'products_checked' => $checked, 'issue_count' => $count, 'examples' => $examples, 'repair_performed' => false];
     }
 
     public function assertProductReconciled(Product $product, string $field = 'inventory'): array
@@ -243,6 +282,7 @@ class InventoryIntegrityService
                 if (abs((float) $productTrace->sum('quantity')) >= self::EPSILON) {
                     $issues[] = "Untracked product #{$productId} has a trace balance in this warehouse.";
                 }
+
                 continue;
             }
             $stockMap = $this->warehouseStateMap($productStock);

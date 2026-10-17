@@ -10,6 +10,7 @@ return new class extends Migration
 {
     public function up(): void
     {
+        Schema::table('companies', fn (Blueprint $t) => $t->unsignedTinyInteger('fiscal_year_start_month')->default(1));
         Schema::table('accounting_accounts', function (Blueprint $t) {
             $t->string('statement_group', 40)->nullable();
         });
@@ -45,6 +46,7 @@ return new class extends Migration
 
     public function down(): void
     {
+        Schema::table('companies', fn (Blueprint $t) => $t->dropColumn('fiscal_year_start_month'));
         Schema::table('bank_statements', function (Blueprint $t) {
             $t->dropConstrainedForeignId('reconciled_by');
             $t->dropColumn(['opening_balance', 'reconciliation_status', 'reconciled_at', 'reconciliation_proof']);

@@ -14,6 +14,40 @@ use Illuminate\Support\Facades\DB;
 /** Read-only grouped projections of the existing posted General Ledger. */
 class AccountingReportQueries
 {
+    public function accountActivity(AccountingAccount $account, ?string $from, ?string $to, int $perPage = 50): array
+    {
+        $to ??= CompanyClock::today()->toDateString();
+        $totals = collect($this->trialBalance($from, $to)['rows'])->firstWhere('id', $account->id);
+        $q = DB::table('journal_lines as l')->join('journal_entries as j', 'j.id', '=', 'l.journal_entry_id')
+            ->where('j.company_id', Auth::user()->company_id)->whereIn('j.status', ['posted', 'reversed'])
+            ->where('l.accounting_account_id', $account->id)->when($from, fn ($q) => $q->where('j.posting_date', '>=', $from))
+            ->where('j.posting_date', '<', CarbonImmutable::parse($to)->addDay()->toDateString());
+        $page = (clone $q)->select(['l.id', 'l.line_number', 'l.debit', 'l.credit', 'l.description', 'l.dimensions',
+            'j.id as journal_id', 'j.journal_number', 'j.posting_date', 'j.reference_number', 'j.source_type', 'j.source_module'])
+            ->orderBy('j.posting_date')->orderBy('j.id')->orderBy('l.line_number')->orderBy('l.id')->paginate($perPage);
+        $first = $page->getCollection()->first();
+        $balance = $totals['opening_balance'];
+        if ($first) {
+            $prior = (clone $q)->where(function ($q) use ($first) {
+                $q->where('j.posting_date', '<', $first->posting_date)->orWhere(fn ($x) => $x->where('j.posting_date', $first->posting_date)->where('j.id', '<', $first->journal_id))
+                    ->orWhere(fn ($x) => $x->where('j.posting_date', $first->posting_date)->where('j.id', $first->journal_id)->where('l.line_number', '<', $first->line_number));
+            })->selectRaw('COALESCE(SUM(l.debit),0)-COALESCE(SUM(l.credit),0) amount')->value('amount');
+            $balance = Money::add($balance, Money::normalize($prior));
+        }
+        $page->through(function ($line) use (&$balance) {
+            $line->debit = Money::normalize($line->debit);
+            $line->credit = Money::normalize($line->credit);
+            $balance = Money::add($balance, Money::subtract($line->debit, $line->credit));
+            $line->running_balance = $balance;
+            $line->url = '/accounting?tab=journal&journal='.$line->journal_id;
+            $line->source_label = AccountingJournalExperience::SOURCES[$line->source_type][1] ?? ($line->source_module === 'manual' ? 'Manual Journal' : 'Financial Journal');
+
+            return $line;
+        });
+
+        return ['account' => $account, 'from' => $from, 'to' => $to, 'currency' => CompanyCurrency::forCompanyId(Auth::user()->company_id), 'totals' => $totals, 'lines' => $page];
+    }
+
     public function trialBalance(?string $from, ?string $to): array
     {
         $to ??= CompanyClock::today()->toDateString();

@@ -132,7 +132,7 @@ function Users() {
           </h1>
         </div>
         <p className="page-intro">
-          {text('Create staff or manager accounts. New users must change their temporary password at first login.','Krijoni llogari stafi ose menaxheri. Përdoruesit e rinj duhet të ndryshojnë fjalëkalimin e përkohshëm në hyrjen e parë.')}
+          {text('Create staff, manager or accountant accounts. New users must change their temporary password at first login.','Krijoni llogari stafi, menaxheri ose kontabilisti. Përdoruesit e rinj duhet të ndryshojnë fjalëkalimin e përkohshëm në hyrjen e parë.')}
         </p>
 
         {formError && <div className="form-error-banner">{formError}</div>}
@@ -172,6 +172,7 @@ function Users() {
             <select id="user-role" value={role} onChange={(event) => setRole(event.target.value)}>
               <option value="staff">{text("Staff", "Staf")}</option>
               <option value="manager">{text("Manager", "Menaxher")}</option>
+              <option value="accountant">{text("Accountant", "Kontabilist")}</option>
             </select>
           </label>
 
@@ -240,6 +241,7 @@ function Users() {
                         >
                           <option value="staff">{text("Staff", "Staf")}</option>
                           <option value="manager">{text("Manager", "Menaxher")}</option>
+              <option value="accountant">{text("Accountant", "Kontabilist")}</option>
                         </select>
                       ) : (
                         user.role

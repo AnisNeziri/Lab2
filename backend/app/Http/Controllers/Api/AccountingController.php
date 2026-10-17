@@ -9,7 +9,9 @@ use App\Models\AccountingPeriod;
 use App\Models\JournalEntry;
 use App\Services\AccountingJournalExperience;
 use App\Services\AccountingRecoveryService;
+use App\Services\AccountingReportQueries;
 use App\Services\AccountingService;
+use App\Services\FinancialControlService;
 use App\Services\ManualJournalService;
 use App\Services\PermissionService;
 use Illuminate\Http\JsonResponse;
@@ -19,6 +21,13 @@ use Illuminate\Validation\Rule;
 class AccountingController extends Controller
 {
     public function __construct(private readonly AccountingService $accounting) {}
+
+    public function controlCenter(Request $r): JsonResponse
+    {
+        $dates = $this->dates($r);
+
+        return response()->json(app(FinancialControlService::class)->summary($dates['from'] ?? null, $dates['to'] ?? null));
+    }
 
     public function initialize(): JsonResponse
     {
@@ -52,6 +61,14 @@ class AccountingController extends Controller
         return response()->json($this->accounting->archiveAccount($account));
     }
 
+    public function accountActivity(Request $r, AccountingAccount $account): JsonResponse
+    {
+        $d = $this->dates($r);
+        $p = $r->validate(['per_page' => 'sometimes|integer|min:1|max:100']);
+
+        return response()->json(app(AccountingReportQueries::class)->accountActivity($account, $d['from'] ?? null, $d['to'] ?? null, (int) ($p['per_page'] ?? 50)));
+    }
+
     public function mappings(): JsonResponse
     {
         return response()->json($this->accounting->mappings());
@@ -71,7 +88,7 @@ class AccountingController extends Controller
 
     public function saveControls(Request $r): JsonResponse
     {
-        $d = $r->validate(['supplier_match_quantity_tolerance' => ['required', 'numeric', 'min:0', 'max:999999'], 'supplier_match_price_tolerance' => ['required', 'numeric', 'min:0', 'max:999999'], 'supplier_match_tax_tolerance' => ['required', 'numeric', 'min:0', 'max:999999']]);
+        $d = $r->validate(['fiscal_year_start_month' => ['sometimes', 'integer', 'min:1', 'max:12'], 'supplier_match_quantity_tolerance' => ['required', 'numeric', 'min:0', 'max:999999'], 'supplier_match_price_tolerance' => ['required', 'numeric', 'min:0', 'max:999999'], 'supplier_match_tax_tolerance' => ['required', 'numeric', 'min:0', 'max:999999']]);
 
         return response()->json($this->accounting->saveControls($d));
     }
@@ -95,7 +112,7 @@ class AccountingController extends Controller
             abort(403, 'Reopening a closed accounting period requires explicit permission.');
         }
 
-return response()->json($this->accounting->setPeriodStatus($period, $d['status'], $d['reason']));
+        return response()->json($this->accounting->setPeriodStatus($period, $d['status'], $d['reason']));
     }
 
     public function periodReadiness(AccountingPeriod $period): JsonResponse

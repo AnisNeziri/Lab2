@@ -2,12 +2,12 @@
 
 namespace App\Services;
 
+use App\Exceptions\ClosedAccountingPeriodException;
 use App\Models\AccountingAccount;
 use App\Models\AccountingException;
 use App\Models\AccountingPeriod;
 use App\Models\AccountingPostingMapping;
 use App\Models\ActivityLog;
-use App\Models\BankStatementRow;
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\CustomerDebtTransaction;
@@ -28,6 +28,7 @@ use App\Models\StockMovement;
 use App\Services\Onboarding\OnboardingGuard;
 use App\Support\CompanyCurrency;
 use App\Support\Money;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -161,7 +162,7 @@ class AccountingService
     {
         $company = Auth::user()->company;
 
-        return ['supplier_match_quantity_tolerance' => (string) ($company->supplier_match_quantity_tolerance ?? config('procurement.matching.quantity_tolerance', .001)), 'supplier_match_price_tolerance' => (string) ($company->supplier_match_price_tolerance ?? config('procurement.matching.unit_price_tolerance', .02)), 'supplier_match_tax_tolerance' => (string) ($company->supplier_match_tax_tolerance ?? config('procurement.matching.tax_tolerance', .02))];
+        return ['fiscal_year_start_month' => (int) ($company->fiscal_year_start_month ?: 1), 'supplier_match_quantity_tolerance' => (string) ($company->supplier_match_quantity_tolerance ?? config('procurement.matching.quantity_tolerance', .001)), 'supplier_match_price_tolerance' => (string) ($company->supplier_match_price_tolerance ?? config('procurement.matching.unit_price_tolerance', .02)), 'supplier_match_tax_tolerance' => (string) ($company->supplier_match_tax_tolerance ?? config('procurement.matching.tax_tolerance', .02))];
     }
 
     public function saveControls(array $data): array
@@ -182,60 +183,63 @@ class AccountingService
 
     public function savePeriod(array $data): AccountingPeriod
     {
-        if (AccountingPeriod::query()->where(fn ($q) => $q->whereBetween('starts_at', [$data['starts_at'], $data['ends_at']])->orWhereBetween('ends_at', [$data['starts_at'], $data['ends_at']])->orWhere(fn ($x) => $x->where('starts_at', '<=', $data['starts_at'])->where('ends_at', '>=', $data['ends_at'])))->exists()) {
-            throw ValidationException::withMessages(['period' => ['Accounting periods cannot overlap.']]);
-        }
+        return DB::transaction(function () use ($data) {
+            $this->lockCompany();
+            if (AccountingPeriod::query()->whereDate('starts_at', '<=', $data['ends_at'])->whereDate('ends_at', '>=', $data['starts_at'])->exists()) {
+                throw ValidationException::withMessages(['period' => 'Accounting periods cannot overlap.']);
+            }
+            $period = AccountingPeriod::create([...$data, 'company_id' => Auth::user()->company_id, 'status' => 'open']);
+            $this->audit('accounting.period.created', $period, null, $data);
 
-return AccountingPeriod::create([...$data, 'company_id' => Auth::user()->company_id, 'status' => 'open']);
+            return $period;
+        });
     }
 
     public function setPeriodStatus(AccountingPeriod $period, string $status, string $reason): AccountingPeriod
     {
-        if (! in_array($status, ['open', 'soft_closed', 'closed'], true)) {
-            throw ValidationException::withMessages(['status' => ['Invalid period status.']]);
-        }if ($status === 'closed' && $period->status !== 'closed') {
-            $readiness = $this->periodReadiness($period);
-            if (! $readiness['ready_to_close']) {
-                throw ValidationException::withMessages(['period' => ['This period is not ready to close: '.collect($readiness['checks'])->where('passed', false)->pluck('label')->implode('; ')]]);
+        return DB::transaction(function () use ($period, $status, $reason) {
+            $this->lockCompany();
+            $period = AccountingPeriod::query()->lockForUpdate()->findOrFail($period->id);
+            if (! in_array($status, ['open', 'soft_closed', 'closed'], true) || mb_strlen(trim($reason)) < 5) {
+                throw ValidationException::withMessages(['period' => 'Choose a valid period state and record a reason.']);
             }
-        }$old = $period->status;
-        $values = ['status' => $status, 'change_reason' => $reason];
-        if ($status === 'closed') {
-            $values += ['closed_by' => Auth::id(), 'closed_at' => now()];
-        }if ($old === 'closed' && $status !== 'closed') {
-            $values += ['reopened_by' => Auth::id(), 'reopened_at' => now()];
-        }$period->update($values);
-        $this->audit('accounting.period.'.$status, $period, ['from' => $old], ['to' => $status, 'reason' => $reason]);
-        $event = $status === 'closed' ? 'accounting.period_closed' : (($old === 'closed' && $status !== 'closed') ? 'accounting.period_reopened' : null);
-        if ($event) {
-            app(BusinessEventService::class)->record($event, $period, $period->name, ['from' => $old, 'to' => $status, 'reason' => $reason], "accounting-period:{$period->id}:{$status}:".$period->updated_at?->timestamp);
-        }
+            $old = $period->status;
+            if ($old === $status) {
+                return $period;
+            }
+            if ($status === 'closed') {
+                abort_unless(app(PermissionService::class)->roleHasPermission(Auth::user()->role, 'accounting.periods.close'), 403, 'Final close requires explicit permission.');
+            }
+            if ($old === 'closed') {
+                abort_unless(app(PermissionService::class)->roleHasPermission(Auth::user()->role, 'accounting.periods.reopen'), 403, 'Reopening requires explicit permission.');
+            }
+            $values = ['status' => $status, 'change_reason' => trim($reason)];
+            if ($status === 'closed') {
+                $readiness = $this->periodReadiness($period);
+                if (! $readiness['ready_to_close']) {
+                    throw ValidationException::withMessages(['period' => ['This period is blocked: '.collect($readiness['checks'])->filter(fn ($c) => $c['required'] && ! $c['passed'])->pluck('label')->implode('; ')]]);
+                }
+                $proof = ['checked_at' => $readiness['checked_at'], 'checked_by' => Auth::id(), 'checks' => $readiness['checks'], 'reconciliation' => $readiness['reconciliation'], 'inventory' => $readiness['inventory'], 'journal_watermark' => JournalEntry::query()->whereIn('status', ['posted', 'reversed'])->max('id')];
+                $proof['fingerprint'] = hash('sha256', json_encode($proof, JSON_THROW_ON_ERROR));
+                $values += ['closed_by' => Auth::id(), 'closed_at' => now(), 'close_snapshot' => $proof];
+            }
+            if ($old === 'closed') {
+                $values += ['reopened_by' => Auth::id(), 'reopened_at' => now()];
+            }
+            $period->update($values);
+            $this->audit('accounting.period.'.$status, $period, ['from' => $old], ['to' => $status, 'reason' => $reason, 'close_fingerprint' => $values['close_snapshot']['fingerprint'] ?? null]);
+            $event = $status === 'closed' ? 'accounting.period_closed' : ($old === 'closed' ? 'accounting.period_reopened' : null);
+            if ($event) {
+                app(BusinessEventService::class)->record($event, $period, $period->name, ['from' => $old, 'to' => $status, 'reason' => $reason], "accounting-period:{$period->id}:{$status}:".$period->updated_at?->timestamp);
+            }
 
-return $period;
+            return $period->fresh();
+        });
     }
 
     public function periodReadiness(AccountingPeriod $period): array
     {
-        $this->scanIntegrity();
-        $to = $period->ends_at->toDateString();
-        $trial = $this->trialBalance(null, $to);
-        $balance = $this->balanceSheet($to);
-        $reconciliation = $this->reconciliation(false);
-        $drafts = JournalEntry::query()->where('status', 'draft')->whereBetween('posting_date', [$period->starts_at->toDateString(), $to])->count();
-        $bankRows = BankStatementRow::query()->whereIn('status', ['unmatched', 'suggested'])->whereDate('transaction_date', '<=', $to)->count();
-        $pendingLanded = LandedCost::query()->where('status', 'draft')->whereDate('created_at', '<=', $to)->count();
-        $critical = AccountingException::query()->where('status', 'open')->where('severity', 'critical')->count();
-        $checks = [
-            ['code' => 'trial_balance', 'label' => 'Trial Balance is balanced', 'passed' => $trial['balanced'], 'count' => $trial['balanced'] ? 0 : 1],
-            ['code' => 'balance_sheet', 'label' => 'Balance Sheet is balanced', 'passed' => $balance['balanced'], 'count' => $balance['balanced'] ? 0 : 1],
-            ['code' => 'control_accounts', 'label' => 'AR, AP, advances, inventory and cash/bank reconcile', 'passed' => $reconciliation['all_reconciled'], 'count' => collect($reconciliation['rows'])->where('reconciled', false)->count()],
-            ['code' => 'bank_rows', 'label' => 'No unreconciled bank statement rows', 'passed' => $bankRows === 0, 'count' => $bankRows],
-            ['code' => 'draft_journals', 'label' => 'No open draft journals in the period', 'passed' => $drafts === 0, 'count' => $drafts],
-            ['code' => 'landed_costs', 'label' => 'No pending landed costs through period end', 'passed' => $pendingLanded === 0, 'count' => $pendingLanded],
-            ['code' => 'critical_exceptions', 'label' => 'No open critical accounting exceptions', 'passed' => $critical === 0, 'count' => $critical],
-        ];
-
-        return ['period' => $period, 'checked_at' => now()->toIso8601String(), 'ready_to_close' => collect($checks)->every(fn ($check) => $check['passed']), 'checks' => $checks, 'reconciliation' => $reconciliation, 'retained_earnings_policy' => 'Current earnings are derived dynamically from posted revenue and expense journals. No closing journal is generated, preventing duplicate closes.'];
+        return app(FinancialControlService::class)->readiness($period);
     }
 
     public function assertDateOpen(string $date, bool $allowSoft = false): void
@@ -244,9 +248,9 @@ return $period;
         $start = Auth::user()?->company?->accounting_start_date;
         if ($start && $date < $start->toDateString()) {
             throw ValidationException::withMessages(['posting_date' => ["The posting date is before the company accounting start date {$start->toDateString()}."]]);
-        }$period = AccountingPeriod::query()->whereDate('starts_at', '<=', $date)->whereDate('ends_at', '>=', $date)->first();
+        }$period = AccountingPeriod::query()->whereDate('starts_at', '<=', $date)->whereDate('ends_at', '>=', $date)->lockForUpdate()->first();
         if ($period?->status === 'closed' || ($period?->status === 'soft_closed' && ! $allowSoft)) {
-            throw ValidationException::withMessages(['posting_date' => ["Accounting period {$period->name} is {$period->status}; posting is locked."]]);
+            throw ClosedAccountingPeriodException::forPeriod($period, $date);
         }
     }
 
@@ -282,7 +286,7 @@ return $period;
                 $this->audit('accounting.manual_journal.created', $entry, null, ['journal_number' => $entry->journal_number, 'debit' => $entry->total_debit, 'credit' => $entry->total_credit]);
             }
 
-return $entry;
+            return $entry;
         });
     }
 
@@ -401,7 +405,7 @@ return $entry;
             app(BusinessEventService::class)->record('customer.receivable_recognized', $transaction, $transaction->reference_number, ['journal_entry_id' => $entry->id, 'amount' => $amount], "customer-receivable:{$transaction->id}");
         }
 
-return $entry;
+        return $entry;
     }
 
     public function postExpense(Expense $expense): JournalEntry
@@ -427,7 +431,7 @@ return $entry;
             app(BusinessEventService::class)->record('supplier.payable_recognized', $expense, $expense->document_number, ['journal_entry_id' => $entry->id, 'amount' => $gross], "supplier-payable:{$expense->id}");
         }
 
-return $entry;
+        return $entry;
     }
 
     public function postExpensePayment(ExpensePayment $payment): JournalEntry
@@ -450,7 +454,7 @@ return $entry;
             FinancialAccountTransaction::query()->whereKey($payment->financial_account_transaction_id)->update(['journal_entry_id' => $entry->id]);
         }
 
-return $entry;
+        return $entry;
     }
 
     public function reverseSource(string $module, string $key, string $date, string $reason): ?JournalEntry
@@ -556,16 +560,28 @@ return $entry;
 
     public function balanceSheet(?string $to): array
     {
+        $to ??= CompanyClock::today()->toDateString();
         $tb = $this->trialBalance(null, $to);
         $rows = collect($tb['rows']);
         $assets = $rows->where('type', 'asset')->sum(fn ($r) => Money::minor($r['closing_balance']));
-        $liabilities = $rows->where('type', 'liability')->sum(fn ($r) => -Money::minor($r['closing_balance']));
-        $equity = $rows->where('type', 'equity')->sum(fn ($r) => -Money::minor($r['closing_balance']));
-        $pl = $this->profitAndLoss(null, $to);
-        $earnings = Money::minor($pl['net_profit']);
-        $difference = $assets - $liabilities - $equity - $earnings;
+        $liabilities = -$rows->where('type', 'liability')->sum(fn ($r) => Money::minor($r['closing_balance']));
+        $equity = -$rows->where('type', 'equity')->sum(fn ($r) => Money::minor($r['closing_balance']));
+        $month = (int) (Auth::user()->company->fiscal_year_start_month ?: 1);
+        $end = CarbonImmutable::parse($to);
+        $start = $end->startOfYear()->month($month);
+        if ($start->gt($end)) {
+            $start = $start->subYear();
+        }
+        $all = Money::minor($this->profitAndLoss(null, $to)['net_profit']);
+        $current = Money::minor($this->profitAndLoss($start->toDateString(), $to)['net_profit']);
+        $prior = $all - $current;
+        $difference = $assets - $liabilities - $equity - $all;
 
-        return ['to' => $to, 'assets' => Money::decimal($assets), 'liabilities' => Money::decimal($liabilities), 'equity' => Money::decimal($equity), 'current_earnings' => Money::decimal($earnings), 'difference' => Money::decimal($difference), 'balanced' => $difference === 0, 'accounts' => $rows->whereIn('type', ['asset', 'liability', 'equity'])->values()];
+        return ['to' => $to, 'currency' => $tb['currency'], 'assets' => Money::decimal($assets), 'liabilities' => Money::decimal($liabilities),
+            'equity' => Money::decimal($equity), 'current_earnings' => Money::decimal($current), 'retained_earnings_brought_forward' => Money::decimal($prior),
+            'total_equity' => Money::decimal($equity + $all), 'fiscal_year_starts_at' => $start->toDateString(), 'difference' => Money::decimal($difference),
+            'balanced' => $difference === 0, 'accounts' => $rows->whereIn('type', ['asset', 'liability', 'equity'])->values(),
+            'earnings_policy' => 'Prior-year profit is brought forward in presentation. Posted journals are not rewritten or duplicated at year transition.'];
     }
 
     public function cashFlow(?string $from, ?string $to): array
@@ -761,7 +777,7 @@ return $entry;
                 throw ValidationException::withMessages(["balances.$index.accounting_account_id" => ['Choose an active posting account.']]);
             }
 
-return ['accounting_account_id' => $account->id, 'description' => $row['description'] ?? 'Opening balance', 'debit' => Money::normalize($row['debit'] ?? 0), 'credit' => Money::normalize($row['credit'] ?? 0)];
+            return ['accounting_account_id' => $account->id, 'description' => $row['description'] ?? 'Opening balance', 'debit' => Money::normalize($row['debit'] ?? 0), 'credit' => Money::normalize($row['credit'] ?? 0)];
         })->filter(fn ($row) => Money::compare($row['debit'], '0') > 0 || Money::compare($row['credit'], '0') > 0)->values();
         if ($lines->count() < 2) {
             throw ValidationException::withMessages(['balances' => ['Enter at least two non-zero opening balance lines.']]);
@@ -843,22 +859,22 @@ return ['accounting_account_id' => $account->id, 'description' => $row['descript
         $ids = [$root];
         $frontier = [$root];
         while ($frontier) {
-            $children = AccountingAccount::query()->whereIn('parent_id',$frontier)->pluck('id')->map(fn ($id) => (int) $id)->all();
-            $frontier = array_values(array_diff($children,$ids));
+            $children = AccountingAccount::query()->whereIn('parent_id', $frontier)->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $frontier = array_values(array_diff($children, $ids));
             $ids = array_values(array_unique([...$ids, ...$frontier]));
         }
 
-return $ids;
+        return $ids;
     }
 
     private function cashAccountIds(): array
     {
-        $roots = AccountingPostingMapping::whereIn('mapping_key',['cash', 'bank'])->pluck('accounting_account_id');
+        $roots = AccountingPostingMapping::whereIn('mapping_key', ['cash', 'bank'])->pluck('accounting_account_id');
         if ($roots->isEmpty()) {
-            $roots = AccountingAccount::query()->whereIn('code',['1000', '1010'])->pluck('id');
+            $roots = AccountingAccount::query()->whereIn('code', ['1000', '1010'])->pluck('id');
         }
 
-return $roots->flatMap(fn ($id) => $this->descendantAccountIds((int) $id))->unique()->values()->all();
+        return $roots->flatMap(fn ($id) => $this->descendantAccountIds((int) $id))->unique()->values()->all();
     }
 
     private function cashGlBalance(?string $to): float
@@ -868,15 +884,15 @@ return $roots->flatMap(fn ($id) => $this->descendantAccountIds((int) $id))->uniq
             return 0;
         }
 
-return (float) JournalLine::query()->whereIn('accounting_account_id',$ids)->whereHas('journalEntry',fn ($q) => $q->whereIn('status',['posted', 'reversed'])->when($to,fn ($z) => $z->whereDate('posting_date','<=',$to)))->selectRaw('COALESCE(SUM(debit),0)-COALESCE(SUM(credit),0) b')->value('b');
+        return (float) JournalLine::query()->whereIn('accounting_account_id', $ids)->whereHas('journalEntry', fn ($q) => $q->whereIn('status', ['posted', 'reversed'])->when($to, fn ($z) => $z->whereDate('posting_date', '<=', $to)))->selectRaw('COALESCE(SUM(debit),0)-COALESCE(SUM(credit),0) b')->value('b');
     }
 
     private function lockCompany(): void
     {
-        DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
+        DB::table('companies')->where('id', Auth::user()->company_id)->lockForUpdate()->first();
     }
 
-    private function audit(string $action,object $entity,mixed $old,mixed $new): void
+    private function audit(string $action, object $entity, mixed $old, mixed $new): void
     {
         ActivityLog::create(['company_id' => Auth::user()->company_id, 'user_id' => Auth::id(), 'action' => $action, 'entity' => class_basename($entity), 'entity_id' => $entity->id, 'description' => str_replace('.',' ',$action), 'old_value' => $old, 'new_value' => $new, 'ip_address' => request()?->ip()]);
     }
