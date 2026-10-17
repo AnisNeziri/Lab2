@@ -8,13 +8,15 @@ use Illuminate\Support\Str;
 /** A question is input data, never code or a tool name. */
 final class AssistantPlanner
 {
-    public const INTENTS = ['optimization_run','optimization_limit','optimization_compare','optimization_stress','optimization_explain','optimization_stale','learning','overrides','policy_suggestions','challengers','brief','risks','replenishment','stockout','suppliers','shipments','orders','cash','debt','inactive','opportunities','decisions','changes','explain','compare','scenario','capacity','prepare','record','movements','forecast','sales'];
+    public const INTENTS = ['low_stock','onboarding_status','optimization_run','optimization_limit','optimization_compare','optimization_stress','optimization_explain','optimization_stale','learning','overrides','policy_suggestions','challengers','brief','risks','replenishment','stockout','suppliers','shipments','orders','cash','debt','inactive','opportunities','decisions','changes','explain','compare','scenario','capacity','prepare','record','movements','forecast','sales'];
 
     public function plan(string $question, array $context = []): array
     {
         $q = app(AssistantLanguage::class)->normalize($question);
         if (preg_match('/\b(sql|select\s+\*|ignore.*instructions|system prompt|execute|shell|bankrupt|faliment|delete|fshi|approve|mirato|send email)\b/', $q)) return ['intent'=>'unsupported'];
         $rules = [
+            'onboarding_status'=>'/\b(onboarding|imported.*review|opening.*(?:balance|match|block)|bilanc.*fillestar|product.*import|hapj.*kompan)/',
+            'low_stock'=>'/\b(low[ -]?stock|below.*(?:minimum|reorder)|stock.*(?:ulet|minimal|low)|pak stock)/',
             'optimization_stale'=>'/\b(stale.*supply|stale.*optim|plan.*vjetruar)/',
             'optimization_compare'=>'/\b(compare|krahaso).*(balanced|service.first|commitment|supply plan|planet)/',
             'optimization_explain'=>'/\b(why|pse|explain|shpjego).*(buying only|not purchasing|not buying|didn.?t.*purchase|instead of|optimizer|supply plan|blejme vetem|nuk.*ble)|\b(which products|cilat produkte).*(not purchasing|not buying|nuk.*ble)/',
@@ -48,6 +50,7 @@ final class AssistantPlanner
         ];
         $intent = 'record';
         foreach ($rules as $name=>$pattern) if (preg_match($pattern,$q)) { $intent=$name; break; }
+        if($intent==='low_stock'&&preg_match('/next month|next week|future|will|forecast|muajin|javen|ardhsh|parashik/',$q))$intent='stockout';
         if ($intent==='record' && preg_match('/supplier.*(?:better|best|cover|for)|which supplier/', $q)) $intent='compare';
         if ($intent==='record' && preg_match('/\border\b/', $q)) $intent='orders';
         if(!isset($context['optimization_plan_id'])&&!preg_match('/\bplan\s*#?\s*\d+/',$q)&&$intent==='optimization_stress')$intent='scenario';

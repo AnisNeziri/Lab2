@@ -36,6 +36,26 @@ class PurchaseOrderService
         private readonly OperationalAccountingService $operationalAccounting,
     ) {}
 
+    public function recordOpeningAdvance(\App\Models\OnboardingSession $session, \App\Models\Supplier $supplier, array $data): PurchaseOrderPayment
+    {
+        app(\App\Services\Onboarding\OnboardingGuard::class)->assertOpening($session);
+        return DB::transaction(function () use ($session, $supplier, $data) {
+            $key = 'onboarding:'.$session->id.':'.$data['row_id'];
+            if ($existing = PurchaseOrderPayment::where('idempotency_key', $key)->first()) return $existing;
+            $payment = PurchaseOrderPayment::create([
+                'company_id' => $session->company_id, 'supplier_id' => $supplier->id, 'onboarding_session_id' => $session->id,
+                'purchase_order_id' => null, 'user_id' => Auth::id(), 'amount' => $data['amount'], 'amount_eur' => $data['amount'],
+                'currency' => $session->currency, 'exchange_rate' => 1, 'status' => 'completed', 'payment_method' => 'opening',
+                'payment_date' => $session->cutover_date->toDateString(), 'paid_at' => now(), 'reference_number' => $data['reference'],
+                'idempotency_key' => $key, 'note' => 'Opening supplier advance; no cash movement. Source row '.$data['row_id'],
+            ]);
+            app(AccountingService::class)->postMapped('procurement','purchase_order_payment',$payment->id,'purchase-order-payment:'.$payment->id,$session->cutover_date->toDateString(),'Opening supplier advance',[
+                ['mapping' => 'supplier_advances', 'debit' => $data['amount']], ['mapping' => 'equity', 'credit' => $data['amount']],
+            ],$session->currency,1);
+            return $payment;
+        });
+    }
+
     public function list(array $filters): LengthAwarePaginator
     {
         $query = PurchaseOrder::query()->with(['supplier:id,name,phone,email', 'warehouse:id,name,code']);
@@ -307,9 +327,18 @@ class PurchaseOrderService
         });
     }
 
-    public function reversePayment(PurchaseOrderPayment $payment, string $reason): PurchaseOrder
+    public function reversePayment(PurchaseOrderPayment $payment, string $reason): PurchaseOrder|PurchaseOrderPayment
     {
         return DB::transaction(function () use ($payment, $reason) {
+            if($payment->onboarding_session_id && !$payment->purchase_order_id){
+                $payment=PurchaseOrderPayment::lockForUpdate()->findOrFail($payment->id);
+                app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational(\App\Support\CompanyClock::today()->toDateString());
+                if($payment->status==='reversed')return $payment;
+                if($payment->status!=='completed'||$payment->allocations()->exists())throw ValidationException::withMessages(['payment'=>'Reverse supplier allocations before reversing an opening advance.']);
+                app(AccountingService::class)->reverseSource('procurement','purchase-order-payment:'.$payment->id,\App\Support\CompanyClock::today()->toDateString(),trim($reason));
+                $payment->update(['status'=>'reversed','reversed_at'=>now(),'reversed_by'=>Auth::id(),'reversal_reason'=>trim($reason)]);
+                return $payment->fresh();
+            }
             $order = PurchaseOrder::query()->lockForUpdate()->findOrFail($payment->purchase_order_id);
             $payment = PurchaseOrderPayment::query()
                 ->where('purchase_order_id', $order->id)

@@ -26,6 +26,7 @@ class AppServiceProvider extends ServiceProvider
     public $bindings = [\App\Contracts\DocumentStorageProvider::class => \App\Services\LocalDocumentStorage::class];
     public function register(): void
     {
+        $this->app->singleton(\App\Services\Onboarding\OnboardingGuard::class);
         $this->app->bind(\App\Contracts\DemandForecastProvider::class, \App\Services\LocalDemandForecastProvider::class);
         $this->app->bind(ProductRepositoryInterface::class, ProductRepository::class);
         $this->app->bind(CategoryRepositoryInterface::class, CategoryRepository::class);

@@ -38,9 +38,26 @@ class FinancialAccountService
             ->all();
     }
 
+    public function recordOpening(\App\Models\OnboardingSession $session, array $data, ?int $accountId = null): FinancialAccount
+    {
+        app(\App\Services\Onboarding\OnboardingGuard::class)->assertOpening($session);
+        return DB::transaction(function () use ($session, $data, $accountId) {
+            $values = ['name' => $data['name'], 'type' => $data['type'], 'currency' => $session->currency, 'opening_balance' => $data['amount'], 'opening_date' => $session->cutover_date->toDateString(), 'is_active' => true];
+            if (!$accountId) return $this->createAccount($values);
+            $account = FinancialAccount::lockForUpdate()->findOrFail($accountId);
+            if ($account->transactions()->exists() || Money::compare($account->opening_balance, '0') !== 0) throw \Illuminate\Validation\ValidationException::withMessages(['account' => 'Use an unused zero-balance account for an opening position.']);
+            $account->update($values);
+            $this->accounting->ensureFinancialAccount($account);
+            $this->accounting->postFinancialOpening($account);
+            $this->audit('financial_account.opening', $account, null, ['session_id' => $session->id, 'amount' => $data['amount']]);
+            return $account->fresh();
+        });
+    }
+
     public function createAccount(array $data): FinancialAccount
     {
         return DB::transaction(function () use ($data) {
+            app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational($data['opening_date'] ?? null);
             $account = FinancialAccount::create([
                 ...$data,
                 'company_id' => Auth::user()->company_id,
@@ -87,6 +104,7 @@ class FinancialAccountService
     public function post(FinancialAccount|int $account, array $data): FinancialAccountTransaction
     {
         return DB::transaction(function () use ($account, $data) {
+            app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational($data['transaction_date'] ?? null);
             $accountId = $account instanceof FinancialAccount ? $account->id : $account;
             $locked = FinancialAccount::query()->lockForUpdate()->findOrFail($accountId);
             if (! $locked->is_active) {

@@ -33,9 +33,9 @@ class FinanceService
         $invoiceSalesNet = round((float) $salesRows->sum('taxable_amount'), 2);
         $dailySales = round((float) DailySale::query()->finalized()
             ->whereBetween('sale_date', [$from, $to])->sum('total_amount'), 2);
-        $missingProof = Expense::query()->whereIn('status', ['posted', 'reversed'])
+        $missingProof = Expense::query()->where('document_type','!=','opening_balance')->whereIn('status', ['posted', 'reversed'])
             ->whereBetween('received_date', [$from, $to])->whereNull('proof_filename')->count();
-        $unclassified = Expense::query()->whereIn('status', ['posted', 'reversed'])
+        $unclassified = Expense::query()->where('document_type','!=','opening_balance')->whereIn('status', ['posted', 'reversed'])
             ->whereBetween('received_date', [$from, $to])->where('category', 'other')->count();
         $profile = InvoiceProfile::query()->first();
         $landedCostCogs = round((float) LandedCostAccountingEntry::query()
@@ -165,6 +165,7 @@ class FinanceService
         }
 
         $purchasePayments = PurchaseOrderPayment::query()
+            ->whereNull('onboarding_session_id')
             ->where('status', 'completed')
             ->whereBetween('payment_date', [$from, $to])
             ->get();
@@ -376,7 +377,7 @@ class FinanceService
 
     private function purchaseRows(string $from, string $to): Collection
     {
-        $expenses = Expense::query()->whereIn('status', ['posted', 'reversed'])
+        $expenses = Expense::query()->where('document_type','!=','opening_balance')->whereIn('status', ['posted', 'reversed'])
             ->where(function ($query) use ($from, $to) {
                 $query->whereBetween('received_date', [$from, $to])
                     ->orWhere(function ($reversal) use ($from, $to) {

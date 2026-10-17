@@ -31,6 +31,10 @@ class SearchService
         $term = trim($term);
         $like = '%'.addcslashes($term, '%_\\').'%';
         $result = [];
+        if ($this->can('onboarding.view')) {
+            $result['onboarding_sessions']=\App\Models\OnboardingSession::where(fn($q)=>$q->where('name','like',$like)->orWhere('source_period','like',$like)->orWhere('public_id','like',$like))->latest('id')->limit(6)->get()->map(fn($s)=>$this->item($s->id,$s->name,$s->source_period,'/onboarding?session='.$s->id));
+            $result['onboarding_batches']=\App\Models\OnboardingBatch::where('filename','like',$like)->latest('id')->limit(6)->get()->map(fn($b)=>$this->item($b->id,$b->filename,$b->row_count,'/onboarding?session='.$b->onboarding_session_id.'&domain='.$b->domain));
+        }
         // Resolve a bounded candidate set once; avoid a product lookup for every history row.
         $productIds = ($this->can('inventory.view') || $this->can('products.manage'))
             ? \App\Models\Product::where(fn($q)=>$q->where('name','like',$like)->orWhere('sku','like',$like))->orderBy('id')->limit(200)->pluck('id')

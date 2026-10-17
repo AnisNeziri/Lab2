@@ -190,7 +190,7 @@ jobs:
         with:
           php-version: '8.3.35'
           tools: composer:2.9.8
-          extensions: bcmath, curl, openssl, zip, mbstring, dom, fileinfo, pdo_mysql
+          extensions: bcmath, curl, openssl, zip, mbstring, dom, fileinfo, pdo_mysql, pdo_sqlite, sqlite3
           coverage: none
       - uses: actions/setup-python@v5
         with:

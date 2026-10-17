@@ -32,6 +32,7 @@ class PortableBackupService
      * never portable business data and are therefore not part of any module.
      */
     public const MODULES = [
+        'onboarding' => ['onboarding_sessions','onboarding_batches','onboarding_rows','onboarding_events'],
         'analytics' => ['supply_optimization_plans','decision_learning_records','customer_sales_snapshots','customer_intelligence_policies','enterprise_decisions','inventory_planning_policies','analytics_snapshots', 'analytics_issues', 'analytics_datasets', 'analytics_dataset_rows', 'analytics_predictions', 'inventory_forecast_models', 'inventory_recommendations','inventory_model_decisions','inventory_intelligence_alerts','supplier_delivery_risks'],
         'automations'=>['automations','automation_versions','automation_executions','operational_tasks','business_events'],
         'order_hub'=>['order_channels','order_channel_mappings','order_intakes','order_hub_presets','sales_orders','sales_order_items','pick_waves','pick_tasks','outbound_allocations','outbound_dispatches','outbound_packages','outbound_package_items','outbound_returns','outbound_actions'],
@@ -98,6 +99,7 @@ class PortableBackupService
     private const TABLE_ORDER = [
         'document_types','document_settings','documents','document_versions','document_requirements',
         'users',
+        'onboarding_sessions','onboarding_batches',
         'approval_rules', 'approval_requests', 'approval_decisions',
         'quality_inspection_templates', 'quality_checklist_items', 'quality_defect_categories', 'supplier_score_settings',
         'categories', 'suppliers', 'warehouses', 'warehouse_sections', 'warehouse_locations',
@@ -135,6 +137,7 @@ class PortableBackupService
         'document_links',
         'automations','automation_versions','automation_executions','operational_tasks',
         'pilot_profiles','pilot_feedback','pilot_evidence','pilot_reports',
+        'onboarding_rows','onboarding_events',
     ];
 
     /** Child tables that do not carry company_id are owned through this parent. */
@@ -314,6 +317,11 @@ class PortableBackupService
             'company' => [
                 'name' => $company->name,
                 'address' => $company->address,
+                'base_currency' => $company->base_currency,
+                'timezone' => $company->timezone,
+                'operational_cutover_date' => $company->operational_cutover_date?->toDateString(),
+                'accounting_start_date' => $company->accounting_start_date?->toDateString(),
+                'accounting_opening_finalized_at' => $company->accounting_opening_finalized_at?->toDateTimeString(),
             ],
             'app_version' => \App\Support\Release::version(),
             'database_engine' => DB::connection()->getDriverName(),
@@ -444,6 +452,7 @@ class PortableBackupService
                 Company::query()->whereKey($companyId)->update([
                     'name' => Str::limit(trim((string) $companyData['name']), 255, ''),
                     'address' => trim((string) ($companyData['address'] ?? '')),
+                    ...validator($companyData, ['base_currency'=>'sometimes|nullable|string|size:3','timezone'=>'sometimes|nullable|timezone','operational_cutover_date'=>'sometimes|nullable|date_format:Y-m-d','accounting_start_date'=>'sometimes|nullable|date_format:Y-m-d','accounting_opening_finalized_at'=>'sometimes|nullable|date'])->validate(),
                 ]);
             }
 
@@ -958,6 +967,31 @@ class PortableBackupService
         unset($row['id']);
         $columns = collect(Schema::getColumns($table))->reject(fn (array $column) => $column['generation'] !== null)->pluck('name')->flip();
         $row = array_intersect_key($row, $columns->all());
+        if ($table === 'onboarding_sessions') {
+            // Backup artifacts are installation-private and deliberately non-recursive.
+            $row['pre_backup_id'] = null; $row['post_backup_id'] = null;
+            $row['restore_verification'] = json_encode(['passed'=>false,'historical'=>true]);
+            $review=json_decode((string)($row['review']??'{}'),true)?:[];
+            $review['restored_read_only']=!empty($row['posted_at']);
+            $review['historical_approval_fingerprint']=$row['approved_fingerprint']??null;
+            $row['review']=json_encode($review);
+            $row['review_fingerprint']=null;$row['approved_fingerprint']=null;
+            $row['approved_at']=null;$row['approved_by']=null;$row['reviewed_at']=null;$row['reviewed_by']=null;
+            $row['locked_at']=null;$row['locked_by']=null;
+            if(!empty($row['posted_at']))$row['status']='posted';
+        }
+        if ($table === 'onboarding_rows') {
+            $domainTable = ['products'=>'products','customers'=>'customers','suppliers'=>'suppliers','warehouses'=>'warehouses','locations'=>'warehouse_locations','cash_bank'=>'financial_accounts'][$row['domain']] ?? null;
+            if ($domainTable && !empty($row['match_id'])) $row['match_id'] = $idMap[$domainTable][(string)$row['match_id']] ?? null;
+            if (!empty($row['posted_entity_id'])) {
+                $allowed = ['products','customers','suppliers','warehouses','warehouse_locations','financial_accounts','stock_movements','customer_debt_transactions','expenses','purchase_order_payments'];
+                if (!in_array($row['posted_entity_type'], $allowed, true) || !isset($idMap[$row['posted_entity_type']][(string)$row['posted_entity_id']])) throw ValidationException::withMessages(['file'=>'An opening source link could not be restored.']);
+                $row['posted_entity_id'] = $idMap[$row['posted_entity_type']][(string)$row['posted_entity_id']];
+                $result = json_decode((string)$row['posting_result'],true) ?: [];
+                $result['entity_id'] = $row['posted_entity_id']; $result['restored'] = true;
+                $row['posting_result'] = json_encode($result);
+            }
+        }
         if ($table==='pilot_profiles') {
             // A portable restore never enrolls this installation or restores consent.
             $row['status']='draft'; $row['telemetry_enabled']=false; $row['source_attestation']=null;
@@ -1135,6 +1169,7 @@ class PortableBackupService
                 'inventory_count' => 'inventory_count_sessions',
                 'bin_transfer' => 'stock_movements',
                 'inventory_return' => 'inventory_returns',
+                'onboarding_opening' => 'onboarding_sessions',
                 default => null,
             };
             $oldSourceId = (string) $row['source_id'];

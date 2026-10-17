@@ -1,4 +1,23 @@
 <?php
+\Illuminate\Support\Facades\Route::middleware(['auth.token','password.changed','company.context','throttle:120,1'])->prefix('onboarding')->group(function(){
+    $c=\App\Http\Controllers\Api\OnboardingController::class;
+    \Illuminate\Support\Facades\Route::get('/',[$c,'index']);
+    \Illuminate\Support\Facades\Route::post('/',[$c,'store']);
+    \Illuminate\Support\Facades\Route::get('/templates/{domain}',[$c,'template']);
+    \Illuminate\Support\Facades\Route::get('/{id}',[$c,'show'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::put('/{id}',[$c,'update'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::get('/{id}/rows',[$c,'rows'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::patch('/{id}/rows',[$c,'editRows'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::post('/{id}/sources',[$c,'upload'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::put('/{id}/batches/{batch}/mapping',[$c,'mapping'])->whereNumber(['id','batch']);
+    \Illuminate\Support\Facades\Route::post('/{id}/batches/{batch}/resume',[$c,'resumeSource'])->whereNumber(['id','batch']);
+    \Illuminate\Support\Facades\Route::post('/{id}/batches/{batch}/exclude',[$c,'excludeSource'])->whereNumber(['id','batch']);
+    \Illuminate\Support\Facades\Route::get('/{id}/batches/{batch}/source',[$c,'source'])->whereNumber(['id','batch']);
+    foreach(['validate'=>'validateSource','review'=>'review','approve'=>'approve','post'=>'post','verify'=>'verify','lock'=>'lock','cancel'=>'cancel','backups'=>'backup','restore-verify'=>'restoreVerify'] as $path=>$method)
+        \Illuminate\Support\Facades\Route::post('/{id}/'.$path,[$c,$method])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::get('/{id}/backups/{backup}',[$c,'backupDownload'])->whereNumber(['id','backup']);
+    \Illuminate\Support\Facades\Route::get('/{id}/evidence',[$c,'evidence'])->whereNumber('id');
+});
 \Illuminate\Support\Facades\Route::middleware(['auth.token','password.changed','company.context','throttle:120,1'])->prefix('strategic-simulation')->group(function(){
  $c=\App\Http\Controllers\Api\StrategicSimulationController::class;
  \Illuminate\Support\Facades\Route::get('/options',[$c,'options']);\Illuminate\Support\Facades\Route::get('/',[$c,'index']);\Illuminate\Support\Facades\Route::post('/',[$c,'store'])->middleware('throttle:10,1');\Illuminate\Support\Facades\Route::post('/compare',[$c,'compare']);
@@ -401,6 +420,9 @@ Route::middleware('auth.token')->group(function () {
             Route::get('/purchase-requests/{purchaseRequest}', [ProcurementController::class, 'showRequest'])->middleware('permission:procurement.view');
             Route::put('/purchase-requests/{purchaseRequest}', [ProcurementController::class, 'updateRequest'])->middleware('permission:procurement.manage');
             Route::post('/purchase-requests/{purchaseRequest}/submit', [ProcurementController::class, 'submit'])->middleware('permission:procurement.manage');
+            Route::delete('/purchase-requests/{purchaseRequest}', [ProcurementController::class, 'deleteDraft'])->middleware('permission:procurement.manage');
+            Route::post('/purchase-requests/{purchaseRequest}/withdraw', [ProcurementController::class, 'withdraw'])->middleware('permission:procurement.manage');
+            Route::post('/rfqs/{rfq}/close', [ProcurementController::class, 'closeRfq'])->middleware('permission:procurement.manage');
             Route::post('/purchase-requests/{purchaseRequest}/rfqs', [ProcurementController::class, 'createRfq'])->middleware('permission:procurement.manage');
             Route::post('/rfqs/{rfq}/issue', [ProcurementController::class, 'issueRfq'])->middleware('permission:procurement.manage');
             Route::get('/rfqs/{rfq}/comparison', [ProcurementController::class, 'comparison'])->middleware('permission:procurement.view');

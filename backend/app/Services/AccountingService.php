@@ -79,7 +79,7 @@ class AccountingService
         return ['period'=>$period,'checked_at'=>now()->toIso8601String(),'ready_to_close'=>collect($checks)->every(fn($check)=>$check['passed']),'checks'=>$checks,'reconciliation'=>$reconciliation,'retained_earnings_policy'=>'Current earnings are derived dynamically from posted revenue and expense journals. No closing journal is generated, preventing duplicate closes.'];
     }
     public function assertDateOpen(string $date,bool $allowSoft=false):void
-    {$start=Auth::user()?->company?->accounting_start_date;if($start&&$date<$start->toDateString())throw ValidationException::withMessages(['posting_date'=>["The posting date is before the company accounting start date {$start->toDateString()}."]]);$period=AccountingPeriod::query()->whereDate('starts_at','<=',$date)->whereDate('ends_at','>=',$date)->first();if($period?->status==='closed'||($period?->status==='soft_closed'&&!$allowSoft))throw ValidationException::withMessages(['posting_date'=>["Accounting period {$period->name} is {$period->status}; posting is locked."]]);}
+    {app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational($date);$start=Auth::user()?->company?->accounting_start_date;if($start&&$date<$start->toDateString())throw ValidationException::withMessages(['posting_date'=>["The posting date is before the company accounting start date {$start->toDateString()}."]]);$period=AccountingPeriod::query()->whereDate('starts_at','<=',$date)->whereDate('ends_at','>=',$date)->first();if($period?->status==='closed'||($period?->status==='soft_closed'&&!$allowSoft))throw ValidationException::withMessages(['posting_date'=>["Accounting period {$period->name} is {$period->status}; posting is locked."]]);}
 
     public function journals(array $filters=[]){return JournalEntry::query()->with(['lines.account:id,code,name,type','creator:id,name','poster:id,name'])->when($filters['from']??null,fn($q,$v)=>$q->whereDate('posting_date','>=',$v))->when($filters['to']??null,fn($q,$v)=>$q->whereDate('posting_date','<=',$v))->when($filters['status']??null,fn($q,$v)=>$q->where('status',$v))->latest('posting_date')->latest('id')->paginate($filters['per_page']??50);}
     public function createDraft(array $data):JournalEntry
@@ -96,7 +96,9 @@ class AccountingService
     public function postCustomerDebt(\App\Models\CustomerDebtTransaction $transaction):JournalEntry
     {
         $amount=Money::normalize($transaction->amount);$lines=[];
-        if(in_array($transaction->type,['debt_added','positive_adjustment','opening_balance'],true)){
+        if($transaction->type==='opening_advance'){
+            $lines=[['mapping'=>'equity','debit'=>$amount],['mapping'=>'customer_advances','credit'=>$amount]];
+        }elseif(in_array($transaction->type,['debt_added','positive_adjustment','opening_balance'],true)){
             $creditApplied=Money::normalize(data_get($transaction->metadata,'credit_applied','0'));$receivable=Money::subtract($amount,$creditApplied);
             if(Money::compare($receivable,'0')>0)$lines[]=['mapping'=>'accounts_receivable','debit'=>$receivable];
             if(Money::compare($creditApplied,'0')>0)$lines[]=['mapping'=>'customer_advances','debit'=>$creditApplied];
@@ -116,6 +118,7 @@ class AccountingService
     }
     public function postExpense(\App\Models\Expense $expense):JournalEntry
     {
+        if($expense->document_type==='opening_balance')return $this->postMapped('supplier_accounting','expense',$expense->id,'expense:'.$expense->id,$expense->invoice_date->toDateString(),'Opening supplier position '.$expense->document_number,[['mapping'=>'equity','debit'=>$expense->gross_amount],['mapping'=>'accounts_payable','credit'=>$expense->gross_amount]],$expense->currency,1);
         $gross=Money::normalize(abs((float)$expense->gross_amount_eur));$deductible=Money::normalize(abs((float)$expense->deductible_vat_amount_eur));$expenseAmount=Money::subtract($gross,$deductible);$creditNote=$expense->document_type==='credit_note';$lines=[];
         $expenseMapping=$expense->category==='inventory'&&$expense->purchase_order_id?'goods_receipt_clearing':'operating_expense';
         if(Money::compare($expenseAmount,'0')>0)$lines[]=['mapping'=>$expenseMapping,$creditNote?'credit':'debit'=>$expenseAmount];
@@ -195,7 +198,7 @@ class AccountingService
             ->sum(fn($invoice)=>max(0,(float)$invoice->remaining_balance));
         $ar=round((float)\App\Models\Customer::query()->sum('current_debt')+$invoiceDebt,2);
         $customerAdvances=round((float)\App\Models\Customer::query()->sum('current_credit'),2);
-        $ap=round((float)\App\Models\Expense::query()->where('status','posted')->where('document_type','purchase_invoice')->get()->sum(fn($expense)=>(float)$expense->remaining_amount*(float)($expense->exchange_rate?:1)),2);
+        $ap=round((float)\App\Models\Expense::query()->where('status','posted')->whereIn('document_type',['purchase_invoice','opening_balance'])->get()->sum(fn($expense)=>(float)$expense->remaining_amount*(float)($expense->exchange_rate?:1)),2);
         $supplierAdvances=round((float)\App\Models\PurchaseOrderPayment::query()->where('status','completed')->with('allocations:id,purchase_order_payment_id,amount')->get()->sum(fn($payment)=>(float)$payment->unallocated_amount*(float)($payment->exchange_rate?:1)),2);
         $inventory=Money::decimal(\App\Models\Product::query()->get()->sum(function($product){if($product->inventory_value!==null)return Money::minor($product->inventory_value);$cost=$product->weighted_average_cost??$product->purchase_price;return $cost===null?0:Money::minor(Money::multiply($product->quantity,$cost,6));}));
         $baseCurrency=CompanyCurrency::forCompanyId((int)Auth::user()->company_id);
@@ -205,7 +208,7 @@ class AccountingService
             +(float)\App\Models\PaymentTransaction::query()->where('status','completed')->whereNull('financial_account_id')->sum('amount')
             +(float)\App\Models\CustomerDebtTransaction::query()->where('type','payment')->whereNull('financial_account_id')->sum('amount')
             -(float)\App\Models\ExpensePayment::query()->where('status','completed')->whereNull('financial_account_id')->sum('amount_eur')
-            -(float)\App\Models\PurchaseOrderPayment::query()->where('status','completed')->whereNull('financial_account_id')->sum('amount_eur'),2);
+            -(float)\App\Models\PurchaseOrderPayment::query()->where('status','completed')->whereNull('financial_account_id')->whereNull('onboarding_session_id')->sum('amount_eur'),2);
         $rows=[
             'accounts_receivable'=>$this->reconciliationRow('accounts_receivable',$ar,$this->accountBalance('1100',null),['account_codes'=>['1100'],'drilldown_url'=>'/customer-debts','affected'=>\App\Models\Customer::query()->where('current_debt','>',0)->orderByDesc('current_debt')->limit(10)->get(['id','name','current_debt'])]),
             'customer_advances'=>$this->reconciliationRow('customer_advances',$customerAdvances,-$this->accountBalance('2200',null),['account_codes'=>['2200'],'drilldown_url'=>'/customer-debts','affected'=>\App\Models\Customer::query()->where('current_credit','>',0)->orderByDesc('current_credit')->limit(10)->get(['id','name','current_credit'])]),

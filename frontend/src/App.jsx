@@ -62,6 +62,7 @@ const MoneyAccounts = lazy(() => import("./pages/MoneyAccounts"));
 const AccountingCore = lazy(() => import("./pages/AccountingCore"));
 const SystemIntegrity = lazy(() => import("./pages/SystemIntegrity"));
 const CompanyPilot = lazy(() => import("./pages/CompanyPilot"));
+const CompanyOnboarding = lazy(() => import("./pages/CompanyOnboarding"));
 const PilotEvidence = lazy(() => import("./pages/PilotEvidence"));
 const AutomationStudio = lazy(() => import("./pages/AutomationStudio"));
 const Analytics = lazy(() => import("./pages/Analytics"));
@@ -539,6 +540,7 @@ function AppRoutes() {
           <Route path="/accounting" element={<PermissionRoute permission="accounting.reports.view"><Suspense fallback={<PageLoader />}><AccountingCore /></Suspense></PermissionRoute>} />
           <Route path="/system-integrity" element={<PermissionRoute permission="system_integrity.view"><Suspense fallback={<PageLoader />}><SystemIntegrity /></Suspense></PermissionRoute>} />
           <Route path="/pilot" element={<ProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoader />}><CompanyPilot /></Suspense></ProtectedRoute>} />
+          <Route path="/onboarding" element={<ProtectedRoute><Suspense fallback={<PageLoader />}><CompanyOnboarding /></Suspense></ProtectedRoute>} />
           <Route path="/pilot-evidence" element={<Suspense fallback={<PageLoader />}><PilotEvidence /></Suspense>} />
           <Route path="/automation-studio" element={<PermissionRoute permission="automations.view"><Suspense fallback={<PageLoader />}><AutomationStudio /></Suspense></PermissionRoute>} />
           <Route path="/analytics" element={<PermissionRoute permission="analytics.view"><Suspense fallback={<PageLoader />}><Analytics /></Suspense></PermissionRoute>} />

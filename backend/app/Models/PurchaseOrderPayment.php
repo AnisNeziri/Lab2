@@ -12,7 +12,7 @@ class PurchaseOrderPayment extends Model
 {
     use BelongsToCompany;
 
-    protected $fillable = ['company_id', 'purchase_order_id', 'expense_id', 'user_id', 'amount', 'currency', 'exchange_rate', 'amount_eur', 'status', 'payment_date', 'payment_method', 'reference_number', 'idempotency_key', 'note', 'paid_at', 'reversed_at', 'reversed_by', 'reversal_reason', 'financial_account_id', 'financial_account_transaction_id'];
+    protected $fillable = ['company_id', 'purchase_order_id', 'supplier_id', 'onboarding_session_id', 'expense_id', 'user_id', 'amount', 'currency', 'exchange_rate', 'amount_eur', 'status', 'payment_date', 'payment_method', 'reference_number', 'idempotency_key', 'note', 'paid_at', 'reversed_at', 'reversed_by', 'reversal_reason', 'financial_account_id', 'financial_account_transaction_id'];
 
     protected $appends = ['allocated_amount', 'unallocated_amount', 'allocation_status'];
 

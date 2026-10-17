@@ -12,6 +12,9 @@ use Illuminate\Validation\Rule;
 
 class ProcurementController extends Controller {
  public function __construct(private readonly ProcurementService $procurement){}
+ public function deleteDraft(PurchaseRequest $purchaseRequest):\Illuminate\Http\Response{$this->owned($purchaseRequest);$this->procurement->deleteUnusedDraft($purchaseRequest);return response()->noContent();}
+ public function withdraw(Request $r,PurchaseRequest $purchaseRequest):JsonResponse{$this->owned($purchaseRequest);$v=$r->validate(['reason'=>'required|string|min:5|max:1000']);return response()->json($this->procurement->withdraw($purchaseRequest,$v['reason']));}
+ public function closeRfq(Request $r,Rfq $rfq):JsonResponse{$this->owned($rfq);$v=$r->validate(['status'=>'required|in:closed,cancelled','reason'=>'required|string|min:5|max:1000']);return response()->json($this->procurement->closeRfq($rfq,$v['status'],$v['reason']));}
  public function requests():JsonResponse{return response()->json($this->procurement->requests());}
  public function showRequest(PurchaseRequest $purchaseRequest):JsonResponse{$this->owned($purchaseRequest);return response()->json($this->procurement->findRequest($purchaseRequest));}
  public function storeRequest(Request $request):JsonResponse{return response()->json($this->procurement->createRequest($this->requestData($request)),201);}

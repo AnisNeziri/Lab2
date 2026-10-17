@@ -20,6 +20,9 @@ class BusinessEventService
         array $metadata = [],
         ?string $idempotencyKey = null,
     ): ?BusinessEvent {
+        // Opening positions have their own lineage ledger. They are not new
+        // operating events and must never trigger webhooks, automations, or learning.
+        if(app(\App\Services\Onboarding\OnboardingGuard::class)->isPosting())return null;
         try {
             $metadata=array_merge($metadata, AutomationService::eventTrace());
             $companyId = (int) ($entity->company_id ?: Auth::user()?->company_id);
