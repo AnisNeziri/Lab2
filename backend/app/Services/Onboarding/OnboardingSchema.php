@@ -3,13 +3,14 @@
 namespace App\Services\Onboarding;
 
 use App\Support\Money;
+use Brick\Math\BigDecimal;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /** The one import contract drives mappings, templates and staged validation. */
 final class OnboardingSchema
 {
-    public const CONTRACT = 'dc1-opening-v1';
+    public const CONTRACT = 'dc1-opening-v2';
 
     public const DOMAINS = [
         'products' => ['external_ref', 'sku', 'name', 'unit', 'barcode', 'category', 'purchase_price', 'selling_price', 'conversion_unit', 'conversion_factor', 'tracking_mode'],
@@ -52,9 +53,23 @@ final class OnboardingSchema
         return $result;
     }
 
+    public static function valueText(mixed $value): string
+    {
+        if (! is_scalar($value) && $value !== null) {
+            throw ValidationException::withMessages(['number' => 'Use a plain text or numeric field value.']);
+        }
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        // PHP's ordinary float-to-string cast truncates supported six-decimal
+        // costs. Preserve JSON's round-trip digits before fixed-decimal checks.
+        return is_float($value) ? (string) BigDecimal::of(json_encode($value, JSON_THROW_ON_ERROR))->stripTrailingZeros() : (string) $value;
+    }
+
     public static function number(mixed $value, string $separator = '.', int $scale = 2, bool $negative = false): string
     {
-        $raw = trim((string) $value);
+        $raw = trim(self::valueText($value));
         // Thousands separators/exponent notation are never guessed. Mapping has an explicit decimal convention.
         if ($separator === ',') {
             if (str_contains($raw, '.')) {

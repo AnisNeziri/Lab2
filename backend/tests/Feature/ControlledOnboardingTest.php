@@ -217,6 +217,7 @@ class ControlledOnboardingTest extends TestCase
         $id = $this->stage();
         $payload = $this->validateApprove($id);
         $source = OnboardingSession::find($id)->batches()->first();
+        $foreignRowId = $source->rows()->firstOrFail()->id;
         $source->update(['source_base64' => base64_encode('Changed private source')]);
         $this->postJson('/api/onboarding/'.$id.'/post', $payload)->assertUnprocessable();
         $this->assertSame(0, StockMovement::count());
@@ -228,6 +229,20 @@ class ControlledOnboardingTest extends TestCase
         $this->get('/api/onboarding/'.$id.'/batches/'.$source->id.'/source', ['Accept' => 'application/json'])->assertNotFound();
         $this->getJson('/api/search?q=Synthetic')->assertOk()->assertJsonMissingPath('onboarding_sessions');
         $this->postJson('/api/intelligence-assistant/ask', ['question' => 'what is blocking company onboarding'])->assertOk()->assertJsonPath('cards', []);
+        $second = $this->postJson('/api/onboarding', ['name' => 'Isolated second company opening', 'source_period' => 'Synthetic second company', 'cutover_date' => '2026-01-01', 'timezone' => 'UTC', 'currency' => 'EUR', 'expected_totals' => array_fill_keys(OnboardingSchema::TOTALS, '0.00') + ['inventory_units' => []]])->assertCreated()->json('session.id');
+        $this->post('/api/onboarding/'.$second.'/sources', ['domain' => 'products', 'revision' => 0, 'file' => UploadedFile::fake()->createWithContent('second-private.csv', "external_ref,sku,name,unit\nSECOND,SECOND-ONLY,Isolated product,pcs\n")], ['Accept' => 'application/json'])->assertOk();
+        $this->postJson('/api/onboarding/'.$second.'/validate', ['revision' => OnboardingSession::findOrFail($second)->revision])->assertOk()->assertJsonPath('reconciliation.blocking', []);
+        $secondRevision = OnboardingSession::findOrFail($second)->revision;
+        $this->getJson('/api/onboarding')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $second);
+        $this->getJson('/api/onboarding/'.$second.'/rows')->assertOk()->assertJsonPath('data.0.external_ref', 'SECOND')->assertJsonCount(1, 'data');
+        $this->patchJson('/api/onboarding/'.$second.'/rows', ['revision' => $secondRevision, 'rows' => [['id' => $foreignRowId, 'overrides' => ['name' => 'Foreign mutation denied']]]])->assertNotFound();
+        $this->postJson('/api/onboarding/'.$id.'/validate', ['revision' => $payload['revision']])->assertNotFound();
+        $this->postJson('/api/onboarding/'.$id.'/review', ['revision' => $payload['revision'], 'source_totals_confirmed' => true, 'warnings_acknowledged' => true])->assertNotFound();
+        foreach (['approve', 'post', 'lock'] as $action) $this->postJson('/api/onboarding/'.$id.'/'.$action, $payload)->assertNotFound();
+        $this->postJson('/api/onboarding/'.$id.'/verify')->assertNotFound();
+        $this->putJson('/api/onboarding/'.$id.'/batches/'.$source->id.'/mapping', ['revision' => $payload['revision'], 'mapping' => []])->assertNotFound();
+        $this->assertSame($secondRevision, OnboardingSession::findOrFail($second)->revision);
+        $this->assertSame(0, Product::count());
     }
 
     public function test_interrupted_source_can_resume_and_failed_file_can_be_excluded_without_partial_rows(): void
@@ -341,6 +356,27 @@ class ControlledOnboardingTest extends TestCase
         $this->postJson('/api/onboarding/'.$id.'/validate', ['revision' => $s->fresh()->revision])->assertOk();
         $this->assertContains('inventory_value_over_limit', $inventory->fresh()->errors);
         $this->assertContains('identifier_requires_text', OnboardingRow::where('external_ref', 'PRECISION')->firstOrFail()->errors);
+        $this->assertSame(0, Product::count());
+        $this->assertSame(0, JournalEntry::count());
+    }
+
+    public function test_json_decimals_preserve_cost_precision_and_reject_excess_source_digits(): void
+    {
+        $id = $this->stage();
+        $s = OnboardingSession::findOrFail($id);
+        foreach (['inventory' => '[{"external_ref":"JSON-COST","product_ref":"P001","warehouse_ref":"W001","quantity":1,"unit":"m","unit_cost":123456789.123456},{"external_ref":"JSON-SMALL","product_ref":"P001","warehouse_ref":"W001","quantity":1,"unit":"m","unit_cost":0.000001}]', 'receivables' => '[{"external_ref":"JSON-AR","customer_ref":"C001","amount":0.30000000000000004,"currency":"EUR","reference":"Synthetic precise source"},{"external_ref":"JSON-BOOL","customer_ref":"C001","amount":true,"currency":"EUR","reference":"Synthetic invalid boolean"}]'] as $domain => $json) {
+            $this->post('/api/onboarding/'.$id.'/sources', ['domain' => $domain, 'revision' => $s->fresh()->revision, 'file' => UploadedFile::fake()->createWithContent($domain.'-precision.json', $json)], ['Accept' => 'application/json'])->assertOk();
+        }
+        $this->postJson('/api/onboarding/'.$id.'/validate', ['revision' => $s->fresh()->revision])->assertOk();
+        $this->assertSame('123456789.123456', OnboardingRow::where('external_ref', 'JSON-COST')->firstOrFail()->normalized['unit_cost']);
+        $this->assertSame('0.000001', OnboardingRow::where('external_ref', 'JSON-SMALL')->firstOrFail()->normalized['unit_cost']);
+        $this->assertContains('invalid_amount', OnboardingRow::where('external_ref', 'JSON-AR')->firstOrFail()->errors);
+        $this->assertContains('invalid_amount', OnboardingRow::where('external_ref', 'JSON-BOOL')->firstOrFail()->errors);
+        $s->refresh();
+        $totals = $s->expected_totals;
+        $totals['receivables'] = 0.30000000000000004;
+        $this->putJson('/api/onboarding/'.$id, ['revision' => $s->revision, 'name' => $s->name, 'source_period' => $s->source_period, 'cutover_date' => $s->cutover_date->toDateString(), 'timezone' => $s->timezone, 'currency' => $s->currency, 'expected_totals' => $totals])->assertUnprocessable();
+        $this->assertSame($s->revision, $s->fresh()->revision);
         $this->assertSame(0, Product::count());
         $this->assertSame(0, JournalEntry::count());
     }

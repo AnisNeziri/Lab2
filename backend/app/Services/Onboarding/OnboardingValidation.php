@@ -56,7 +56,7 @@ class OnboardingValidation
                 $mapped = [];
                 foreach (OnboardingSchema::DOMAINS[$source->domain] as $field) {
                     $column = $sourceBatches->get($source->onboarding_batch_id)?->mapping[$field] ?? null;
-                    $mapped[$field] = trim((string) ($source->overrides[$field] ?? ($column ? $source->raw[$column] ?? '' : '')));
+                    $mapped[$field] = trim(OnboardingSchema::valueText($source->overrides[$field] ?? ($column ? $source->raw[$column] ?? '' : '')));
                 }
                 if (! empty($mapped['phone'])) {
                     $mapped['phone'] = preg_replace('/[\s()\-]+/', '', $mapped['phone']);
@@ -69,7 +69,7 @@ class OnboardingValidation
                 }
                 foreach (['sku', 'barcode'] as $field) {
                     $column = $sourceBatches->get($source->onboarding_batch_id)?->mapping[$field] ?? null;
-                    $value = trim((string) ($source->overrides[$field] ?? ($column ? $source->raw[$column] ?? '' : '')));
+                    $value = trim(OnboardingSchema::valueText($source->overrides[$field] ?? ($column ? $source->raw[$column] ?? '' : '')));
                     if ($value !== '') {
                         $key = $field.':'.($field === 'barcode' ? BarcodeIdentity::normalize($value) : $this->identity($value));
                         $this->stagedIdentifiers[$key] = ($this->stagedIdentifiers[$key] ?? 0) + 1;
@@ -168,10 +168,10 @@ class OnboardingValidation
         foreach (OnboardingSchema::DOMAINS[$row->domain] as $field) {
             $column = $row->batch->mapping[$field] ?? null;
             $original = $column ? ($row->raw[$column] ?? null) : null;
-            if (in_array($field, ['external_ref', 'sku', 'barcode', 'code', 'product_ref', 'customer_ref', 'supplier_ref', 'warehouse_ref', 'location_ref', 'parent_ref'], true) && is_float($original) && (! isset($row->overrides[$field]) || (string) $row->overrides[$field] === (string) $original)) {
+            if (in_array($field, ['external_ref', 'sku', 'barcode', 'code', 'product_ref', 'customer_ref', 'supplier_ref', 'warehouse_ref', 'location_ref', 'parent_ref'], true) && (is_float($original) || is_bool($original)) && (! isset($row->overrides[$field]) || (string) $row->overrides[$field] === (string) $original)) {
                 $errors[] = 'identifier_requires_text';
             }
-            $data[$field] = trim((string) ($row->overrides[$field] ?? ($column ? $row->raw[$column] ?? '' : '')));
+            $data[$field] = trim(OnboardingSchema::valueText($row->overrides[$field] ?? ($column ? $row->raw[$column] ?? '' : '')));
         }
         if ($data['external_ref'] === '') {
             $data['external_ref'] = $data['sku'] ?? ($data['reference'] ?? '');

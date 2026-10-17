@@ -24,7 +24,7 @@ test('DC1 synthetic company stages, reviews, resumes, restores and locks an open
     suppliers:'external_ref,name,email,phone,address\nS001,Synthetic supplier,supplier@example.test,,\n',
     warehouses:'external_ref,code,name,address\nW001,MAIN,Main warehouse,\nW002,EAST,East warehouse,\n',
     inventory:'external_ref,product_ref,warehouse_ref,location_ref,quantity,unit,unit_cost,value,stock_state,reference\nI001,P001,W001,,1250.500,m,2.50,3126.25,available,Reviewed count A\nI002,P001,W002,,6,roll,2.50,750.00,available,Reviewed count B\nI003,P002,W001,,4,paleta,,148.80,available,Reviewed packing list\n',
-    receivables:'external_ref,customer_ref,amount,currency,reference,due_date\nAR001,C001,3700,EUR,Reviewed AR statement,2026-10-31\n',
+    receivables:'external_ref,customer_ref,amount,currency,reference,due_date\nAR001,C001,3700,EUR,Reviewed AR statement,31/10/2026\n',
     customer_advances:'external_ref,customer_ref,amount,currency,reference\nCA001,C001,500,EUR,Reviewed customer advance\n',
     payables:'external_ref,supplier_ref,amount,currency,reference,due_date\nAP001,S001,25000,EUR,Reviewed AP statement,2026-11-01\n',
     supplier_advances:'external_ref,supplier_ref,amount,currency,reference\nSA001,S001,6000,EUR,Reviewed supplier advance\n',
@@ -32,6 +32,8 @@ test('DC1 synthetic company stages, reviews, resumes, restores and locks an open
   }
   for(const [domain,csv] of Object.entries(sources)){
     await page.getByRole('combobox',{name:'Domain',exact:true}).selectOption(domain)
+    await page.getByRole('combobox',{name:'Decimal convention',exact:true}).selectOption(domain==='receivables'?',':'.')
+    await page.getByRole('combobox',{name:'Date convention',exact:true}).selectOption(domain==='receivables'?'d/m/Y':'Y-m-d')
     await page.getByLabel('Source file',{exact:true}).first().setInputFiles({name:`synthetic-${domain}.csv`,mimeType:'text/csv',buffer:Buffer.from(csv)})
     const response=page.waitForResponse(r=>r.url().endsWith(`/onboarding/${session}/sources`)&&r.request().method()==='POST')
     await page.getByRole('button',{name:'Upload to staging',exact:true}).click();expect((await response).ok()).toBeTruthy();await expect(page.getByRole('status').filter({hasText:'Working…'})).toHaveCount(0)
@@ -49,6 +51,7 @@ test('DC1 synthetic company stages, reviews, resumes, restores and locks an open
   await edit('products','P001',async dialog=>{await dialog.getByRole('combobox',{name:'Duplicate review',exact:true}).selectOption('use_existing');await dialog.getByRole('combobox',{name:'Existing record',exact:true}).selectOption(String(targets.product_id))})
   await edit('customers','C001',async dialog=>{await dialog.getByRole('combobox',{name:'Duplicate review',exact:true}).selectOption('use_existing');await dialog.getByRole('combobox',{name:'Existing record',exact:true}).selectOption(String(targets.customer_id))})
   await edit('inventory','I003',async dialog=>{await dialog.getByLabel('Base unit',{exact:true}).fill('box');await dialog.getByLabel('Cost per base unit',{exact:true}).fill('3.10')})
+  await edit('receivables','AR001',async dialog=>{await expect(dialog.locator('input[value="31/10/2026"]')).toHaveCount(1);await dialog.getByLabel('Source row reference',{exact:true}).fill('AR001-REVIEWED')})
   await validate();await expect(page.getByText('All source controls reconcile.',{exact:true})).toBeVisible();expect(JSON.parse(fixture('verify').stdout)).toEqual(before)
   const phrase='synthetic-browser-opening-passphrase'
   const approve=async()=>{
@@ -78,7 +81,7 @@ test('DC1 synthetic company stages, reviews, resumes, restores and locks an open
     for(const [width,height] of [[1920,1080],[1366,768],[768,1024],[390,844]]){
       await page.setViewportSize({width,height});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2)).toBeTruthy()
       for(const [index,screen] of [[1,'sources'],[2,'reconciliation'],[5,'locked']]){
-        await step(index);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2)).toBeTruthy()
+        await step(index);if(index===1)await expect(page.locator('.opening-table tbody tr')).toHaveCount(30);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2)).toBeTruthy()
         await page.screenshot({path:testInfo.outputPath(`opening-${screen}-${language}-${theme}-${width}.png`),fullPage:true})
       }
     }
