@@ -1,11 +1,5 @@
 <?php
 
-require __DIR__.'/../../../backend/vendor/autoload.php';
-$app = require __DIR__.'/../../../backend/bootstrap/app.php';
-$app->make(Kernel::class)->bootstrap();
-if (config('database.default') !== 'sqlite' || basename(config('database.connections.sqlite.database')) !== 'e2e.sqlite' || ! app()->environment('e2e')) {
-    throw new RuntimeException('Isolated E2E database required.');
-}
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Product;
@@ -15,6 +9,13 @@ use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+
+require __DIR__.'/../../../backend/vendor/autoload.php';
+$app = require __DIR__.'/../../../backend/bootstrap/app.php';
+$app->make(Kernel::class)->bootstrap();
+if (config('database.default') !== 'sqlite' || basename(config('database.connections.sqlite.database')) !== 'e2e.sqlite' || ! app()->environment('e2e')) {
+    throw new RuntimeException('Isolated E2E database required.');
+}
 
 $user = User::where('email', 'opening-owner@aims.test')->first();
 if (($argv[1] ?? '') === 'verify') {

@@ -1,13 +1,5 @@
 <?php
 
-require __DIR__.'/../../vendor/autoload.php';
-$app = require __DIR__.'/../../bootstrap/app.php';
-$app->make(Kernel::class)->bootstrap();
-set_exception_handler(function (Throwable $error) {
-    fwrite(STDERR, 'Onboarding concurrency failed: '.get_class($error)."\n");
-    exit(1);
-});
-
 use App\Models\Company;
 use App\Models\JournalEntry;
 use App\Models\OnboardingSession;
@@ -27,6 +19,15 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Symfony\Component\Process\Process;
+
+require __DIR__.'/../../vendor/autoload.php';
+$app = require __DIR__.'/../../bootstrap/app.php';
+$app->make(Kernel::class)->bootstrap();
+set_exception_handler(function (Throwable $error) {
+    fwrite(STDERR, 'Onboarding concurrency failed: '.get_class($error)."\n");
+    exit(1);
+});
+
 
 $database = config('database.connections.mysql.database');
 if (! app()->environment('testing') || config('database.default') !== 'mysql' || ! preg_match('/^aims_dc1_[a-z0-9_]+_test$/', $database) || ! in_array(config('database.connections.mysql.host'), ['127.0.0.1', 'localhost'], true)) {
