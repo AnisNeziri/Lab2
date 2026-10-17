@@ -1,0 +1,541 @@
+{
+  "schema": "aims-dc1-verification-v1",
+  "generated_at": "2026-10-17T17:58:10.524913+00:00",
+  "application_source_sha": "1a94190275b480b59d8c30146abd9283c7d1ee7f",
+  "base_sha": "a828482e798228153a7c32dd92e04d9f3d7dc313",
+  "opening_contract": "dc1-opening-v2",
+  "release_version": "1.1.2-rc.1",
+  "pull_request": "https://github.com/AnisNeziri/Lab2/pull/5",
+  "synthetic_only": true,
+  "real_company_data_used": false,
+  "real_company_cutover_performed": false,
+  "merge_or_deployment_performed": false,
+  "original_checkout": {
+    "branch": "codex/pr1-release-certification",
+    "head": "e9581ea6d1ba1640a565a230b08983804aac3361",
+    "clean": true,
+    "health": {
+      "http://127.0.0.1:8000/up": 200,
+      "http://127.0.0.1:5173/login": 200
+    },
+    "business_database_written_by_dc1": false,
+    "verified_at": "2026-10-17T17:58:10.524913+00:00",
+    "health_qualification": "Read-only HTTP health and static login page checks; actual business-account sign-in was not exercised.",
+    "listening_processes": {
+      "3306": 15848,
+      "8000": 18540,
+      "5173": 19260
+    }
+  },
+  "disposable_database": {
+    "engine": "MariaDB 11.8.9",
+    "port": 3312,
+    "owned_server_stopped": true,
+    "business_database_port_3306_untouched": true
+  },
+  "local_checks": {
+    "full_sqlite_before_final_json_guard": {
+      "log": "dc1-backend-sqlite-certified.txt",
+      "sha256": "c2d97a0d7ccdd69a4a727eb2385439d48c1bde3d412359e51e7035ec2e43069c",
+      "passed": 631,
+      "skipped": 1,
+      "assertions": 5808
+    },
+    "full_mariadb_before_final_json_guard": {
+      "log": "dc1-backend-mariadb-final.txt",
+      "sha256": "05433a82c381632f8747359de392c66fdfacaa684ff5accc32bbd57fa16353a8",
+      "passed": 628,
+      "skipped": 1,
+      "assertions": 5757
+    },
+    "recovery_regression_mariadb": {
+      "log": "dc1-recovery-regression-mariadb.txt",
+      "sha256": "5d877c4298efeba96ef51259e017ddd68ff3efc669718f1080ac96611cc4057d",
+      "passed": 29,
+      "skipped": 0,
+      "assertions": 493
+    },
+    "two_active_companies_sqlite": {
+      "log": "dc1-two-company-sqlite.txt",
+      "sha256": "8cf8fa4a90bb8bad5c296b6e5d98dd8e7831f967c6d4554e8f9719c3ff0a5a11",
+      "passed": 1,
+      "skipped": 0,
+      "assertions": 47
+    },
+    "two_active_companies_mariadb": {
+      "log": "dc1-two-company-mariadb.txt",
+      "sha256": "a43f93e7cfdf26cc9098ced29f145ccb6d29bee7c1d52e1b47d28f2d3b1fef1b",
+      "passed": 1,
+      "skipped": 0,
+      "assertions": 47
+    },
+    "json_precision_regression": {
+      "log": "dc1-json-precision-final.txt",
+      "sha256": "23388d0e4ef4e647dfff937fa4b003bf60c4414a8be1fced83912d23f2c72626",
+      "passed": 1,
+      "skipped": 0,
+      "assertions": 24
+    },
+    "node_tests": {
+      "passed": 89,
+      "failed": 0
+    },
+    "python_tests": {
+      "passed": 30,
+      "failed": 0,
+      "groups": [
+        16,
+        8,
+        6
+      ]
+    },
+    "browser_recovery_rerun": {
+      "passed": 2,
+      "failed": 0
+    },
+    "browser_source_conventions": {
+      "passed": 1,
+      "failed": 0,
+      "includes_raw_decimal_and_date_edit": true
+    },
+    "browser_upload_reset": {
+      "passed": 1,
+      "failed": 0,
+      "duration_seconds": 120,
+      "log": "dc1-browser-upload-reset.txt",
+      "sha256": "963c39ac4f79946198b4c8406458191800299b8330117c7a313e5658c0148a16",
+      "source_sha": "1a94190275b480b59d8c30146abd9283c7d1ee7f",
+      "includes_upload_picker_cleared_after_each_source": true
+    }
+  },
+  "concurrency": {
+    "bank_before": {
+      "workers": [
+        "matched",
+        "matched"
+      ],
+      "active_matches": 2,
+      "engine": "11.8.9-MariaDB"
+    },
+    "bank_after": {
+      "workers": [
+        "matched",
+        "rejected"
+      ],
+      "active_matches": 1,
+      "engine": "11.8.9-MariaDB"
+    },
+    "posting_after": {
+      "workers": [
+        {
+          "processed": 1,
+          "failure": null,
+          "status": "posted"
+        },
+        {
+          "processed": 2,
+          "failure": null,
+          "status": "posted"
+        }
+      ],
+      "posted_rows": 3,
+      "products": 1,
+      "stock_movements": 1,
+      "journals": 1,
+      "engine": "11.8.9-MariaDB"
+    }
+  },
+  "precision": {
+    "input_cost": "123456789.123456",
+    "reproduced_old_result": "123456789.123460",
+    "corrected_result": "123456789.123456",
+    "small_cost_preserved": "0.000001",
+    "excess_decimal_amount_rejected": true,
+    "boolean_amount_rejected": true
+  },
+  "independent_company_restore": {
+    "separate_sqlite_database": true,
+    "separate_document_root": true,
+    "business_ids_remapped_with_decoy_records": true,
+    "document_checksums_verified": true,
+    "document_fixture_count": 1,
+    "broken_source_links": 0,
+    "critical_source_totals_matched": true,
+    "inventory_integrity_passed": true,
+    "accounting_reconciled": true,
+    "restored_approvals_require_local_review": true
+  },
+  "browser_visual_matrix": {
+    "languages": [
+      "en",
+      "sq"
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "viewports": [
+      [
+        1920,
+        1080
+      ],
+      [
+        1366,
+        768
+      ],
+      [
+        768,
+        1024
+      ],
+      [
+        390,
+        844
+      ]
+    ],
+    "screens": [
+      "sources",
+      "reconciliation",
+      "locked"
+    ],
+    "screenshots": 48,
+    "source_rows_loaded_before_screenshot": true,
+    "local_preserved_directory": "output/dc1-evidence",
+    "checksum_manifest": "output/dc1-evidence/screenshots.json",
+    "source_sha": "1a94190275b480b59d8c30146abd9283c7d1ee7f"
+  },
+  "staging_performance": {
+    "source_sha": "6e30c52749c17c9f3ac68ce3e2dc24703e9e2631",
+    "qualification": "Single local trials on owned disposable databases with synthetic companies; source staging, dry validation and a 50-row read. Not p95, real-company SLA, or full 10000-row posting certification.",
+    "sqlite": {
+      "synthetic": true,
+      "database_engine": "sqlite",
+      "sizes": [
+        {
+          "source_rows": 500,
+          "upload_ms": 45.07,
+          "dry_validation_ms": 679.29,
+          "page_50_ms": 6.56,
+          "page_rows": 50,
+          "queries": 587,
+          "peak_memory_mb": 42,
+          "operational_effects": 0,
+          "all_controls_passed": true
+        },
+        {
+          "source_rows": 2000,
+          "upload_ms": 95.22,
+          "dry_validation_ms": 2696.26,
+          "page_50_ms": 4.78,
+          "page_rows": 50,
+          "queries": 2128,
+          "peak_memory_mb": 46,
+          "operational_effects": 0,
+          "all_controls_passed": true
+        },
+        {
+          "source_rows": 10000,
+          "upload_ms": 394.29,
+          "dry_validation_ms": 14506.9,
+          "page_50_ms": 19.08,
+          "page_rows": 50,
+          "queries": 10368,
+          "peak_memory_mb": 60,
+          "operational_effects": 0,
+          "all_controls_passed": true
+        }
+      ]
+    },
+    "mariadb": {
+      "synthetic": true,
+      "database_engine": "mysql",
+      "sizes": [
+        {
+          "source_rows": 500,
+          "upload_ms": 58.39,
+          "dry_validation_ms": 1201.69,
+          "page_50_ms": 13.11,
+          "page_rows": 50,
+          "queries": 585,
+          "peak_memory_mb": 42,
+          "operational_effects": 0,
+          "all_controls_passed": true
+        },
+        {
+          "source_rows": 2000,
+          "upload_ms": 129.28,
+          "dry_validation_ms": 5221.96,
+          "page_50_ms": 17.09,
+          "page_rows": 50,
+          "queries": 2128,
+          "peak_memory_mb": 46,
+          "operational_effects": 0,
+          "all_controls_passed": true
+        },
+        {
+          "source_rows": 10000,
+          "upload_ms": 571.79,
+          "dry_validation_ms": 27007.78,
+          "page_50_ms": 42.78,
+          "page_rows": 50,
+          "queries": 10368,
+          "peak_memory_mb": 64,
+          "operational_effects": 0,
+          "all_controls_passed": true
+        }
+      ]
+    }
+  },
+  "previous_hosted_certification": {
+    "run_id": 39052164570,
+    "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39052164570",
+    "source_sha": "6e30c52749c17c9f3ac68ce3e2dc24703e9e2631",
+    "complete": true,
+    "mandatory_jobs_passed": 8,
+    "backend_sqlite": {
+      "passed": 632,
+      "assertions": 5852,
+      "skipped": 1
+    },
+    "backend_mariadb": {
+      "passed": 632,
+      "assertions": 5853,
+      "skipped": 1
+    },
+    "browser_release": {
+      "passed": 106,
+      "failed": 0
+    },
+    "jobs": [
+      {
+        "id": 117452782954,
+        "name": "Independent populated upgrade and recovery",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39052164570/job/117452782954"
+      },
+      {
+        "id": 117452783059,
+        "name": "Backend tests (SQLite portable path)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39052164570/job/117452783059"
+      },
+      {
+        "id": 117452783113,
+        "name": "Browser smoke (Chromium + SQLite)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39052164570/job/117452783113"
+      },
+      {
+        "id": 117452783133,
+        "name": "Backend migrations (MariaDB server path)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39052164570/job/117452783133"
+      },
+      {
+        "id": 117452783155,
+        "name": "Linux Nginx and supervised workers",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39052164570/job/117452783155"
+      },
+      {
+        "id": 117452783170,
+        "name": "Frontend build",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39052164570/job/117452783170"
+      },
+      {
+        "id": 117452783205,
+        "name": "Desktop bundled startup (Windows + SQLite)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39052164570/job/117452783205"
+      },
+      {
+        "id": 117452783217,
+        "name": "Browser release certification",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39052164570/job/117452783217"
+      },
+      {
+        "id": 117457156120,
+        "name": "web-artifact",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39052164570/job/117457156120"
+      },
+      {
+        "id": 117457156214,
+        "name": "desktop-artifact",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39052164570/job/117457156214"
+      },
+      {
+        "id": 117457156492,
+        "name": "candidate",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39052164570/job/117457156492"
+      }
+    ]
+  },
+  "hosted_certification": {
+    "run_id": 39054210246,
+    "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39054210246",
+    "source_sha": "1a94190275b480b59d8c30146abd9283c7d1ee7f",
+    "complete": true,
+    "mandatory_jobs_passed": 8,
+    "backend_sqlite": {
+      "passed": 632,
+      "assertions": 5852,
+      "skipped": 1,
+      "duration_seconds": 172.33
+    },
+    "backend_mariadb": {
+      "passed": 632,
+      "assertions": 5853,
+      "skipped": 1,
+      "duration_seconds": 224.96
+    },
+    "conditional_skip": "Redis-specific test requires configured Redis test environment.",
+    "bank_concurrency": {
+      "workers": [
+        "matched",
+        "rejected"
+      ],
+      "active_matches": 1,
+      "engine": "11.8.9-MariaDB-ubu2404"
+    },
+    "posting_concurrency": {
+      "posted_rows": 3,
+      "products": 1,
+      "stock_movements": 1,
+      "journals": 1
+    },
+    "jobs": [
+      {
+        "id": 117458742909,
+        "name": "Frontend build",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39054210246/job/117458742909"
+      },
+      {
+        "id": 117458743023,
+        "name": "Desktop bundled startup (Windows + SQLite)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39054210246/job/117458743023"
+      },
+      {
+        "id": 117458743061,
+        "name": "Browser smoke (Chromium + SQLite)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39054210246/job/117458743061"
+      },
+      {
+        "id": 117458743126,
+        "name": "Linux Nginx and supervised workers",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39054210246/job/117458743126"
+      },
+      {
+        "id": 117458743147,
+        "name": "Independent populated upgrade and recovery",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39054210246/job/117458743147"
+      },
+      {
+        "id": 117458743158,
+        "name": "Backend migrations (MariaDB server path)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39054210246/job/117458743158"
+      },
+      {
+        "id": 117458743186,
+        "name": "Browser release certification",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39054210246/job/117458743186"
+      },
+      {
+        "id": 117458743191,
+        "name": "Backend tests (SQLite portable path)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39054210246/job/117458743191"
+      },
+      {
+        "id": 117463857196,
+        "name": "web-artifact",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39054210246/job/117463857196"
+      },
+      {
+        "id": 117463857292,
+        "name": "candidate",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39054210246/job/117463857292"
+      },
+      {
+        "id": 117463857451,
+        "name": "desktop-artifact",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39054210246/job/117463857451"
+      }
+    ],
+    "build_review_artifacts": false,
+    "browser_release": {
+      "passed": 106,
+      "failed": 0,
+      "duration_minutes": 23.3,
+      "artifact_id": 12109880385
+    },
+    "populated_recovery": {
+      "passed": true,
+      "upgrade_baseline": "5db86866",
+      "sqlite_independent_installation": true,
+      "mariadb_independent_installation": true,
+      "interrupted_service_transactions": [
+        "stock_movement",
+        "customer_payment",
+        "journal_posting",
+        "goods_receipt"
+      ],
+      "qualification": "Real processes force-killed after authoritative SQL in transactions; not a physical power-cut test."
+    }
+  },
+  "limitations": [
+    "New operationally empty company; existing zero-balance masters may be reused.",
+    "Base-currency and positive position rows; confirmed zero domains use controls without rows. Negative cash/bank openings unsupported.",
+    "UTF-8 CSV and flat JSON; XLSX must first be exported to CSV.",
+    "Positive lot/serial-controlled inventory requires the existing trace workflow.",
+    "10 MB and 10000 rows per source file; pages 50; row edits 100; posting API 50 and UI 25.",
+    "Quantity 3 decimals, costs/conversions 6, money/master prices 2, bounded numeric values.",
+    "Company portable documents retain existing 32 MB cap; a company backup is not a full installation backup.",
+    "PHP 8.3+ CLI with SQLite PDO required for independent verification.",
+    "Installation-specific backup, authorization and source statement review remain prerequisites for real cutover."
+  ],
+  "controlled_onboarding_readiness": {
+    "ready_within_supported_scope": true,
+    "prerequisites": [
+      "Installation-specific backup and host/storage preflight",
+      "Authorized source statements and independent source controls",
+      "Explicit human review, approval, restore verification and lock"
+    ],
+    "actual_real_company_onboarding_verified": false
+  }
+}
