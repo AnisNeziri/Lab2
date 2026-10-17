@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Company;
+use App\Models\User;
 use App\Services\Onboarding\OnboardingBackupService;
 use App\Services\Onboarding\OnboardingPosting;
 use App\Services\Onboarding\OnboardingSchema;
@@ -166,15 +168,43 @@ class OnboardingController extends Controller
     {
         $d = $this->service->detail($id);
         $s = $d['session'];
-        $text = "AIMS controlled opening evidence\nSession: {$s->public_id}\nCompany: {$s->company_id}\nSource period: {$s->source_period}\nCutover: {$s->cutover_date->toDateString()} ({$s->timezone})\nCurrency: {$s->currency}\nStatus: {$s->status}\nApproved fingerprint: {$s->approved_fingerprint}\n";
+        $posting = $s->events()->where('action', 'posting.started')->orderBy('id')->first()?->context ?? [];
+        $companyName = $posting['company_name'] ?? Company::findOrFail($s->company_id)->name;
+        $text = "AIMS controlled opening evidence\nSession: {$s->public_id}\nOpening: {$s->name}\nCompany: {$companyName} (#{$s->company_id})\nAIMS version at posting: ".($posting['aims_version'] ?? 'NOT POSTED / UNRECORDED')."\nOpening contract: ".($posting['contract'] ?? OnboardingSchema::CONTRACT)."\nSource period: {$s->source_period}\nCutover: {$s->cutover_date->toDateString()} ({$s->timezone})\nCurrency: {$s->currency}\nStatus: {$s->status}\nApproved fingerprint: {$s->approved_fingerprint}\n";
+        foreach (['created' => 'Prepared', 'reviewed' => 'Reviewed', 'approved' => 'Approved', 'locked' => 'Locked'] as $field => $label) {
+            $actorId = $s->{$field.'_by'};
+            $actor = $actorId ? User::withTrashed()->where('company_id', $s->company_id)->find($actorId) : null;
+            $text .= $label.' by: '.($actor ? $actor->name.' (#'.$actorId.')' : ($actorId ? '#'.$actorId : 'NOT RECORDED')).'; at '.($s->{$field.'_at'}?->toIso8601String() ?? 'NOT RECORDED')."\n";
+        }
+        $text .= 'Posting started: '.($s->posting_started_at?->toIso8601String() ?? 'NOT STARTED')."\nPosted: ".($s->posted_at?->toIso8601String() ?? 'NOT POSTED')."\nVerified: ".($s->verified_at?->toIso8601String() ?? 'NOT VERIFIED')."\n";
+        foreach ($d['progress'] as $group) {
+            $text .= 'Rows: '.$group['domain'].'; '.$group['status'].'; count '.$group['count']."\n";
+        }
         foreach ($d['reconciliation']['sections'] as $key => $value) {
             $text .= ucwords(str_replace('_', ' ', $key)).': source '.($value['source'] ?? 'UNKNOWN').'; staged '.$value['staged'].'; AIMS '.($value['actual'] ?? 'not posted').'; difference '.($value['actual_difference'] ?? $value['difference'] ?? 'UNKNOWN')."\n";
         }
         foreach ($d['batches'] as $b) {
-            $text .= "Source {$b->id}: {$b->filename}; SHA256 {$b->checksum}; rows {$b->row_count}; active ".($b->is_active ? 'yes' : 'no')."\n";
+            $text .= "Source {$b->id}: {$b->filename}; SHA256 {$b->checksum}; rows {$b->row_count}; warning rows {$b->warning_count}; error rows {$b->error_count}; active ".($b->is_active ? 'yes' : 'no')."\n";
         }
+        foreach ($d['reconciliation']['source_inventory_units'] ?? [] as $unit => $quantity) {
+            $text .= 'Inventory quantity '.$unit.': source '.$quantity.'; staged '.($d['reconciliation']['inventory_units'][$unit] ?? '0').'; AIMS '.($d['reconciliation']['actual_inventory_units'][$unit] ?? 'NOT POSTED')."\n";
+        }
+        $warnings = [];
+        foreach ($s->rows()->active()->whereNotNull('warnings')->cursor() as $row) {
+            foreach ($row->warnings ?? [] as $code) {
+                $warnings[$code] = ($warnings[$code] ?? 0) + 1;
+            }
+        }
+        foreach ($warnings as $code => $count) {
+            $text .= 'Warning: '.$code.'; rows '.$count."\n";
+        }
+        $text .= 'Integrity: '.(($s->verification['passed'] ?? false) ? 'PASS' : 'NOT VERIFIED').'; products checked '.($s->verification['inventory']['products_checked'] ?? 0).'; accounting reconciled '.(($s->verification['accounting']['all_reconciled'] ?? false) ? 'YES' : 'NOT VERIFIED')."\n";
+        foreach ($s->backups()->whereIn('id', array_filter([$s->pre_backup_id, $s->post_backup_id]))->get() as $backup) {
+            $text .= 'Backup '.$backup->kind.': #'.$backup->id.'; SHA256 '.$backup->checksum.'; authenticated '.(($backup->verification['authenticated'] ?? false) ? 'YES' : 'NO')."\n";
+        }
+        $text .= 'Independent destination reference: '.($s->restore_verification['destination_ref'] ?? 'NONE').'; backup SHA256 '.($s->restore_verification['backup_checksum'] ?? 'NONE')."\n";
         $text .= 'Independent restore: '.(($s->restore_verification['passed'] ?? false) ? 'PASS' : 'NOT VERIFIED')."\nLocked: ".($s->locked_at?->toIso8601String() ?? 'NO')."\n";
 
-        return response($text,200,['Content-Type' => 'text/plain; charset=UTF-8', 'Content-Disposition' => 'attachment; filename="AIMS-opening-'.$s->public_id.'-evidence.txt"', 'Cache-Control' => 'no-store, private']);
+        return response($text, 200, ['Content-Type' => 'text/plain; charset=UTF-8', 'Content-Disposition' => 'attachment; filename="AIMS-opening-'.$s->public_id.'-evidence.txt"', 'Cache-Control' => 'no-store, private']);
     }
 }

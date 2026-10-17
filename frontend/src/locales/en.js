@@ -19,6 +19,7 @@ export const en = {
   "nav.automationStudio": "Automation Studio",
   "backup.module.automations": "Automations, tasks & execution history",
   "backup.module.analytics": "Analytics observations, datasets & history",
+  "backup.module.onboarding": "Company onboarding sources and opening evidence",
   "backup.module.order_hub": "Online orders & channels",
   "backup.module.order_hub": "Order Hub & channels",
   "nav.documents": "Documents",

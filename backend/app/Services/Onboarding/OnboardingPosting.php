@@ -18,6 +18,7 @@ use App\Services\ProductService;
 use App\Services\PurchaseOrderService;
 use App\Services\StockMovementService;
 use App\Services\WarehouseOperationsService;
+use App\Support\Release;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
@@ -130,7 +131,7 @@ class OnboardingPosting
                 Company::whereKey($s->company_id)->update(['timezone' => $s->timezone]);
                 Auth::user()->unsetRelation('company');
                 $s->update(['posting_started_at' => now(), 'status' => 'posting', 'stage' => 'posting']);
-                $service->event($s, 'posting.started', ['fingerprint' => $actual, 'backup_checksum' => $backup->checksum]);
+                $service->event($s, 'posting.started', ['fingerprint' => $actual, 'backup_checksum' => $backup->checksum, 'aims_version' => Release::version(), 'contract' => OnboardingSchema::CONTRACT, 'company_name' => Auth::user()->company->name]);
             } else {
                 $s->update(['status' => 'posting', 'last_error' => null]);
             }

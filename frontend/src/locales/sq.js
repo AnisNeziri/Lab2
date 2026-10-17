@@ -19,6 +19,7 @@ export const sq = {
   "nav.automationStudio": "Studio e automatizimit",
   "backup.module.automations": "Automatizimet, detyrat dhe historiku",
   "backup.module.analytics": "Analitika, grupet e të dhënave dhe historiku",
+  "backup.module.onboarding": "Burimet e hapjes së kompanisë dhe provat fillestare",
   "backup.module.order_hub": "Porositë online dhe kanalet",
   "backup.module.order_hub": "Qendra e porosive & kanalet",
   "nav.documents": "Dokumentet",

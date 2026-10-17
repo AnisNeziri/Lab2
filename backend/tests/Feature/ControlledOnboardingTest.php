@@ -119,7 +119,7 @@ class ControlledOnboardingTest extends TestCase
         $this->putJson('/api/finance/accounts/'.$account->id, ['name' => 'Reviewed bank display name'])->assertOk();
         $this->assertSame('10000.00', $account->fresh()->opening_balance);
         $this->patchJson('/api/onboarding/'.$id.'/rows', ['revision' => $payload['revision'], 'rows' => [['id' => OnboardingRow::first()->id, 'overrides' => ['name' => 'Attempted mutation']]]])->assertUnprocessable();
-        $this->get('/api/onboarding/'.$id.'/evidence')->assertOk()->assertSee('Independent restore: PASS');
+        $this->get('/api/onboarding/'.$id.'/evidence')->assertOk()->assertSee('Independent restore: PASS')->assertSee('AIMS version at posting: '.\App\Support\Release::version())->assertSee('Reviewed by:')->assertSee('Approved by:')->assertSee('Posted:')->assertSee('Integrity: PASS')->assertSee('Backup pre:')->assertSee('Backup post:')->assertSee('Inventory quantity m:');
         $advance = CustomerDebtTransaction::where('type', 'opening_advance')->first();
         app(CustomerDebtService::class)->correct($advance, ['amount' => '400', 'transaction_date' => CompanyClock::today()->toDateString(), 'reason' => 'Reviewed current-period correction', 'note' => 'Correct opening advance']);
         $this->assertSame('3700.00', Customer::first()->current_debt);

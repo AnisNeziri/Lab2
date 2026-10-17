@@ -311,6 +311,7 @@ class PortableBackupService
 
         $manifest = [
             'modules' => $modules,
+            'onboarding_contract' => \App\Services\Onboarding\OnboardingSchema::CONTRACT,
             'module_tables' => collect(self::MODULES)->only($modules)->all(),
             'tables' => $tables,
             'counts' => collect($data)->map(fn (array $rows) => count($rows))->all(),
@@ -400,6 +401,11 @@ class PortableBackupService
         if (array_diff($modules, $availableModules)) {
             throw ValidationException::withMessages(['modules' => 'The backup does not contain every selected module.']);
         }
+        $missingModules = array_values(array_diff(array_keys(self::MODULES), $modules));
+        $legacyOnboarding = $mode === 'replace' && !isset($archive['manifest']['onboarding_contract'])
+            && in_array('onboarding', $missingModules, true) && !in_array('onboarding', $availableModules, true)
+            && array_diff($missingModules, ['onboarding', 'analytics']) === [];
+        if ($legacyOnboarding) $modules[] = 'onboarding';
         $legacyFull = $mode === 'replace'
             && array_values(array_diff(array_keys(self::MODULES), $modules)) === ['analytics']
             && !in_array('analytics', $availableModules, true);
@@ -427,13 +433,14 @@ class PortableBackupService
         $documentKeys=app(DocumentBackupService::class)->restoreFiles($activeData['document_versions']??[],$archive['payload']['document_files']??[],$companyId);
         foreach($activeData['document_versions']??[] as $i=>$v){$activeData['document_versions'][$i]['storage_key']=$documentKeys[$v['storage_key']];$activeData['document_versions'][$i]['provider']='local';}
         $warnings = $legacyFull ? ['This older full backup contains no Analytics history. Existing Analytics history was cleared with the confirmed full replacement; new observations will start with the next capture.'] : [];
+        if ($legacyOnboarding) $warnings[] = 'This older full backup predates controlled onboarding. Opening staging and cutover markers were cleared with the confirmed full replacement.';
         $imported = [];
         $restoresWarehouseStock = array_key_exists('warehouse_stock', $activeData);
 
         try {
         DB::transaction(function () use (
             $archive, $modules, $mode, $coreTables, $activeData, $companyId, $user,
-            $restoresWarehouseStock, &$warnings, &$imported
+            $restoresWarehouseStock, $legacyOnboarding, &$warnings, &$imported
         ) {
             // Serialize every restore for this tenant. This protects merge
             // safety checks and the full delete/remap/import sequence from a
@@ -449,6 +456,7 @@ class PortableBackupService
 
             if (in_array('company', $modules, true)) {
                 $companyData = $archive['manifest']['company'] ?? [];
+                if ($legacyOnboarding) $companyData['operational_cutover_date'] = null;
                 Company::query()->whereKey($companyId)->update([
                     'name' => Str::limit(trim((string) $companyData['name']), 255, ''),
                     'address' => trim((string) ($companyData['address'] ?? '')),
