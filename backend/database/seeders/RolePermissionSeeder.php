@@ -62,6 +62,10 @@ class RolePermissionSeeder extends Seeder
             ['name' => 'View Accounting Reports', 'slug' => 'accounting.reports.view', 'group' => 'accounting'],
             ['name' => 'View General Ledger', 'slug' => 'accounting.journal.view', 'group' => 'accounting'],
             ['name' => 'Create Manual Journals', 'slug' => 'accounting.journal.create', 'group' => 'accounting'],
+            ['name'=>'Acknowledge Manual Control Adjustments','slug'=>'accounting.journal.controlled','group'=>'accounting'],
+            ['name'=>'Post Soft Close Adjustments','slug'=>'accounting.periods.adjust','group'=>'accounting'],
+            ['name'=>'Finalize Accounting Period','slug'=>'accounting.periods.close','group'=>'accounting'],
+            ['name'=>'Post Supplier Invoices','slug'=>'supplier_invoices.post','group'=>'accounting'],
             ['name' => 'Post Journals', 'slug' => 'accounting.journal.post', 'group' => 'accounting'],
             ['name' => 'Reverse Journals', 'slug' => 'accounting.journal.reverse', 'group' => 'accounting'],
             ['name' => 'Manage Chart of Accounts', 'slug' => 'accounting.accounts.manage', 'group' => 'accounting'],
@@ -120,7 +124,7 @@ class RolePermissionSeeder extends Seeder
         $roles = [
             'superadmin' => Permission::pluck('id')->all(),
             'admin' => Permission::pluck('id')->all(),
-            'manager' => Permission::whereNotIn('slug', ['users.manage', 'activity.view', 'cms.manage'])->where('slug', 'not like', 'onboarding.%')->pluck('id')->all(),
+            'manager' => Permission::whereNotIn('slug', ['users.manage', 'activity.view', 'cms.manage'])->where('slug', 'not like', 'onboarding.%')->whereNotIn('slug',['accounting.journal.controlled','accounting.periods.adjust','accounting.periods.close','supplier_invoices.post'])->pluck('id')->all(),
             'staff' => Permission::whereIn('slug', [
                 'documents.view', 'documents.upload', 'documents.download', 'documents.update_metadata',
                 'fulfillment.view', 'fulfillment.pick',

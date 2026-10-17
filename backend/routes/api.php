@@ -474,9 +474,12 @@ Route::middleware('auth.token')->group(function () {
                 Route::post('/periods', [AccountingController::class, 'storePeriod'])->middleware('permission:accounting.periods.manage');
                 Route::put('/periods/{period}/status', [AccountingController::class, 'periodStatus'])->middleware('permission:accounting.periods.manage');
                 Route::get('/periods/{period}/readiness', [AccountingController::class, 'periodReadiness'])->middleware('permission:accounting.periods.manage');
+                Route::get('/source-journals', [AccountingController::class, 'sourceJournals'])->middleware('permission:accounting.journal.view');
                 Route::get('/journals', [AccountingController::class, 'journals'])->middleware('permission:accounting.journal.view');
                 Route::post('/journals', [AccountingController::class, 'storeJournal'])->middleware('permission:accounting.journal.create');
                 Route::get('/journals/{journal}', [AccountingController::class, 'journal'])->middleware('permission:accounting.journal.view');
+                Route::put('/journals/{journal}', [AccountingController::class, 'updateJournal'])->middleware('permission:accounting.journal.create');
+                Route::post('/journals/{journal}/correct', [AccountingController::class, 'correctJournal'])->middleware(['permission:accounting.journal.create','permission:accounting.journal.reverse']);
                 Route::post('/journals/{journal}/post', [AccountingController::class, 'postJournal'])->middleware('permission:accounting.journal.post');
                 Route::post('/journals/{journal}/reverse', [AccountingController::class, 'reverseJournal'])->middleware('permission:accounting.journal.reverse');
                 Route::get('/trial-balance', [AccountingController::class, 'trialBalance'])->middleware('permission:accounting.reports.view');
