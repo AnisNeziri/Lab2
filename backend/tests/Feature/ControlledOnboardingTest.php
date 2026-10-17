@@ -282,6 +282,31 @@ class ControlledOnboardingTest extends TestCase
         $this->assertSame(11, $s->batches()->count());
     }
 
+    public function test_three_customer_opening_keeps_4700_receivables_and_500_advance_separate(): void
+    {
+        $id = $this->stage();
+        $s = OnboardingSession::findOrFail($id);
+        foreach (['customers' => "external_ref,name,email\nC002,Second debtor,second@fixture.test\nC003,Prepaid customer,prepaid@fixture.test\n", 'receivables' => "external_ref,customer_ref,amount,currency,reference\nAR002,C002,1000,EUR,Second reviewed statement\n"] as $domain => $csv) {
+            $this->post('/api/onboarding/'.$id.'/sources', ['domain' => $domain, 'revision' => $s->fresh()->revision, 'file' => UploadedFile::fake()->createWithContent($domain.'-additional.csv', $csv)], ['Accept' => 'application/json'])->assertOk();
+        }
+        $advance = OnboardingRow::where('domain', 'customer_advances')->firstOrFail();
+        $this->patchJson('/api/onboarding/'.$id.'/rows', ['revision' => $s->fresh()->revision, 'rows' => [['id' => $advance->id, 'overrides' => ['customer_ref' => 'C003']]]])->assertOk();
+        $s->refresh();
+        $totals = $s->expected_totals;
+        $totals['receivables'] = '4700.00';
+        $totals['equity'] = '-4768.75';
+        $this->putJson('/api/onboarding/'.$id, ['revision' => $s->revision, 'name' => $s->name, 'source_period' => $s->source_period, 'cutover_date' => $s->cutover_date->toDateString(), 'timezone' => $s->timezone, 'currency' => $s->currency, 'expected_totals' => $totals])->assertOk();
+        $payload = $this->validateApprove($id);
+        $this->postJson('/api/onboarding/'.$id.'/post', $payload + ['limit' => 50])->assertOk()->assertJsonPath('failure', null);
+        $this->postJson('/api/onboarding/'.$id.'/verify')->assertOk()->assertJsonPath('session.verification.passed', true)->assertJsonPath('reconciliation.actual.receivables', '4700.00')->assertJsonPath('reconciliation.actual.customer_advances', '500.00');
+        $this->assertSame('1000.00', Customer::where('email', 'second@fixture.test')->firstOrFail()->current_debt);
+        $prepaid = Customer::where('email', 'prepaid@fixture.test')->firstOrFail();
+        $this->assertSame('0.00', $prepaid->current_debt);
+        $this->assertSame('500.00', $prepaid->current_credit);
+        $this->assertSame(0, DB::table('invoices')->count());
+        $this->assertTrue(app(AccountingService::class)->reconciliation(false)['all_reconciled']);
+    }
+
     public function test_separate_reviewer_policy_and_cutoff_day_are_enforced_before_posting(): void
     {
         $id = $this->stage();
