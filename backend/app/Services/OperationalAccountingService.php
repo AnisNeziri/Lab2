@@ -163,7 +163,9 @@ class OperationalAccountingService
 
         $lines = array_values(array_filter($lines, fn ($line) => Money::minor($line['debit'] ?? 0) > 0 || Money::minor($line['credit'] ?? 0) > 0));
 
-        $date = ($movement->occurred_at ?: $movement->created_at)->toDateString();
+        $date = $movement->source_type === 'onboarding_opening'
+            ? data_get($movement->metadata, 'opening_date', $movement->occurred_at->toDateString())
+            : ($movement->occurred_at ?: $movement->created_at)->toDateString();
         $entry = $this->accounting->postMapped(
             'inventory', 'stock_movement', $movement->id, 'stock-movement:'.$movement->id,
             $date, 'Inventory '.$movement->movement_code.' · movement #'.$movement->id,

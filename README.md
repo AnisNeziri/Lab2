@@ -7,6 +7,8 @@
 
 Current engineering baseline and next-cycle roadmap: [DR0 baseline report](docs/DR0_BASELINE_REPORT.md). Pilot preparation and release evidence: [PR3 report](docs/PR3_PILOT_REPORT.md). These reports distinguish fixture verification from real-company readiness.
 
+Controlled company opening: [DC1 completion report](docs/DC1_ONBOARDING_REPORT.md) and [operator guide](docs/dc1/ONBOARDING_GUIDE.md). DC1 uses reviewed staging, reconciliation, explicit approval, authoritative posting and an independently restored copy before locking. Verification uses synthetic data; no real-company cutover has been performed.
+
 ## Tech Stack
 
 | Layer | Technology |

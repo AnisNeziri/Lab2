@@ -7,7 +7,7 @@ final class CompanyClock
 {
     public static function timezone(): string
     {
-        return config('production.timezone') ?: config('app.timezone', 'UTC');
+        return auth()->user()?->company?->timezone ?: (config('production.timezone') ?: config('app.timezone', 'UTC'));
     }
 
     public static function now(): CarbonImmutable

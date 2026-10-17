@@ -22,6 +22,10 @@ class EnsureCompanyContext
             ], 403);
         }
 
+        if (!$request->isMethodSafe() && !$request->is('api/onboarding*','api/intelligence-assistant/ask')) {
+            app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational();
+        }
+
         // The desktop runtime has no permanent scheduler and a web scheduler
         // may have been offline. The first tenant request catches alerts up;
         // the durable state and cache throttle make this safe and unobtrusive.

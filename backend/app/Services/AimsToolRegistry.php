@@ -51,6 +51,8 @@ class AimsToolRegistry
         abort_unless($this->can($definition['required_permission']), 403, 'You do not have permission to use this capability.');
 
         $result = match ($name) {
+            'get_low_stock_facts'=>app(OpeningFactsService::class)->lowStock(),
+            'get_onboarding_status','get_import_review','get_onboarding_reconciliation'=>app(OpeningFactsService::class)->onboarding($input),
             'create_simulation_scenario','run_strategic_simulation'=>isset($input['parent_id'])?app(StrategicSimulationService::class)->derive((int)$input['parent_id'],array_diff_key($input,['parent_id'=>true])):app(StrategicSimulationService::class)->submit($input),
             'get_simulation_result'=>app(StrategicSimulationService::class)->get($this->id($input,'simulation_id')),
             'get_simulation_impact'=>app(StrategicSimulationService::class)->impact($this->id($input,'simulation_id')),
@@ -252,6 +254,8 @@ class AimsToolRegistry
         $id = fn (string $key) => ['type' => 'object', 'required' => [$key], 'properties' => [$key => ['type' => 'integer', 'minimum' => 1]]];
         $tool = fn ($name, $description, $input, $permission) => ['name' => $name, 'description' => $description, 'input_schema' => $input, 'output_schema' => ['type' => 'object'], 'required_permission' => $permission, 'company_scoped' => true, 'read_only' => true, 'audit_required' => false];
         return [
+            $tool('get_low_stock_facts','Current authoritative available stock below configured minimum or reorder threshold. Never a prediction.',['type'=>'object','properties'=>[]],'inventory.view'),
+            ...array_map(fn($name)=>$tool($name,'Read-only company opening controls and a bounded review preview. No raw source or operational mutation.',['type'=>'object','properties'=>['session_id'=>['type'=>'integer','minimum'=>1],'domain'=>['type'=>'string','enum'=>array_keys(\App\Services\Onboarding\OnboardingSchema::DOMAINS)]]],'onboarding.view'),['get_onboarding_status','get_import_review','get_onboarding_reconciliation']),
             ...array_map(fn($name)=>$tool($name,'Create an isolated hypothetical simulation run; no operational records or automations.',['type'=>'object','required'=>['name','horizon','assumptions'],'properties'=>['parent_id'=>['type'=>'integer','minimum'=>1],'name'=>['type'=>'string'],'description'=>['type'=>'string'],'horizon'=>['type'=>'integer','enum'=>[30,60,90,180,365]],'scope'=>['type'=>'array'],'assumptions'=>['type'=>'array'],'optimize'=>['type'=>'boolean']]],'analytics.finance'),['create_simulation_scenario','run_strategic_simulation']),
             ...array_map(fn($name)=>$tool($name,'Read or optimize isolated simulation evidence; never prepare real workflow drafts.',$id('simulation_id'),'analytics.finance'),['get_simulation_result','get_simulation_impact','get_simulation_bottlenecks','optimize_simulation_response','explain_simulation_result']),
             $tool('compare_simulations','Compare two to four frozen historical simulation runs.',['type'=>'object','required'=>['ids'],'properties'=>['ids'=>['type'=>'array']]],'analytics.finance'),

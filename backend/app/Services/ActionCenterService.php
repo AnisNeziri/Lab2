@@ -72,6 +72,12 @@ class ActionCenterService
             'issues'=>OperationalTask::whereIn('id',collect($tasks->items())->pluck('id'))->whereIn('priority',['high','urgent'])->count(),
         ]];
         $items=[];$intelligentProducts=[];
+        if($this->can('onboarding.view'))foreach(\App\Models\OnboardingSession::whereNotIn('status',['locked','cancelled'])->latest('id')->limit(10)->get() as $session){
+            foreach($session->rows()->active()->whereIn('status',['review','error','unvalidated','failed'])->selectRaw('domain,COUNT(*) as total')->groupBy('domain')->get() as $group)
+                $items[]=['kind'=>'onboarding','id'=>$session->id.'-'.$group->domain,'title'=>$session->name,'description'=>'Review opening source group','values'=>['source_rows'=>$group->total],'url'=>'/onboarding?session='.$session->id.'&domain='.$group->domain,'due_at'=>null];
+            $review=$session->review['dry_run']??($session->review['report']??null);
+            if(collect($review['blocking']??[])->contains(fn($code)=>str_starts_with($code,'source_total_')))$items[]=['kind'=>'onboarding','id'=>$session->id.'-totals','title'=>$session->name,'description'=>'Reconcile opening source totals','url'=>'/onboarding?session='.$session->id.'&step=2','due_at'=>null];
+        }
         if($this->can('shipments.view'))foreach(\App\Models\ShipmentIntelligence::where('is_current',true)->whereIn('risk',['CRITICAL','DELAYED','AT_RISK','WATCH'])->whereHas('shipment',fn($q)=>$q->whereNull('archived_at'))->latest('id')->limit(25)->get() as $r){
             $items[]=['kind'=>'shipment','id'=>'logistics-'.$r->shipment_id,'title'=>$r->evidence['reference'],'description'=>$r->evidence['reason'],
                 'values'=>['risk'=>$r->risk,'exposed_products'=>$this->can('inventory.view')?$r->impact['exposed_products']:null],

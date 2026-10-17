@@ -20,6 +20,7 @@ class EntityContextService
         'customer' => [Customer::class, ['customers.manage', 'debts.view', 'invoices.manage']],
         'purchase-order' => [PurchaseOrder::class, ['purchase_orders.view']],
         'warehouse' => [\App\Models\Warehouse::class, ['inventory.view']],
+        'goods-receipt' => [\App\Models\GoodsReceipt::class, ['transfers.view', 'purchase_orders.view']],
     ];
 
     public function __construct(private readonly PermissionService $permissions) {}
@@ -47,9 +48,41 @@ class EntityContextService
         return [
             'tasks'=>$this->permissions->roleHasPermission($role,'tasks.view') ? app(ActionCenterService::class)->tasks(['source_type'=>class_basename($entity),'source_id'=>$entity->id])->items() : [],
             'entity' => ['type' => $type, 'id' => $entity->getKey(), 'label' => $this->label($entity), 'unit' => $type==='product'?$entity->unit:null],
+            'corrections' => $this->corrections($type, $entity),
             'activity' => $events->concat($this->domainActivity($type, $entity))->concat($this->outboundActivity($type,$entity))->sortByDesc('occurred_at')->take(12)->values()->all(),
             'outbound' => in_array($type,['customer','product','warehouse'])&&$this->permissions->roleHasPermission($role,'fulfillment.view')?app(OutboundReportingService::class)->context($type,$id):null,
         ];
+    }
+
+    private function corrections(string $type, Model $entity): array
+    {
+        if (!in_array($type, ['purchase-order', 'goods-receipt'], true)) return [];
+        $can = fn (string $permission) => $this->permissions->roleHasPermission(Auth::user()->role, $permission);
+        $links = [];
+        $add = function (string $kind, string $reference, string $url) use (&$links) { $links[] = compact('kind', 'reference', 'url'); };
+        if ($type === 'purchase-order' && $can('purchase_orders.payments')) {
+            foreach ($entity->payments()->where('status', 'completed')->latest('id')->limit(5)->get() as $payment) {
+                $add('supplier_payment', $payment->reference_number ?: '#'.$payment->id, '/purchase-orders?po='.$entity->id.'&payment='.$payment->id);
+            }
+        }
+        $receipts = $type === 'goods-receipt' ? collect([$entity]) : \App\Models\GoodsReceipt::where('purchase_order_id', $entity->id)->latest('id')->limit(5)->get();
+        foreach ($receipts as $receipt) {
+            if ($can('inventory.view') && $can('returns.view') && $can('returns.manage') && $receipt->items()->where('accepted_base_quantity', '>', 0)->exists()) {
+                $add('receipt_return', $receipt->receipt_number, '/operations-center?tab=returns&receipt='.$receipt->id);
+            }
+            if ($can('inventory.view') && $can('landed_costs.manage')) {
+                foreach ($receipt->landedCosts()->where('status', 'posted')->latest('id')->limit(5)->get() as $cost) {
+                    $add('landed_cost', $cost->reference_number ?: '#'.$cost->id, '/operations-center?tab=landed&landed_cost='.$cost->id);
+                }
+            }
+        }
+        $orderId = $type === 'purchase-order' ? $entity->id : $entity->purchase_order_id;
+        if ($orderId && $can('finance.view') && $can('expenses.manage')) {
+            foreach (\App\Models\Expense::where('purchase_order_id', $orderId)->whereIn('status', ['draft', 'posted'])->latest('id')->limit(5)->get() as $expense) {
+                $add('expense', $expense->document_number ?: '#'.$expense->id, '/finance?expense='.$expense->id);
+            }
+        }
+        return $links;
     }
 
     private function outboundActivity(string $type,Model $entity):Collection

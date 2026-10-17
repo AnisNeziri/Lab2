@@ -13,6 +13,7 @@ class RolePermissionSeeder extends Seeder
     {
         $existingPermissionIds = Permission::pluck('id')->all();
         $permissions = [
+            ...array_map(fn($action) => ['name' => 'Onboarding '.ucfirst($action), 'slug' => 'onboarding.'.$action, 'group' => 'onboarding'], ['view','manage','review','approve','post','lock']),
             ...array_map(fn($slug)=>['name'=>'Documents '.str_replace('_',' ',$slug),'slug'=>'documents.'.$slug,'group'=>'documents'],['view','upload','update_metadata','new_version','archive','download','review','manage','confidential']),
             ['name'=>'View Fulfillment','slug'=>'fulfillment.view','group'=>'fulfillment'],
             ['name'=>'Manage Sales Orders and Allocation','slug'=>'fulfillment.manage','group'=>'fulfillment'],
@@ -119,7 +120,7 @@ class RolePermissionSeeder extends Seeder
         $roles = [
             'superadmin' => Permission::pluck('id')->all(),
             'admin' => Permission::pluck('id')->all(),
-            'manager' => Permission::whereNotIn('slug', ['users.manage', 'activity.view', 'cms.manage'])->pluck('id')->all(),
+            'manager' => Permission::whereNotIn('slug', ['users.manage', 'activity.view', 'cms.manage'])->where('slug', 'not like', 'onboarding.%')->pluck('id')->all(),
             'staff' => Permission::whereIn('slug', [
                 'documents.view', 'documents.upload', 'documents.download', 'documents.update_metadata',
                 'fulfillment.view', 'fulfillment.pick',

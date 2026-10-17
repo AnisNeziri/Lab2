@@ -249,7 +249,10 @@ class CustomerDebtService
                 ],
             ];
 
-            $corrected = $locked->type === 'payment'
+            if($locked->source==='onboarding_opening'||data_get($locked->metadata,'opening_position')){
+                $corrected=$this->record($customer,$replacement,$locked->type,$locked->type==='opening_balance',true);
+                app(AccountingService::class)->postCustomerDebt($corrected);
+            }else $corrected = $locked->type === 'payment'
                 ? $this->recordPayment($customer, $replacement)
                 : (in_array($locked->type, self::INCREASE_TYPES, true)
                     ? $this->addDebt($customer, $replacement, $locked->type)
@@ -259,10 +262,21 @@ class CustomerDebtService
         });
     }
 
-    private function record(Customer $customer, array $data, string $type, bool $increase): CustomerDebtTransaction
+    public function recordOpening(\App\Models\OnboardingSession $session, Customer $customer, array $data, bool $advance = false): CustomerDebtTransaction
     {
-        return DB::transaction(function () use ($customer, $data, $type, $increase) {
+        app(\App\Services\Onboarding\OnboardingGuard::class)->assertOpening($session);
+        return DB::transaction(function () use ($customer, $data, $advance) {
+            $entry = $this->record($customer, $data, $advance ? 'opening_advance' : 'opening_balance', !$advance, true);
+            app(AccountingService::class)->postCustomerDebt($entry);
+            return $entry;
+        });
+    }
+
+    private function record(Customer $customer, array $data, string $type, bool $increase, bool $opening = false, bool $openingReversal = false): CustomerDebtTransaction
+    {
+        return DB::transaction(function () use ($customer, $data, $type, $increase, $opening, $openingReversal) {
             $this->lockCompany();
+            app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational($data['transaction_date'] ?? null);
             $locked = Customer::query()->lockForUpdate()->findOrFail($customer->id);
             $amount = Money::normalize($data['amount']);
 
@@ -295,12 +309,21 @@ class CustomerDebtService
                 }
             }
 
-            if ($increase) {
+            if ($increase && !$opening && !$openingReversal) {
                 $data = $this->applyPaymentTerms($locked, $data);
             }
             $before = Money::normalize($locked->current_debt);
             $creditBefore = Money::normalize($locked->current_credit ?? '0.00');
-            if ($increase) {
+            if($openingReversal){
+                if(Money::compare($increase?$creditBefore:$before,$amount)<0)throw ValidationException::withMessages(['transaction'=>'This opening position has already been consumed. Reverse its settlements first or use a reviewed current-period adjustment.']);
+                $after=$increase?$before:Money::subtract($before,$amount);
+                $creditAfter=$increase?Money::subtract($creditBefore,$amount):$creditBefore;
+                $creditMetadata=['opening_reversal'=>true];
+            }elseif ($opening) {
+                $after = $increase ? Money::add($before, $amount) : $before;
+                $creditAfter = $increase ? $creditBefore : Money::add($creditBefore, $amount);
+                $creditMetadata = ['opening_position' => true];
+            } elseif ($increase) {
                 $creditApplied = Money::minimum($amount, $creditBefore);
                 $after = Money::add($before, Money::subtract($amount, $creditApplied));
                 $creditAfter = Money::subtract($creditBefore, $creditApplied);
@@ -513,6 +536,7 @@ class CustomerDebtService
         }
 
         $increase = ! in_array($transaction->type, self::INCREASE_TYPES, true);
+        $openingPosition=$transaction->source==='onboarding_opening'||(bool)data_get($transaction->metadata,'opening_position');
         $reversal = $this->record($transaction->customer, [
             'amount' => $transaction->amount,
             'transaction_date' => \App\Support\CompanyClock::today()->toDateString(),
@@ -521,7 +545,7 @@ class CustomerDebtService
             'reversed_transaction_id' => $transaction->id,
             'idempotency_key' => 'debt-reversal-'.$transaction->id,
             'metadata' => ['reverses_transaction_id' => $transaction->id, 'reason' => $reason],
-        ], $increase ? 'positive_adjustment' : 'cancellation', $increase);
+        ], $increase ? ($openingPosition?'opening_advance_reversal':'positive_adjustment') : 'cancellation', $increase, false,$openingPosition);
 
         if ($transaction->financial_account_transaction_id) {
             $ledger = \App\Models\FinancialAccountTransaction::query()->find($transaction->financial_account_transaction_id);

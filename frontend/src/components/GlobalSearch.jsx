@@ -17,6 +17,7 @@ import { openAimsAssistant } from './AskAimsButton'
 import { useSettingsStore } from '../store/settingsStore'
 
 const labels = {
+  onboarding_sessions:'Company openings',onboarding_batches:'Opening source batches',
   automations:'Automations', tasks:'Tasks', decisions:'Decisions',
   order_hub:'Orders',
   documents: 'Documents',
@@ -33,6 +34,7 @@ const commandIcon = path => {
   return ({ sales: Users, inventory: Package, purchasing: Truck, shipments: Ship, finance: Landmark, intelligence: Activity, operations: ClipboardList, settings: Activity })[group] || Command
 }
 labelsSq.decisions = 'Vendimet'
+labelsSq.onboarding_sessions='Hapjet e kompanisë';labelsSq.onboarding_batches='Grupet burimore të hapjes'
 
 export default function GlobalSearch({ onNavigate }) {
   const { t, language } = useTranslation()

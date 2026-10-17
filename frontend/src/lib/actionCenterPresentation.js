@@ -6,6 +6,8 @@ export function attentionPreview(items=[],now=Date.now()) {
 }
 export function attentionDescription(item,language='en') {
  const labels={
+  'Review opening source group':['Review grouped opening source rows','Shqyrto grupin e rreshtave burimorë të hapjes'],
+  'Reconcile opening source totals':['Reconcile opening source totals','Rakordo totalet burimore të hapjes'],
   'Review incoming delivery risk':['Review incoming delivery risk','Rishiko rrezikun e furnizimit në ardhje'],
   'Review qualified candidate':['Review a qualified delivery forecast','Rishiko një parashikim të kualifikuar të dorëzimit'],
   'Review enterprise decision':['Review the recommended stock action','Rishiko veprimin e rekomanduar për stokun'],

@@ -16,6 +16,7 @@ export const navigationGroups = [
 ]
 
 navigationGroups.find(g => g.id === 'settings').items.push(item('pilot',null,'ClipboardList',{en:'Company pilot',sq:'Piloti i kompanisë',roles:['admin']}))
+navigationGroups.find(g => g.id === 'settings').items.unshift(item('onboarding',null,'ClipboardList',{en:'Company opening',sq:'Hapja e kompanisë',allPermissions:['onboarding.view']}))
 
 // Finance evidence is intentionally not exposed to inventory-only roles.
 navigationGroups.find(g => g.id === 'intelligence').items.splice(3, 0,
