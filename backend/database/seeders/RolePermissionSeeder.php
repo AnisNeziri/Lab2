@@ -61,6 +61,7 @@ class RolePermissionSeeder extends Seeder
             ['name' => 'Confirm Bank Reconciliation', 'slug' => 'bank_reconciliation.confirm', 'group' => 'finance'],
             ['name' => 'View Accounting Reports', 'slug' => 'accounting.reports.view', 'group' => 'accounting'],
             ['name' => 'View General Ledger', 'slug' => 'accounting.journal.view', 'group' => 'accounting'],
+            ['name' => 'Allocate customer settlements', 'slug' => 'accounting.ar.allocate', 'group' => 'accounting'],
             ['name' => 'Create Manual Journals', 'slug' => 'accounting.journal.create', 'group' => 'accounting'],
             ['name'=>'Acknowledge Manual Control Adjustments','slug'=>'accounting.journal.controlled','group'=>'accounting'],
             ['name'=>'Post Soft Close Adjustments','slug'=>'accounting.periods.adjust','group'=>'accounting'],
@@ -127,7 +128,7 @@ class RolePermissionSeeder extends Seeder
             'accountant' => Permission::whereIn('slug',[
                 'dashboard.view','finance.view','finance.export','analytics.view','analytics.finance','reports.view',
                 'accounting.reports.view','accounting.journal.view','accounting.journal.create','accounting.journal.post','accounting.journal.reverse',
-                'accounting.accounts.manage','accounting.periods.manage','accounting.periods.close','accounting.periods.reopen','accounting.periods.adjust','accounting.integrity.view',
+                'accounting.ar.allocate','accounting.accounts.manage','accounting.periods.manage','accounting.periods.close','accounting.periods.reopen','accounting.periods.adjust','accounting.integrity.view',
                 'financial_accounts.view','financial_accounts.manage','financial_accounts.adjust','bank_reconciliation.view','bank_reconciliation.manage','bank_reconciliation.confirm',
                 'supplier_invoices.view','supplier_invoices.manage','supplier_invoices.approve','supplier_invoices.post','expenses.manage',
                 'purchase_orders.view','purchase_orders.payments','suppliers.manage','customers.manage','debts.view','debts.payments','debts.adjust','debts.export',

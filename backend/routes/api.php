@@ -461,6 +461,12 @@ Route::middleware('auth.token')->group(function () {
             Route::put('/quality/score-weights', [QualityController::class, 'scoreWeights'])->middleware('permission:quality.templates.manage');
             Route::prefix('accounting')->group(function () {
                 Route::post('/initialize', [AccountingController::class, 'initialize'])->middleware('permission:accounting.settings.manage');
+                Route::get('/ap/aging', [AccountingController::class, 'payableAging'])->middleware('permission:finance.view');
+                Route::get('/ap/suppliers/{supplier}/workbench', [AccountingController::class, 'supplierWorkbench'])->middleware('permission:supplier_invoices.view');
+                Route::get('/ar/customers/{customer}/statement', [AccountingController::class, 'customerStatement'])->middleware('permission:debts.view');
+                Route::get('/ar/customers/{customer}/settlements', [AccountingController::class, 'arSettlements'])->middleware('permission:debts.view');
+                Route::post('/ar/payments/{transaction}/allocate', [AccountingController::class, 'allocateCustomerPayment'])->middleware(['permission:debts.view', 'permission:accounting.ar.allocate']);
+                Route::post('/ar/allocations/{allocation}/release', [AccountingController::class, 'releaseCustomerAllocation'])->middleware(['permission:debts.view', 'permission:accounting.ar.allocate']);
                 Route::get('/control-center', [AccountingController::class, 'controlCenter'])->middleware('permission:accounting.reports.view');
                 Route::get('/overview', [AccountingController::class, 'overview'])->middleware('permission:accounting.reports.view');
                 Route::get('/accounts', [AccountingController::class, 'accounts'])->middleware('permission:accounting.journal.view');
@@ -602,13 +608,14 @@ Route::middleware('auth.token')->group(function () {
             Route::get('/finance/expenses/{expense}/attachment', [ExpenseController::class, 'downloadAttachment'])->middleware('permission:finance.view');
             Route::delete('/finance/expenses/{expense}/attachment', [ExpenseController::class, 'deleteAttachment'])->middleware('permission:expenses.manage');
 
+            Route::post('/supplier-payment-allocation-requests/{allocationRequest}/reverse', [SupplierInvoiceController::class, 'reverseAllocation'])->whereNumber('allocationRequest')->middleware(['permission:supplier_invoices.manage','permission:purchase_orders.payments']);
             Route::get('/supplier-invoices', [SupplierInvoiceController::class, 'index'])->middleware('permission:supplier_invoices.view');
             Route::post('/supplier-invoices', [SupplierInvoiceController::class, 'store'])->middleware('permission:supplier_invoices.manage');
             Route::get('/supplier-invoices/{supplierInvoice}', [SupplierInvoiceController::class, 'show'])->middleware('permission:supplier_invoices.view');
             Route::put('/supplier-invoices/{supplierInvoice}', [SupplierInvoiceController::class, 'update'])->middleware('permission:supplier_invoices.manage');
             Route::post('/supplier-invoices/{supplierInvoice}/recalculate', [SupplierInvoiceController::class, 'recalculate'])->middleware('permission:supplier_invoices.manage');
             Route::post('/supplier-invoices/{supplierInvoice}/allocate-payment', [SupplierInvoiceController::class, 'allocatePayment'])->middleware('permission:supplier_invoices.manage');
-            Route::post('/supplier-invoices/{supplierInvoice}/approve', [SupplierInvoiceController::class, 'approve'])->middleware('permission:supplier_invoices.approve');
+            Route::post('/supplier-invoices/{supplierInvoice}/approve', [SupplierInvoiceController::class, 'approve'])->middleware(['permission:supplier_invoices.approve','permission:supplier_invoices.post']);
 
             Route::get('/finance/accounts', [FinancialAccountController::class, 'index'])->middleware('permission:financial_accounts.view');
             Route::get('/finance/posting-accounts', [FinancialAccountController::class, 'postingAccounts'])->middleware('permission:financial_accounts.adjust');

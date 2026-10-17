@@ -26,6 +26,7 @@ use App\Models\Product;
 use App\Models\PurchaseOrderPayment;
 use App\Models\StockMovement;
 use App\Services\Onboarding\OnboardingGuard;
+use App\Support\CompanyClock;
 use App\Support\CompanyCurrency;
 use App\Support\Money;
 use Carbon\CarbonImmutable;
@@ -271,7 +272,7 @@ class AccountingService
                 return $existing->load('lines.account');
             }$currency = strtoupper($data['currency'] ?? CompanyCurrency::forCompanyId($company));
             $rate = Money::normalizeDecimal($data['exchange_rate'] ?? 1, 8);
-            $entry = JournalEntry::create(['company_id' => $company, 'journal_number' => $this->nextNumber(), 'posting_date' => $data['posting_date'], 'reference_number' => $data['reference_number'] ?? null, 'description' => $data['description'], 'source_module' => $module, 'source_type' => $data['source_type'] ?? null, 'source_id' => $data['source_id'] ?? null, 'source_key' => $sourceKey, 'currency' => $currency, 'exchange_rate' => $rate, 'status' => 'draft', 'created_by' => Auth::id()]);
+            $entry = JournalEntry::create(['company_id' => $company, 'journal_number' => $this->nextNumber(), 'posting_date' => $data['posting_date'], 'reference_number' => $data['reference_number'] ?? null, 'description' => $data['description'], 'source_module' => $module, 'source_type' => $data['source_type'] ?? null, 'source_id' => $data['source_id'] ?? null, 'source_key' => $sourceKey, 'currency' => $currency, 'exchange_rate' => $rate, 'exchange_rate_date' => $data['exchange_rate_date'] ?? null, 'exchange_rate_source' => $data['exchange_rate_source'] ?? null, 'status' => 'draft', 'created_by' => Auth::id()]);
             foreach ($data['lines'] as $i => $line) {
                 $account = AccountingAccount::query()->findOrFail($line['accounting_account_id']);
                 if (! $account->is_active || ! $account->is_posting) {
@@ -325,8 +326,8 @@ class AccountingService
                 return $entry->reversal;
             }if ($entry->status !== 'posted') {
                 throw ValidationException::withMessages(['journal' => ['Only a posted journal can be reversed.']]);
-            }$reverse = $this->createDraft(['posting_date' => $date, 'reference_number' => 'REV-'.$entry->journal_number, 'description' => 'Reversal: '.$reason, 'source_module' => 'accounting', 'source_type' => 'journal_entry', 'source_id' => $entry->id, 'source_key' => 'reversal:'.$entry->id, 'currency' => $entry->currency, 'exchange_rate' => $entry->exchange_rate, 'lines' => $entry->lines->map(fn ($l) => ['accounting_account_id' => $l->accounting_account_id, 'description' => 'Reversal: '.$l->description, 'debit' => $l->credit, 'credit' => $l->debit, 'foreign_debit' => $l->foreign_credit, 'foreign_credit' => $l->foreign_debit])->all()]);
-            $reverse->update(['reversal_of_id' => $entry->id]);
+            }$reverse = $this->createDraft(['posting_date' => $date, 'reference_number' => 'REV-'.$entry->journal_number, 'description' => 'Reversal: '.$reason, 'source_module' => 'accounting', 'source_type' => 'journal_entry', 'source_id' => $entry->id, 'source_key' => 'reversal:'.$entry->id, 'currency' => $entry->currency, 'exchange_rate' => $entry->exchange_rate, 'lines' => $entry->lines->map(fn ($l) => ['accounting_account_id' => $l->accounting_account_id, 'description' => 'Reversal: '.$l->description, 'debit' => $l->credit, 'credit' => $l->debit, 'foreign_debit' => $l->foreign_credit, 'foreign_credit' => $l->foreign_debit, 'dimensions' => $l->dimensions])->all()]);
+            $reverse->update(['reversal_of_id' => $entry->id, 'exchange_rate_date' => $entry->exchange_rate_date, 'exchange_rate_source' => $entry->exchange_rate_source]);
             $reverse = $this->post($reverse);
             $entry->update(['status' => 'reversed', 'reversed_by' => Auth::id(), 'reversed_at' => now(), 'reversal_reason' => $reason]);
             $this->audit('accounting.journal_reversed', $entry, null, ['reversal_journal_id' => $reverse->id, 'reason' => $reason]);
@@ -336,7 +337,7 @@ class AccountingService
         });
     }
 
-    public function postMapped(string $module, string $sourceType, int $sourceId, string $sourceKey, string $date, string $description, array $lines, string $currency = 'EUR', mixed $rate = 1): JournalEntry
+    public function postMapped(string $module, string $sourceType, int $sourceId, string $sourceKey, string $date, string $description, array $lines, string $currency = 'EUR', mixed $rate = 1, array $rateSnapshot = []): JournalEntry
     {
         $required = collect($lines)->pluck('mapping')->filter()->unique();
         $configured = AccountingPostingMapping::query()->whereIn('mapping_key', $required)->count();
@@ -354,7 +355,7 @@ class AccountingService
             return ['accounting_account_id' => $mapping->accounting_account_id, ...$line];
         }, $lines);
 
-        return $this->createAndPost(['posting_date' => $date, 'description' => $description, 'source_module' => $module, 'source_type' => $sourceType, 'source_id' => $sourceId, 'source_key' => $sourceKey, 'currency' => $currency, 'exchange_rate' => $rate, 'lines' => $resolved]);
+        return $this->createAndPost(['posting_date' => $date, 'description' => $description, 'source_module' => $module, 'source_type' => $sourceType, 'source_id' => $sourceId, 'source_key' => $sourceKey, 'currency' => $currency, 'exchange_rate' => $rate, 'exchange_rate_date' => $rateSnapshot['date'] ?? null, 'exchange_rate_source' => $rateSnapshot['source'] ?? null, 'lines' => $resolved]);
     }
 
     public function postCustomerDebt(CustomerDebtTransaction $transaction): JournalEntry
@@ -426,7 +427,7 @@ class AccountingService
             $lines[] = ['mapping' => 'input_vat', $creditNote ? 'credit' : 'debit' => $deductible];
         }
         $lines[] = ['mapping' => 'accounts_payable', $creditNote ? 'debit' : 'credit' => $gross];
-        $entry = $this->postMapped('supplier_accounting', 'expense', $expense->id, 'expense:'.$expense->id, $expense->invoice_date->toDateString(), 'Supplier document '.$expense->document_number, $lines, $expense->currency, $expense->exchange_rate);
+        $entry = $this->postMapped('supplier_accounting', 'expense', $expense->id, 'expense:'.$expense->id, $expense->invoice_date->toDateString(), 'Supplier document '.$expense->document_number, $lines, $expense->currency, $expense->exchange_rate, ['date' => $expense->exchange_rate_date, 'source' => $expense->exchange_rate_source]);
         if (! $creditNote) {
             app(BusinessEventService::class)->record('supplier.payable_recognized', $expense, $expense->document_number, ['journal_entry_id' => $entry->id, 'amount' => $gross], "supplier-payable:{$expense->id}");
         }
@@ -449,7 +450,7 @@ class AccountingService
             $lines[] = ['mapping' => 'fx_loss', 'debit' => $difference];
         } elseif (Money::compare($difference, '0') < 0) {
             $lines[] = ['mapping' => 'fx_gain', 'credit' => Money::normalize(abs((float) $difference))];
-        }$entry = $this->postMapped('supplier_accounting', 'expense_payment', $payment->id, 'expense-payment:'.$payment->id, $payment->payment_date->toDateString(), 'Supplier payment '.$expense->document_number, $lines, $expense->currency, $payment->exchange_rate);
+        }$entry = $this->postMapped('supplier_accounting', 'expense_payment', $payment->id, 'expense-payment:'.$payment->id, $payment->payment_date->toDateString(), 'Supplier payment '.$expense->document_number, $lines, $expense->currency, $payment->exchange_rate, ['date' => $payment->exchange_rate_date, 'source' => $payment->exchange_rate_source]);
         if ($payment->financial_account_transaction_id) {
             FinancialAccountTransaction::query()->whereKey($payment->financial_account_transaction_id)->update(['journal_entry_id' => $entry->id]);
         }
@@ -666,7 +667,7 @@ class AccountingService
                 $this->resolveException($key);
             }
         }
-        foreach (JournalEntry::query()->where('status', 'posted')->whereNotNull('source_id')->select('source_module', 'source_type', 'source_id', DB::raw('COUNT(*) posting_count'))->groupBy('source_module', 'source_type', 'source_id')->havingRaw('COUNT(*) > 1')->get() as $duplicate) {
+        foreach (JournalEntry::query()->where('status', 'posted')->where('source_type', '!=', 'supplier_payment_allocation')->whereNotNull('source_id')->select('source_module', 'source_type', 'source_id', DB::raw('COUNT(*) posting_count'))->groupBy('source_module', 'source_type', 'source_id')->havingRaw('COUNT(*) > 1')->get() as $duplicate) {
             $key = "duplicate-posting:{$duplicate->source_module}:{$duplicate->source_type}:{$duplicate->source_id}";
             $this->exception($key, 'duplicate_source_posting', 'critical', 'More than one active journal exists for the same operational source.', ['source_type' => $duplicate->source_type, 'source_id' => $duplicate->source_id, 'posting_count' => $duplicate->posting_count, 'recoverable' => false]);
         }
@@ -702,38 +703,21 @@ class AccountingService
     public function reconciliation(bool $recordExceptions = true): array
     {
         $invoiceDebt = Invoice::query()->where('document_type', 'invoice')->whereIn('status', ['issued', 'partially_paid', 'paid'])->whereNull('daily_sale_id')
-            ->whereNotIn('id', CustomerDebtTransaction::query()->whereNotNull('invoice_id')->select('invoice_id'))->get()
-            ->sum(fn ($invoice) => max(0, (float) $invoice->remaining_balance));
-        $ar = round((float) Customer::query()->sum('current_debt') + $invoiceDebt, 2);
+            ->whereDoesntHave('debtTransactions')->sum(DB::raw('CASE WHEN (CASE WHEN grand_total>total_amount THEN grand_total ELSE total_amount END)>total_paid THEN (CASE WHEN grand_total>total_amount THEN grand_total ELSE total_amount END)-total_paid ELSE 0 END'));
+        $ar = round((float) Customer::query()->sum('current_debt') + (float) $invoiceDebt, 2);
         $customerAdvances = round((float) Customer::query()->sum('current_credit'), 2);
-        $ap = round((float) Expense::query()->where('status', 'posted')->whereIn('document_type', ['purchase_invoice', 'opening_balance'])->get()->sum(fn ($expense) => (float) $expense->remaining_amount * (float) ($expense->exchange_rate ?: 1)), 2);
-        $supplierAdvances = round((float) PurchaseOrderPayment::query()->where('status', 'completed')->with('allocations:id,purchase_order_payment_id,amount')->get()->sum(fn ($payment) => (float) $payment->unallocated_amount * (float) ($payment->exchange_rate ?: 1)), 2);
-        $inventory = Money::decimal(Product::query()->get()->sum(function ($product) {
-            if ($product->inventory_value !== null) {
-                return Money::minor($product->inventory_value);
-            }$cost = $product->weighted_average_cost ?? $product->purchase_price;
-
-            return $cost === null ? 0 : Money::minor(Money::multiply($product->quantity, $cost, 6));
-        }));
+        $ap = round((float) app(PayableReports::class)->positions('9999-12-31')->sum('base_outstanding'), 2);
+        $allocated = DB::table('supplier_invoice_payment_allocations')->where('company_id', Auth::user()->company_id)->selectRaw('purchase_order_payment_id,SUM(amount) amount')->groupBy('purchase_order_payment_id');
+        $supplierAdvances = round((float) PurchaseOrderPayment::query()->where('status', 'completed')->leftJoinSub($allocated, 'a', 'a.purchase_order_payment_id', '=', 'purchase_order_payments.id')
+            ->sum(DB::raw('(purchase_order_payments.amount-COALESCE(a.amount,0))*COALESCE(purchase_order_payments.exchange_rate,1)')), 2);
+        $inventory = (float) Product::query()->sum(DB::raw('ROUND(COALESCE(inventory_value,quantity*COALESCE(weighted_average_cost,purchase_price,0)),2)'));
         $baseCurrency = CompanyCurrency::forCompanyId((int) Auth::user()->company_id);
-        $cash = round((float) FinancialAccount::query()->get()->sum(function ($account) use ($baseCurrency) {
-            if ($account->currency !== $baseCurrency) {
-                return $account->transactions()->where('status', 'posted')->get()->sum(function ($transaction) {
-                    if (! $transaction->exchange_rate) {
-                        return 0;
-                    }$sign = in_array($transaction->type, ['inflow', 'transfer_in', 'adjustment_in', 'refund_in'], true) ? 1 : -1;
-
-                    return $sign * (float) $transaction->amount * (float) $transaction->exchange_rate;
-                });
-            }$in = $account->transactions()->where('status', 'posted')->whereIn('type', ['inflow', 'transfer_in', 'adjustment_in', 'refund_in'])->sum('amount');
-            $out = $account->transactions()->where('status', 'posted')->whereIn('type', ['outflow', 'transfer_out', 'adjustment_out', 'refund_out'])->sum('amount');
-
-            return (float) $account->opening_balance + (float) $in - (float) $out;
-        })
+        $cashTransactions = FinancialAccountTransaction::query()->where('status', 'posted')->selectRaw("COALESCE(SUM((CASE WHEN type IN ('inflow','transfer_in','adjustment_in','refund_in') THEN 1 ELSE -1 END)*amount*(CASE WHEN currency=? THEN 1 ELSE COALESCE(exchange_rate,0) END)),0) amount", [$baseCurrency])->value('amount');
+        $cash = round((float) FinancialAccount::query()->where('currency', $baseCurrency)->sum('opening_balance') + (float) $cashTransactions
             + (float) DailySale::query()->whereDoesntHave('outboundDispatch', fn ($q) => $q->whereHas('order', fn ($o) => $o->where('payment_type', '!=', 'cash')))->sum('total_amount')
             - (float) FinancialAccountTransaction::query()->where('source_type', 'daily_sale')->where('status', 'posted')->whereIn('type', ['inflow', 'transfer_in'])->sum('amount')
             + (float) PaymentTransaction::query()->where('status', 'completed')->whereNull('financial_account_id')->sum('amount')
-            + (float) CustomerDebtTransaction::query()->where('type', 'payment')->whereNull('financial_account_id')->sum('amount')
+            + (float) CustomerDebtTransaction::query()->where('type', 'payment')->whereNull('financial_account_id')->whereDoesntHave('reversals')->sum('amount')
             - (float) ExpensePayment::query()->where('status', 'completed')->whereNull('financial_account_id')->sum('amount_eur')
             - (float) PurchaseOrderPayment::query()->where('status', 'completed')->whereNull('financial_account_id')->whereNull('onboarding_session_id')->sum('amount_eur'), 2);
         $rows = [
@@ -894,6 +878,6 @@ class AccountingService
 
     private function audit(string $action, object $entity, mixed $old, mixed $new): void
     {
-        ActivityLog::create(['company_id' => Auth::user()->company_id, 'user_id' => Auth::id(), 'action' => $action, 'entity' => class_basename($entity), 'entity_id' => $entity->id, 'description' => str_replace('.',' ',$action), 'old_value' => $old, 'new_value' => $new, 'ip_address' => request()?->ip()]);
+        ActivityLog::create(['company_id' => Auth::user()->company_id, 'user_id' => Auth::id(), 'action' => $action, 'entity' => class_basename($entity), 'entity_id' => $entity->id, 'description' => str_replace('.', ' ', $action), 'old_value' => $old, 'new_value' => $new, 'ip_address' => request()?->ip()]);
     }
 }

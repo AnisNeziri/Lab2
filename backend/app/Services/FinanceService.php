@@ -203,84 +203,9 @@ class FinanceService
         ];
     }
 
-    public function receivablesAging(string $asOf): array
+    public function receivablesAging(string $asOf, array $filters = []): array
     {
-        $date = CarbonImmutable::parse($asOf)->startOfDay();
-        $rows = collect();
-        $invoices = Invoice::query()->with(['payments', 'creditNotes'])
-            ->whereNull('daily_sale_id')
-            ->where('document_type', 'invoice')->whereNotNull('issued_at')
-            ->whereDate('invoice_date', '<=', $asOf)->get();
-        foreach ($invoices as $invoice) {
-            if ($invoice->voided_at && CarbonImmutable::parse($invoice->voided_at)->startOfDay()->lessThanOrEqualTo($date)) {
-                continue;
-            }
-            $paidAsOf = $invoice->payments->sum(function (PaymentTransaction $payment) use ($date) {
-                if (! $payment->payment_date || CarbonImmutable::parse($payment->payment_date)->startOfDay()->greaterThan($date)) {
-                    return 0.0;
-                }
-                if ($payment->reversed_at && CarbonImmutable::parse($payment->reversed_at)->startOfDay()->lessThanOrEqualTo($date)) {
-                    return 0.0;
-                }
-
-                return (float) $payment->amount;
-            });
-            $creditsAsOf = $invoice->creditNotes->sum(fn (Invoice $credit) => $credit->issued_at
-                && CarbonImmutable::parse($credit->issued_at)->startOfDay()->lessThanOrEqualTo($date)
-                && ! ($credit->voided_at && CarbonImmutable::parse($credit->voided_at)->startOfDay()->lessThanOrEqualTo($date))
-                    ? (float) $credit->grand_total : 0.0);
-            $outstanding = round(max(0, (float) $invoice->grand_total - $paidAsOf - $creditsAsOf), 2);
-            if ($outstanding <= 0.005) {
-                continue;
-            }
-            $due = $invoice->due_at ? CarbonImmutable::parse($invoice->due_at) : CarbonImmutable::parse($invoice->invoice_date);
-            $days = $due->lessThan($date) ? $due->diffInDays($date) : 0;
-            $bucket = match (true) {
-                $days === 0 => 'current',
-                $days <= 30 => 'days_1_30',
-                $days <= 60 => 'days_31_60',
-                $days <= 90 => 'days_61_90',
-                default => 'days_90_plus',
-            };
-            $rows->push([
-                'source' => 'invoice', 'invoice_id' => $invoice->id, 'invoice_number' => $invoice->invoice_number,
-                'customer_id' => $invoice->customer_id, 'customer_name' => $invoice->buyer_snapshot['legal_name'] ?? $invoice->customer_name,
-                'invoice_date' => $invoice->invoice_date?->toDateString(), 'issued_at' => $invoice->issued_at?->toDateString(),
-                'due_date' => $invoice->due_at?->toDateString(), 'days_overdue' => $days,
-                'outstanding' => round($outstanding, 2), 'bucket' => $bucket,
-            ]);
-        }
-
-        $ledgerBalances = CustomerDebtTransaction::query()->whereNull('invoice_id')
-            ->whereDate('transaction_date', '<=', $asOf)->orderBy('transaction_date')->orderBy('id')->get()
-            ->groupBy('customer_id')->map(function (Collection $transactions) {
-                $increase = ['debt_added', 'positive_adjustment', 'opening_balance'];
-
-                return round((float) $transactions->sum(fn ($row) => in_array($row->type, $increase, true) ? (float) $row->amount : -(float) $row->amount), 2);
-            })->filter(fn (float $balance) => $balance > 0.005);
-        $ledgerTotal = round((float) $ledgerBalances->sum(), 2);
-
-        $buckets = ['current' => 0.0, 'days_1_30' => 0.0, 'days_31_60' => 0.0, 'days_61_90' => 0.0, 'days_90_plus' => 0.0];
-        foreach ($rows as $row) {
-            $buckets[$row['bucket']] = round($buckets[$row['bucket']] + (float) $row['outstanding'], 2);
-        }
-        $invoiceTotal = round((float) $rows->sum('outstanding'), 2);
-        $overdue = round($buckets['days_1_30'] + $buckets['days_31_60'] + $buckets['days_61_90'] + $buckets['days_90_plus'], 2);
-
-        return [
-            'summary' => [
-                'total_outstanding' => round($invoiceTotal + $ledgerTotal, 2),
-                'invoice_outstanding' => $invoiceTotal,
-                'separate_debt_ledger_outstanding' => $ledgerTotal,
-                'overdue_total' => $overdue,
-                'overdue_count' => $rows->where('days_overdue', '>', 0)->count(),
-                'open_count' => $rows->count(),
-            ],
-            'aging_buckets' => $buckets,
-            'receivables' => $rows->sortByDesc('days_overdue')->values()->all(),
-            'note' => 'Separate Borxhet ledger balances are included only in the summary and are not duplicated as invoice rows.',
-            'as_of' => $asOf,
-        ];
+        return app(ReceivableReports::class)->aging($asOf, $filters);
     }
 
     public function vatWorkbook(string $from, string $to, string $locale = 'bilingual'): string

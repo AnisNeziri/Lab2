@@ -51,6 +51,7 @@ const emptyOrder = () => ({
   items: [emptyLine()],
 });
 const emptyPayment = () => ({
+  exchange_rate: "", exchange_rate_date: today(), exchange_rate_source: "",
   amount: "",
   expense_id: "",
   payment_date: today(),
@@ -456,6 +457,9 @@ export default function PurchaseOrders() {
       await recordPurchaseOrderPayment(selected.id, {
         ...payment,
         amount: Number(payment.amount),
+        exchange_rate: selected.currency === "EUR" ? null : Number(payment.exchange_rate),
+        exchange_rate_date: selected.currency === "EUR" ? null : payment.exchange_rate_date,
+        exchange_rate_source: selected.currency === "EUR" ? null : payment.exchange_rate_source.trim(),
         expense_id: payment.expense_id ? Number(payment.expense_id) : null,
         financial_account_id: payment.financial_account_id ? Number(payment.financial_account_id) : undefined,
         reference_number: payment.reference_number || null,
@@ -913,6 +917,11 @@ export default function PurchaseOrders() {
                 }
               />
             </label>
+            {selected.currency !== "EUR" && <>
+              <label>{t("po.exchangeRate")}<input required type="number" min="0.000001" step="0.000001" value={payment.exchange_rate} onChange={e=>setPayment({...payment,exchange_rate:e.target.value})}/></label>
+              <label>{t("po.exchangeRateDate")}<input required type="date" max={payment.payment_date} value={payment.exchange_rate_date} onChange={e=>setPayment({...payment,exchange_rate_date:e.target.value})}/></label>
+              <label>{t("po.exchangeRateSource")}<input required value={payment.exchange_rate_source} onChange={e=>setPayment({...payment,exchange_rate_source:e.target.value})}/></label>
+            </>}
             <label>
               {t("po.paymentMethod")}
               <select

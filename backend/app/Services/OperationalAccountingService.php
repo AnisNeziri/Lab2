@@ -243,24 +243,24 @@ class OperationalAccountingService
             [
                 ['mapping' => 'supplier_advances', 'debit' => $amount],
                 $this->settlementLine($payment->financial_account_id, $this->cashMapping($payment->payment_method), 'credit', $amount),
-            ], $payment->currency, $payment->exchange_rate,
+            ], $payment->currency, $payment->exchange_rate, ['date'=>$payment->exchange_rate_date,'source'=>$payment->exchange_rate_source],
         );
         $this->linkFinancialTransaction($payment->financial_account_transaction_id, $entry);
         return $entry;
     }
 
-    public function postSupplierAdvanceApplication(SupplierInvoicePaymentAllocation $allocation, string $sourceKey): JournalEntry
+    public function postSupplierAdvanceApplication(SupplierInvoicePaymentAllocation $allocation, string $sourceKey, mixed $increment): JournalEntry
     {
-        $allocation->loadMissing(['payment', 'expense']);
-        $baseAmount = Money::multiply($allocation->amount, $allocation->payment->exchange_rate ?: 1);
-        return $this->accounting->postMapped(
-            'supplier_accounting', 'supplier_payment_allocation', $allocation->id, $sourceKey,
-            $allocation->allocated_at->toDateString(), 'Apply supplier advance to '.$allocation->expense->document_number,
-            [
-                ['mapping' => 'accounts_payable', 'debit' => $baseAmount],
-                ['mapping' => 'supplier_advances', 'credit' => $baseAmount],
-            ], $allocation->payment->currency, $allocation->payment->exchange_rate,
-        );
+        $allocation->loadMissing(['payment','expense']);
+        $advance=Money::multiply($increment,$allocation->payment->exchange_rate?:1);
+        $payable=Money::multiply($increment,$allocation->expense->exchange_rate?:1);
+        $lines=[['mapping'=>'accounts_payable','debit'=>$payable],['mapping'=>'supplier_advances','credit'=>$advance]];
+        $difference=Money::subtract($advance,$payable);
+        if(Money::compare($difference,0)>0)$lines[]=['mapping'=>'fx_loss','debit'=>$difference];
+        elseif(Money::compare($difference,0)<0)$lines[]=['mapping'=>'fx_gain','credit'=>Money::subtract(0,$difference)];
+        return $this->accounting->postMapped('supplier_accounting','supplier_payment_allocation',$allocation->id,$sourceKey,
+            $allocation->allocated_at->toDateString(),'Apply supplier advance to '.$allocation->expense->document_number,
+            $lines,$allocation->payment->currency,$allocation->payment->exchange_rate,['date'=>$allocation->payment->exchange_rate_date,'source'=>$allocation->payment->exchange_rate_source]);
     }
 
     public function postInventoryReturnRefund(InventoryReturn $return): JournalEntry

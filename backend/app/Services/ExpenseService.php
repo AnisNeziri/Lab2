@@ -127,7 +127,7 @@ class ExpenseService
         DB::transaction(function () use ($expense) {
             $expense = Expense::query()->lockForUpdate()->findOrFail($expense->id);
             $this->ensureDraft($expense);
-            if ($expense->payments()->exists() || $expense->purchaseOrderPaymentAllocations()->exists()) {
+            if ($expense->payments()->exists() || $expense->purchaseOrderPaymentAllocations()->where('amount','>',0)->exists()) {
                 throw ValidationException::withMessages(['expense' => ['A draft with payments cannot be deleted.']]);
             }
             $expense->update([
@@ -168,11 +168,15 @@ class ExpenseService
         });
     }
 
-    public function post(Expense $expense): Expense
+    public function post(Expense $expense, bool $supplierApproval = false): Expense
     {
-        return DB::transaction(function () use ($expense) {
+        return DB::transaction(function () use ($expense, $supplierApproval) {
+            DB::table('companies')->where('id', Auth::user()->company_id)->lockForUpdate()->first();
             app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational($expense->invoice_date?->toDateString());
             $expense = Expense::query()->lockForUpdate()->findOrFail($expense->id);
+            if (!$supplierApproval && $expense->supplierInvoiceItems()->exists()) {
+                throw ValidationException::withMessages(['supplier_invoice'=>'Review and approve this bill through Supplier Invoices before posting.']);
+            }
             if ($expense->status === 'posted') {
                 return $this->find($expense);
             }
@@ -209,7 +213,7 @@ class ExpenseService
                 throw ValidationException::withMessages(['expense' => ['Only a posted expense can be reversed.']]);
             }
             if ($expense->payments()->where('status', 'completed')->exists()
-                || $expense->purchaseOrderPaymentAllocations()->exists()
+                || $expense->purchaseOrderPaymentAllocations()->where('amount','>',0)->exists()
                 || $expense->supplierCredits()->exists()) {
                 throw ValidationException::withMessages(['expense' => ['Reverse active payments before reversing this expense.']]);
             }
@@ -237,6 +241,7 @@ class ExpenseService
             if ($expense->currency !== 'EUR' && (Money::compareDecimal($paymentRate, '0') <= 0 || empty($data['exchange_rate_date']) || blank($data['exchange_rate_source'] ?? null))) {
                 throw ValidationException::withMessages(['exchange_rate' => ['A foreign-currency payment requires its payment-date EUR rate, date and source.']]);
             }
+            if($expense->currency!=='EUR'&&($data['exchange_rate_date']??'')>$data['payment_date'])throw ValidationException::withMessages(['exchange_rate_date'=>'A historical payment cannot use a later exchange-rate date.']);
             if (! empty($data['idempotency_key'])) {
                 $existing = ExpensePayment::query()->where('idempotency_key', $data['idempotency_key'])->first();
                 if ($existing) {
@@ -372,6 +377,7 @@ class ExpenseService
         if ($currency !== 'EUR' && ($rate <= 0 || empty($data['exchange_rate_date']) || blank($data['exchange_rate_source'] ?? null))) {
             throw ValidationException::withMessages(['exchange_rate' => ['Non-EUR expenses require a positive EUR conversion rate, rate date and source.']]);
         }
+        if($currency!=='EUR'&&$data['exchange_rate_date']>$data['invoice_date'])throw ValidationException::withMessages(['exchange_rate_date'=>'A historical bill cannot use a later exchange-rate date.']);
         $net = round((float) $data['net_amount'], 2);
         $vat = round((float) $data['vat_amount'], 2);
         $vatRate = (float) $data['vat_rate'];

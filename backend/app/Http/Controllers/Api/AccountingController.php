@@ -6,14 +6,23 @@ use App\Http\Controllers\Controller;
 use App\Models\AccountingAccount;
 use App\Models\AccountingException;
 use App\Models\AccountingPeriod;
+use App\Models\Customer;
+use App\Models\CustomerDebtTransaction;
+use App\Models\CustomerSettlementAllocation;
 use App\Models\JournalEntry;
+use App\Models\Supplier;
 use App\Services\AccountingJournalExperience;
 use App\Services\AccountingRecoveryService;
 use App\Services\AccountingReportQueries;
 use App\Services\AccountingService;
+use App\Services\CustomerSettlementService;
 use App\Services\FinancialControlService;
 use App\Services\ManualJournalService;
+use App\Services\PayableReports;
 use App\Services\PermissionService;
+use App\Services\ReceivableReports;
+use App\Support\CompanyClock;
+use App\Support\CompanyCurrency;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -27,6 +36,21 @@ class AccountingController extends Controller
         $dates = $this->dates($r);
 
         return response()->json(app(FinancialControlService::class)->summary($dates['from'] ?? null, $dates['to'] ?? null));
+    }
+
+    public function arSettlements(Customer $customer): JsonResponse
+    {
+        return response()->json(app(CustomerSettlementService::class)->workbench($customer));
+    }
+
+    public function allocateCustomerPayment(Request $r, CustomerDebtTransaction $transaction): JsonResponse
+    {
+        return response()->json(app(CustomerSettlementService::class)->allocate($transaction, $r->all()));
+    }
+
+    public function releaseCustomerAllocation(Request $r, CustomerSettlementAllocation $allocation): JsonResponse
+    {
+        return response()->json(app(CustomerSettlementService::class)->release($allocation, $r->all()));
     }
 
     public function initialize(): JsonResponse
@@ -225,6 +249,25 @@ class AccountingController extends Controller
         $d = $r->validate(['entity_type' => 'required|string', 'entity_id' => 'required|integer|min:1']);
 
         return response()->json(app(AccountingJournalExperience::class)->sourceLinks($d['entity_type'], $d['entity_id']));
+    }
+
+    public function customerStatement(Request $r, Customer $customer): JsonResponse
+    {
+        $d = $r->validate(['from' => 'required|date', 'to' => 'required|date|after_or_equal:from', 'currency' => 'nullable|string|size:3', 'page' => 'nullable|integer|min:1']);
+
+        return response()->json(app(ReceivableReports::class)->statement($customer, $d['from'], $d['to'], $d['currency'] ?? CompanyCurrency::current()));
+    }
+
+    public function payableAging(Request $r): JsonResponse
+    {
+        $d = $r->validate(['as_of' => 'nullable|date', 'supplier_id' => 'nullable|integer|min:1', 'currency' => 'nullable|string|size:3', 'page' => 'nullable|integer|min:1']);
+
+        return response()->json(app(PayableReports::class)->aging($d['as_of'] ?? CompanyClock::today()->toDateString(), $d));
+    }
+
+    public function supplierWorkbench(Supplier $supplier): JsonResponse
+    {
+        return response()->json(app(PayableReports::class)->workbench($supplier));
     }
 
     private function dates(Request $r): array

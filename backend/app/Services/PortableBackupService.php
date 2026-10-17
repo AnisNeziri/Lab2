@@ -66,7 +66,7 @@ class PortableBackupService
             'supplier_quotes', 'supplier_quote_items', 'procurement_awards',
         ],
         'daily_sales' => ['daily_sales_days', 'daily_sales', 'daily_sale_items'],
-        'customer_debts' => ['customer_debts', 'customer_debt_entries', 'customers', 'customer_debt_transactions'],
+        'customer_debts' => ['customer_debts', 'customer_debt_entries', 'customers', 'customer_debt_transactions', 'customer_settlement_allocations', 'customer_allocation_requests'],
         'finance' => [
             'financial_intelligence_snapshots','financial_intelligence_observations','financial_intelligence_policies',
             'accounting_accounts', 'accounting_periods', 'accounting_posting_mappings',
@@ -113,6 +113,7 @@ class PortableBackupService
         'journal_entries', 'journal_lines', 'accounting_exceptions', 'accounting_recovery_attempts',
         'financial_accounts', 'invoice_profiles', 'invoice_sequences', 'invoices', 'invoice_items', 'payment_transactions',
         'expenses', 'expense_payments', 'customer_debt_entries', 'customer_debt_transactions',
+        'customer_settlement_allocations', 'customer_allocation_requests',
         'purchase_orders', 'purchase_order_items', 'purchase_order_payments', 'purchase_order_changes', 'procurement_awards',
         'supplier_invoice_payment_allocations',
         'supplier_payment_allocation_requests',
@@ -975,6 +976,19 @@ class PortableBackupService
         unset($row['id']);
         $columns = collect(Schema::getColumns($table))->reject(fn (array $column) => $column['generation'] !== null)->pluck('name')->flip();
         $row = array_intersect_key($row, $columns->all());
+        if ($table === 'customer_allocation_requests') {
+            $ids = json_decode((string) $row['result'], true, 512, JSON_THROW_ON_ERROR);
+            $row['result'] = json_encode(array_map(function ($id) use ($idMap) {
+                $mapped = $idMap['customer_settlement_allocations'][(string) $id] ?? null;
+                if (! $mapped) {
+                    throw ValidationException::withMessages(['file' => 'A customer allocation audit link could not be restored.']);
+                }
+
+                return $mapped;
+            }, $ids), JSON_THROW_ON_ERROR);
+            // Preserved historical request is not replayable with installation-specific IDs.
+            $row['fingerprint'] = hash('sha256', 'restored:'.$companyId.':'.$row['fingerprint']);
+        }
         if ($table === 'onboarding_sessions') {
             // Backup artifacts are installation-private and deliberately non-recursive.
             $row['pre_backup_id'] = null; $row['post_backup_id'] = null;
@@ -1403,7 +1417,7 @@ class PortableBackupService
             $keys = filled($values['idempotency_key'] ?? null) ? ['company_id', 'idempotency_key'] : [];
         } elseif ($table === 'purchase_order_payments') {
             $keys = filled($values['idempotency_key'] ?? null) ? ['company_id', 'idempotency_key'] : [];
-        } elseif ($table === 'supplier_payment_allocation_requests') {
+        } elseif (in_array($table, ['supplier_payment_allocation_requests', 'customer_allocation_requests'], true)) {
             $keys = filled($values['idempotency_key'] ?? null) ? ['company_id', 'idempotency_key'] : [];
         } elseif ($table === 'landed_costs') {
             $keys = filled($values['idempotency_key'] ?? null) ? ['company_id', 'idempotency_key'] : [];
@@ -1557,6 +1571,9 @@ class PortableBackupService
             }
         }
 
+        if (! empty($data['customer_settlement_allocations']) && DB::table('customer_settlement_allocations')->where('company_id', $companyId)->exists()) {
+            throw ValidationException::withMessages(['mode' => 'Customer allocation history requires a complete Replace restore when allocation history already exists.']);
+        }
         $unsafeLedgers = [
             'stock_movements' => 'idempotency_key',
             'customer_debt_transactions' => 'idempotency_key',
@@ -1564,6 +1581,7 @@ class PortableBackupService
             'purchase_order_payments' => 'idempotency_key',
             'expense_payments' => 'idempotency_key',
             'supplier_payment_allocation_requests' => 'idempotency_key',
+            'customer_allocation_requests' => 'idempotency_key',
         ];
         foreach ($unsafeLedgers as $table => $key) {
             $containsUnkeyedRows = collect($data[$table] ?? [])->contains(fn (array $row) => ! filled($row[$key] ?? null));

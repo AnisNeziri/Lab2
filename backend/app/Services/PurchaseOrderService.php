@@ -240,10 +240,14 @@ class PurchaseOrderService
     public function pay(PurchaseOrder $order, array $data): PurchaseOrder
     {
         return DB::transaction(function () use ($order, $data) {
+            DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
             $order = PurchaseOrder::query()->lockForUpdate()->findOrFail($order->id);
             if ($order->status === 'cancelled') {
                 throw ValidationException::withMessages(['status' => ['Cancelled orders cannot receive payments.']]);
             }
+            $base=CompanyCurrency::forCompanyId($order->company_id);
+            $paymentRate=$order->currency===$base?'1.000000':Money::normalizeDecimal($data['exchange_rate']??0,6);
+            if($order->currency!==$base&&(Money::compareDecimal($paymentRate,0)<=0||empty($data['exchange_rate_date'])||blank($data['exchange_rate_source']??null)||$data['exchange_rate_date']>$data['payment_date']))throw ValidationException::withMessages(['exchange_rate'=>'A foreign supplier payment requires its historical base-currency rate, rate date and source.']);
             $existing = PurchaseOrderPayment::where('company_id', $order->company_id)->where('idempotency_key', $data['idempotency_key'])->first();
             if ($existing) {
                 $requestedExpenseId = (int) ($data['expense_id'] ?? 0);
@@ -255,6 +259,9 @@ class PurchaseOrderService
                     && $existing->status === 'completed'
                     && Money::compare($existing->amount, $data['amount']) === 0
                     && $existing->payment_date?->toDateString() === (string) $data['payment_date']
+                    && Money::compareDecimal($existing->exchange_rate,$paymentRate)===0
+                    && ($existing->exchange_rate_date?->toDateString()??'')===($data['exchange_rate_date']??'')
+                    && ($existing->exchange_rate_source??'')===($data['exchange_rate_source']??'')
                     && $existing->payment_method === $data['payment_method']
                     && ($existing->reference_number ?? '') === ($data['reference_number'] ?? '')
                     && ($existing->note ?? '') === ($data['note'] ?? '')
@@ -283,8 +290,10 @@ class PurchaseOrderService
                 'user_id' => Auth::id(),
                 'amount' => $amount,
                 'currency' => $order->currency,
-                'exchange_rate' => $order->exchange_rate ?: 1,
-                'amount_eur' => Money::multiply($amount, $order->exchange_rate ?: 1),
+                'exchange_rate' => $paymentRate,
+                'exchange_rate_date'=>$order->currency===$base?null:$data['exchange_rate_date'],
+                'exchange_rate_source'=>$order->currency===$base?null:trim($data['exchange_rate_source']),
+                'amount_eur' => Money::multiply($amount, $paymentRate),
                 'status' => 'completed',
                 'payment_date' => $data['payment_date'],
                 'payment_method' => $data['payment_method'],
@@ -297,7 +306,7 @@ class PurchaseOrderService
             ]);
             if (! empty($data['financial_account_id'])) {
                 $ledger = $this->financialAccounts->post((int) $data['financial_account_id'], [
-                    'type' => 'outflow', 'amount' => Money::multiply($amount, $order->exchange_rate ?: 1),
+                    'type' => 'outflow', 'amount' => Money::multiply($amount, $paymentRate),
                     'transaction_date' => $data['payment_date'], 'source_type' => 'purchase_order_payment',
                     'source_id' => $payment->id, 'counterparty' => $order->supplier?->name,
                     'reference_number' => $data['reference_number'] ?? null,

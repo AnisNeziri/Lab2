@@ -11,6 +11,7 @@ use App\Models\PurchaseOrderPayment;
 use App\Models\Supplier;
 use App\Models\SupplierInvoiceItem;
 use App\Models\SupplierMatchEvent;
+use App\Support\Money;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -34,8 +35,12 @@ class SupplierInvoiceMatchingService
             $query->where(fn ($q) => $q->where('document_number', 'like', "%{$search}%")
                 ->orWhere('vendor_name', 'like', "%{$search}%"));
         }
-        if (! empty($filters['match_status'])) $query->where('match_status', $filters['match_status']);
-        if (! empty($filters['supplier_id'])) $query->where('supplier_id', $filters['supplier_id']);
+        if (! empty($filters['match_status'])) {
+            $query->where('match_status', $filters['match_status']);
+        }
+        if (! empty($filters['supplier_id'])) {
+            $query->where('supplier_id', $filters['supplier_id']);
+        }
 
         return $query->latest('invoice_date')->latest('id')->paginate($filters['per_page'] ?? 20);
     }
@@ -43,13 +48,17 @@ class SupplierInvoiceMatchingService
     public function show(Expense $expense): Expense
     {
         abort_unless($expense->supplier_id && $expense->document_type === 'purchase_invoice', 404);
-        return $expense->load([
+        $expense = $expense->load([
             'supplier', 'purchaseOrder.items.product', 'goodsReceipts.items.product',
             'supplierInvoiceItems.product', 'supplierInvoiceItems.purchaseOrderItem',
             'supplierInvoiceItems.goodsReceiptItem', 'matchEvents' => fn ($q) => $q->with('user:id,name')->latest('id'),
             'payments', 'purchaseOrderPaymentAllocations.payment',
             'purchaseOrder.payments' => fn ($query) => $query->with('allocations')->oldest('payment_date')->oldest('id'),
         ]);
+        $expense->setAttribute('allocation_history', DB::table('supplier_payment_allocation_requests')->where('company_id', $expense->company_id)->where('expense_id', $expense->id)->orderByDesc('id')->limit(100)->get());
+        $expense->syncOriginalAttribute('allocation_history');
+
+        return $expense;
     }
 
     public function create(array $data): Expense
@@ -65,7 +74,7 @@ class SupplierInvoiceMatchingService
             $expenseData = $data;
             unset($expenseData['items'], $expenseData['goods_receipt_ids'], $expenseData['supplier_id'], $expenseData['purchase_order_id']);
             $expenseData['vendor_name'] = $expenseData['vendor_name'] ?: $supplier->name;
-            $expense = $this->expenses->create($expenseData);
+            $expense = $this->expenses->create($expenseData)->fresh();
             $expense->update([
                 'supplier_id' => $supplier->id, 'purchase_order_id' => $po?->id,
                 'match_status' => 'unmatched', 'updated_by' => Auth::id(),
@@ -105,7 +114,7 @@ class SupplierInvoiceMatchingService
             $this->validateDocumentTotals($data);
             $expenseData = $data;
             unset($expenseData['items'], $expenseData['goods_receipt_ids'], $expenseData['supplier_id'], $expenseData['purchase_order_id']);
-            $updated = $this->expenses->update($locked, $expenseData);
+            $updated = $this->expenses->update($locked, $expenseData)->fresh();
             $updated->update(['supplier_id' => $supplier->id, 'purchase_order_id' => $po?->id]);
             $this->syncReceipts($updated, $data['goods_receipt_ids'] ?? [], $po);
             $this->replaceLines($updated, $data['items'], $po);
@@ -127,6 +136,7 @@ class SupplierInvoiceMatchingService
             if ($old !== $locked->only(['match_status', 'match_summary'])) {
                 $this->event($locked, 'recalculated', $old, $locked->only(['match_status', 'match_summary']));
             }
+
             return $this->show($locked->fresh());
         });
     }
@@ -134,19 +144,26 @@ class SupplierInvoiceMatchingService
     public function approve(Expense $expense, ?string $reason): Expense
     {
         return DB::transaction(function () use ($expense, $reason) {
+            DB::table('companies')->where('id', Auth::user()->company_id)->lockForUpdate()->first();
             $locked = Expense::query()->lockForUpdate()->findOrFail($expense->id);
             $this->recalculate($locked);
             $locked->refresh();
-            if ($locked->approved_at) return $this->show($locked);
+            if ($locked->approved_at) {
+                return $this->show($locked);
+            }
             if (in_array($locked->match_status, ['exception', 'unmatched'], true) && blank($reason)) {
                 throw ValidationException::withMessages(['reason' => ['Explain why this supplier invoice can be approved despite matching exceptions.']]);
             }
-            if ($locked->status === 'draft') $this->expenses->post($locked);
+            if ($locked->status === 'draft') {
+                $this->expenses->post($locked, true);
+            }
             $locked->refresh()->update([
                 'match_status' => 'approved', 'approved_at' => now(), 'approved_by' => Auth::id(),
                 'match_summary' => [...($locked->match_summary ?? []), 'approved_exception_reason' => $reason],
             ]);
+            $this->paymentAllocations->autoAllocateForInvoice($locked->fresh());
             $this->event($locked, 'approved', null, $locked->only(['match_status', 'approved_at', 'approved_by']), $reason);
+
             return $this->show($locked->fresh());
         });
     }
@@ -237,22 +254,43 @@ class SupplierInvoiceMatchingService
             $expectedVat = round((float) $line->net_amount * (float) $line->vat_rate / 100, 2);
             $taxVariance = round((float) $line->vat_amount - $expectedVat, 2);
             $issues = [];
-            if (! $poItem) $issues[] = 'invoice_line_without_po';
-            if ($poItem && $received <= $quantityTolerance) $issues[] = 'invoice_without_receipt';
-            if ($poItem && $received > $ordered + $quantityTolerance) $issues[] = 'receipt_exceeds_po';
-            if ($quantityVariance > $quantityTolerance) $issues[] = 'invoiced_quantity_exceeds_received';
-            if (abs($priceVariance) > $priceTolerance) $issues[] = 'unit_price_variance';
-            if (abs($taxVariance) > $taxTolerance) $issues[] = 'tax_variance';
-            if ($issues) $hasException = true;
-            if ($poItem && $received + $quantityTolerance < $ordered) $hasPartial = true;
-            $variance = compact('ordered', 'received', 'otherInvoiced', 'invoiced', 'quantityVariance', 'priceVariance', 'taxVariance', 'issues');
+            if (! $poItem) {
+                $issues[] = 'invoice_line_without_po';
+            }
+            if ($poItem && $received <= $quantityTolerance) {
+                $issues[] = 'invoice_without_receipt';
+            }
+            if ($poItem && $received > $ordered + $quantityTolerance) {
+                $issues[] = 'receipt_exceeds_po';
+            }
+            if ($quantityVariance > $quantityTolerance) {
+                $issues[] = 'invoiced_quantity_exceeds_received';
+            }
+            if (abs($priceVariance) > $priceTolerance) {
+                $issues[] = 'unit_price_variance';
+            }
+            if (abs($taxVariance) > $taxTolerance) {
+                $issues[] = 'tax_variance';
+            }
+            if ($issues) {
+                $hasException = true;
+            }
+            if ($poItem && $received + $quantityTolerance < $ordered) {
+                $hasPartial = true;
+            }
+            $priceVarianceTotal = Money::multiply((string) $priceVariance, (string) $invoiced);
+            $matchFlags = array_values(array_filter([! $poItem ? 'NO_PO' : null, $poItem && $received <= $quantityTolerance ? 'NO_RECEIPT' : null, $quantityVariance > $quantityTolerance ? 'QUANTITY_VARIANCE' : null, abs($priceVariance) > $priceTolerance ? 'PRICE_VARIANCE' : null]));
+            $variance = ['priceVarianceTotal' => $priceVarianceTotal, 'matchFlags' => $matchFlags, ...compact('ordered', 'received', 'otherInvoiced', 'invoiced', 'quantityVariance', 'priceVariance', 'taxVariance', 'issues')];
             $line->update(['variance' => $variance]);
             $lines[] = ['line_id' => $line->id, ...$variance];
         }
         $status = ! $expense->purchase_order_id ? 'unmatched' : ($hasException ? 'exception' : ($hasPartial ? 'partially_matched' : 'matched'));
+
         return [
             'status' => $status, 'calculated_at' => now()->toIso8601String(), 'lines' => $lines,
             'tolerances' => ['quantity' => $quantityTolerance, 'unit_price' => $priceTolerance, 'tax' => $taxTolerance],
+            'match_label' => ! $expense->purchase_order_id ? 'NO_PO' : ($hasException ? 'NEEDS_REVIEW' : ($hasPartial ? 'PARTIAL_MATCH' : 'MATCHED')),
+            'price_variance_total' => Money::normalize(collect($lines)->sum('priceVarianceTotal')),
             'ordered_total' => round((float) ($expense->purchaseOrder?->total_amount ?? 0), 2),
             'invoice_total' => round((float) $expense->gross_amount, 2),
         ];

@@ -24,6 +24,30 @@ class PortableBackupTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_dc2_customer_allocations_restore_with_remapped_links_and_non_replayable_historical_requests(): void
+    {
+        $this->actingAsApiUser();
+        Auth::setUser(User::where('company_id',$this->apiCompany->id)->firstOrFail());
+        app(\App\Services\AccountingService::class)->initialize();
+        $customer=\App\Models\Customer::create($this->tenantAttributes(['name'=>'Allocated customer','current_debt'=>0,'current_credit'=>0]));
+        $service=app(\App\Services\CustomerDebtService::class);
+        $debt=$service->addDebt($customer,['amount'=>100,'transaction_date'=>'2026-09-01','idempotency_key'=>'backup-debt']);
+        $payment=$service->recordPayment($customer,['amount'=>40,'transaction_date'=>'2026-09-02','payment_method'=>'cash','idempotency_key'=>'backup-payment']);
+        app(\App\Services\CustomerSettlementService::class)->allocate($payment,['idempotency_key'=>'backup-allocation','allocation_date'=>'2026-09-03','reason'=>'Reviewed allocation for backup.','allocations'=>[['debt_transaction_id'=>$debt->id,'amount'=>40]]]);
+        $fingerprint=DB::table('customer_allocation_requests')->value('fingerprint');
+        $contents=$this->plainBackup($this->apiCompany,['customer_debts','finance']);
+        $target=$this->switchToNewCompany();
+        $this->post('/api/backup/import',['file'=>UploadedFile::fake()->createWithContent('dc2-allocations.json',$contents),'mode'=>'merge'])->assertOk();
+        $restored=DB::table('customer_settlement_allocations')->where('company_id',$target->id)->first();
+        $this->assertNotNull($restored);
+        foreach(['settlement_transaction_id','debt_transaction_id'] as $key)$this->assertSame($target->id,DB::table('customer_debt_transactions')->where('id',$restored->{$key})->value('company_id'));
+        $request=DB::table('customer_allocation_requests')->where('company_id',$target->id)->first();
+        $this->assertSame([$restored->id],json_decode($request->result,true));
+        $this->assertNotSame($fingerprint,$request->fingerprint);
+        $this->post('/api/backup/import',['file'=>UploadedFile::fake()->createWithContent('dc2-allocations-again.json',$contents),'mode'=>'merge'])->assertUnprocessable();
+        $this->assertSame(1,DB::table('customer_settlement_allocations')->where('company_id',$target->id)->count());
+    }
+
     public function test_pre_onboarding_full_archive_restores_and_clears_new_cutover_markers(): void
     {
         $this->actingAsApiUser();

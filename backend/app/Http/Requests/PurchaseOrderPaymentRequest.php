@@ -17,6 +17,9 @@ class PurchaseOrderPaymentRequest extends FormRequest
         return [
             'amount' => ['required', 'numeric', 'decimal:0,2', 'min:0.01'],
             'payment_date' => ['required', 'date'],
+            'exchange_rate'=>'nullable|numeric|gt:0|max:1000000',
+            'exchange_rate_date'=>'nullable|date|before_or_equal:payment_date',
+            'exchange_rate_source'=>'nullable|string|max:255',
             'payment_method' => ['required', Rule::in(['cash', 'bank_transfer', 'card', 'cheque', 'other'])],
             'reference_number' => ['nullable', 'string', 'max:255'],
             'note' => ['nullable', 'string', 'max:2000'],
