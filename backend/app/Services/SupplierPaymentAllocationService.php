@@ -26,10 +26,12 @@ class SupplierPaymentAllocationService
         return DB::transaction(function () use ($payment, $expense, $amount, $reason, $idempotencyKey): SupplierInvoicePaymentAllocation {
             $expense = Expense::query()->lockForUpdate()->findOrFail($expense->id);
             $payment = PurchaseOrderPayment::query()->lockForUpdate()->findOrFail($payment->id);
+            $openingAdvance=$payment->onboarding_session_id && !$payment->purchase_order_id
+                && (int)$payment->supplier_id>0 && (int)$payment->supplier_id===(int)$expense->supplier_id;
             if ((int) $payment->company_id !== (int) $expense->company_id
-                || (int) $payment->purchase_order_id !== (int) $expense->purchase_order_id
+                || (!$openingAdvance && (int) $payment->purchase_order_id !== (int) $expense->purchase_order_id)
                 || $payment->status !== 'completed'
-                || $expense->document_type !== 'purchase_invoice'
+                || !in_array($expense->document_type, ['purchase_invoice','opening_balance'], true)
                 || $expense->status === 'reversed') {
                 throw ValidationException::withMessages(['expense_id' => ['Choose an active supplier invoice from the same Purchase Order.']]);
             }

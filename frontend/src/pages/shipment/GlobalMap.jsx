@@ -176,6 +176,8 @@ export default function GlobalMap() {
                 {selected.imo ? <div><dt>IMO</dt><dd>{selected.imo}</dd></div> : null}
                 {selected.purchase_order_number ? <div><dt>{t('shipments.purchaseOrder')}</dt><dd>{selected.purchase_order_number}</dd></div> : null}
                 <div><dt>{t('tracking.global.lastUpdate')}</dt><dd title={formatDate(selected.position_updated_at)}>{relativeAisTime(selected.position_updated_at, t)}</dd></div>
+                <div><dt>{language==='sq'?'Burimi / ofruesi':'Provider/source'}</dt><dd>{selected.tracking_provider||selected.provider||selected.source||(language==='sq'?'I panjohur':'Unknown')}</dd></div>
+                <div><dt>{language==='sq'?'Saktësia e pozicionit':'Position evidence'}</dt><dd>{selected.position_updated_at?(language==='sq'?'Pozicioni i fundit i verifikuar':'Last verified position'):(language==='sq'?'Pozicioni aktual nuk është i disponueshëm.':'Current position unavailable.')}</dd></div>
                 <div><dt>{t('tracking.global.positionData')}</dt><dd>{aisPositionLabel(selected, t)}</dd></div>
               </dl>
             </>

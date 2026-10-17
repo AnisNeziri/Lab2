@@ -77,6 +77,7 @@ class ExpenseService
     public function create(array $data): Expense
     {
         return DB::transaction(function () use ($data) {
+            app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational($data['invoice_date']??null);
             try {
                 $expense = Expense::create([
                     ...$this->prepare($data),
@@ -138,9 +139,39 @@ class ExpenseService
         });
     }
 
+    public function recordOpeningPayable(\App\Models\OnboardingSession $session, \App\Models\Supplier $supplier, array $data): Expense
+    {
+        app(\App\Services\Onboarding\OnboardingGuard::class)->assertOpening($session);
+        abort_unless((int)$supplier->company_id===(int)$session->company_id,404);
+        return DB::transaction(function () use ($session, $supplier, $data) {
+            $number = 'OPEN-'.$session->id.'-'.$data['row_id'];
+            $existing = Expense::where('document_type', 'opening_balance')->where('document_number', $number)->first();
+            if ($existing) return $existing;
+            $amount = Money::normalize($data['amount']);
+            $expense = Expense::create([
+                'company_id' => $session->company_id, 'supplier_id' => $supplier->id,
+                'vendor_name' => $supplier->name, 'vendor_key' => hash('sha256','supplier:'.$supplier->id),
+                'document_type' => 'opening_balance', 'source_type' => 'opening',
+                'document_number' => $number, 'document_number_normalized' => $number,
+                'description' => 'Opening supplier statement: '.$data['reference'], 'category' => 'opening',
+                'invoice_date' => $session->cutover_date->toDateString(), 'received_date' => $session->cutover_date->toDateString(), 'due_date' => ($data['due_date'] ?? '') ?: null,
+                'currency' => $session->currency, 'exchange_rate' => '1', 'exchange_rate_source' => 'base_currency',
+                'net_amount' => $amount, 'gross_amount' => $amount, 'net_amount_eur' => $amount, 'gross_amount_eur' => $amount,
+                'vat_rate' => 0, 'vat_amount' => 0, 'vat_amount_eur' => 0, 'deductible_vat_amount' => 0, 'deductible_vat_amount_eur' => 0,
+                'non_deductible_vat_amount' => 0, 'non_deductible_vat_amount_eur' => 0, 'input_vat_eligible' => false,
+                'vat_treatment' => 'out_of_scope', 'status' => 'posted', 'posted_at' => now(), 'posted_by' => Auth::id(),
+                'created_by' => Auth::id(), 'updated_by' => Auth::id(),
+                'notes' => 'Onboarding '.$session->public_id.'; source row '.$data['row_id'].'. This is an opening position, not a historical invoice.',
+            ]);
+            $this->accounting->postExpense($expense);
+            return $expense;
+        });
+    }
+
     public function post(Expense $expense): Expense
     {
         return DB::transaction(function () use ($expense) {
+            app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational($expense->invoice_date?->toDateString());
             $expense = Expense::query()->lockForUpdate()->findOrFail($expense->id);
             if ($expense->status === 'posted') {
                 return $this->find($expense);

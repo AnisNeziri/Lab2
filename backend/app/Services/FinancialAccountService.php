@@ -38,9 +38,26 @@ class FinancialAccountService
             ->all();
     }
 
+    public function recordOpening(\App\Models\OnboardingSession $session, array $data, ?int $accountId = null): FinancialAccount
+    {
+        app(\App\Services\Onboarding\OnboardingGuard::class)->assertOpening($session);
+        return DB::transaction(function () use ($session, $data, $accountId) {
+            $values = ['name' => $data['name'], 'type' => $data['type'], 'currency' => $session->currency, 'opening_balance' => $data['amount'], 'opening_date' => $session->cutover_date->toDateString(), 'is_active' => true];
+            if (!$accountId) return $this->createAccount($values);
+            $account = FinancialAccount::lockForUpdate()->findOrFail($accountId);
+            if ($account->transactions()->exists() || Money::compare($account->opening_balance, '0') !== 0) throw \Illuminate\Validation\ValidationException::withMessages(['account' => 'Use an unused zero-balance account for an opening position.']);
+            $account->update($values);
+            $this->accounting->ensureFinancialAccount($account);
+            $this->accounting->postFinancialOpening($account);
+            $this->audit('financial_account.opening', $account, null, ['session_id' => $session->id, 'amount' => $data['amount']]);
+            return $account->fresh();
+        });
+    }
+
     public function createAccount(array $data): FinancialAccount
     {
         return DB::transaction(function () use ($data) {
+            app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational($data['opening_date'] ?? null);
             $account = FinancialAccount::create([
                 ...$data,
                 'company_id' => Auth::user()->company_id,
@@ -57,8 +74,14 @@ class FinancialAccountService
     public function updateAccount(FinancialAccount $account, array $data): FinancialAccount
     {
         return DB::transaction(function () use ($account, $data) {
+            app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational();
             $locked = FinancialAccount::query()->lockForUpdate()->findOrFail($account->id);
             $old = $locked->toArray();
+            if (\App\Models\OnboardingRow::where('posted_entity_type', 'financial_accounts')->where('posted_entity_id', $locked->id)->whereNotNull('posted_at')->exists()) {
+                $changedAmount = array_key_exists('opening_balance', $data) && Money::compare($data['opening_balance'], $locked->opening_balance) !== 0;
+                $changedDate = array_key_exists('opening_date', $data) && substr((string) $data['opening_date'], 0, 10) !== $locked->opening_date?->toDateString();
+                if ($changedAmount || $changedDate) throw ValidationException::withMessages(['opening_balance' => 'This opening is part of approved onboarding. Record a dated money-account adjustment with a reason instead of rewriting the opening.']);
+            }
             if (array_key_exists('opening_balance', $data) && $locked->transactions()->exists()) {
                 unset($data['opening_balance'], $data['opening_date']);
             }
@@ -87,6 +110,7 @@ class FinancialAccountService
     public function post(FinancialAccount|int $account, array $data): FinancialAccountTransaction
     {
         return DB::transaction(function () use ($account, $data) {
+            app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational($data['transaction_date'] ?? null);
             $accountId = $account instanceof FinancialAccount ? $account->id : $account;
             $locked = FinancialAccount::query()->lockForUpdate()->findOrFail($accountId);
             if (! $locked->is_active) {

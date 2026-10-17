@@ -91,7 +91,7 @@ async function main() {
       fail(`private development data was bundled: ${file}`)
     }
   }
-  for (const required of [php, python, path.join(backend, 'ml', 'forecast.py'), path.join(backend, 'artisan'), path.join(backend, 'vendor', 'autoload.php')]) {
+  for (const required of [php, python, path.join(backend, 'ml', 'forecast.py'), path.join(backend, 'artisan'), path.join(backend, 'scripts', 'verify-onboarding-restore.php'), path.join(backend, 'vendor', 'autoload.php')]) {
     if (!fs.existsSync(required)) fail(`required bundled resource is missing: ${required}`)
   }
   validateFrontend()

@@ -24,6 +24,36 @@ class PortableBackupTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_pre_onboarding_full_archive_restores_and_clears_new_cutover_markers(): void
+    {
+        $this->actingAsApiUser();
+        $source = $this->apiCompany;
+        $this->makeProduct($source, 'PRE-DC1', 'Previous full archive');
+        $modules = array_values(array_diff(array_keys(PortableBackupService::MODULES), ['onboarding']));
+        $archive = json_decode($this->plainBackup($source, $modules), true, 512, JSON_THROW_ON_ERROR);
+        unset($archive['manifest']['onboarding_contract'], $archive['manifest']['company']['operational_cutover_date']);
+        $contents = $this->resignArchive($archive);
+        $target = $this->switchToNewCompany();
+        $target->update(['operational_cutover_date' => '2026-01-01']);
+        \App\Models\OnboardingSession::create(['company_id' => $target->id, 'public_id' => (string) Str::uuid(), 'name' => 'Superseded destination draft', 'expected_totals' => [], 'source_period' => 'Synthetic', 'cutover_date' => '2026-01-01', 'timezone' => 'UTC', 'currency' => 'EUR', 'status' => 'draft', 'stage' => 'company', 'revision' => 0]);
+        $this->post('/api/backup/import', ['file' => UploadedFile::fake()->createWithContent('pre-onboarding.json', $contents), 'mode' => 'replace', 'confirm_replace' => '1'])->assertOk()->assertJsonCount(1, 'warnings');
+        $this->assertDatabaseHas('products', ['company_id' => $target->id, 'sku' => 'PRE-DC1']);
+        $this->assertNull($target->fresh()->operational_cutover_date);
+        $this->assertSame(0, \App\Models\OnboardingSession::where('company_id', $target->id)->count());
+    }
+
+    public function test_current_archive_without_onboarding_is_selective_and_cannot_replace_company(): void
+    {
+        $this->actingAsApiUser();
+        $source = $this->apiCompany;
+        $modules = array_values(array_diff(array_keys(PortableBackupService::MODULES), ['onboarding']));
+        $contents = $this->plainBackup($source, $modules);
+        $target = $this->switchToNewCompany();
+        $this->makeProduct($target, 'KEEP-DC1', 'Preserved destination');
+        $this->post('/api/backup/import', ['file' => UploadedFile::fake()->createWithContent('current-selective.json', $contents), 'mode' => 'replace', 'confirm_replace' => '1'])->assertUnprocessable();
+        $this->assertDatabaseHas('products', ['company_id' => $target->id, 'sku' => 'KEEP-DC1']);
+    }
+
     public function test_customer_sales_history_restores_archived_without_promoting_or_replaying_predictions(): void
     {
         $this->actingAsApiUser();$source=$this->apiCompany;

@@ -190,7 +190,7 @@ jobs:
         with:
           php-version: '8.3.35'
           tools: composer:2.9.8
-          extensions: bcmath, curl, openssl, zip, mbstring, dom, fileinfo, pdo_mysql
+          extensions: bcmath, curl, openssl, zip, mbstring, dom, fileinfo, pdo_mysql, pdo_sqlite, sqlite3
           coverage: none
       - uses: actions/setup-python@v5
         with:
@@ -221,6 +221,24 @@ jobs:
           CACHE_STORE: array
           SESSION_DRIVER: array
           QUEUE_CONNECTION: sync
+
+      - name: DC1 two-connection bank reconciliation ownership
+        run: |
+          php -r '$pdo=new PDO("mysql:host=127.0.0.1;port=3306", "root", "root"); $pdo->exec("CREATE DATABASE aims_dc1_bank_ci_test");'
+          php tests/Support/bank-match-concurrency.php
+          php tests/Support/onboarding-concurrency.php
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: aims_dc1_bank_ci_test
+          DB_USERNAME: root
+          DB_PASSWORD: root
+          CACHE_STORE: array
+          SESSION_DRIVER: array
+          QUEUE_CONNECTION: sync
+          BROADCAST_CONNECTION: log
 
   browser-smoke:
     name: Browser smoke (Chromium + SQLite)

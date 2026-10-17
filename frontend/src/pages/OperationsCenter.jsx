@@ -15,7 +15,7 @@ import {
   createProductSupplier, createReplenishmentDrafts, createSupplierInvoice, getBinInventory,
   deactivateProductSupplier, deleteInventoryReturn, deleteLandedCost, getExpiringInventory, getFinancialAccounts,
   getInventoryCount, getInventoryCounts, getInventoryReturn, getInventoryReturns, getInventoryReturnSources,
-  getLandedCosts, getProductSupplierHistory, getProductSuppliers, getReplenishment, getSupplierInvoice, getSupplierInvoices,
+  getLandedCost, getLandedCosts, getProductSupplierHistory, getProductSuppliers, getReplenishment, getSupplierInvoice, getSupplierInvoices,
   getSupplierPerformance, moveBinStock, postLandedCost, recalculateSupplierInvoice, reverseLandedCost,
   recordInventoryCount, requestInventoryRecount, submitInventoryCount, approveInventoryCount,
   transitionInventoryReturn, updateInventoryReturn, updateProductSupplier, updateSupplierInvoice,
@@ -80,10 +80,10 @@ export default function OperationsCenter() {
     if (!loaders[tab] || !can(tabPermissions[tab])) return;
     const version = ++requestVersion.current;
     setBusy(true); setNotice("");
-    try { const result = await loaders[tab](); if (version === requestVersion.current) { setData(rows(result)); setFailed(false); } }
+    try { const result = await loaders[tab](); const loaded=rows(result); const costId=Number(pageParams.get('landed_cost')); if(tab==='landed'&&costId){const cost=loaded.find(item=>item.id===costId)||await getLandedCost(costId);if(!loaded.some(item=>item.id===cost.id))loaded.unshift(cost);if(version===requestVersion.current)setLandedReverseId(cost.status==='posted'?String(cost.id):'')} if (version === requestVersion.current) { setData(loaded); setFailed(false); } }
     catch (error) { if (version === requestVersion.current) { setNotice(err(error, t.error)); setFailed(true); } }
     finally { if (version === requestVersion.current) setBusy(false); }
-  }, [loaders, tab, t.error, can]);
+  }, [loaders, tab, t.error, can, pageParams]);
 
   useEffect(() => { loadMeta().catch((error) => { setNotice(err(error, t.error)); setFailed(true); }); }, [loadMeta, t.error]);
   useEffect(() => { setData([]); reload(); return () => { requestVersion.current += 1; }; }, [reload]);
@@ -280,9 +280,10 @@ function CatalogueInsights({ performance, history, baseCurrency }) {
 }
 
 function LandedCosts({ data, meta, run, t, can, baseCurrency }) {
+  const [sourceParams]=useSearchParams();
  const tx = useUiText()
 
-  const [form, setForm] = useState({ goods_receipt_id: "", cost_type: "freight", amount: "", currency: baseCurrency, exchange_rate_to_base: 1, exchange_rate_date: new Date().toISOString().slice(0, 10), allocation_method: "value", reference_number: "", description: "" });
+  const [form, setForm] = useState({ goods_receipt_id: sourceParams.get('receipt')||"", cost_type: "freight", amount: "", currency: baseCurrency, exchange_rate_to_base: 1, exchange_rate_date: new Date().toISOString().slice(0, 10), allocation_method: "value", reference_number: "", description: "" });
   const [receipt, setReceipt] = useState(null);
   const [receiptBusy, setReceiptBusy] = useState(false);
   const [selectedItems, setSelectedItems] = useState([]);
@@ -326,7 +327,7 @@ function Returns({ data, meta, run, t, can, baseCurrency }) {
   }, [documentParams]);
   const idempotencyKeyRef = useRef(uuid());
   const blankItem = () => ({ product_id: "", source_item_id: "", warehouse_id: "", location_id: "", quantity: "", condition: "sellable", notes: "", lot_number: "", serial_numbers: "", supplier_batch: "", manufactured_at: "", expiry_at: "" });
-  const blankForm = () => ({ type: "customer", customer_id: "", supplier_id: "", source_id: "", financial_resolution: "none", financial_amount: "", financial_account_id: "", payment_method: "cash", reference_number: "", reason: "", notes: "", items: [blankItem()] });
+  const blankForm = () => ({ type: documentParams.has('receipt')?"supplier":"customer", customer_id: "", supplier_id: "", source_id: documentParams.get('receipt')||"", financial_resolution: "none", financial_amount: "", financial_account_id: "", payment_method: "cash", reference_number: "", reason: "", notes: "", items: [blankItem()] });
   const [form, setForm] = useState(blankForm);
   const [sources, setSources] = useState({ sales: [], receipts: [] });
   const [selected, setSelected] = useState(null);
@@ -343,6 +344,7 @@ function Returns({ data, meta, run, t, can, baseCurrency }) {
 
   const sourceRecords = form.type === "customer" ? sources.sales : sources.receipts;
   const source = sourceRecords.find((record) => String(record.id) === String(form.source_id));
+  useEffect(()=>{if(documentParams.has('receipt')&&source&&!form.supplier_id&&form.type==='supplier')setForm(current=>({...current,supplier_id:String(source.purchase_order?.supplier_id||source.supplier_id||'')}))},[source,form.supplier_id,form.type,documentParams]);
   const updateLine = (index, values) => setForm((current) => ({ ...current, items: current.items.map((line, lineIndex) => lineIndex === index ? { ...line, ...values } : line) }));
   const serials = (line) => [...new Set(String(line.serial_numbers || "").split(/[\n,;]+/).map((value) => value.trim()).filter(Boolean))];
   const sourceItems = source?.items || [];

@@ -17,13 +17,64 @@ use Illuminate\Validation\ValidationException;
 class ProcurementService
 {
     public function __construct(private readonly ApprovalService $approvals, private readonly PurchaseOrderService $orders, private readonly SupplierPerformanceService $supplierPerformance) {}
+    public function deleteUnusedDraft(PurchaseRequest $request): void
+    {
+        DB::transaction(function()use($request){
+            $request=PurchaseRequest::lockForUpdate()->findOrFail($request->id);
+            if($request->status!=='draft'||$request->approval_request_id||$request->rfqs()->exists()||\App\Models\ApprovalRequest::where('entity_type','purchase_request')->where('entity_id',$request->id)->exists()||\App\Models\DocumentLink::where('entity_type','purchase_request')->where('entity_id',$request->id)->exists())throw ValidationException::withMessages(['request'=>'Only an unused draft with no approval, RFQ, or document history can be deleted.']);
+            $this->audit($request,'procurement.request.draft_deleted','Unused draft deleted; audit retained.');
+            $request->delete();
+        });
+    }
+    public function withdraw(PurchaseRequest $request,string $reason): PurchaseRequest
+    {
+        return DB::transaction(function()use($request,$reason){
+            if(mb_strlen(trim($reason))<5)throw ValidationException::withMessages(['reason'=>'Record the withdrawal reason.']);
+            $approvals=\App\Models\ApprovalRequest::where('entity_type','purchase_request')->where('entity_id',$request->id)->lockForUpdate()->get();
+            $request=PurchaseRequest::lockForUpdate()->findOrFail($request->id);
+            if($request->status==='withdrawn')return $this->findRequest($request);
+            if(!in_array($request->status,['submitted','approved','rejected','sourcing'],true)||$request->rfqs()->whereNotIn('status',['closed','cancelled'])->lockForUpdate()->exists()||ProcurementAward::whereIn('purchase_request_item_id',$request->items()->select('id'))->exists())throw ValidationException::withMessages(['request'=>'Close uncommitted RFQs first. Requests with awards or purchase orders must retain their operational history.']);
+            foreach($approvals->where('status','pending') as $approval){$approval->update(['status'=>'cancelled','decided_at'=>now(),'decided_by'=>Auth::id()]);\App\Models\ApprovalDecision::create(['company_id'=>$request->company_id,'approval_request_id'=>$approval->id,'actor_id'=>Auth::id(),'snapshot'=>$approval->only(['entity_type','entity_id','context']),'decision'=>'cancelled','comment'=>'Request withdrawn: '.trim($reason),'decided_at'=>now()]);}
+            $request->update(['status'=>'withdrawn']);$this->audit($request,'procurement.request.withdrawn',trim($reason));return $this->findRequest($request);
+        });
+    }
+    public function closeRfq(Rfq $rfq,string $status,string $reason): Rfq
+    {
+        return DB::transaction(function()use($rfq,$status,$reason){
+            $rfq=Rfq::lockForUpdate()->findOrFail($rfq->id);
+            if(!in_array($status,['closed','cancelled'],true)||mb_strlen(trim($reason))<5)throw ValidationException::withMessages(['reason'=>'Choose close or cancel and record a reason.']);
+            if($rfq->status===$status)return $this->comparison($rfq);
+            if(in_array($rfq->status,['closed','cancelled','awarded','partially_awarded'],true)||ProcurementAward::where('rfq_id',$rfq->id)->exists())throw ValidationException::withMessages(['rfq'=>'An RFQ with an award or purchase order cannot be closed destructively. Retain and correct its downstream records.']);
+            $rfq->update(['status'=>$status]);$this->audit($rfq,'procurement.rfq.'.$status,trim($reason));return $this->comparison($rfq);
+        });
+    }
     public function requests() { return PurchaseRequest::query()->with(['items.product','approval','rfqs'])->latest('id')->paginate(50); }
     public function findRequest(PurchaseRequest $request): PurchaseRequest { return $request->load(['items.product','approval.decisions','rfqs.suppliers','rfqs.quotes.items']); }
     public function createRequest(array $data): PurchaseRequest { return DB::transaction(function() use($data) { $company=(int)Auth::user()->company_id; $currency=strtoupper($data['currency'] ?? CompanyCurrency::current()); $total=Money::add(...array_map(fn($i)=>Money::multiply($i['estimated_unit_price'] ?? 0,$i['quantity']),$data['items'])); $request=PurchaseRequest::create(['company_id'=>$company,'request_number'=>$this->number('PR'),'status'=>'draft','requested_by'=>Auth::id(),'requested_at'=>$data['requested_at'] ?? \App\Support\CompanyClock::today()->toDateString(),'required_by'=>$data['required_by'] ?? null,'notes'=>$data['notes'] ?? null,'estimated_total'=>$total,'currency'=>$currency]); foreach($data['items'] as $item) $request->items()->create($item); $this->audit($request,'procurement.request.created','Purchase request created.'); return $this->findRequest($request); }); }
-    public function updateRequest(PurchaseRequest $request,array $data): PurchaseRequest { if(!in_array($request->status,['draft','rejected'],true)) throw ValidationException::withMessages(['status'=>['Only draft or rejected purchase requests can be revised.']]); return DB::transaction(function()use($request,$data){ $total=Money::add(...array_map(fn($i)=>Money::multiply($i['estimated_unit_price'] ?? 0,$i['quantity']),$data['items'])); $request->update(['requested_at'=>$data['requested_at'] ?? $request->requested_at,'required_by'=>$data['required_by']??null,'notes'=>$data['notes']??null,'currency'=>strtoupper($data['currency']),'estimated_total'=>$total,'status'=>'draft','approval_request_id'=>null]); $request->items()->delete(); foreach($data['items'] as $item)$request->items()->create($item); $this->audit($request,'procurement.request.revised','Purchase request revised.'); return $this->findRequest($request);}); }
-    public function submit(PurchaseRequest $request): PurchaseRequest { if(!in_array($request->status,['draft','rejected'],true)) throw ValidationException::withMessages(['status'=>['Only a draft or rejected request can be submitted.']]); return DB::transaction(function()use($request){$request->update(['status'=>'submitted']); $approval=$this->approvals->requestIfRequired('purchase_request',$request->id,'purchase_request',(string)$request->estimated_total,$request->currency,['request_number'=>$request->request_number]); $request->update(['approval_request_id'=>$approval?->id,'status'=>$approval?'submitted':'approved']); $this->audit($request,'procurement.request.submitted','Purchase request submitted.');return $this->findRequest($request);}); }
-    public function createRfq(PurchaseRequest $request,array $data): Rfq { if($request->status!=='approved') throw ValidationException::withMessages(['status'=>['Only an approved purchase request can move to sourcing.']]); return DB::transaction(function()use($request,$data){$rfq=Rfq::create(['company_id'=>$request->company_id,'purchase_request_id'=>$request->id,'rfq_number'=>$this->number('RFQ'),'status'=>'draft','response_due_at'=>$data['response_due_at']??null,'notes'=>$data['notes']??null,'created_by'=>Auth::id()]);foreach(array_unique($data['supplier_ids']) as $id) RfqSupplier::create(['rfq_id'=>$rfq->id,'supplier_id'=>$id,'status'=>'invited']);$request->update(['status'=>'sourcing']);$this->audit($rfq,'procurement.rfq.created','RFQ created from approved purchase request.');return $rfq->load('suppliers');}); }
-    public function issueRfq(Rfq $rfq): Rfq { if($rfq->status!=='draft') throw ValidationException::withMessages(['status'=>['Only a draft RFQ can be issued.']]);$rfq->update(['status'=>'issued','issued_at'=>now()]);$rfq->suppliers()->update(['status'=>'issued','sent_at'=>now()]);$this->audit($rfq,'procurement.rfq.issued','RFQ issued to selected suppliers.');return $rfq->fresh('suppliers'); }
+    public function updateRequest(PurchaseRequest $request,array $data): PurchaseRequest
+    {
+        return DB::transaction(function()use($request,$data){
+            $request=PurchaseRequest::lockForUpdate()->findOrFail($request->id);
+            if(!in_array($request->status,['draft','rejected'],true))throw ValidationException::withMessages(['status'=>'Only draft or rejected purchase requests can be revised.']);
+            $total=Money::add(...array_map(fn($i)=>Money::multiply($i['estimated_unit_price']??0,$i['quantity']),$data['items']));
+            $request->update(['requested_at'=>$data['requested_at']??$request->requested_at,'required_by'=>$data['required_by']??null,'notes'=>$data['notes']??null,'currency'=>strtoupper($data['currency']),'estimated_total'=>$total,'status'=>'draft','approval_request_id'=>null]);
+            $request->items()->delete();foreach($data['items'] as $item)$request->items()->create($item);
+            $this->audit($request,'procurement.request.revised','Purchase request revised.');return $this->findRequest($request);
+        });
+    }
+    public function submit(PurchaseRequest $request): PurchaseRequest
+    {
+        return DB::transaction(function()use($request){
+            $request=PurchaseRequest::lockForUpdate()->findOrFail($request->id);
+            if(!in_array($request->status,['draft','rejected'],true))throw ValidationException::withMessages(['status'=>'Only a draft or rejected request can be submitted.']);
+            $request->update(['status'=>'submitted']);
+            $approval=$this->approvals->requestIfRequired('purchase_request',$request->id,'purchase_request',(string)$request->estimated_total,$request->currency,['request_number'=>$request->request_number]);
+            $request->update(['approval_request_id'=>$approval?->id,'status'=>$approval?'submitted':'approved']);
+            $this->audit($request,'procurement.request.submitted','Purchase request submitted.');return $this->findRequest($request);
+        });
+    }
+    public function createRfq(PurchaseRequest $request,array $data): Rfq { if($request->status!=='approved') throw ValidationException::withMessages(['status'=>['Only an approved purchase request can move to sourcing.']]); return DB::transaction(function()use($request,$data){$request=PurchaseRequest::lockForUpdate()->findOrFail($request->id);if($request->status!=='approved')throw ValidationException::withMessages(['status'=>'Only an approved request can create an RFQ.']);$rfq=Rfq::create(['company_id'=>$request->company_id,'purchase_request_id'=>$request->id,'rfq_number'=>$this->number('RFQ'),'status'=>'draft','response_due_at'=>$data['response_due_at']??null,'notes'=>$data['notes']??null,'created_by'=>Auth::id()]);foreach(array_unique($data['supplier_ids']) as $id) RfqSupplier::create(['rfq_id'=>$rfq->id,'supplier_id'=>$id,'status'=>'invited']);$request->update(['status'=>'sourcing']);$this->audit($rfq,'procurement.rfq.created','RFQ created from approved purchase request.');return $rfq->load('suppliers');}); }
+    public function issueRfq(Rfq $rfq): Rfq { return DB::transaction(function()use($rfq){$rfq=Rfq::lockForUpdate()->findOrFail($rfq->id);if($rfq->status!=='draft') throw ValidationException::withMessages(['status'=>['Only a draft RFQ can be issued.']]);$rfq->update(['status'=>'issued','issued_at'=>now()]);$rfq->suppliers()->update(['status'=>'issued','sent_at'=>now()]);$this->audit($rfq,'procurement.rfq.issued','RFQ issued to selected suppliers.');return $rfq->fresh('suppliers'); }); }
     public function createQuote(Rfq $rfq, array $data): SupplierQuote
     {
         return DB::transaction(function () use ($rfq, $data) {
