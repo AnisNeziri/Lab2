@@ -146,7 +146,7 @@ class OnboardingValidation
             }
         }
 
-return $keys;
+        return $keys;
     }
 
     private function identity(string $s): string
@@ -167,6 +167,10 @@ return $keys;
         }
         foreach (OnboardingSchema::DOMAINS[$row->domain] as $field) {
             $column = $row->batch->mapping[$field] ?? null;
+            $original = $column ? ($row->raw[$column] ?? null) : null;
+            if (in_array($field, ['external_ref', 'sku', 'barcode', 'code', 'product_ref', 'customer_ref', 'supplier_ref', 'warehouse_ref', 'location_ref', 'parent_ref'], true) && is_float($original) && (! isset($row->overrides[$field]) || (string) $row->overrides[$field] === (string) $original)) {
+                $errors[] = 'identifier_requires_text';
+            }
             $data[$field] = trim((string) ($row->overrides[$field] ?? ($column ? $row->raw[$column] ?? '' : '')));
         }
         if ($data['external_ref'] === '') {
@@ -191,7 +195,7 @@ return $keys;
             }
         }
         $separator = $row->batch->options['decimal_separator'] ?? '.';
-        foreach (['amount' => 2, 'unit_cost' => 6, 'purchase_price' => 6, 'selling_price' => 2, 'quantity' => 3, 'conversion_factor' => 6, 'value' => 2] as $field => $scale) {
+        foreach (['amount' => 2, 'unit_cost' => 6, 'purchase_price' => 2, 'selling_price' => 2, 'quantity' => 3, 'conversion_factor' => 6, 'value' => 2] as $field => $scale) {
             if (isset($data[$field]) && $data[$field] !== '') {
                 try {
                     $data[$field] = OnboardingSchema::number($data[$field], $separator, $scale);
@@ -212,8 +216,11 @@ return $keys;
                 if ($before !== $data[$field]) {
                     $warnings[] = 'unit_alias_normalized';
                 }
-                if (! in_array($data[$field], ['pcs', 'm', 'kg', 'l', 'roll', 'box', 'pack', 'set', 'm2', 'm3'], true)) {
+                if ($row->domain === 'products' && $field === 'unit' && ! in_array($data[$field], ['pcs', 'm', 'kg', 'l', 'roll', 'box', 'pack', 'set', 'm2', 'm3'], true)) {
                     $errors[] = 'unknown_'.$field;
+                }
+                if ($field === 'conversion_unit' && ! preg_match('/^[\pL\pN][\pL\pN_.-]{0,29}$/u', $data[$field])) {
+                    $errors[] = 'invalid_conversion_unit';
                 }
             }
         }
@@ -240,11 +247,18 @@ return $keys;
             }
         }
         if ($row->domain === 'products') {
+            $data['tracking_mode'] = $data['tracking_mode'] ?: 'none';
+            if (! in_array($data['tracking_mode'], ['none', 'batch', 'serial'], true)) {
+                $errors[] = 'invalid_tracking_mode';
+            }
             if ($data['sku'] === '' && $data['barcode'] === '') {
                 $errors[] = 'missing_product_identifier';
             }
             if (($data['conversion_unit'] === '') !== ($data['conversion_factor'] === '')) {
                 $errors[] = 'incomplete_conversion';
+            }
+            if ($data['conversion_unit'] !== '' && $data['conversion_unit'] === $data['unit']) {
+                $errors[] = 'invalid_conversion_unit';
             }
             if ($data['conversion_factor'] !== '' && ! in_array('invalid_conversion_factor', $errors, true) && Money::compareDecimal($data['conversion_factor'], '0') <= 0) {
                 $errors[] = 'invalid_conversion_factor';
@@ -353,6 +367,9 @@ return $keys;
         }
         if ($row->domain === 'inventory') {
             $product = $this->reference($s, 'products', $data['product_ref']);
+            if ($product) {
+                $data['_product_key'] = isset($product['_id']) ? 'existing:'.$product['_id'] : 'staged:'.($product['_row_id'] ?? $data['product_ref']);
+            }
             $warehouse = $this->reference($s, 'warehouses', $data['warehouse_ref']);
             if (! $product) {
                 $errors[] = 'unknown_product_ref';
@@ -382,10 +399,17 @@ return $keys;
                     $q = $data['quantity'];
                     if ($data['unit'] !== $base) {
                         if (isset($product['_id'])) {
-                            $resolved = app(UnitConversionService::class)->resolve(Product::findOrFail($product['_id']), (float) $q, $data['unit']);
+                            $master = Product::with('units')->findOrFail($product['_id']);
+                            $definitions = $master->units->filter(fn ($u) => $u->is_active && OnboardingSchema::unit($u->code) === $data['unit']);
+                            if ($definitions->count() > 1) {
+                                throw new \RuntimeException('Ambiguous declared unit alias.');
+                            }
+                            $resolved = app(UnitConversionService::class)->resolve($master, (float) $q, $definitions->first()?->code ?? $data['unit']);
+                            $data['_unit_definition'] = ['code' => $resolved['unit'], 'factor' => $resolved['conversion_factor'], 'mode' => $resolved['conversion_mode']];
                             $q = Money::normalizeDecimal($resolved['base_quantity'], 3);
                         } elseif (($product['conversion_unit'] ?? '') === $data['unit'] && Money::compareDecimal($product['conversion_factor'] ?? '0', '0') > 0) {
                             $q = Money::multiply($q, $product['conversion_factor'], 3);
+                            $data['_unit_definition'] = ['code' => $product['conversion_unit'], 'factor' => $product['conversion_factor'], 'mode' => 'fixed'];
                         } else {
                             throw new \RuntimeException;
                         }
@@ -395,7 +419,9 @@ return $keys;
                     $data['base_unit'] = $base;
                     if (! in_array('invalid_unit_cost', $errors, true) && $data['unit_cost'] !== '') {
                         $data['calculated_value'] = Money::multiply($q, $data['unit_cost'], 6);
-                        if ($data['value'] !== '' && ! in_array('invalid_value', $errors, true) && Money::compare($data['calculated_value'], $data['value']) !== 0) {
+                        if (Money::compareDecimal($data['calculated_value'], '999999999.99') > 0) {
+                            $errors[] = 'inventory_value_over_limit';
+                        } elseif ($data['value'] !== '' && ! in_array('invalid_value', $errors, true) && Money::compare($data['calculated_value'], $data['value']) !== 0) {
                             $errors[] = 'inventory_value_conflict';
                         }
                     }
@@ -408,6 +434,9 @@ return $keys;
             if (isset($data[$field]) && ! $this->reference($s, $domain, $data[$field])) {
                 $errors[] = 'unknown_'.$field;
             }
+        }
+        if (in_array($row->domain, ['receivables', 'payables'], true) && empty($data['due_date'])) {
+            $warnings[] = 'opening_due_date_unknown';
         }
         $status = $errors ? 'error' : (in_array('duplicate_candidates_require_review', $warnings, true) ? 'review' : 'valid');
         $row->update(['external_ref' => $data['external_ref'] ?: null, 'normalized' => $data, 'candidates' => array_slice(array_values($candidates), 0, 5), 'errors' => array_values(array_unique($errors)), 'warnings' => array_values(array_unique($warnings)), 'status' => $status]);
@@ -433,7 +462,7 @@ return $keys;
                 return $existing ? $existing->toArray() + ['_id' => $existing->id, '_row_id' => $row->id] : null;
             }
 
-return $row->normalized ? ($row->normalized + ['_row_id' => $row->id] + ($row->posted_entity_id ? ['_id' => $row->posted_entity_id] : [])) : null;
+            return $row->normalized ? ($row->normalized + ['_row_id' => $row->id] + ($row->posted_entity_id ? ['_id' => $row->posted_entity_id] : [])) : null;
         }
         if ($rows->count() > 1) {
             return null;
@@ -442,9 +471,12 @@ return $row->normalized ? ($row->normalized + ['_row_id' => $row->id] + ($row->p
         $fields = match ($domain) {
             'products' => ['sku', 'barcode'],'customers' => ['email', 'tax_number', 'name'],'suppliers' => ['email', 'name'],'warehouses','locations' => ['code'],'cash_bank' => ['name']
         };
-        $matches = $class::where(function ($q) use ($fields,$ref) {
+        $matches = $class::where(function ($q) use ($fields, $ref) {
             foreach ($fields as $i => $field) {
-                $i === 0 ? $q->where($field,$ref) : $q->orWhere($field,$ref);
+                $i === 0 ? $q->where($field, $ref) : $q->orWhere($field, $ref);
+            }
+            if ($fields === ['sku', 'barcode']) {
+                $q->orWhereHas('alternativeBarcodes', fn ($barcodes) => $barcodes->where('is_active', true)->where('barcode', $ref));
             }
         })->limit(2)->get();
 

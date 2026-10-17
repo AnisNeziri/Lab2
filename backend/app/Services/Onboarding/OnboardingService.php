@@ -3,10 +3,12 @@
 namespace App\Services\Onboarding;
 
 use App\Models\Company;
+use App\Models\CustomerDebtTransaction;
 use App\Models\OnboardingBatch;
 use App\Models\OnboardingEvent;
 use App\Models\OnboardingRow;
 use App\Models\OnboardingSession;
+use App\Models\PurchaseOrderPayment;
 use App\Services\PermissionService;
 use App\Support\CompanyCurrency;
 use Illuminate\Http\UploadedFile;
@@ -20,7 +22,8 @@ class OnboardingService
 {
     public function permit(string $action = 'view'): void
     {
-        abort_unless(Auth::user()?->company_id && app(PermissionService::class)->roleHasPermission(Auth::user()->role, 'onboarding.'.$action), 403);
+        $permissions = app(PermissionService::class);
+        abort_unless(Auth::user()?->company_id && $permissions->roleHasPermission(Auth::user()->role, 'onboarding.view') && ($action === 'view' || $permissions->roleHasPermission(Auth::user()->role, 'onboarding.'.$action)), 403);
     }
 
     public function listing()
@@ -76,6 +79,9 @@ class OnboardingService
             $company = Company::whereKey(Auth::user()->company_id)->lockForUpdate()->firstOrFail();
             if ($company->operational_cutover_date || $company->accounting_opening_finalized_at || OnboardingSession::whereNotIn('status', ['cancelled'])->exists()) {
                 throw ValidationException::withMessages(['onboarding' => 'This company already has an opening or active onboarding. Continue it; do not create overlapping openings.']);
+            }
+            if (! app(OnboardingReconciliation::class)->operationallyEmpty()) {
+                throw ValidationException::withMessages(['onboarding' => 'This AIMS company already contains operational history or balances. Use a new empty company for a controlled opening; existing data is preserved.']);
             }
             $s = OnboardingSession::create($data + ['company_id' => $company->id, 'public_id' => (string) Str::uuid(), 'created_by' => Auth::id(), 'status' => 'draft', 'stage' => 'company', 'revision' => 0]);
             $this->event($s, 'session.created', ['cutover_date' => $data['cutover_date'], 'timezone' => $data['timezone']]);
@@ -157,7 +163,25 @@ class OnboardingService
             $q->where(fn ($x) => $x->where('external_ref', 'like', $term)->orWhere('normalized', 'like', $term));
         }
 
-        return $q->orderBy('id')->paginate(50);
+        $page = $q->orderBy('id')->paginate(50);
+        $payments = PurchaseOrderPayment::whereIn('id', $page->getCollection()->where('posted_entity_type', 'purchase_order_payments')->pluck('posted_entity_id'))->withCount('allocations')->get()->keyBy('id');
+        $customers = CustomerDebtTransaction::whereIn('id', $page->getCollection()->where('posted_entity_type', 'customer_debt_transactions')->pluck('posted_entity_id'))->pluck('customer_id', 'id');
+        $can = fn (string $permission) => app(PermissionService::class)->roleHasPermission(Auth::user()->role, $permission);
+        foreach ($page as $row) {
+            $target = match ($row->posted_entity_type) {
+                'products' => $can('inventory.view') || $can('products.manage') ? '/products?product='.$row->posted_entity_id : null,
+                'customer_debt_transactions' => $can('debts.view') && $customers->has($row->posted_entity_id) ? '/customer-debts?customer='.$customers->get($row->posted_entity_id) : null,
+                'expenses' => $can('finance.view') ? '/finance?expense='.$row->posted_entity_id : null,
+                default => null,
+            };
+            $row->setAttribute('source_url', $row->posted_entity_id ? $target : null);
+            if ($row->posted_entity_type === 'purchase_order_payments' && $payment = $payments->get($row->posted_entity_id)) {
+                $row->setAttribute('current_position_status', $payment->status);
+                $row->setAttribute('can_reverse_advance', $s->status === 'locked' && $can('purchase_orders.payments') && $payment->status === 'completed' && $payment->allocations_count === 0);
+            }
+        }
+
+        return $page;
     }
 
     public function upload(int $id, UploadedFile $file, array $input): OnboardingBatch
@@ -210,7 +234,7 @@ class OnboardingService
                 $this->invalidate($s, 'source.resumed', ['batch_id' => $batch->id]);
             }
 
-return $batch;
+            return $batch;
         });
 
         return $this->stageBatch($batch);
@@ -309,10 +333,11 @@ return $batch;
             foreach ($rows as $i => $row) {
                 if (! is_array($row) || array_is_list($row) || collect($row)->contains(fn ($v) => is_array($v))) {
                     throw ValidationException::withMessages(['file' => 'Source rows must contain plain column values.']);
-                }yield [$i + 2, array_map(fn ($v) => trim((string) $v), $row)];
+                }
+                yield [$i + 2, array_map(fn ($v) => is_string($v) ? trim($v) : $v, $row)];
             }
 
-return;
+            return;
         }
         $h = fopen('php://temp/maxmemory:1048576', 'r+');
         fwrite($h, $source);
@@ -347,8 +372,8 @@ return;
             $s = $this->lock($id);
             $this->revision($s, (int) ($data['revision'] ?? -1));
             $this->editable($s);
-            $batch = $s->batches()->findOrFail($batchId);
-            $mapping = validator($data, ['mapping' => 'required|array'])->validate()['mapping'];
+            $batch = $s->batches()->where('is_active', true)->findOrFail($batchId);
+            $mapping = validator($data, ['mapping' => 'present|array'])->validate()['mapping'];
             foreach ($mapping as $field => $column) {
                 if (! in_array($field, OnboardingSchema::DOMAINS[$batch->domain], true) || ! in_array($column, $batch->headers, true)) {
                     throw ValidationException::withMessages(['mapping' => 'Select an existing source column and destination field.']);
@@ -383,7 +408,7 @@ return;
                         if (! is_scalar($x) && $x !== null) {
                             throw ValidationException::withMessages(['row' => 'Use plain staged field values.']);
                         }
-                    }$values['overrides'] = [...($row->overrides ?? []), ...$edit['overrides']];
+                    }$values['overrides'] = [...($row->overrides ?? []), ...array_map(fn ($value) => $value === null ? '' : $value, $edit['overrides'])];
                 }
                 if (isset($edit['action'])) {
                     if ($edit['action'] === 'skip' && mb_strlen(trim($edit['reason'] ?? '')) < 5) {
@@ -403,13 +428,13 @@ return;
     {
         $this->permit('manage');
 
-        return DB::transaction(function () use ($id,$revision,$reason) {
+        return DB::transaction(function () use ($id, $revision, $reason) {
             $s = $this->lock($id);
-            $this->revision($s,$revision);
+            $this->revision($s, $revision);
             $this->editable($s);
             if (mb_strlen(trim($reason)) < 5) {
                 throw ValidationException::withMessages(['reason' => 'Record why onboarding is cancelled.']);
-            }$this->event($s,'session.cancelled',['reason' => $reason]);
+            }$this->event($s, 'session.cancelled', ['reason' => $reason]);
             $s->update(['status' => 'cancelled', 'cancelled_at' => now(), 'revision' => $s->revision + 1, 'approved_fingerprint' => null]);
 
             return $s;

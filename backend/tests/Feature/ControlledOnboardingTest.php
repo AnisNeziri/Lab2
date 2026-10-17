@@ -2,18 +2,22 @@
 
 namespace Tests\Feature;
 
+use App\Contracts\DocumentStorageProvider;
 use App\Models\BusinessEvent;
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\CustomerDebtTransaction;
+use App\Models\DocumentType;
 use App\Models\Expense;
 use App\Models\FinancialAccountTransaction;
 use App\Models\JournalEntry;
 use App\Models\OnboardingRow;
 use App\Models\OnboardingSession;
+use App\Models\Permission;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderPayment;
+use App\Models\Role;
 use App\Models\StockMovement;
 use App\Models\User;
 use App\Services\AccountingService;
@@ -22,9 +26,13 @@ use App\Services\FinanceService;
 use App\Services\Onboarding\OnboardingReconciliation;
 use App\Services\Onboarding\OnboardingSchema;
 use App\Support\CompanyClock;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class ControlledOnboardingTest extends TestCase
@@ -66,6 +74,11 @@ class ControlledOnboardingTest extends TestCase
     {
         $id = $this->stage();
         $this->assertSame(11, OnboardingRow::count());
+        $documentRoot = storage_path('app/testing-documents/'.Str::uuid());
+        config(['synthetic.document_root' => $documentRoot]);
+        app()->forgetInstance(DocumentStorageProvider::class);
+        $this->getJson('/api/documents/config')->assertOk();
+        $this->post('/api/documents', ['title' => 'Synthetic opening statement', 'document_type_id' => DocumentType::first()->id, 'file' => UploadedFile::fake()->createWithContent('opening-evidence.txt', 'Synthetic opening evidence only')], ['Accept' => 'application/json'])->assertCreated();
         foreach (['products', 'customers', 'suppliers', 'warehouses', 'stock_movements', 'customer_debt_transactions', 'expenses', 'purchase_order_payments', 'journal_entries', 'invoices', 'purchase_orders', 'goods_receipts', 'daily_sales'] as $table) {
             $this->assertSame(0, DB::table($table)->where('company_id', $this->apiCompany->id)->count(), $table.' must remain empty in staging');
         }
@@ -89,8 +102,17 @@ class ControlledOnboardingTest extends TestCase
         $this->assertSame($count, JournalEntry::count());
         $this->postJson('/api/onboarding/'.$id.'/verify')->assertOk()->assertJsonPath('session.verification.passed', true);
         $this->postJson('/api/onboarding/'.$id.'/backups', ['revision' => $payload['revision'], 'kind' => 'post', 'passphrase' => self::PHRASE])->assertOk();
-        $this->postJson('/api/onboarding/'.$id.'/restore-verify', ['passphrase' => self::PHRASE])->assertOk()->assertJsonPath('passed', true)->assertJsonPath('result.broken_source_links', 0)->assertJsonPath('result.totals.equity', '-5768.75');
+        $filesBefore = File::allFiles($documentRoot);
+        $oldDocumentRoot = getenv('AIMS_DOCUMENT_ROOT');
+        putenv('AIMS_DOCUMENT_ROOT='.$documentRoot);
+        try {
+            $this->postJson('/api/onboarding/'.$id.'/restore-verify', ['passphrase' => self::PHRASE])->assertOk()->assertJsonPath('passed', true)->assertJsonPath('result.broken_source_links', 0)->assertJsonPath('result.totals.equity', '-5768.75')->assertJsonPath('result.documents_checked', 1)->assertJsonPath('result.documents_isolated', true);
+        } finally {
+            putenv($oldDocumentRoot === false ? 'AIMS_DOCUMENT_ROOT' : 'AIMS_DOCUMENT_ROOT='.$oldDocumentRoot);
+        }
+        $this->assertCount(count($filesBefore), File::allFiles($documentRoot), 'The child restore must never write into the original document root');
         $this->postJson('/api/onboarding/'.$id.'/lock', $payload)->assertOk()->assertJsonPath('session.status', 'locked');
+        $this->getJson('/api/onboarding/'.$id.'/rows?domain=supplier_advances')->assertOk()->assertJsonPath('data.0.can_reverse_advance', true)->assertJsonPath('data.0.current_position_status', 'completed');
         $this->patchJson('/api/onboarding/'.$id.'/rows', ['revision' => $payload['revision'], 'rows' => [['id' => OnboardingRow::first()->id, 'overrides' => ['name' => 'Attempted mutation']]]])->assertUnprocessable();
         $this->get('/api/onboarding/'.$id.'/evidence')->assertOk()->assertSee('Independent restore: PASS');
         $advance = CustomerDebtTransaction::where('type', 'opening_advance')->first();
@@ -234,11 +256,62 @@ class ControlledOnboardingTest extends TestCase
         $s = OnboardingSession::find($id);
         $csv = "external_ref,sku,name,unit\nP002,MILANO-04,Milano-04,m\n";
         $this->post('/api/onboarding/'.$id.'/sources', ['domain' => 'products', 'revision' => $s->revision, 'file' => UploadedFile::fake()->createWithContent('name-variants.csv', $csv)], ['Accept' => 'application/json'])->assertOk();
-        $this->postJson('/api/onboarding/'.$id.'/validate',['revision' => $s->fresh()->revision])->assertOk();
-        foreach (OnboardingRow::where('domain','products')->get() as $row) {
-            $this->assertSame('review',$row->status);
+        $this->postJson('/api/onboarding/'.$id.'/validate', ['revision' => $s->fresh()->revision])->assertOk();
+        foreach (OnboardingRow::where('domain', 'products')->get() as $row) {
+            $this->assertSame('review', $row->status);
             $this->assertNotEmpty($row->candidates[0]['staged_row_id']);
         }
-        $this->assertSame(0,Product::count());
+        $this->assertSame(0, Product::count());
+    }
+
+    public function test_action_permission_without_view_is_rejected_before_any_source_mutation(): void
+    {
+        $id = $this->stage();
+        $s = OnboardingSession::findOrFail($id);
+        $permission = Permission::where('slug', 'onboarding.view')->firstOrFail();
+        Role::where('slug', 'admin')->firstOrFail()->permissions()->detach($permission->id);
+        Cache::forget('role_permissions:admin');
+        $this->post('/api/onboarding/'.$id.'/sources', ['domain' => 'products', 'revision' => $s->revision, 'file' => UploadedFile::fake()->createWithContent('denied.csv', "external_ref,sku,name,unit\nDENIED,DENIED,Denied,pcs\n")], ['Accept' => 'application/json'])->assertForbidden();
+        $this->assertSame($s->revision, $s->fresh()->revision);
+        $this->assertSame(11, OnboardingRow::count());
+        $this->assertSame(11, $s->batches()->count());
+    }
+
+    public function test_separate_reviewer_policy_and_cutoff_day_are_enforced_before_posting(): void
+    {
+        $id = $this->stage();
+        $s = OnboardingSession::findOrFail($id);
+        $s->update(['separate_reviewer_required' => true, 'cutover_date' => CarbonImmutable::now($s->timezone)->toDateString()]);
+        $this->postJson('/api/onboarding/'.$id.'/validate', ['revision' => $s->revision])->assertOk();
+        $this->postJson('/api/onboarding/'.$id.'/backups', ['revision' => $s->fresh()->revision, 'kind' => 'pre', 'passphrase' => self::PHRASE])->assertOk();
+        $this->postJson('/api/onboarding/'.$id.'/review', ['revision' => $s->fresh()->revision, 'source_totals_confirmed' => true, 'warnings_acknowledged' => true])->assertOk();
+        $s->refresh();
+        $payload = ['revision' => $s->revision, 'fingerprint' => $s->review_fingerprint, 'confirmed' => true];
+        $this->postJson('/api/onboarding/'.$id.'/approve', $payload)->assertUnprocessable();
+        $this->assertNull($s->fresh()->approved_at);
+        $other = User::factory()->create(['company_id' => $this->apiCompany->id, 'role' => 'admin', 'api_token' => hash('sha256', 'other-reviewer'), 'email_verified_at' => now()]);
+        $this->withHeader('Authorization', 'Bearer other-reviewer')->postJson('/api/onboarding/'.$id.'/approve', $payload)->assertOk();
+        $this->postJson('/api/onboarding/'.$id.'/post', $payload)->assertUnprocessable();
+        $this->assertNull($s->fresh()->posting_started_at);
+        $this->assertSame(0, Product::count());
+        $this->assertSame(0, JournalEntry::count());
+    }
+
+    public function test_fractional_rounding_overflow_and_numeric_identifiers_block_safely_in_staging(): void
+    {
+        $id = $this->stage();
+        $s = OnboardingSession::findOrFail($id);
+        $inventory = OnboardingRow::where('domain', 'inventory')->firstOrFail();
+        $this->patchJson('/api/onboarding/'.$id.'/rows', ['revision' => $s->revision, 'rows' => [['id' => $inventory->id, 'overrides' => ['quantity' => '0.001', 'unit_cost' => '5', 'value' => '']]]])->assertOk();
+        $this->post('/api/onboarding/'.$id.'/sources', ['domain' => 'inventory', 'revision' => $s->fresh()->revision, 'file' => UploadedFile::fake()->createWithContent('rounding.csv', "external_ref,product_ref,warehouse_ref,quantity,unit,unit_cost\nI002,P001,W001,0.001,m,5\n")], ['Accept' => 'application/json'])->assertOk();
+        $result = $this->postJson('/api/onboarding/'.$id.'/validate', ['revision' => $s->fresh()->revision])->assertOk();
+        $this->assertContains('inventory_rounding_requires_review', $result->json('reconciliation.blocking'), json_encode(OnboardingRow::where('domain', 'inventory')->get()->map->only(['status', 'normalized', 'errors'])));
+        $this->patchJson('/api/onboarding/'.$id.'/rows', ['revision' => $s->fresh()->revision, 'rows' => [['id' => $inventory->id, 'overrides' => ['quantity' => '999999999', 'unit_cost' => '999999999.999999']]]])->assertOk();
+        $this->post('/api/onboarding/'.$id.'/sources', ['domain' => 'products', 'revision' => $s->fresh()->revision, 'file' => UploadedFile::fake()->createWithContent('numeric.json', '[{"external_ref":"PRECISION","sku":1e22,"name":"Preserve exact digits","unit":"pcs"}]')], ['Accept' => 'application/json'])->assertOk();
+        $this->postJson('/api/onboarding/'.$id.'/validate', ['revision' => $s->fresh()->revision])->assertOk();
+        $this->assertContains('inventory_value_over_limit', $inventory->fresh()->errors);
+        $this->assertContains('identifier_requires_text', OnboardingRow::where('external_ref', 'PRECISION')->firstOrFail()->errors);
+        $this->assertSame(0, Product::count());
+        $this->assertSame(0, JournalEntry::count());
     }
 }

@@ -94,7 +94,8 @@ class StockMovementService
             $movement = DB::transaction(function () use ($validated, $idempotencyKey, $openingSession) {
                 // Company numbering writers lock this parent first; acquire the FK lock before products.
                 DB::table('companies')->where('id', Auth::user()->company_id)->sharedLock()->first();
-                app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational($validated['occurred_at'] ?? null);
+                $businessDate=\Carbon\CarbonImmutable::parse($validated['occurred_at']??now(),'UTC')->setTimezone(\App\Support\CompanyClock::timezone())->toDateString();
+                app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational($businessDate);
                 $product = Product::query()->lockForUpdate()->findOrFail($validated['product_id']);
                 $this->unitConversions->assertPrecision((float) $validated['quantity'], $product->unit);
                 $requestedQuantity = round((float) $validated['quantity'], 3);
@@ -769,6 +770,9 @@ class StockMovementService
 
         return DB::transaction(function () use ($product, $quantityBefore, $quantityAfter, $movementCode, $reason, $idempotencyKey, $occurredAt) {
             DB::table('companies')->where('id', $product->company_id)->sharedLock()->first();
+            $timezone=\App\Models\Company::findOrFail($product->company_id)->timezone?:\App\Support\CompanyClock::timezone();
+            $date=\Carbon\CarbonImmutable::parse($occurredAt??now(),'UTC')->setTimezone($timezone)->toDateString();
+            app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational($date,(int)$product->company_id);
             $locked = Product::withoutGlobalScopes()->lockForUpdate()->findOrFail($product->id);
             $existing = StockMovement::withoutGlobalScopes()
                 ->where('company_id', $locked->company_id)

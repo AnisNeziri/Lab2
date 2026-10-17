@@ -13,6 +13,7 @@ class OnboardingFingerprint
     public function source(OnboardingSession $s): string
     {
         $hash = hash_init('sha256');
+        $this->feed($hash, OnboardingSchema::CONTRACT);
         $this->feed($hash, [$s->public_id, $s->revision, $s->name, $s->source_period, $s->cutover_date->toDateString(), $s->timezone, $s->currency, $s->expected_totals, $s->pre_backup_id, $s->separate_reviewer_required]);
         foreach ($s->batches()->where('is_active', true)->orderBy('id')->cursor() as $b) {
             if (! hash_equals($b->checksum, hash('sha256', base64_decode($b->source_base64, true)))) {

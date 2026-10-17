@@ -13,6 +13,29 @@ use Symfony\Component\Process\Process;
 
 class OnboardingBackupService
 {
+    private function cli(): string
+    {
+        $cli = in_array(PHP_SAPI, ['cli', 'cli-server'], true) ? PHP_BINARY : dirname(PHP_BINARY).(PHP_OS_FAMILY === 'Windows' ? '/php.exe' : '/php');
+        if (! is_file($cli)) {
+            $cli = (new ExecutableFinder)->find('php') ?? '';
+        }
+        if (! is_file($cli)) {
+            throw ValidationException::withMessages(['backup' => 'The PHP CLI runtime is unavailable for independent restore verification.']);
+        }
+
+        return $cli;
+    }
+
+    public function assertRestoreRuntime(): void
+    {
+        $probe = new Process([$this->cli(), '-r', 'echo json_encode(["version"=>PHP_VERSION_ID,"sqlite"=>in_array("sqlite",PDO::getAvailableDrivers(),true)]);'], base_path(), null, null, 10);
+        $probe->run();
+        $info = json_decode($probe->getOutput(), true);
+        if (! $probe->isSuccessful() || ! ($info['sqlite'] ?? false) || ($info['version'] ?? 0) < 80300) {
+            throw ValidationException::withMessages(['backup' => 'Independent restore requires the PHP 8.3+ CLI runtime with the SQLite PDO driver. Configure it before posting.']);
+        }
+    }
+
     public function create(int $id, array $data): OnboardingBackup
     {
         $service = app(OnboardingService::class);
@@ -24,6 +47,10 @@ class OnboardingBackupService
             $service->revision($s, (int) $v['revision']);
             if ($v['kind'] === 'pre') {
                 $service->editable($s);
+                $this->assertRestoreRuntime();
+                if (! app(OnboardingReconciliation::class)->operationallyEmpty()) {
+                    throw ValidationException::withMessages(['backup' => 'The company baseline is no longer empty. Resolve it before creating an opening backup.']);
+                }
                 $service->invalidate($s, 'backup.pre_requested');
             } elseif ($s->status !== 'verified') {
                 throw ValidationException::withMessages(['backup' => 'Verify all posted positions before creating the post-cutover backup.']);
@@ -80,14 +107,9 @@ class OnboardingBackupService
             'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $root.'/restore.sqlite', 'DB_URL' => '', 'DATABASE_URL' => '',
             'DB_HOST' => '127.0.0.1', 'LARAVEL_STORAGE_PATH' => $root.'/runtime', 'APP_CONFIG_CACHE' => $root.'/config.php',
             'CACHE_STORE' => 'array', 'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array', 'BROADCAST_CONNECTION' => 'log',
+            'FILESYSTEM_DISK' => 'local', 'AIMS_DOCUMENT_ROOT' => $root.'/runtime/documents',
             'ONBOARDING_RESTORE_ROOT' => $root, 'ONBOARDING_RESTORE_PARENT' => storage_path('app/onboarding-verifications')];
-        $cli = in_array(PHP_SAPI, ['cli', 'cli-server'], true) ? PHP_BINARY : dirname(PHP_BINARY).(PHP_OS_FAMILY === 'Windows' ? '/php.exe' : '/php');
-        if (! is_file($cli)) {
-            $cli = (new ExecutableFinder)->find('php') ?? '';
-        }
-        if (! is_file($cli)) {
-            throw ValidationException::withMessages(['backup' => 'The PHP CLI runtime is unavailable for independent restore verification.']);
-        }
+        $cli = $this->cli();
         $process = new Process([$cli, base_path('scripts/verify-onboarding-restore.php')], base_path(), $env, null, 180);
         // Passphrases travel only on stdin, never arguments, files, environment, or logs.
         $process->setInput(json_encode(['passphrase' => $v['passphrase'], 'session' => $s->public_id, 'checksum' => $backup->checksum], JSON_THROW_ON_ERROR));
@@ -99,9 +121,9 @@ class OnboardingBackupService
         DB::transaction(function () use ($id, $service, $backup, $evidence) {
             $s = $service->lock($id);
             if ($s->post_backup_id !== $backup->id) {
-                abort(409,'The selected backup changed.');
+                abort(409, 'The selected backup changed.');
             }$s->update(['restore_verification' => $evidence]);
-            $service->event($s,'restore.verified',$evidence);
+            $service->event($s, 'restore.verified', $evidence);
         });
 
         return $evidence;

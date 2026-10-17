@@ -142,6 +142,7 @@ class ExpenseService
     public function recordOpeningPayable(\App\Models\OnboardingSession $session, \App\Models\Supplier $supplier, array $data): Expense
     {
         app(\App\Services\Onboarding\OnboardingGuard::class)->assertOpening($session);
+        abort_unless((int)$supplier->company_id===(int)$session->company_id,404);
         return DB::transaction(function () use ($session, $supplier, $data) {
             $number = 'OPEN-'.$session->id.'-'.$data['row_id'];
             $existing = Expense::where('document_type', 'opening_balance')->where('document_number', $number)->first();

@@ -113,8 +113,12 @@ class OnboardingPosting
                 return;
             }
             if (! $s->posting_started_at) {
-                if ($s->cutover_date->toDateString() > CarbonImmutable::now($s->timezone)->toDateString()) {
-                    $this->error('The cutover date has not arrived in the company timezone.');
+                app(OnboardingBackupService::class)->assertRestoreRuntime();
+                if (! app(OnboardingReconciliation::class)->report($s)['ready_for_review']) {
+                    $this->error('The reviewed source controls no longer pass. Validate and review again.');
+                }
+                if (CarbonImmutable::parse($s->cutover_date->toDateString(), $s->timezone)->endOfDay()->greaterThanOrEqualTo(CarbonImmutable::now($s->timezone))) {
+                    $this->error('The cutover closes at the end of the selected date in the company timezone. Post after that cutoff.');
                 }
                 if (! app(OnboardingReconciliation::class)->operationallyEmpty() || ! hash_equals($s->review['operational_fingerprint'] ?? '', app(OnboardingFingerprint::class)->operational())) {
                     $this->error('The operational baseline changed after review. Revalidate and create a fresh backup.');
@@ -224,7 +228,7 @@ class OnboardingPosting
         }
         if ($r->domain === 'products') {
             $category = $n['category'] !== '' ? Category::firstOrCreate(['company_id' => $s->company_id, 'name' => $n['category']]) : null;
-            $values = ['company_id' => $s->company_id, 'name' => $n['name'], 'sku' => $n['sku'] ?: null, 'barcode' => $n['barcode'] ?: null, 'unit' => $n['unit'], 'quantity' => 0, 'price' => $n['selling_price'] ?: 0, 'purchase_price' => $n['purchase_price'] ?: 0, 'selling_price' => $n['selling_price'] ?: 0, 'category_id' => $category?->id, 'tracking_mode' => 'none'];
+            $values = ['company_id' => $s->company_id, 'name' => $n['name'], 'sku' => $n['sku'] ?: null, 'barcode' => $n['barcode'] ?: null, 'unit' => $n['unit'], 'quantity' => 0, 'price' => $n['selling_price'] ?: 0, 'purchase_price' => $n['purchase_price'] ?: 0, 'selling_price' => $n['selling_price'] ?: 0, 'category_id' => $category?->id, 'tracking_mode' => $n['tracking_mode']];
             if ($n['conversion_unit'] !== '') {
                 $values['unit_conversions'] = [['code' => $n['conversion_unit'], 'factor_to_base' => $n['conversion_factor']]];
             }

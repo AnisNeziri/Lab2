@@ -39,6 +39,7 @@ class PurchaseOrderService
     public function recordOpeningAdvance(\App\Models\OnboardingSession $session, \App\Models\Supplier $supplier, array $data): PurchaseOrderPayment
     {
         app(\App\Services\Onboarding\OnboardingGuard::class)->assertOpening($session);
+        abort_unless((int)$supplier->company_id===(int)$session->company_id,404);
         return DB::transaction(function () use ($session, $supplier, $data) {
             $key = 'onboarding:'.$session->id.':'.$data['row_id'];
             if ($existing = PurchaseOrderPayment::where('idempotency_key', $key)->first()) return $existing;

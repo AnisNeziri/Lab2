@@ -9,8 +9,10 @@ use Illuminate\Validation\ValidationException;
 /** The one import contract drives mappings, templates and staged validation. */
 final class OnboardingSchema
 {
+    public const CONTRACT = 'dc1-opening-v1';
+
     public const DOMAINS = [
-        'products' => ['external_ref', 'sku', 'name', 'unit', 'barcode', 'category', 'purchase_price', 'selling_price', 'conversion_unit', 'conversion_factor'],
+        'products' => ['external_ref', 'sku', 'name', 'unit', 'barcode', 'category', 'purchase_price', 'selling_price', 'conversion_unit', 'conversion_factor', 'tracking_mode'],
         'customers' => ['external_ref', 'name', 'business_name', 'email', 'phone', 'tax_number', 'address'],
         'suppliers' => ['external_ref', 'name', 'email', 'phone', 'address'],
         'warehouses' => ['external_ref', 'code', 'name', 'address'],
@@ -80,7 +82,7 @@ final class OnboardingSchema
     {
         abort_unless(isset(self::DOMAINS[$domain]), 404);
         $examples = [
-            'products' => ['P001', 'MIL-04', 'Milano 04', 'm', '', 'Fabrics', '2.50', '5.00', '', ''],
+            'products' => ['P001', 'MIL-04', 'Milano 04', 'm', '', 'Fabrics', '2.50', '5.00', '', '', 'none'],
             'customers' => ['C001', 'Example Customer', '', 'customer@example.test', '', '', ''],
             'suppliers' => ['S001', 'Example Supplier', 'supplier@example.test', '', ''],
             'warehouses' => ['W001', 'MAIN', 'Main warehouse', ''],

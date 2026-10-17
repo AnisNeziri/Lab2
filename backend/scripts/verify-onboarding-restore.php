@@ -1,6 +1,8 @@
 <?php
 
+use App\Contracts\DocumentStorageProvider;
 use App\Models\Company;
+use App\Models\DocumentVersion;
 use App\Models\OnboardingSession;
 use App\Models\Product;
 use App\Models\User;
@@ -37,6 +39,7 @@ if (! hash_equals($input['checksum'], hash_file('sha256', $source))) {
 }
 $app = require __DIR__.'/../bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
+config(['synthetic.document_root' => $root.'/runtime/documents', 'filesystems.default' => 'local']);
 set_exception_handler(function (Throwable $error) {
     fwrite(STDOUT, json_encode(['passed' => false, 'code' => 'restore_verification_failed']));
     exit(1);
@@ -64,6 +67,22 @@ foreach ($session->rows()->whereNotNull('posted_at')->cursor() as $row) {
         $broken++;
     }
 }
+$documents = 0;
+foreach (DocumentVersion::cursor() as $version) {
+    $stream = app(DocumentStorageProvider::class)->read($version->storage_key);
+    try {
+        $hash = hash_init('sha256');
+        hash_update_stream($hash, $stream);
+        if (! hash_equals($version->checksum, hash_final($hash))) {
+            throw new RuntimeException('Restored document integrity failed.');
+        }
+    } finally {
+        if (is_resource($stream)) {
+            fclose($stream);
+        }
+    }
+    $documents++;
+}
 $passed = $report['ready_for_review'] && $accounting['all_reconciled'] && $broken === 0;
-fwrite(STDOUT, json_encode(['passed' => $passed, 'totals' => $report['actual'], 'source_differences' => $report['blocking'], 'accounting_reconciled' => $accounting['all_reconciled'], 'products_checked' => $products, 'broken_source_links' => $broken, 'database_isolated' => true], JSON_THROW_ON_ERROR));
+fwrite(STDOUT, json_encode(['passed' => $passed, 'totals' => $report['actual'], 'source_differences' => $report['blocking'], 'accounting_reconciled' => $accounting['all_reconciled'], 'products_checked' => $products, 'documents_checked' => $documents, 'broken_source_links' => $broken, 'database_isolated' => true, 'documents_isolated' => true], JSON_THROW_ON_ERROR));
 exit($passed ? 0 : 1);

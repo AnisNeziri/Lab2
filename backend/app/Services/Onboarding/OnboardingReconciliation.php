@@ -8,6 +8,7 @@ use App\Models\FinancialAccount;
 use App\Models\OnboardingSession;
 use App\Models\Product;
 use App\Models\PurchaseOrderPayment;
+use App\Models\WarehouseStock;
 use App\Support\Money;
 use Brick\Math\BigDecimal;
 use Illuminate\Support\Facades\DB;
@@ -22,11 +23,16 @@ class OnboardingReconciliation
         $totals = array_fill_keys(OnboardingSchema::TOTALS, '0.00');
         $units = [];
         $productValues = [];
+        $rowValues = [];
+        $productReferences = [];
+        $rounding = [];
         foreach ((clone $query)->whereIn('domain', ['inventory', 'receivables', 'customer_advances', 'payables', 'supplier_advances', 'cash_bank'])->whereNotIn('status', ['skipped', 'unvalidated', 'error', 'review'])->orderBy('id')->cursor() as $row) {
             $n = $row->normalized ?? [];
             if ($row->domain === 'inventory') {
-                $key = $n['product_ref'];
+                $key = $n['_product_key'] ?? $n['product_ref'];
                 $productValues[$key] = (string) BigDecimal::of($productValues[$key] ?? '0')->plus($n['calculated_value'] ?? '0');
+                $rowValues[$key] = Money::add($rowValues[$key] ?? '0', $n['calculated_value'] ?? '0');
+                $productReferences[$key] = $n['product_ref'];
                 $unit = $n['base_unit'];
                 $units[$unit] = Money::normalizeDecimal(BigDecimal::of($units[$unit] ?? '0')->plus($n['base_quantity']), 3);
             } elseif (in_array($row->domain, ['receivables', 'customer_advances', 'payables', 'supplier_advances'], true)) {
@@ -36,12 +42,15 @@ class OnboardingReconciliation
                 $totals[$key] = Money::add($totals[$key], $n['amount']);
             }
         }
-        foreach ($productValues as $value) {
+        foreach ($productValues as $key => $value) {
             $totals['inventory_value'] = Money::add($totals['inventory_value'], $value);
+            if (Money::compare($rowValues[$key], $value) !== 0) {
+                $rounding[] = ['product_ref' => $productReferences[$key], 'carried_value' => Money::normalize($value), 'journal_rows_value' => $rowValues[$key], 'difference' => Money::subtract($rowValues[$key], $value)];
+            }
         }
         $totals['equity'] = Money::subtract(Money::add($totals['inventory_value'], $totals['receivables'], $totals['supplier_advances'], $totals['cash'], $totals['bank']), Money::add($totals['payables'], $totals['customer_advances']));
         $sections = [];
-        $blocking = [];
+        $blocking = $rounding ? ['inventory_rounding_requires_review'] : [];
         foreach (OnboardingSchema::TOTALS as $key) {
             $expected = $session->expected_totals[$key] ?? null;
             $difference = $expected === null || $expected === '' ? null : Money::subtract($totals[$key], $expected);
@@ -94,7 +103,7 @@ class OnboardingReconciliation
             }
         }
 
-        return ['counts' => $counts, 'totals' => $totals, 'inventory_units' => $units, 'actual_inventory_units' => $actualUnits, 'source_inventory_units' => $expectedUnits, 'sections' => $sections, 'actual' => $actual, 'blocking' => array_values(array_unique($blocking)), 'ready_for_review' => ! $blocking];
+        return ['counts' => $counts, 'totals' => $totals, 'inventory_units' => $units, 'actual_inventory_units' => $actualUnits, 'source_inventory_units' => $expectedUnits, 'sections' => $sections, 'actual' => $actual, 'rounding_details' => $rounding, 'blocking' => array_values(array_unique($blocking)), 'ready_for_review' => ! $blocking];
     }
 
     public function actualUnits(): array
@@ -145,7 +154,10 @@ class OnboardingReconciliation
                 return false;
             }
         }
-        if (Product::where('quantity', '!=', 0)->exists() || Customer::where(fn ($q) => $q->where('current_debt', '!=', 0)->orWhere('current_credit', '!=', 0))->exists() || FinancialAccount::where('opening_balance', '!=', 0)->exists()) {
+        if (Product::where(fn ($q) => $q->where('quantity', '!=', 0)->orWhereNull('quantity')->orWhere('inventory_value', '!=', 0))->exists() || Customer::where(fn ($q) => $q->where('current_debt', '!=', 0)->orWhere('current_credit', '!=', 0)->orWhereNull('current_debt')->orWhereNull('current_credit'))->exists() || FinancialAccount::where('opening_balance', '!=', 0)->exists()) {
+            return false;
+        }
+        if (WarehouseStock::where(fn ($q) => $q->where('quantity', '!=', 0)->orWhere('available_quantity', '!=', 0)->orWhere('reserved_quantity', '!=', 0)->orWhere('damaged_quantity', '!=', 0)->orWhere('quarantine_quantity', '!=', 0)->orWhere('blocked_quantity', '!=', 0))->exists()) {
             return false;
         }
 

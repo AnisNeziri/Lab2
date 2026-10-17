@@ -50,7 +50,7 @@ final class AssistantPlanner
         ];
         $intent = 'record';
         foreach ($rules as $name=>$pattern) if (preg_match($pattern,$q)) { $intent=$name; break; }
-        if($intent==='low_stock'&&preg_match('/next month|next week|future|will|forecast|muajin|javen|ardhsh|parashik/',$q))$intent='stockout';
+        if($intent==='low_stock'&&preg_match('/next month|next week|tomorrow|future|will|forecast|muajin|javen|neser|ardhsh|parashik/',$q))$intent='stockout';
         if ($intent==='record' && preg_match('/supplier.*(?:better|best|cover|for)|which supplier/', $q)) $intent='compare';
         if ($intent==='record' && preg_match('/\border\b/', $q)) $intent='orders';
         if(!isset($context['optimization_plan_id'])&&!preg_match('/\bplan\s*#?\s*\d+/',$q)&&$intent==='optimization_stress')$intent='scenario';

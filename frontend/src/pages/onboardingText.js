@@ -5,6 +5,7 @@ export const openingDomains = {
   payables: ['Supplier payables', 'Detyrimet ndaj furnitorëve'], supplier_advances: ['Supplier advances', 'Paradhëniet te furnitorët'], cash_bank: ['Cash and bank', 'Arka dhe banka'],
 }
 const fields = {
+  tracking_mode:['Tracking policy (none, batch, serial)','Politika e gjurmimit (none, batch, serial)'],
   external_ref:['Source row reference','Referenca e rreshtit burimor'],sku:['SKU','SKU'],name:['Name','Emri'],unit:['Base unit','Njësia bazë'],barcode:['Barcode','Barkodi'],category:['Category','Kategoria'],
   purchase_price:['Purchase price','Çmimi i blerjes'],selling_price:['Selling price','Çmimi i shitjes'],conversion_unit:['Alternative unit','Njësia alternative'],conversion_factor:['Base units per alternative unit','Njësi bazë për njësi alternative'],
   business_name:['Business name','Emri i biznesit'],email:['Email','Emaili'],phone:['Phone','Telefoni'],tax_number:['Tax number','Numri tatimor'],address:['Address','Adresa'],code:['Code','Kodi'],
@@ -14,6 +15,7 @@ const fields = {
   inventory_value:['Inventory value','Vlera e inventarit'],cash:['Cash','Arka'],bank:['Bank','Banka'],equity:['Opening equity','Kapitali fillestar'],
 }
 const copy = {
+  'The opening closes at the end of this date in the company timezone. Normal transactions start after that cutoff.':'Hapja mbyllet në fund të kësaj date sipas zonës kohore të kompanisë. Transaksionet e zakonshme fillojnë pas këtij kufiri.',
   'Similar staged record':'Regjistër i ngjashëm përgatitor',
   'Resume source import':'Vazhdo importin e burimit','Exclude source with reason':'Përjashto burimin me arsye',
   'The original file and audit history are retained. Posted sources cannot be excluded.':'Skedari origjinal dhe historia e auditimit ruhen. Burimet e regjistruara nuk mund të përjashtohen.',
@@ -45,13 +47,27 @@ const copy = {
 }
 const statuses={draft:'Draft / Draft',needs_review:'Needs review / Kërkon shqyrtim',unvalidated:'Not validated / Pa verifikuar',valid:'Validated / Verifikuar',review:'Needs identity review / Kërkon shqyrtim identiteti',error:'Blocked / Bllokuar',skipped:'Excluded with reason / Përjashtuar me arsye',ready_for_approval:'Ready for review / Gati për shqyrtim',reviewed:'Reviewed / Shqyrtuar',approved:'Approved / Miratuar',posting:'Posting / Duke regjistruar',posting_failed:'Posting paused / Regjistrimi u pezullua',failed:'Retry required / Kërkon riprovim',posted:'Posted / Regjistruar',verified:'Verified / Verifikuar',locked:'Locked / Mbyllur',cancelled:'Cancelled / Anuluar',staged:'Staged / Përgatitur',importing:'Importing / Duke importuar',validating:'Validating / Duke verifikuar'}
 const issues={duplicate_source_reference:['Duplicate source reference','Referencë burimore e dyfishtë'],duplicate_sku:['Duplicate SKU in staged source','SKU e dyfishtë në burim'],duplicate_barcode:['Duplicate staged barcode','Barkod i dyfishtë në burim'],duplicate_unique_identifier:['This identifier already exists; use the existing record or edit the source','Ky identifikues ekziston; përdorni regjistrin ekzistues ose redaktoni burimin'],duplicate_candidates_require_review:['Review the suggested identity matches','Shqyrtoni përputhjet e sugjeruara të identitetit'],unauthorized_or_missing_match:['The selected record is unavailable in this company','Regjistri i zgjedhur nuk është i disponueshëm në këtë kompani'],unit_alias_normalized:['Unit spelling normalized','Emërtimi i njësisë u normalizua'],excluded_with_reason:['Excluded with recorded reason','Përjashtuar me arsye të regjistruar'],matched_unit_conflict:['Source and existing base units disagree','Njësia burimore dhe ajo ekzistuese nuk përputhen'],inventory_value_conflict:['Quantity × base unit cost differs from the source value','Sasia × kostoja bazë ndryshon nga vlera burimore'],unconfigured_or_invalid_conversion:['Configure the exact unit conversion or correct the quantity','Përcaktoni konvertimin e saktë ose korrigjoni sasinë'],tracked_opening_requires_trace_workflow:['Tracked stock requires the existing lot/serial receipt workflow','Stoku i gjurmueshëm kërkon rrjedhën ekzistuese të pranimit me seri/lot'],foreign_currency_requires_reviewed_conversion:['Convert and review the source in company currency first','Konvertoni dhe shqyrtoni fillimisht burimin në monedhën e kompanisë'],incomplete_conversion:['Provide both alternative unit and its conversion factor','Vendosni njësinë alternative dhe faktorin e konvertimit'],inactive_match:['The selected record is inactive','Regjistri i zgjedhur është joaktiv'],invalid_location_parent:['Select a parent of the correct location type','Zgjidhni prindin e llojit të saktë'],location_warehouse_mismatch:['Location belongs to a different warehouse','Vendndodhja i përket një depoje tjetër'],zone_cannot_have_parent:['A zone cannot have a parent','Zona nuk mund të ketë prind'],no_source_rows:['Upload the reviewed source rows','Ngarkoni rreshtat burimorë të shqyrtuar'],incomplete_sources:['Finish or intentionally reprocess failed sources','Përfundoni ose ripërpunoni qëllimisht burimet e dështuara'],source_inventory_units_required:['Enter source quantities by base unit','Vendosni sasitë burimore sipas njësisë bazë']}
+Object.assign(copy, {
+  'Open posted record':'Hap regjistrin e regjistruar','Current position':'Gjendja aktuale','Reverse supplier advance':'Anulo avansin e furnitorit','Correction reason':'Arsyeja e korrigjimit',
+  'This uses the normal payment reversal and creates an audited correction. The original opening evidence stays unchanged. Reverse any allocations first.':'Ky veprim përdor anulimin e zakonshëm të pagesës dhe krijon korrigjim të audituar. Provat fillestare të hapjes ruhen. Anuloni së pari çdo alokim.'
+})
+Object.assign(statuses, {completed:'Active / Aktiv',reversed:'Reversed / Anuluar'})
+Object.assign(issues, {
+  opening_due_date_unknown:['Due date is unknown; no payment terms were invented','Afati i pagesës nuk dihet; nuk u krijuan kushte të hamendësuara'],
+  identifier_requires_text:['Store identifiers as text in the source to preserve exact digits','Ruani identifikuesit si tekst në burim për të ruajtur shifrat e sakta'],
+  inventory_value_over_limit:['Quantity × cost exceeds the supported value; review the source','Sasia × kostoja tejkalon vlerën e mbështetur; shqyrtoni burimin'],
+  inventory_rounding_requires_review:['Inventory row rounding differs from product valuation. Review costs or consolidate source rows before approval.','Rrumbullakimi i rreshtave ndryshon nga vlerësimi i produktit. Shqyrtoni kostot ose bashkoni rreshtat burimorë përpara miratimit.'],
+  matched_location_warehouse_conflict:['The selected location belongs to another warehouse','Lokacioni i zgjedhur i përket një depoje tjetër'],
+  duplicate_code:['Warehouse or location code is duplicated in the source','Kodi i depos ose lokacionit përsëritet në burim'],
+  missing_locked_evidence:['The immutable opening verification is missing; investigate the backup','Mungon verifikimi i pandryshueshëm i hapjes; kontrolloni kopjen rezervë']
+})
 export function openingText(language) {
   const i=language==='sq'?1:0
   const text=value=>copy[value]&&i?copy[value]:value
   const label=key=>(openingDomains[key]||fields[key])?.[i]||statuses[key]?.split(' / ')[i]||text(key)
   const issue=code=>{
     if(issues[code])return issues[code][i]
-    for(const [prefix,en,sq] of [['missing_','Required','Kërkohet'],['invalid_','Invalid','E pavlefshme'],['unknown_','Unknown reference or unit','Referencë ose njësi e panjohur'],['too_long_','Value too long','Vlerë shumë e gjatë'],['nonpositive_','Must be greater than zero','Duhet të jetë më e madhe se zero'],['source_total_','Source total differs or is unknown','Totali burimor ndryshon ose është i panjohur'],['posted_total_','Posted total differs','Totali i regjistruar ndryshon'],['source_quantity_','Source quantity differs','Sasia burimore ndryshon'],['rows_','Resolve source rows','Zgjidhni rreshtat burimorë']])if(code.startsWith(prefix))return `${i?sq:en}: ${label(code.slice(prefix.length))}`
+    for(const [prefix,en,sq] of [['missing_','Required','Kërkohet'],['invalid_','Invalid','E pavlefshme'],['unknown_','Unknown reference or unit','Referencë ose njësi e panjohur'],['too_long_','Value too long','Vlerë shumë e gjatë'],['nonpositive_','Must be greater than zero','Duhet të jetë më e madhe se zero'],['source_total_','Source total differs or is unknown','Totali burimor ndryshon ose është i panjohur'],['posted_quantity_','Posted quantity differs','Sasia e regjistruar ndryshon'],['posted_total_','Posted total differs','Totali i regjistruar ndryshon'],['source_quantity_','Source quantity differs','Sasia burimore ndryshon'],['rows_','Resolve source rows','Zgjidhni rreshtat burimorë']])if(code.startsWith(prefix))return `${i?sq:en}: ${label(code.slice(prefix.length))}`
     return i?'Kërkon shqyrtim të burimit':'Source review required'
   }
   return {text,label,issue}

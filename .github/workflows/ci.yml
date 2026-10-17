@@ -226,6 +226,7 @@ jobs:
         run: |
           php -r '$pdo=new PDO("mysql:host=127.0.0.1;port=3306", "root", "root"); $pdo->exec("CREATE DATABASE aims_dc1_bank_ci_test");'
           php tests/Support/bank-match-concurrency.php
+          php tests/Support/onboarding-concurrency.php
         env:
           APP_ENV: testing
           DB_CONNECTION: mysql

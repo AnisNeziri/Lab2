@@ -77,8 +77,19 @@ test('DC1 synthetic company stages, reviews, resumes, restores and locks an open
     await page.evaluate(async pref=>window.__aimsCertification.useSettingsStore.getState().applyPreferences(pref),{language,theme})
     for(const [width,height] of [[1920,1080],[1366,768],[768,1024],[390,844]]){
       await page.setViewportSize({width,height});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2)).toBeTruthy()
-      await page.screenshot({path:testInfo.outputPath(`opening-${language}-${theme}-${width}.png`),fullPage:true})
+      for(const [index,screen] of [[1,'sources'],[2,'reconciliation'],[5,'locked']]){
+        await step(index);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2)).toBeTruthy()
+        await page.screenshot({path:testInfo.outputPath(`opening-${screen}-${language}-${theme}-${width}.png`),fullPage:true})
+      }
     }
   }
+  await page.evaluate(async()=>window.__aimsCertification.useSettingsStore.getState().applyPreferences({language:'en',theme:'light'}))
+  await page.setViewportSize({width:1366,height:768});await step(1)
+  await page.getByRole('combobox',{name:'Domain',exact:true}).selectOption('supplier_advances')
+  await page.getByRole('button',{name:'Reverse supplier advance',exact:true}).click()
+  const correction=page.getByRole('dialog').first();await correction.getByLabel('Correction reason',{exact:true}).fill('Synthetic normal correction after opening lock')
+  await correction.getByRole('button',{name:'Reverse supplier advance',exact:true}).click();await expect(correction).toHaveCount(0)
+  await expect(page.getByText('Current position: Reversed',{exact:true})).toBeVisible();await step(2)
+  await expect(page.getByText('All source controls reconcile.',{exact:true})).toBeVisible()
   expect(errors).toEqual([])
 })
