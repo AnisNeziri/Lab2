@@ -113,6 +113,11 @@ class ControlledOnboardingTest extends TestCase
         $this->assertCount(count($filesBefore), File::allFiles($documentRoot), 'The child restore must never write into the original document root');
         $this->postJson('/api/onboarding/'.$id.'/lock', $payload)->assertOk()->assertJsonPath('session.status', 'locked');
         $this->getJson('/api/onboarding/'.$id.'/rows?domain=supplier_advances')->assertOk()->assertJsonPath('data.0.can_reverse_advance', true)->assertJsonPath('data.0.current_position_status', 'completed');
+        $account = \App\Models\FinancialAccount::firstOrFail();
+        $this->putJson('/api/finance/accounts/'.$account->id, ['opening_balance' => '1.00'])->assertUnprocessable();
+        $this->putJson('/api/finance/accounts/'.$account->id, ['opening_date' => '2026-02-01'])->assertUnprocessable();
+        $this->putJson('/api/finance/accounts/'.$account->id, ['name' => 'Reviewed bank display name'])->assertOk();
+        $this->assertSame('10000.00', $account->fresh()->opening_balance);
         $this->patchJson('/api/onboarding/'.$id.'/rows', ['revision' => $payload['revision'], 'rows' => [['id' => OnboardingRow::first()->id, 'overrides' => ['name' => 'Attempted mutation']]]])->assertUnprocessable();
         $this->get('/api/onboarding/'.$id.'/evidence')->assertOk()->assertSee('Independent restore: PASS');
         $advance = CustomerDebtTransaction::where('type', 'opening_advance')->first();
