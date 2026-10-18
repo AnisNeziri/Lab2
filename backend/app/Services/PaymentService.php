@@ -155,7 +155,7 @@ class PaymentService
 
             $payment->update([
                 'status' => 'reversed',
-                'reversed_at' => now(),
+                'reversal_date' => \App\Support\CompanyClock::today()->toDateString(), 'reversed_at' => now(),
                 'reversed_by' => Auth::id(),
                 'reversal_reason' => trim($reason),
             ]);

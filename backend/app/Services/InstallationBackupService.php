@@ -194,17 +194,43 @@ final class InstallationBackupService
                 if (app(DocumentMaintenanceService::class)->verifyCompany($company->id)) $healthy = false;
                 $totals[(string) $company->id] = ['inventory_quantity' => number_format((float) DB::table('products')->where('company_id', $company->id)->sum('quantity'), 3, '.', ''), 'finance' => array_map(fn ($row) => array_intersect_key($row, array_flip(['operational_amount', 'gl_amount', 'difference', 'reconciled'])), $finance['rows']), 'users' => DB::table('users')->where('company_id', $company->id)->count(), 'documents' => DB::table('documents')->where('company_id', $company->id)->count()];
             }
-            foreach (Schema::getTables(Schema::getCurrentSchemaListing()) as $table) {
-                $name = $table['name'];
-                if (! Schema::hasColumn($name, 'company_id')) continue;
-                foreach (Schema::getForeignKeys($name) as $foreign) {
-                    $parent = $foreign['foreign_table'];
-                    if (count($foreign['columns']) !== 1 || ! Schema::hasColumn($parent, 'company_id')) continue;
-                    if (DB::table($name.' as c')->join($parent.' as p', 'p.'.$foreign['foreign_columns'][0], '=', 'c.'.$foreign['columns'][0])->whereColumn('c.company_id', '!=', 'p.company_id')->exists()) $healthy = false;
-                }
-            }
+            if (! $this->tenantLinksAreValid()) $healthy = false;
         } finally { if ($prior) Auth::setUser($prior); else Auth::forgetUser(); }
         return compact('healthy', 'totals');
+    }
+
+    /** Read current metadata once per reconciliation, including after migration. */
+    private function tenantLinksAreValid(): bool
+    {
+        $links = [];
+        if (DB::getDriverName() === 'mysql') {
+            $database = DB::connection()->getDatabaseName();
+            $tenantTables = DB::table('information_schema.COLUMNS')->where('TABLE_SCHEMA',$database)->where('COLUMN_NAME','company_id')->pluck('TABLE_NAME')->flip();
+            $groups = DB::table('information_schema.KEY_COLUMN_USAGE')->where('TABLE_SCHEMA',$database)->whereNotNull('REFERENCED_TABLE_NAME')
+                ->get(['TABLE_NAME','CONSTRAINT_NAME','COLUMN_NAME','REFERENCED_TABLE_SCHEMA','REFERENCED_TABLE_NAME','REFERENCED_COLUMN_NAME'])
+                ->groupBy(fn($row)=>$row->TABLE_NAME.':'.$row->CONSTRAINT_NAME);
+            foreach ($groups as $group) {
+                $key=$group->first();
+                if (! $tenantTables->has($key->TABLE_NAME)) continue;
+                if ($key->REFERENCED_TABLE_SCHEMA !== $database) return false;
+                if ($group->count() === 1 && $tenantTables->has($key->REFERENCED_TABLE_NAME)) {
+                    $links[]=[$key->TABLE_NAME,$key->COLUMN_NAME,$key->REFERENCED_TABLE_NAME,$key->REFERENCED_COLUMN_NAME];
+                }
+            }
+        } else {
+            foreach (Schema::getTables(Schema::getCurrentSchemaListing()) as $table) {
+                $name=$table['name'];
+                if (! Schema::hasColumn($name,'company_id')) continue;
+                foreach (Schema::getForeignKeys($name) as $foreign) {
+                    $parent=$foreign['foreign_table'];
+                    if (count($foreign['columns']) === 1 && Schema::hasColumn($parent,'company_id')) $links[]=[$name,$foreign['columns'][0],$parent,$foreign['foreign_columns'][0]];
+                }
+            }
+        }
+        foreach ($links as [$table,$column,$parent,$parentColumn]) {
+            if (DB::table($table.' as c')->join($parent.' as p','p.'.$parentColumn,'=','c.'.$column)->whereColumn('c.company_id','!=','p.company_id')->exists()) return false;
+        }
+        return true;
     }
 
     private function encrypt(string $json, string $passphrase): string

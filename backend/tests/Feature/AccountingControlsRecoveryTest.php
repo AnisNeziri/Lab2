@@ -2,8 +2,13 @@
 
 namespace Tests\Feature;
 
-use App\Models\{AccountingException, AccountingPeriod, AccountingRecoveryAttempt, Customer, DailySale, JournalEntry, User};
-use App\Services\{AccountingRecoveryService, AccountingService};
+use App\Models\AccountingException;
+use App\Models\Customer;
+use App\Models\DailySale;
+use App\Models\JournalEntry;
+use App\Models\User;
+use App\Services\AccountingRecoveryService;
+use App\Services\AccountingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
@@ -19,6 +24,7 @@ class AccountingControlsRecoveryTest extends TestCase
         Auth::setUser(User::query()->where('company_id', $this->apiCompany->id)->firstOrFail());
         $service = app(AccountingService::class);
         $service->initialize();
+
         return $service;
     }
 
@@ -73,8 +79,16 @@ class AccountingControlsRecoveryTest extends TestCase
         $this->assertSame(1, JournalEntry::query()->where('source_type', 'daily_sale')->where('source_id', $sale->id)->count());
         $this->assertDatabaseHas('accounting_recovery_attempts', ['id' => $attempt->id, 'status' => 'succeeded']);
 
-        $this->expectException(ValidationException::class);
-        app(AccountingRecoveryService::class)->retry($exception->fresh());
+        $service->reverse($attempt->journalEntry, now()->toDateString(), 'Reviewed source reversal fixture.');
+        $exception->update(['status' => 'open']);
+        $before = JournalEntry::count();
+        try {
+            app(AccountingRecoveryService::class)->retry($exception->fresh());
+            $this->fail('Recovery duplicated a reversed source.');
+        } catch (ValidationException $error) {
+            $this->assertArrayHasKey('source', $error->errors());
+        }
+        $this->assertSame($before, JournalEntry::count());
     }
 
     public function test_period_close_requires_readiness_and_ready_period_closes(): void

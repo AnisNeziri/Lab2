@@ -35,9 +35,9 @@ class FinanceController extends Controller
 
     public function receivablesAging(Request $request): JsonResponse
     {
-        $data = $request->validate(['date_to' => ['nullable', 'date'], 'as_of' => ['nullable', 'date']]);
+        $data = $request->validate(['date_to' => ['nullable', 'date'], 'as_of' => ['nullable', 'date'], 'customer_id' => 'nullable|integer|min:1', 'salesperson_id' => 'nullable|integer|min:1', 'currency' => 'nullable|string|size:3', 'page' => 'nullable|integer|min:1']);
 
-        return response()->json($this->finance->receivablesAging($data['as_of'] ?? $data['date_to'] ?? now()->toDateString()));
+        return response()->json($this->finance->receivablesAging($data['as_of'] ?? $data['date_to'] ?? now()->toDateString(), $data));
     }
 
     public function exportVatBooks(Request $request): Response

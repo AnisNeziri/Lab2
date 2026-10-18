@@ -43,13 +43,25 @@ class LandedCostService
 
     public function find(LandedCost $landedCost): LandedCost
     {
-        return $landedCost->load([
+        $landedCost->load([
             'goodsReceipt:id,receipt_number,purchase_order_id', 'purchaseOrder:id,po_number,supplier_id,total_amount,total_paid,due_at,status',
             'shipment:id,tracking_number', 'creator:id,name', 'poster:id,name',
             'allocations.goodsReceiptItem:id,goods_receipt_id,product_id,accepted_base_quantity,damaged_base_quantity,base_purchase_unit_cost,landed_cost_allocated,final_inventory_unit_cost',
             'allocations.product:id,name,sku,unit',
             'allocations.accountingEntry.poster:id,name',
         ]);
+        $goods = GoodsReceiptItem::query()->where('goods_receipt_id', $landedCost->goods_receipt_id)
+            ->selectRaw('COALESCE(SUM((accepted_base_quantity+damaged_base_quantity)*base_purchase_unit_cost),0) goods_value')->value('goods_value');
+        $costs = LandedCost::query()->where('goods_receipt_id', $landedCost->goods_receipt_id)->where('status', 'posted')
+            ->selectRaw('cost_type,COALESCE(SUM(base_currency_amount),0) amount')->groupBy('cost_type')->get();
+        $landed = round((float) $costs->sum('amount'), 2);
+        $landedCost->setAttribute('accounting_presentation', [
+            'base_currency' => $landedCost->base_currency, 'goods_value' => \App\Support\Money::normalize($goods),
+            'posted_costs' => $costs, 'posted_landed_cost_total' => \App\Support\Money::normalize($landed),
+            'total_receipt_basis' => \App\Support\Money::normalize((float) $goods + $landed),
+            'qualification' => 'Receipt goods at original purchase-cost basis plus currently posted landed costs. This is receipt cost evidence; remaining inventory and consumed COGS are shown separately in the allocation posting.',
+        ]);
+        return $landedCost;
     }
 
     public function createDraft(array $data): LandedCost
@@ -142,6 +154,7 @@ class LandedCostService
     public function post(LandedCost $landedCost): LandedCost
     {
         return DB::transaction(function () use ($landedCost) {
+            DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
             $landedCost = LandedCost::query()->lockForUpdate()->findOrFail($landedCost->id);
             if ($landedCost->status === 'posted') {
                 return $this->find($landedCost);
@@ -242,6 +255,7 @@ class LandedCostService
     public function reverse(LandedCost $landedCost, string $reason): LandedCost
     {
         return DB::transaction(function () use ($landedCost, $reason) {
+            DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
             $locked = LandedCost::query()->lockForUpdate()->findOrFail($landedCost->id);
             if ($locked->status === 'reversed') {
                 return $this->find($locked);
@@ -261,7 +275,8 @@ class LandedCostService
                 $product = Product::query()->lockForUpdate()->findOrFail($allocation->product_id);
                 $split = $this->recognitionSplit($receiptItem, $product, (float) $allocation->allocated_amount);
                 $inventoryAmount = (float) $split['inventory_adjustment_amount'];
-                $this->costing->applyLandedCostAdjustment($product, -$inventoryAmount);
+                $valuation=$this->costing->applyLandedCostAdjustment($product, -$inventoryAmount);
+                $entry->update(['reversal_date'=>\App\Support\CompanyClock::today()->toDateString(),'reversal_inventory_value_before'=>$valuation['inventory_value_before'],'reversal_inventory_value_after'=>$valuation['inventory_value_after']]);
 
                 $remainingLanded = round(max(0, (float) $receiptItem->landed_cost_allocated - (float) $allocation->allocated_amount), 6);
                 $quantity = $this->inventoryQuantity($receiptItem);

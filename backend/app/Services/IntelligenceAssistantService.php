@@ -24,6 +24,12 @@ final class IntelligenceAssistantService
         $id=$v['conversation_id']??(string)Str::uuid();$context=$this->contextCache()->get($this->key($id),[]);$sq=($v['language']??'en')==='sq';
         if($v['clear_context']??false)$context=[];
         $factIntent=app(AssistantPlanner::class)->plan($v['question'])['intent'];
+        $finance=app(FinanceAssistantFacts::class);
+        if($v['clear_context']??false)$finance->clear($id);
+        if($financeIntent=$finance->intent($v['question'],$id)){
+            if($financeIntent==='finance_action_boundary'||(!isset($v['entity'])&&!isset($v['customer_id'])))return $finance->reply($financeIntent,$v['question'],$id,$sq);
+            $finance->clear($id);
+        }
         if(in_array($factIntent,['low_stock','onboarding_status'],true))return app(OpeningFactsService::class)->reply($factIntent,$v['question'],$id,$sq);
         app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational();
         if(isset($v['simulation_id'])){app(StrategicSimulationService::class)->get($v['simulation_id']);$context['strategic_simulation_id']=$v['simulation_id'];unset($context['optimization_plan_id']);}

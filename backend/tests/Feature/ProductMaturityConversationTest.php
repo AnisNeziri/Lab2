@@ -54,7 +54,7 @@ class ProductMaturityConversationTest extends TestCase
             $this->assertSame($intent,$plan['intent'],$question);
             $this->assertNull($plan['term'],$question);
             $reply=$this->postJson('/api/intelligence-assistant/ask',['question'=>$question,'language'=>$language])->assertOk()->json();
-            $this->assertSame($intent,$reply['intent'],$question);
+            $this->assertSame($intent==='debt'?'finance_receivables':$intent,$reply['intent'],$question);
             $this->assertNotEmpty($reply['sources'],$question);
         }
     }

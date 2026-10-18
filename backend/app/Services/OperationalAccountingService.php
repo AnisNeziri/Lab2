@@ -59,6 +59,9 @@ class OperationalAccountingService
 
     public function postInvoice(Invoice $invoice): ?JournalEntry
     {
+        if (($invoice->currency ?: 'EUR') !== CompanyCurrency::forCompanyId($invoice->company_id)) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['currency'=>'Customer invoice accounting requires the company base currency. Historical foreign-currency invoice valuation is not yet supported.']);
+        }
         if ($invoice->daily_sale_id && JournalEntry::query()->where('source_module', 'sales')
             ->where('source_type', 'daily_sale')->where('source_id', $invoice->daily_sale_id)
             ->whereIn('status', ['posted', 'reversed'])->exists()) {
@@ -199,7 +202,7 @@ class OperationalAccountingService
         $entry = $this->accounting->postMapped(
             'landed_cost', 'landed_cost', $landedCost->id, 'landed-cost:'.$landedCost->id,
             $landedCost->posted_at->toDateString(), 'Landed cost '.$landedCost->reference_number,
-            $lines, $landedCost->currency, $landedCost->exchange_rate_to_base,
+            $lines, $landedCost->currency, $landedCost->exchange_rate_to_base, ['date'=>$landedCost->exchange_rate_date,'source'=>'Manual authorized rate'],
         );
         app(BusinessEventService::class)->record('landed_cost.accounting_posted', $landedCost, $landedCost->reference_number, [
             'journal_entry_id' => $entry->id, 'inventory_amount' => $inventory, 'cogs_amount' => $cogs,
@@ -243,24 +246,24 @@ class OperationalAccountingService
             [
                 ['mapping' => 'supplier_advances', 'debit' => $amount],
                 $this->settlementLine($payment->financial_account_id, $this->cashMapping($payment->payment_method), 'credit', $amount),
-            ], $payment->currency, $payment->exchange_rate,
+            ], $payment->currency, $payment->exchange_rate, ['date'=>$payment->exchange_rate_date,'source'=>$payment->exchange_rate_source],
         );
         $this->linkFinancialTransaction($payment->financial_account_transaction_id, $entry);
         return $entry;
     }
 
-    public function postSupplierAdvanceApplication(SupplierInvoicePaymentAllocation $allocation, string $sourceKey): JournalEntry
+    public function postSupplierAdvanceApplication(SupplierInvoicePaymentAllocation $allocation, string $sourceKey, mixed $increment): JournalEntry
     {
-        $allocation->loadMissing(['payment', 'expense']);
-        $baseAmount = Money::multiply($allocation->amount, $allocation->payment->exchange_rate ?: 1);
-        return $this->accounting->postMapped(
-            'supplier_accounting', 'supplier_payment_allocation', $allocation->id, $sourceKey,
-            $allocation->allocated_at->toDateString(), 'Apply supplier advance to '.$allocation->expense->document_number,
-            [
-                ['mapping' => 'accounts_payable', 'debit' => $baseAmount],
-                ['mapping' => 'supplier_advances', 'credit' => $baseAmount],
-            ], $allocation->payment->currency, $allocation->payment->exchange_rate,
-        );
+        $allocation->loadMissing(['payment','expense']);
+        $advance=Money::multiply($increment,$allocation->payment->exchange_rate?:1);
+        $payable=Money::multiply($increment,$allocation->expense->exchange_rate?:1);
+        $lines=[['mapping'=>'accounts_payable','debit'=>$payable],['mapping'=>'supplier_advances','credit'=>$advance]];
+        $difference=Money::subtract($advance,$payable);
+        if(Money::compare($difference,0)>0)$lines[]=['mapping'=>'fx_loss','debit'=>$difference];
+        elseif(Money::compare($difference,0)<0)$lines[]=['mapping'=>'fx_gain','credit'=>Money::subtract(0,$difference)];
+        return $this->accounting->postMapped('supplier_accounting','supplier_payment_allocation',$allocation->id,$sourceKey,
+              \App\Support\CompanyClock::today()->toDateString(),'Apply supplier advance to '.$allocation->expense->document_number,
+            $lines,$allocation->payment->currency,$allocation->payment->exchange_rate,['date'=>$allocation->payment->exchange_rate_date,'source'=>$allocation->payment->exchange_rate_source]);
     }
 
     public function postInventoryReturnRefund(InventoryReturn $return): JournalEntry

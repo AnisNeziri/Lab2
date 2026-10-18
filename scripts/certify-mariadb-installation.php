@@ -21,7 +21,11 @@ $report=['source'=>'owned PM3 representative company','engine'=>'MariaDB','upgra
 try {
     if(config('database.default')!=='mysql'||config('database.connections.mysql.database')!==$a||config('database.connections.mysql.host')!=='127.0.0.1')throw new RuntimeException('Resolved database differs from explicit certification target.');
     if(Illuminate\Support\Facades\Schema::getTables(Illuminate\Support\Facades\Schema::getCurrentSchemaListing())!==[])throw new RuntimeException('Installation A certification database must be empty.');
-    $paths=array_map(fn($path)=>'database/migrations/'.basename($path),array_filter(glob($root.'/backend/database/migrations/*.php'),fn($path)=>!str_contains(basename($path),'2026_10_11_')));
+    // Reproduce the selected baseline's actual migration history before loading
+    // its data. New DC1/DC2 migrations must run only after the populated backup.
+    $baselineMigrations=array_fill_keys($sqlite->query('select migration from migrations')->fetchAll(PDO::FETCH_COLUMN),true);
+    $paths=array_map(fn($path)=>'database/migrations/'.basename($path),array_filter(glob($root.'/backend/database/migrations/*.php'),fn($path)=>isset($baselineMigrations[pathinfo($path,PATHINFO_FILENAME)])));
+    if(count($paths)!==count($baselineMigrations))throw new RuntimeException('The selected baseline contains migrations missing from this checkout.');
     if(Illuminate\Support\Facades\Artisan::call('migrate',['--force'=>true,'--path'=>$paths])!==0)throw new RuntimeException('Previous baseline schema failed.');
     $mysql=Illuminate\Support\Facades\DB::getPdo();$mysql->exec('SET FOREIGN_KEY_CHECKS=0');
     try {

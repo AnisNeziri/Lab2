@@ -127,7 +127,7 @@ class ExpenseService
         DB::transaction(function () use ($expense) {
             $expense = Expense::query()->lockForUpdate()->findOrFail($expense->id);
             $this->ensureDraft($expense);
-            if ($expense->payments()->exists() || $expense->purchaseOrderPaymentAllocations()->exists()) {
+            if ($expense->payments()->exists() || $expense->purchaseOrderPaymentAllocations()->where('amount','>',0)->exists()) {
                 throw ValidationException::withMessages(['expense' => ['A draft with payments cannot be deleted.']]);
             }
             $expense->update([
@@ -168,15 +168,23 @@ class ExpenseService
         });
     }
 
-    public function post(Expense $expense): Expense
+    public function post(Expense $expense, bool $supplierApproval = false): Expense
     {
-        return DB::transaction(function () use ($expense) {
+        return DB::transaction(function () use ($expense, $supplierApproval) {
+            DB::table('companies')->where('id', Auth::user()->company_id)->lockForUpdate()->first();
             app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational($expense->invoice_date?->toDateString());
             $expense = Expense::query()->lockForUpdate()->findOrFail($expense->id);
+            if (!$supplierApproval && $expense->supplierInvoiceItems()->exists()) {
+                throw ValidationException::withMessages(['supplier_invoice'=>'Review and approve this bill through Supplier Invoices before posting.']);
+            }
             if ($expense->status === 'posted') {
                 return $this->find($expense);
             }
             $this->ensureDraft($expense);
+            if (\App\Support\CompanyCurrency::forCompanyId($expense->company_id) !== 'EUR') {
+                throw ValidationException::withMessages(['currency'=>'Supplier expense accounting currently requires EUR as the company base currency. Keep this bill in draft until a supported base-currency policy is configured.']);
+            }
+
             if ($expense->document_type === 'credit_note' && blank($expense->original_document_number)) {
                 throw ValidationException::withMessages(['original_document_number' => ['A credit note must reference the original vendor document.']]);
             }
@@ -209,12 +217,12 @@ class ExpenseService
                 throw ValidationException::withMessages(['expense' => ['Only a posted expense can be reversed.']]);
             }
             if ($expense->payments()->where('status', 'completed')->exists()
-                || $expense->purchaseOrderPaymentAllocations()->exists()
+                || $expense->purchaseOrderPaymentAllocations()->where('amount','>',0)->exists()
                 || $expense->supplierCredits()->exists()) {
                 throw ValidationException::withMessages(['expense' => ['Reverse active payments before reversing this expense.']]);
             }
             $expense->update([
-                'status' => 'reversed', 'reversed_at' => now(), 'reversed_by' => Auth::id(),
+                'status' => 'reversed', 'reversal_date' => \App\Support\CompanyClock::today()->toDateString(), 'reversed_at' => now(), 'reversed_by' => Auth::id(),
                 'reversal_reason' => trim($reason), 'updated_by' => Auth::id(),
             ]);
             $this->accounting->reverseSource('supplier_accounting', 'expense:'.$expense->id, \App\Support\CompanyClock::today()->toDateString(), $reason);
@@ -237,6 +245,7 @@ class ExpenseService
             if ($expense->currency !== 'EUR' && (Money::compareDecimal($paymentRate, '0') <= 0 || empty($data['exchange_rate_date']) || blank($data['exchange_rate_source'] ?? null))) {
                 throw ValidationException::withMessages(['exchange_rate' => ['A foreign-currency payment requires its payment-date EUR rate, date and source.']]);
             }
+            if($expense->currency!=='EUR'&&($data['exchange_rate_date']??'')>$data['payment_date'])throw ValidationException::withMessages(['exchange_rate_date'=>'A historical payment cannot use a later exchange-rate date.']);
             if (! empty($data['idempotency_key'])) {
                 $existing = ExpensePayment::query()->where('idempotency_key', $data['idempotency_key'])->first();
                 if ($existing) {
@@ -311,7 +320,7 @@ class ExpenseService
                 throw ValidationException::withMessages(['payment' => ['Only an active payment can be reversed.']]);
             }
             $payment->update([
-                'status' => 'reversed', 'reversed_at' => now(), 'reversed_by' => Auth::id(),
+                'status' => 'reversed', 'reversal_date' => \App\Support\CompanyClock::today()->toDateString(), 'reversed_at' => now(), 'reversed_by' => Auth::id(),
                 'reversal_reason' => trim($reason),
             ]);
             if ($payment->financial_account_transaction_id) {
@@ -372,6 +381,7 @@ class ExpenseService
         if ($currency !== 'EUR' && ($rate <= 0 || empty($data['exchange_rate_date']) || blank($data['exchange_rate_source'] ?? null))) {
             throw ValidationException::withMessages(['exchange_rate' => ['Non-EUR expenses require a positive EUR conversion rate, rate date and source.']]);
         }
+        if($currency!=='EUR'&&$data['exchange_rate_date']>$data['invoice_date'])throw ValidationException::withMessages(['exchange_rate_date'=>'A historical bill cannot use a later exchange-rate date.']);
         $net = round((float) $data['net_amount'], 2);
         $vat = round((float) $data['vat_amount'], 2);
         $vatRate = (float) $data['vat_rate'];
@@ -379,7 +389,7 @@ class ExpenseService
         if (($treatment === 'standard' && $vatRate !== 18.0) || ($treatment === 'reduced' && $vatRate !== 8.0)) {
             throw ValidationException::withMessages(['vat_rate' => ['Standard VAT uses 18%; reduced VAT uses 8%.']]);
         }
-        if (in_array($treatment, ['exempt', 'non_vat'], true) && ($vatRate !== 0.0 || $vat !== 0.0)) {
+        if (in_array($treatment, ['zero_rated', 'exempt', 'out_of_scope', 'non_vat'], true) && ($vatRate !== 0.0 || $vat !== 0.0)) {
             throw ValidationException::withMessages(['vat_amount' => ['This VAT treatment requires a zero rate and zero VAT amount.']]);
         }
         if ($treatment === 'reverse_charge' && ! in_array($vatRate, [8.0, 18.0], true)) {

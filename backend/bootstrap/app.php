@@ -44,6 +44,20 @@ $application = Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(fn ($request) => $request->is('api/*') || $request->expectsJson());
 
+        $exceptions->render(function (\App\Exceptions\ClosedAccountingPeriodException $exception, $request) {
+            // Service transactions have rolled back before rendering. Record
+            // the rejected attempt separately, without retaining a draft or
+            // moving its date into another period.
+            if (auth()->user()?->company_id) \App\Models\ActivityLog::create([
+                'company_id'=>auth()->user()->company_id,'user_id'=>auth()->id(),
+                'action'=>'accounting.closed_period_attempt','entity'=>'AccountingPeriod','entity_id'=>$exception->periodId,
+                'description'=>'Posting blocked by accounting period control',
+                'new_value'=>['posting_date'=>$exception->postingDate,'period_state'=>$exception->periodState,'workflow'=>$request->path()],
+            ]);
+            return response()->json(['message'=>collect($exception->errors())->flatten()->first(),'errors'=>$exception->errors(),
+                'code'=>'accounting_period_locked','period_id'=>$exception->periodId],422);
+        });
+
         $exceptions->report(function (QueryException $exception) {
             // QueryException's message contains SQL and bound business data.
             // Keep actionable codes/correlation without multi-MB evidence payloads.

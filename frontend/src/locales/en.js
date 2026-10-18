@@ -40,7 +40,7 @@ export const en = {
   "nav.stock": "Stock Movements",
   "nav.mobileWarehouse": "Mobile Warehouse",
   "nav.operationsCenter": "Inventory Operations",
-  "nav.accounting": "Financial Core",
+  "nav.accounting": "Finance Control Center",
   "nav.categories": "Categories",
   "nav.suppliers": "Suppliers",
   "nav.quality": "Quality Management",

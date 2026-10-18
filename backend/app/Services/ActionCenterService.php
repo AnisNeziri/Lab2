@@ -72,6 +72,9 @@ class ActionCenterService
             'issues'=>OperationalTask::whereIn('id',collect($tasks->items())->pluck('id'))->whereIn('priority',['high','urgent'])->count(),
         ]];
         $items=[];$intelligentProducts=[];
+        if($this->can('accounting.reports.view')&&$this->can('accounting.integrity.view'))foreach(app(FinancialControlService::class)->summary()['attention'] as $issue){
+            $items[]=['kind'=>'finance','id'=>'dc2-'.$issue['code'],'title'=>$issue['label'],'description'=>($issue['count']??1).' items require review','url'=>$issue['url'],'due_at'=>null,'values'=>['count'=>$issue['count']??1,'difference'=>$issue['difference']??null],'severity'=>$issue['severity']];
+        }
         if($this->can('onboarding.view'))foreach(\App\Models\OnboardingSession::whereNotIn('status',['locked','cancelled'])->latest('id')->limit(10)->get() as $session){
             foreach($session->rows()->active()->whereIn('status',['review','error','unvalidated','failed'])->selectRaw('domain,COUNT(*) as total')->groupBy('domain')->get() as $group)
                 $items[]=['kind'=>'onboarding','id'=>$session->id.'-'.$group->domain,'title'=>$session->name,'description'=>'Review opening source group','values'=>['source_rows'=>$group->total],'url'=>'/onboarding?session='.$session->id.'&domain='.$group->domain,'due_at'=>null];
@@ -130,7 +133,7 @@ class ActionCenterService
         }
         if ($this->can('approvals.view')) foreach(app(ApprovalService::class)->pendingForUser(Auth::user())->take(25) as $a) $items[]=['kind'=>'approval','id'=>$a->id,'title'=>$a->rule_type,'description'=>$a->status,'url'=>'/procurement?view=approvals','due_at'=>null];
         if ($this->can('control_tower.view')) foreach(OperationalException::whereIn('status',['active','open'])->latest()->limit(25)->get() as $e) $items[]=['kind'=>'shipment','id'=>$e->id,'title'=>$e->exception_type,'description'=>$e->description,'url'=>$e->next_action['url'] ?? '/control-tower','due_at'=>null];
-        if ($this->can('accounting.integrity.view')) foreach(AccountingException::where('status','open')->latest()->limit(25)->get() as $e) $items[]=['kind'=>'finance','id'=>$e->id,'title'=>$e->type,'description'=>$e->message,'url'=>'/accounting?tab=integrity','due_at'=>null];
+        if ($this->can('accounting.integrity.view')&&!$this->can('accounting.reports.view')) foreach(AccountingException::where('status','open')->latest()->limit(25)->get() as $e) $items[]=['kind'=>'finance','id'=>$e->id,'title'=>$e->type,'description'=>$e->message,'url'=>'/accounting?tab=integrity','due_at'=>null];
         if ($this->can('fulfillment.view')) foreach(\App\Models\OrderIntake::where('state','attention')->latest()->limit(25)->get() as $o) $items[]=['kind'=>'order','id'=>$o->id,'title'=>$o->external_id ?: '#'.$o->id,'description'=>'Review order','url'=>'/order-hub?intake='.$o->id,'due_at'=>null];
         if ($this->can('automations.executions.view')) foreach(app(AutomationService::class)->visibleExecutions()->whereIn('status',['failed','blocked'])->latest()->limit(25)->get() as $e) $items[]=['kind'=>'system','id'=>$e->id,'title'=>'Automation #'.$e->automation_id,'description'=>$e->error,'url'=>'/automation-studio?automation='.$e->automation_id,'due_at'=>$e->next_retry_at];
         $summary=['tasks'=>$tasks->total(),'approvals'=>count(array_filter($items,fn($x)=>$x['kind']==='approval')),'issues'=>count($items)];

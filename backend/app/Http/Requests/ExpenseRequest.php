@@ -39,7 +39,7 @@ class ExpenseRequest extends FormRequest
             'vat_rate' => ['required', Rule::in([0, 8, 18, '0', '8', '18'])],
             'vat_amount' => ['required', 'numeric', 'min:0', 'max:9000000000000'],
             'self_assessed_vat_amount' => ['nullable', 'numeric', 'min:0', 'max:9000000000000'],
-            'vat_treatment' => ['required', Rule::in(['standard', 'reduced', 'exempt', 'reverse_charge', 'non_vat', 'import_vat'])],
+            'vat_treatment' => ['required', Rule::in(['standard', 'reduced', 'zero_rated', 'exempt', 'out_of_scope', 'reverse_charge', 'non_vat', 'import_vat'])],
             'input_vat_eligible' => ['required', 'boolean'],
             'deductible_vat_amount' => ['nullable', 'numeric', 'min:0', 'max:9000000000000'],
             'tax_legal_reference' => ['nullable', 'string', 'max:2000'],

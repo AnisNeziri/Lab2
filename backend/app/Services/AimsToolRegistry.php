@@ -51,6 +51,7 @@ class AimsToolRegistry
         abort_unless($this->can($definition['required_permission']), 403, 'You do not have permission to use this capability.');
 
         $result = match ($name) {
+            'get_accounting_control_summary','get_accounting_receivables','get_accounting_payables','get_month_close_blockers','get_financial_reconciliation','get_payment_allocation_review','get_posted_profit_comparison'=>app(FinanceAssistantFacts::class)->read($name,$input),
             'get_low_stock_facts'=>app(OpeningFactsService::class)->lowStock(),
             'get_onboarding_status','get_import_review','get_onboarding_reconciliation'=>app(OpeningFactsService::class)->onboarding($input),
             'create_simulation_scenario','run_strategic_simulation'=>isset($input['parent_id'])?app(StrategicSimulationService::class)->derive((int)$input['parent_id'],array_diff_key($input,['parent_id'=>true])):app(StrategicSimulationService::class)->submit($input),
@@ -341,6 +342,7 @@ class AimsToolRegistry
             $tool('get_customer_credit_exposure', 'Customer exposure and aging calculation.', $id('customer_id'), 'debts.view'),
             $tool('get_overdue_receivables', 'Customer overdue aging summary.', $id('customer_id'), 'debts.view'),
             $tool('get_financial_summary', 'Financial-core summary for an optional period.', ['type' => 'object', 'properties' => ['from' => ['type' => 'string', 'format' => 'date'], 'to' => ['type' => 'string', 'format' => 'date']]], 'accounting.reports.view'),
+            ...array_map(fn($name)=>$tool($name,'Read-only posted accounting evidence. Never posts, pays, allocates, reconciles, reverses or closes.',['type'=>'object','properties'=>['from'=>['type'=>'string','format'=>'date'],'to'=>['type'=>'string','format'=>'date'],'period_id'=>['type'=>'integer','minimum'=>1]]],match($name){'get_accounting_receivables','get_payment_allocation_review'=>'debts.view','get_accounting_payables'=>'finance.view','get_month_close_blockers'=>'accounting.periods.manage','get_financial_reconciliation'=>'accounting.integrity.view',default=>'accounting.reports.view'}),FinanceAssistantFacts::TOOLS),
             $tool('get_pending_approvals', 'Current pending approval requests.', ['type' => 'object'], 'approvals.view'),
             $tool('get_accounting_exceptions', 'Open accounting integrity exceptions.', ['type' => 'object'], 'accounting.integrity.view'),
         ];

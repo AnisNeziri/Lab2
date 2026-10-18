@@ -40,7 +40,7 @@ export const sq = {
   "nav.stock": "Lëvizjet e stokut",
   "nav.mobileWarehouse": "Magazina Mobile",
   "nav.operationsCenter": "Operacionet e Inventarit",
-  "nav.accounting": "Bërthama Financiare",
+  "nav.accounting": "Qendra e kontrollit financiar",
   "nav.categories": "Kategoritë",
   "nav.suppliers": "Furnizuesit",
   "nav.quality": "Menaxhimi i cilësisë",

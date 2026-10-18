@@ -14,7 +14,7 @@ class FinancialAccountTransaction extends Model
         'company_id', 'financial_account_id', 'type', 'amount', 'currency',
         'transaction_date', 'source_type', 'source_id', 'related_transaction_id',
         'counterparty', 'reference_number', 'description', 'status', 'idempotency_key',
-        'created_by', 'reversed_at', 'reversed_by', 'reversal_reason',
+        'created_by', 'reversal_date', 'reversed_at', 'reversed_by', 'reversal_reason',
         'journal_entry_id',
         'exchange_rate', 'exchange_rate_date', 'exchange_rate_source',
     ];
@@ -23,7 +23,7 @@ class FinancialAccountTransaction extends Model
     {
         return [
             'amount' => 'decimal:2', 'transaction_date' => 'date:Y-m-d',
-            'source_id' => 'integer', 'reversed_at' => 'datetime',
+            'source_id' => 'integer', 'reversal_date' => 'date:Y-m-d', 'reversed_at' => 'datetime',
             'journal_entry_id' => 'integer',
             'exchange_rate' => 'decimal:8', 'exchange_rate_date' => 'date',
         ];
