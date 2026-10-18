@@ -389,7 +389,7 @@ class ExpenseService
         if (($treatment === 'standard' && $vatRate !== 18.0) || ($treatment === 'reduced' && $vatRate !== 8.0)) {
             throw ValidationException::withMessages(['vat_rate' => ['Standard VAT uses 18%; reduced VAT uses 8%.']]);
         }
-        if (in_array($treatment, ['exempt', 'non_vat'], true) && ($vatRate !== 0.0 || $vat !== 0.0)) {
+        if (in_array($treatment, ['zero_rated', 'exempt', 'out_of_scope', 'non_vat'], true) && ($vatRate !== 0.0 || $vat !== 0.0)) {
             throw ValidationException::withMessages(['vat_amount' => ['This VAT treatment requires a zero rate and zero VAT amount.']]);
         }
         if ($treatment === 'reverse_charge' && ! in_array($vatRate, [8.0, 18.0], true)) {

@@ -17,7 +17,7 @@ return new class extends Migration
         // Classify existing defaults once. Codes remain company-configurable;
         // reports subsequently use this explicit classification, never prefixes.
         foreach (['4000' => 'revenue', '4200' => 'other_income', '5000' => 'cost_of_sales', '6300' => 'other_expense'] as $code => $group) {
-            DB::table('accounting_accounts')->where('code', $code)->update(['statement_group' => $group]);
+            DB::table('accounting_accounts')->where('code', (string) $code)->where('type', in_array($group, ['revenue', 'other_income'], true) ? 'revenue' : 'expense')->update(['statement_group' => $group]);
         }
         DB::table('accounting_accounts')->where('type', 'expense')->whereNull('statement_group')->update(['statement_group' => 'operating_expense']);
         DB::table('accounting_accounts')->where('type', 'revenue')->whereNull('statement_group')->update(['statement_group' => 'revenue']);

@@ -23,6 +23,7 @@ export const getProfitLoss=(p={})=>apiRequest(buildApiUrl('/accounting/profit-lo
 export const getBalanceSheet=(p={})=>apiRequest(buildApiUrl('/accounting/balance-sheet',p))
 export const getAccountingCashFlow=(p={})=>apiRequest(buildApiUrl('/accounting/cash-flow',p))
 export const getAccountingIntegrity=()=>apiRequest('/accounting/integrity')
+export const getAccountingExceptions=(p={})=>apiRequest(buildApiUrl('/accounting/exceptions',p))
 export const getAccountingReconciliation=(p={})=>apiRequest(buildApiUrl('/accounting/reconciliation',p))
 export const retryAccountingException=(id,p={})=>apiRequest(`/accounting/exceptions/${id}/retry`,json('POST',p))
 export const getAccountingOpening=()=>apiRequest('/accounting/opening')

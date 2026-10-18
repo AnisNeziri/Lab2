@@ -78,7 +78,8 @@ class AccountingService
 
     public function accounts(): array
     {
-        return AccountingAccount::query()->with('parent:id,code,name')->withCount('lines')->orderBy('code')->get()->all();
+        $controlled=app(ManualJournalService::class)->controlledAccountIds();
+        return AccountingAccount::query()->with('parent:id,code,name')->withCount('lines')->orderBy('code')->get()->map(function($a)use($controlled){$a->setAttribute('is_control',in_array($a->id,$controlled));$a->syncOriginalAttribute('is_control');return $a;})->all();
     }
 
     public function mappings(): array
@@ -525,7 +526,7 @@ class AccountingService
         $financial = $transaction->account;
         $base = CompanyCurrency::forCompanyId($transaction->company_id);
         $rate = $transaction->currency === $base ? '1' : $transaction->exchange_rate;
-        if (! $rate) {
+        if (! $rate || ($transaction->currency !== $base && (! $transaction->exchange_rate_date || ! $transaction->exchange_rate_source || $transaction->exchange_rate_date->toDateString() > $transaction->transaction_date->toDateString()))) {
             $this->exception('unposted-financial-transaction:'.$transaction->id, 'missing_fx_snapshot', 'critical', 'A foreign-currency cash/bank transaction needs an exchange-rate snapshot.', ['source_type' => 'financial_account_transaction', 'source_id' => $transaction->id, 'currency' => $transaction->currency]);
 
             return null;
@@ -535,6 +536,10 @@ class AccountingService
         if (! $counter->is_active || ! $counter->is_posting) {
             throw ValidationException::withMessages(['counter_accounting_account_id' => ['Choose an active posting account.']]);
         }$amount = Money::multiply($transaction->amount, $rate);
+        $controlledRoots=AccountingPostingMapping::query()->whereIn('mapping_key',['cash','bank','accounts_receivable','accounts_payable','inventory','customer_advances','supplier_advances'])->pluck('accounting_account_id');
+        // Trusted operational services can move an existing cash sale to bank.
+        // The public transaction endpoint always uses the manual source.
+        foreach(in_array($transaction->source_type,[null,'manual'],true)?$controlledRoots:[] as $root) if(in_array($counter->id,$this->descendantAccountIds((int)$root),true)) throw ValidationException::withMessages(['counter_accounting_account_id'=>'Use the customer, supplier, inventory or transfer workflow for a controlled balance. A manual cash/bank classification cannot bypass its subledger.']);
         $in = in_array($transaction->type, ['inflow', 'transfer_in', 'adjustment_in', 'refund_in'], true);
         $entry = $this->createAndPost(['posting_date' => $transaction->transaction_date->toDateString(), 'reference_number' => $transaction->reference_number, 'description' => $transaction->description ?: 'Classified money-account transaction', 'source_module' => 'banking', 'source_type' => 'financial_account_transaction', 'source_id' => $transaction->id, 'source_key' => 'financial-transaction:'.$transaction->id, 'currency' => $transaction->currency, 'exchange_rate' => $rate, 'exchange_rate_date'=>$transaction->exchange_rate_date,'exchange_rate_source'=>$transaction->exchange_rate_source,'lines' => [['accounting_account_id' => $cash->id, $in ? 'debit' : 'credit' => $amount], ['accounting_account_id' => $counter->id, $in ? 'credit' : 'debit' => $amount]]]);
         $transaction->update(['journal_entry_id' => $entry->id]);
@@ -548,9 +553,9 @@ class AccountingService
         return app(AccountingReportQueries::class)->trialBalance($from, $to);
     }
 
-    public function profitAndLoss(?string $from, ?string $to): array
+    public function profitAndLoss(?string $from, ?string $to, ?array $trialBalance = null): array
     {
-        $tb = $this->trialBalance($from, $to);
+        $tb = $trialBalance ?? $this->trialBalance($from, $to);
         $rows = collect($tb['rows']);
         $group = fn ($r) => $r['statement_group'] ?: ($r['type'] === 'revenue' ? 'revenue' : ($r['type'] === 'expense' ? 'operating_expense' : null));
         $sum = fn ($key, $credit) => $rows->filter(fn ($r) => $group($r) === $key)->sum(fn ($r) => $credit ? Money::minor($r['credit_movement']) - Money::minor($r['debit_movement']) : Money::minor($r['debit_movement']) - Money::minor($r['credit_movement']));
@@ -578,7 +583,7 @@ class AccountingService
         if ($start->gt($end)) {
             $start = $start->subYear();
         }
-        $all = Money::minor($this->profitAndLoss(null, $to)['net_profit']);
+        $all = -$rows->whereIn('type',['revenue','expense'])->sum(fn($r)=>Money::minor($r['closing_balance']));
         $current = Money::minor($this->profitAndLoss($start->toDateString(), $to)['net_profit']);
         $prior = $all - $current;
         $difference = $assets - $liabilities - $equity - $all;
@@ -707,6 +712,7 @@ class AccountingService
 
     public function reconciliation(bool $recordExceptions = true): array
     {
+        $gl=$this->controlBalances();
         $invoiceDebt = Invoice::query()->where('document_type', 'invoice')->whereIn('status', ['issued', 'partially_paid', 'paid'])->whereNull('daily_sale_id')
             ->whereDoesntHave('debtTransactions')->sum(DB::raw('CASE WHEN (CASE WHEN grand_total>total_amount THEN grand_total ELSE total_amount END)>total_paid THEN (CASE WHEN grand_total>total_amount THEN grand_total ELSE total_amount END)-total_paid ELSE 0 END'));
         $ar = round((float) Customer::query()->sum('current_debt') + (float) $invoiceDebt, 2);
@@ -724,14 +730,14 @@ class AccountingService
             + (float) PaymentTransaction::query()->where('status', 'completed')->whereNull('financial_account_id')->sum('amount')
             + (float) CustomerDebtTransaction::query()->where('type', 'payment')->whereNull('financial_account_id')->whereDoesntHave('reversals')->sum('amount')
             - (float) ExpensePayment::query()->where('status', 'completed')->whereNull('financial_account_id')->sum('amount_eur')
-            - (float) PurchaseOrderPayment::query()->where('status', 'completed')->whereNull('financial_account_id')->whereNull('onboarding_session_id')->sum('amount_eur'), 2);
+            - (float) PurchaseOrderPayment::query()->where('status', 'completed')->whereNull('financial_account_id')->when(\Illuminate\Support\Facades\Schema::hasColumn('purchase_order_payments','onboarding_session_id'),fn($q)=>$q->whereNull('onboarding_session_id'))->sum('amount_eur'), 2);
         $rows = [
-            'accounts_receivable' => $this->reconciliationRow('accounts_receivable', $ar, $this->accountBalance('1100', null), ['account_codes' => ['1100'], 'drilldown_url' => '/customer-debts', 'affected' => Customer::query()->where('current_debt', '>', 0)->orderByDesc('current_debt')->limit(10)->get(['id', 'name', 'current_debt'])]),
-            'customer_advances' => $this->reconciliationRow('customer_advances', $customerAdvances, -$this->accountBalance('2200', null), ['account_codes' => ['2200'], 'drilldown_url' => '/customer-debts', 'affected' => Customer::query()->where('current_credit', '>', 0)->orderByDesc('current_credit')->limit(10)->get(['id', 'name', 'current_credit'])]),
-            'accounts_payable' => $this->reconciliationRow('accounts_payable', $ap, -$this->accountBalance('2000', null), ['account_codes' => ['2000'], 'drilldown_url' => '/finance']),
-            'supplier_advances' => $this->reconciliationRow('supplier_advances', $supplierAdvances, $this->accountBalance('1300', null), ['account_codes' => ['1300'], 'drilldown_url' => '/purchase-orders']),
-            'inventory' => $this->reconciliationRow('inventory', $inventory, $this->accountBalance('1200', null), ['account_codes' => ['1200'], 'drilldown_url' => '/stock', 'affected' => Product::query()->orderByDesc('inventory_value')->limit(10)->get(['id', 'name', 'sku', 'quantity', 'inventory_value'])]),
-            'cash_bank' => $this->reconciliationRow('cash_bank', $cash, $this->cashGlBalance(null), ['account_codes' => ['1000', '1010'], 'drilldown_url' => '/money-accounts']),
+            'accounts_receivable' => $this->reconciliationRow('accounts_receivable', $ar, $gl['accounts_receivable'], ['account_codes' => ['1100'], 'drilldown_url' => '/customer-debts', 'affected' => Customer::query()->where('current_debt', '>', 0)->orderByDesc('current_debt')->limit(10)->get(['id', 'name', 'current_debt'])]),
+            'customer_advances' => $this->reconciliationRow('customer_advances', $customerAdvances, -$gl['customer_advances'], ['account_codes' => ['2200'], 'drilldown_url' => '/customer-debts', 'affected' => Customer::query()->where('current_credit', '>', 0)->orderByDesc('current_credit')->limit(10)->get(['id', 'name', 'current_credit'])]),
+            'accounts_payable' => $this->reconciliationRow('accounts_payable', $ap, -$gl['accounts_payable'], ['account_codes' => ['2000'], 'drilldown_url' => '/finance']),
+            'supplier_advances' => $this->reconciliationRow('supplier_advances', $supplierAdvances, $gl['supplier_advances'], ['account_codes' => ['1300'], 'drilldown_url' => '/purchase-orders']),
+            'inventory' => $this->reconciliationRow('inventory', $inventory, $gl['inventory'], ['account_codes' => ['1200'], 'drilldown_url' => '/stock', 'affected' => Product::query()->orderByDesc('inventory_value')->limit(10)->get(['id', 'name', 'sku', 'quantity', 'inventory_value'])]),
+            'cash_bank' => $this->reconciliationRow('cash_bank', $cash, $gl['cash_bank'], ['account_codes' => ['1000', '1010'], 'drilldown_url' => '/money-accounts']),
         ];
         if ($recordExceptions) {
             foreach ($rows as $key => $row) {
@@ -795,6 +801,29 @@ class AccountingService
         $difference = round($operational - $gl, 2);
 
         return ['control' => $control, 'operational_amount' => Money::normalize($operational), 'gl_amount' => Money::normalize($gl), 'difference' => Money::normalize($difference), 'reconciled' => abs($difference) < 0.005, 'status' => abs($difference) < 0.005 ? 'reconciled' : 'mismatch', ...$details];
+    }
+
+    /** One posted-line aggregation for all configured controls and descendants. */
+    public function controlBalances(?string $to = null): array
+    {
+        $sums = DB::table('journal_lines as l')->join('journal_entries as j', 'j.id', '=', 'l.journal_entry_id')
+            ->where('j.company_id', Auth::user()->company_id)->whereIn('j.status', ['posted', 'reversed'])
+            ->when($to, fn ($q) => $q->whereDate('j.posting_date', '<=', $to))->groupBy('l.accounting_account_id')
+            ->selectRaw('l.accounting_account_id,SUM(l.debit-l.credit) balance')->pluck('balance', 'accounting_account_id');
+        $accounts = AccountingAccount::query()->get(['id', 'parent_id', 'code']);
+        $mappings = AccountingPostingMapping::query()->pluck('accounting_account_id', 'mapping_key');
+        $result = [];
+        foreach (self::MAPPINGS as $key => $code) {
+            $root = $mappings[$key] ?? $accounts->firstWhere('code', $code)?->id;
+            $ids = $root ? [$root] : [];
+            do {
+                $before = count($ids);
+                $ids = array_values(array_unique([...$ids, ...$accounts->whereIn('parent_id', $ids)->pluck('id')->all()]));
+            } while (count($ids) !== $before);
+            $result[$key] = (float) Money::decimal(array_sum(array_map(fn ($id) => Money::minor($sums[$id] ?? 0), $ids)));
+        }
+        $result['cash_bank'] = $result['cash'] + $result['bank'];
+        return $result;
     }
 
     public function resolveAccountingException(AccountingException $exception, string $resolution): void

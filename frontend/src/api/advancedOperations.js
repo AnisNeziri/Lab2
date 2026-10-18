@@ -51,6 +51,8 @@ export const approveSupplierInvoice = (id, reason = null) => apiRequest(`/suppli
 export const allocateSupplierInvoicePayment = (id, payload) => apiRequest(`/supplier-invoices/${id}/allocate-payment`, json("POST", payload));
 
 export const getFinancialAccounts = () => apiRequest("/finance/accounts");
+export const getFinancialTransaction = id => apiRequest(`/finance/account-transactions/${id}`);
+export const getFinancialTransfer = id => apiRequest(`/finance/account-transfers/${id}`);
 export const getFinancialPostingAccounts = () => apiRequest("/finance/posting-accounts");
 export const createFinancialAccount = (payload) => apiRequest("/finance/accounts", json("POST", payload));
 export const updateFinancialAccount = (id, payload) => apiRequest(`/finance/accounts/${id}`, json("PUT", payload));

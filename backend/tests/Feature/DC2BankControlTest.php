@@ -243,13 +243,41 @@ class DC2BankControlTest extends TestCase
         Auth::user()->unsetRelation('company');
         Carbon::setTestNow('2026-10-31 23:30:00 UTC');
         try {
-            $tx = $a->post($bank,['type' => 'inflow', 'amount' => 100, 'transaction_date' => '2026-10-31', 'counter_accounting_account_id' => AccountingAccount::where('code','3000')->firstOrFail()->id, 'idempotency_key' => 'midnight-receipt']);
-            $a->reverse($tx,'Reverse in the next company-local day.');
-            $this->assertSame('2026-11-01',$tx->fresh()->reversal_date->toDateString());
-            $statement = $this->import($service,$bank,"Date,Amount\n2026-10-31,100.00\n");
-            $this->assertSame('100.00',$statement->balance_control['aims_closing_balance']);
+            $tx = $a->post($bank, ['type' => 'inflow', 'amount' => 100, 'transaction_date' => '2026-10-31', 'counter_accounting_account_id' => AccountingAccount::where('code', '3000')->firstOrFail()->id, 'idempotency_key' => 'midnight-receipt']);
+            $a->reverse($tx, 'Reverse in the next company-local day.');
+            $this->assertSame('2026-11-01', $tx->fresh()->reversal_date->toDateString());
+            $statement = $this->import($service, $bank, "Date,Amount\n2026-10-31,100.00\n");
+            $this->assertSame('100.00', $statement->balance_control['aims_closing_balance']);
         } finally {
             Carbon::setTestNow();
+        }
+    }
+
+    public function test_month_close_rechecks_completed_statement_evidence_instead_of_trusting_status(): void
+    {
+        [$a,$bank,$service] = $this->context();
+        $tx = $this->movement($a, $bank, 75, 'completed-proof');
+        $statement = $this->import($service, $bank, "Date,Amount,Balance\n2026-09-15,75.00,75.00\n", ['date' => 'Date', 'amount' => 'Amount', 'balance' => 'Balance']);
+        $service->reconcile($statement->rows->sole(), $tx);
+        $this->balances($statement, 0, 75);
+        $this->postJson('/api/finance/bank-statements/'.$statement->id.'/complete')->assertOk();
+        $period = app(AccountingService::class)->savePeriod(['name' => 'September proof', 'starts_at' => '2026-09-01', 'ends_at' => '2026-09-30']);
+        $this->assertTrue(app(AccountingService::class)->periodReadiness($period)['ready_to_close']);
+        DB::table('bank_statements')->where('id', $statement->id)->update(['closing_balance' => 76]);
+        $readiness = app(AccountingService::class)->periodReadiness($period);
+        $this->assertFalse($readiness['ready_to_close']);
+        $this->assertSame(1, collect($readiness['checks'])->firstWhere('code', 'bank_completion_proofs')['count']);
+        $this->assertDatabaseHas('bank_statements', ['id' => $statement->id, 'reconciliation_status' => 'completed', 'closing_balance' => 76]);
+    }
+
+    public function test_manual_bank_classification_cannot_bypass_customer_supplier_or_inventory_subledgers(): void
+    {
+        [$accounts,$bank] = $this->context();
+        foreach (['1100', '2000', '1200', '1300', '2200', '1000'] as $code) {
+            $before = JournalEntry::count();
+            $this->postJson('/api/finance/accounts/'.$bank->id.'/transactions', ['type' => 'inflow', 'amount' => 20, 'transaction_date' => '2026-09-15', 'idempotency_key' => (string) Str::uuid(), 'counter_accounting_account_id' => AccountingAccount::where('code', $code)->firstOrFail()->id])->assertUnprocessable();
+            $this->assertSame($before, JournalEntry::count());
+            $this->assertSame(0, $bank->transactions()->count());
         }
     }
 }

@@ -46,6 +46,9 @@ class DC2FinanceAssistantTest extends TestCase
         }
         $r = $this->postJson('/api/intelligence-assistant/ask', ['question' => 'how much customers owe us'])->assertOk()->json();
         $this->postJson('/api/intelligence-assistant/ask', ['question' => 'Show customers', 'conversation_id' => $r['conversation_id']])->assertOk()->assertJsonPath('intent', 'finance_receivables');
+        $comparison = $this->postJson('/api/intelligence-assistant/ask', ['question' => 'Compare last month', 'conversation_id' => $r['conversation_id']])->assertOk()->assertJsonPath('intent', 'finance_receivables_compare')->json();
+        $this->assertNotContains('get_posted_profit_comparison', array_column($comparison['tools'], 'tool'));
+        $this->assertStringContainsString('Customers owe us', $comparison['text']);
         $this->assertSame($before, $this->books());
     }
 
@@ -69,6 +72,6 @@ class DC2FinanceAssistantTest extends TestCase
         $this->actingAsApiUser('staff');
         $this->postJson('/api/intelligence-assistant/ask', ['question' => 'how much cash do we have'])->assertForbidden();
         $this->postJson('/api/capabilities/get_accounting_control_summary/execute', ['input' => []])->assertForbidden();
-        $this->assertDatabaseCount('journal_entries',0);
+        $this->assertDatabaseCount('journal_entries', 0);
     }
 }

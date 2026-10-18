@@ -221,6 +221,12 @@ class AccountingController extends Controller
         return response()->json($this->accounting->integrity());
     }
 
+    public function exceptions(Request $r):JsonResponse
+    {
+        $d=$r->validate(['page'=>'nullable|integer|min:1']);
+        return response()->json(AccountingException::query()->where('status','open')->with(['attempts'=>fn($q)=>$q->limit(10),'attempts.user:id,name'])->orderByRaw("CASE severity WHEN 'critical' THEN 0 ELSE 1 END")->latest('id')->paginate(50));
+    }
+
     public function reconciliation(Request $r): JsonResponse
     {
         $d=$r->validate(['to'=>'nullable|date']);

@@ -12,6 +12,7 @@ use App\Models\PurchaseOrderPayment;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Services\AccountingService;
+use App\Services\DatedFinancialReconciliation;
 use App\Services\SupplierPaymentAllocationService;
 use App\Support\CompanyClock;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -83,15 +84,15 @@ class DC2SupplierControlTest extends TestCase
         $this->assertEquals(10000, $product->fresh()->quantity);
         $this->assertEquals(9000, Expense::findOrFail($id)->remaining_amount);
         $this->getJson('/api/accounting/ap/aging?as_of=2026-09-30')->assertOk()->assertJsonPath('summary.total', '25000.00');
-        $dated=app(\App\Services\DatedFinancialReconciliation::class)->report('2026-09-30');
-        $this->assertTrue($dated['all_reconciled'],json_encode($dated));
-        $this->assertSame('16000.00',collect($dated['rows'])->firstWhere('control','supplier_advances')['operational_amount']);
+        $dated = app(DatedFinancialReconciliation::class)->report('2026-09-30');
+        $this->assertTrue($dated['all_reconciled'], json_encode($dated));
+        $this->assertSame('16000.00', collect($dated['rows'])->firstWhere('control', 'supplier_advances')['operational_amount']);
         $this->getJson('/api/accounting/ap/aging?as_of='.CompanyClock::today()->toDateString())->assertOk()->assertJsonPath('summary.total', '9000.00');
         $this->getJson('/api/accounting/ap/suppliers/'.$supplier->id.'/workbench')->assertOk()->assertJsonPath('summary.total', '9000.00')->assertJsonPath('advances.data.0.remaining', '0.00');
-        $this->getJson('/api/accounting/ap/suppliers/'.$supplier->id.'/statement?from=2026-09-01&to=2026-09-30')->assertOk()->assertJsonPath('closing.payable','25000.00')->assertJsonPath('closing.advance','16000.00');
-        $this->getJson('/api/accounting/ap/suppliers/'.$supplier->id.'/statement?from=2026-09-01&to='.CompanyClock::today()->toDateString())->assertOk()->assertJsonPath('closing.payable','9000.00')->assertJsonPath('closing.advance','0.00');
-        $csv=$this->getJson('/api/accounting/exports/supplier-statement?supplier_id='.$supplier->id.'&from=2026-09-01&to='.CompanyClock::today()->toDateString())->assertOk()->streamedContent();
-        $this->assertStringContainsString('9000.00',$csv);
+        $this->getJson('/api/accounting/ap/suppliers/'.$supplier->id.'/statement?from=2026-09-01&to=2026-09-30')->assertOk()->assertJsonPath('closing.payable', '25000.00')->assertJsonPath('closing.advance', '16000.00');
+        $this->getJson('/api/accounting/ap/suppliers/'.$supplier->id.'/statement?from=2026-09-01&to='.CompanyClock::today()->toDateString())->assertOk()->assertJsonPath('closing.payable', '9000.00')->assertJsonPath('closing.advance', '0.00');
+        $csv = $this->getJson('/api/accounting/exports/supplier-statement?supplier_id='.$supplier->id.'&from=2026-09-01&to='.CompanyClock::today()->toDateString())->assertOk()->streamedContent();
+        $this->assertStringContainsString('9000.00', $csv);
     }
 
     public function test_incremental_allocation_posts_only_the_new_amount_and_cross_rate_realized_difference(): void
@@ -182,9 +183,20 @@ class DC2SupplierControlTest extends TestCase
         $this->assertSame('2026-09-04', $journal->exchange_rate_date->toDateString());
         $this->assertSame('Authorized payment bank quote', $journal->exchange_rate_source);
         $this->assertSame('95.00', $p->amount_eur);
-        $this->assertSame('0.950000',$p->exchange_rate);
-        $this->assertSame('2026-09-04',$p->exchange_rate_date->toDateString());
-        $this->postJson('/api/purchase-orders/'.$po->id.'/payments',[...$input, 'exchange_rate' => 0.96, 'exchange_rate_date' => '2026-09-04', 'exchange_rate_source' => 'Authorized payment bank quote'])->assertUnprocessable();
-        $this->postJson('/api/purchase-orders/'.$po->id.'/payments',[...$input, 'idempotency_key' => 'future-rate', 'exchange_rate' => 0.95, 'exchange_rate_date' => '2026-09-06', 'exchange_rate_source' => 'Later quote'])->assertUnprocessable();
+        $this->assertSame('0.950000', $p->exchange_rate);
+        $this->assertSame('2026-09-04', $p->exchange_rate_date->toDateString());
+        $this->postJson('/api/purchase-orders/'.$po->id.'/payments', [...$input, 'exchange_rate' => 0.96, 'exchange_rate_date' => '2026-09-04', 'exchange_rate_source' => 'Authorized payment bank quote'])->assertUnprocessable();
+        $this->postJson('/api/purchase-orders/'.$po->id.'/payments', [...$input, 'idempotency_key' => 'future-rate', 'exchange_rate' => 0.95, 'exchange_rate_date' => '2026-09-06', 'exchange_rate_source' => 'Later quote'])->assertUnprocessable();
+    }
+
+    public function test_zero_rated_exempt_and_out_of_scope_bills_remain_distinct_without_invented_tax(): void
+    {
+        [$supplier] = $this->context();
+        foreach (['zero_rated', 'exempt', 'out_of_scope'] as $treatment) {
+            $id = $this->postJson('/api/supplier-invoices', $this->bill($supplier, null, 1, 120, ['document_number' => 'TAX-'.$treatment, 'vat_treatment' => $treatment, 'tax_legal_reference' => 'Authorized accountant classification for synthetic data.']))->assertCreated()->assertJsonPath('vat_treatment', $treatment)->json('id');
+            $this->postJson('/api/supplier-invoices/'.$id.'/approve', ['reason' => 'Accountant reviewed the non-PO tax classification.'])->assertOk()->assertJsonPath('vat_amount', '0.00')->assertJsonPath('vat_treatment', $treatment);
+        }
+        $this->assertEquals(0, app(AccountingService::class)->controlBalances()['input_vat']);
+        $this->assertEquals(360, app(AccountingService::class)->reconciliation(false)['rows']['accounts_payable']['gl_amount']);
     }
 }

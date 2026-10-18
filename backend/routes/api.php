@@ -498,6 +498,7 @@ Route::middleware('auth.token')->group(function () {
                 Route::get('/balance-sheet', [AccountingController::class, 'balanceSheet'])->middleware('permission:accounting.reports.view');
                 Route::get('/cash-flow', [AccountingController::class, 'cashFlow'])->middleware('permission:accounting.reports.view');
                 Route::get('/integrity', [AccountingController::class, 'integrity'])->middleware('permission:accounting.integrity.view');
+                Route::get('/exceptions', [AccountingController::class, 'exceptions'])->middleware('permission:accounting.integrity.view');
                 Route::get('/reconciliation', [AccountingController::class, 'reconciliation'])->middleware('permission:accounting.integrity.view');
                 Route::post('/exceptions/{exception}/retry', [AccountingController::class, 'retryException'])->middleware('permission:accounting.integrity.retry');
                 Route::get('/opening', [AccountingController::class, 'openingSetup'])->middleware('permission:accounting.settings.manage');
@@ -621,6 +622,8 @@ Route::middleware('auth.token')->group(function () {
             Route::post('/supplier-invoices/{supplierInvoice}/approve', [SupplierInvoiceController::class, 'approve'])->middleware(['permission:supplier_invoices.approve','permission:supplier_invoices.post']);
 
             Route::get('/finance/accounts', [FinancialAccountController::class, 'index'])->middleware('permission:financial_accounts.view');
+            Route::get('/finance/account-transactions/{transaction}', [FinancialAccountController::class, 'transaction'])->middleware('permission:financial_accounts.view');
+            Route::get('/finance/account-transfers/{transfer}', [FinancialAccountController::class, 'transferRecord'])->middleware('permission:financial_accounts.view');
             Route::get('/finance/posting-accounts', [FinancialAccountController::class, 'postingAccounts'])->middleware('permission:financial_accounts.adjust');
             Route::post('/finance/accounts', [FinancialAccountController::class, 'store'])->middleware('permission:financial_accounts.manage');
             Route::put('/finance/accounts/{financialAccount}', [FinancialAccountController::class, 'update'])->middleware('permission:financial_accounts.manage');

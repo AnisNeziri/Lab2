@@ -43,13 +43,25 @@ class LandedCostService
 
     public function find(LandedCost $landedCost): LandedCost
     {
-        return $landedCost->load([
+        $landedCost->load([
             'goodsReceipt:id,receipt_number,purchase_order_id', 'purchaseOrder:id,po_number,supplier_id,total_amount,total_paid,due_at,status',
             'shipment:id,tracking_number', 'creator:id,name', 'poster:id,name',
             'allocations.goodsReceiptItem:id,goods_receipt_id,product_id,accepted_base_quantity,damaged_base_quantity,base_purchase_unit_cost,landed_cost_allocated,final_inventory_unit_cost',
             'allocations.product:id,name,sku,unit',
             'allocations.accountingEntry.poster:id,name',
         ]);
+        $goods = GoodsReceiptItem::query()->where('goods_receipt_id', $landedCost->goods_receipt_id)
+            ->selectRaw('COALESCE(SUM((accepted_base_quantity+damaged_base_quantity)*base_purchase_unit_cost),0) goods_value')->value('goods_value');
+        $costs = LandedCost::query()->where('goods_receipt_id', $landedCost->goods_receipt_id)->where('status', 'posted')
+            ->selectRaw('cost_type,COALESCE(SUM(base_currency_amount),0) amount')->groupBy('cost_type')->get();
+        $landed = round((float) $costs->sum('amount'), 2);
+        $landedCost->setAttribute('accounting_presentation', [
+            'base_currency' => $landedCost->base_currency, 'goods_value' => \App\Support\Money::normalize($goods),
+            'posted_costs' => $costs, 'posted_landed_cost_total' => \App\Support\Money::normalize($landed),
+            'total_receipt_basis' => \App\Support\Money::normalize((float) $goods + $landed),
+            'qualification' => 'Receipt goods at original purchase-cost basis plus currently posted landed costs. This is receipt cost evidence; remaining inventory and consumed COGS are shown separately in the allocation posting.',
+        ]);
+        return $landedCost;
     }
 
     public function createDraft(array $data): LandedCost

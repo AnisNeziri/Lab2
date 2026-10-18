@@ -85,6 +85,7 @@ class DC2DatedReconciliationTest extends TestCase
             $draft = app(LandedCostService::class)->createDraft(['goods_receipt_id' => $receipt->id, 'cost_type' => $type, 'amount' => $amount, 'currency' => 'EUR', 'allocation_method' => 'quantity', 'goods_receipt_item_ids' => $receipt->items()->pluck('id')->all(), 'idempotency_key' => (string) Str::uuid()]);
             $landed[] = app(LandedCostService::class)->post($draft);
         }
+        $this->getJson('/api/landed-costs/'.$landed[0]->id)->assertOk()->assertJsonPath('accounting_presentation.goods_value', '16000.00')->assertJsonPath('accounting_presentation.posted_landed_cost_total', '1600.00')->assertJsonPath('accounting_presentation.total_receipt_basis', '17600.00')->assertJsonCount(4, 'accounting_presentation.posted_costs');
         $this->assertEquals(17600, $product->fresh()->inventory_value);
         $this->assertEquals(2.2, $product->fresh()->weighted_average_cost);
         $this->clock('2026-10-05 12:00:00');
@@ -102,6 +103,6 @@ class DC2DatedReconciliationTest extends TestCase
         DB::table('landed_cost_accounting_entries')->where('landed_cost_id', $landed[0]->id)->update(['reversal_date' => null, 'reversal_inventory_value_before' => null, 'reversal_inventory_value_after' => null]);
         $unproven = collect(app(DatedFinancialReconciliation::class)->report('2026-09-30')['rows'])->firstWhere('control', 'inventory');
         $this->assertFalse($unproven['reconciled']);
-        $this->assertSame('evidence_required',$unproven['status']);
+        $this->assertSame('evidence_required', $unproven['status']);
     }
 }

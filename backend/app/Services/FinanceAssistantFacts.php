@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\AccountingPeriod;
+use App\Models\CustomerDebtTransaction;
+use App\Models\Invoice;
 use App\Support\CompanyClock;
 use App\Support\CompanyCurrency;
 use App\Support\Money;
@@ -29,7 +31,7 @@ class FinanceAssistantFacts
             case 'get_accounting_receivables':
                 $data = app(ReceivableReports::class)->aging($to);
 
-                return ['as_of' => $to, 'currency' => $data['currency'], 'summary' => $data['summary'], 'aging_buckets' => $data['aging_buckets'], 'top_customers' => $data['top_overdue_customers']->toArray(), 'items' => array_slice($data['receivables'], 0, 10), 'qualification' => $data['note']];
+                return ['as_of' => $to, 'currency' => $data['currency'], 'summary' => $data['summary'], 'aging_buckets' => $data['aging_buckets'], 'top_customers' => app(ReceivableReports::class)->positions($to)->where('currency', $data['currency'])->selectRaw('customer_id,customer_name,SUM(outstanding) outstanding')->groupBy('customer_id', 'customer_name')->orderByDesc('outstanding')->limit(10)->get()->toArray(), 'items' => array_slice($data['receivables'], 0, 10), 'qualification' => $data['note']];
             case 'get_accounting_payables':
                 $data = app(PayableReports::class)->aging($to);
                 $next = CarbonImmutable::parse($to)->addDays(7)->toDateString();
@@ -96,7 +98,7 @@ class FinanceAssistantFacts
             'finance_reconciliation' => '/inventory.*(?:match|accounting|gl)|(?:ar|ap).*gl|subledger.*reconcil|reconcil.*difference|inventar.*(?:kontabil|perputh)|diferenc.*rakord/',
             'finance_allocation' => '/payment.*(?:allocat|unassigned)|unallocat.*payment|pages.*(?:alok|pacakt)/',
             'finance_payables' => '/(?:owe|owing).*supplier|bills?.*(?:due|next)|payable|detyrim.*furnitor|furnitor.*(?:borxh|detyro)|fatura.*(?:ardhsh|javen|afat)/',
-            'finance_receivables' => '/customer.*(?:owe|owing|debt)|debt.*customer|who.*owes|overdue.*(?:invoice|customer)|receivable|debtor|klient.*borxh|borxh.*klient|kush.*detyro/',
+            'finance_receivables' => '/customer.*(?:owe|owing|debt)|debt.*customer|which.*(?:owe|debt)|who.*owes|overdue.*(?:invoice|customer)|receivable|debtor|klient.*borxh|borxh.*klient|kush.*detyro/',
             'finance_profit' => '/profit.*(?:drop|fall|month|compar)|(?:why|pse).*(?:profit|fitim)|fitim.*(?:muaj|krahas)/',
             'finance_cash' => '/how much.*(?:cash|bank)|cash.*(?:have|balance)|sa.*(?:para|mjete|arke|bank)|gjend.*bank/',
             'finance_summary' => '/financial state|finance summary|accounting summary|gjendja financiare|pasqyra financiare/',
@@ -108,7 +110,7 @@ class FinanceAssistantFacts
         if (preg_match('/^(why|pse|show customer|show customers|shfaq customer|shfaq klientet|compare last month|krahaso muajin e kaluar)[?!. ]*$/', $q)) {
             $last = $this->cache()->get($this->key($id));
             if ($last) {
-                return str_contains($q, 'compar') || str_contains($q, 'krahas') ? 'finance_profit' : $last;
+                return str_contains($q, 'compar') || str_contains($q, 'krahas') ? (str_starts_with($last, 'finance_receivables') ? 'finance_receivables_compare' : 'finance_profit') : $last;
             }
         }
         $this->clear($id);
@@ -125,7 +127,7 @@ class FinanceAssistantFacts
         $limits = [];
         if ($intent !== 'finance_action_boundary') {
             $tool = match ($intent) {
-                'finance_receivables' => 'get_accounting_receivables','finance_payables' => 'get_accounting_payables','finance_close' => 'get_month_close_blockers','finance_reconciliation' => 'get_financial_reconciliation','finance_allocation' => 'get_payment_allocation_review','finance_profit' => 'get_posted_profit_comparison',default => 'get_accounting_control_summary'
+                'finance_receivables','finance_receivables_compare' => 'get_accounting_receivables','finance_payables' => 'get_accounting_payables','finance_close' => 'get_month_close_blockers','finance_reconciliation' => 'get_financial_reconciliation','finance_allocation' => 'get_payment_allocation_review','finance_profit' => 'get_posted_profit_comparison',default => 'get_accounting_control_summary'
             };
             $runner = app(AssistantToolRunner::class);
             $data = $runner->execute($tool);
@@ -137,12 +139,13 @@ class FinanceAssistantFacts
             };
             $metrics = [];
             switch ($intent) {
+                case 'finance_receivables_compare':
                 case 'finance_receivables':$s = $data['summary'];
                     $text = ($sq ? 'Klientët na detyrohen ' : 'Customers owe us ').$format($s['total_outstanding']).'.';
                     $metrics = [[$sq ? 'Të vonuara' : 'Overdue', $s['overdue_total']], ['90+', $s['overdue_90_plus']], [$sq ? 'Afati i panjohur' : 'Unknown due', $s['unknown_due']]];
                     foreach (array_slice((array) $data['top_customers'], 0, 5) as $c) {
                         $c = (array) $c;
-                        $cards[] = ['tool' => $tool, 'title' => $c['customer_name'] ?: '#'.$c['customer_id'], 'url' => '/accounting?tab=ar&customer='.$c['customer_id'], 'summary' => $sq ? 'Borxh i vonuar' : 'Overdue receivable', 'metrics' => [['label' => $sq ? 'Mbetja' : 'Outstanding', 'value' => $c['outstanding'], 'unit' => $currency]]];
+                        $cards[] = ['tool' => $tool, 'title' => $c['customer_name'] ?: '#'.$c['customer_id'], 'url' => '/accounting?tab=ar&customer='.$c['customer_id'], 'summary' => $sq ? 'Borxh i hapur' : 'Outstanding receivable', 'metrics' => [['label' => $sq ? 'Mbetja' : 'Outstanding', 'value' => $c['outstanding'], 'unit' => $currency]]];
                     }break;
                 case 'finance_payables':$text = ($sq ? 'Detyrimet ndaj furnitorëve janë ' : 'Supplier payables are ').$format($data['summary']['total']).'.';
                     $metrics = [[$sq ? 'Afatet e njohura në 7 ditë' : 'Known due within 7 days', $data['known_due_amount']], [$sq ? 'Pa afat të njohur' : 'Unknown due', $data['summary']['unknown_due']]];
@@ -169,6 +172,17 @@ class FinanceAssistantFacts
                     $text = ($sq ? 'Arka dhe banka: ' : 'Cash and bank: ').$format($s['cash'] === null || $s['bank'] === null ? null : Money::add($s['cash'], $s['bank'])).'.';
                     $metrics = [[$sq ? 'Borxhet e klientëve' : 'Customers owe', $s['accounts_receivable']], [$sq ? 'Detyrimet ndaj furnitorëve' : 'We owe suppliers', $s['accounts_payable']]];
             }
+            if ($intent === 'finance_receivables_compare') {
+                $previousDate = CompanyClock::today()->startOfMonth()->subDay()->toDateString();
+                $hasPrior = CustomerDebtTransaction::query()->whereDate('transaction_date', '<=', $previousDate)->exists() || Invoice::query()->whereNotNull('issued_at')->whereDate('invoice_date', '<=', $previousDate)->exists();
+                if ($hasPrior) {
+                    $previous = $runner->execute('get_accounting_receivables', ['to' => $previousDate]);
+                    $cards[] = ['tool' => $tool, 'title' => $previousDate, 'url' => $url, 'summary' => $sq ? 'Gjendja në fund të muajit të kaluar' : 'Previous month-end position', 'metrics' => [['label' => $sq ? 'Borxhet e klientëve' : 'Customers owe', 'value' => $previous['summary']['total_outstanding'], 'unit' => $currency]]];
+                } else {
+                    $limits[] = $sq ? 'Nuk ka aktivitet të mëparshëm për krahasim.' : 'No prior activity exists for comparison.';
+                }
+                $tools = $runner->executions;
+            }
             array_unshift($cards, ['tool' => $tool, 'title' => $sq ? 'Kontrollet financiare AIMS' : 'AIMS financial controls', 'url' => $url, 'summary' => $text, 'metrics' => array_map(fn ($m) => ['label' => $m[0], 'value' => $m[1], 'unit' => $currency], $metrics), 'evidence' => ['as_of' => $data['as_of'] ?? $data['to'] ?? CompanyClock::today()->toDateString(), 'is_prediction' => false]]);
             $sources[] = ['tool' => $tool, 'url' => $url];
             $limits[] = ($data['qualification'] ?? ($sq ? 'Vetëm burime të postuara; hap hapësirën për hollësi.' : 'Posted evidence only; open the workspace for detail.'));
@@ -176,7 +190,8 @@ class FinanceAssistantFacts
         }
 
         $response = ['id' => (string) Str::uuid(), 'conversation_id' => $id, 'intent' => $intent, 'text' => $text, 'cards' => array_slice($cards, 0, 7), 'sources' => $sources, 'limitations' => $limits, 'choices' => [], 'follow_ups' => $intent === 'finance_receivables' ? ['Why?', 'Show customers', 'Compare last month'] : [], 'context' => null, 'context_entities' => [], 'read_only' => true, 'provider' => 'deterministic', 'state' => 'success', 'is_prediction' => false, 'tools' => $tools];
-        app(AnalyticsDataService::class)->audit('assistant.query',['response_id'=>$response['id'],'conversation_id'=>$id,'question'=>$question,'intent'=>$intent,'tools'=>$tools,'action_preview'=>false,'response_state'=>'success','provider'=>'deterministic','follow_up'=>false,'language'=>$sq?'sq':'en']);
+        app(AnalyticsDataService::class)->audit('assistant.query', ['response_id' => $response['id'], 'conversation_id' => $id, 'question' => $question, 'intent' => $intent, 'tools' => $tools, 'action_preview' => false, 'response_state' => 'success', 'provider' => 'deterministic', 'follow_up' => false, 'language' => $sq ? 'sq' : 'en']);
+
         return $response;
     }
 }

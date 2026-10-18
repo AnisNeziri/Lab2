@@ -15,6 +15,8 @@ class FinancialAccountController extends Controller
     public function __construct(private readonly FinancialAccountService $accounts) {}
 
     public function index(): JsonResponse { return response()->json($this->accounts->accounts()); }
+    public function transaction(FinancialAccountTransaction $transaction):JsonResponse{return response()->json($transaction->load(['account','journalEntry']));}
+    public function transferRecord(\App\Models\FinancialAccountTransfer $transfer):JsonResponse{return response()->json($transfer->load(['sourceAccount','destinationAccount']));}
 
     public function postingAccounts(): JsonResponse
     {

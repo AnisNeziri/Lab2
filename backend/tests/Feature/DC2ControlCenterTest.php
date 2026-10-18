@@ -2,19 +2,27 @@
 
 namespace Tests\Feature;
 
+use App\Models\AccountingException;
 use App\Models\Category;
+use App\Models\Company;
+use App\Models\Customer;
+use App\Models\DailySale;
 use App\Models\FinancialIntelligenceSnapshot;
 use App\Models\JournalEntry;
 use App\Models\Product;
 use App\Models\User;
+use App\Services\AccountingRecoveryService;
 use App\Services\AccountingService;
+use App\Services\CustomerDebtService;
 use App\Services\FinancialAccountService;
 use App\Services\FinancialIntegrityChecks;
+use App\Services\InstallationBackupService;
 use App\Services\InventoryIntegrityService;
 use App\Services\PermissionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class DC2ControlCenterTest extends TestCase
@@ -168,9 +176,58 @@ class DC2ControlCenterTest extends TestCase
         $this->assertFalse($permissions->roleHasPermission('accountant', 'accounting.journal.controlled'));
         $this->assertFalse($permissions->roleHasPermission('accountant', 'users.manage'));
         $this->assertFalse($permissions->roleHasPermission('manager', 'accounting.journal.post'));
-        $this->assertFalse($permissions->roleHasPermission('manager','accounting.periods.reopen'));
+        $this->assertFalse($permissions->roleHasPermission('manager', 'accounting.periods.reopen'));
         config(['system.operation_mode' => 'offline']);
-        $this->postJson('/api/users',['name' => 'Synthetic accountant', 'email' => 'dc2-accountant@example.test', 'role' => 'accountant',
-            'temporary_password' => 'Synthetic-test-only-42', 'temporary_password_confirmation' => 'Synthetic-test-only-42'])->assertCreated()->assertJsonPath('user.role','accountant');
+        $this->postJson('/api/users', ['name' => 'Synthetic accountant', 'email' => 'dc2-accountant@example.test', 'role' => 'accountant',
+            'temporary_password' => 'Synthetic-test-only-42', 'temporary_password_confirmation' => 'Synthetic-test-only-42'])->assertCreated()->assertJsonPath('user.role', 'accountant');
+    }
+
+    public function test_required_source_postings_respect_adoption_date_and_detect_missing_customer_journal(): void
+    {
+        [$s] = $this->context();
+        Auth::user()->company->update(['accounting_start_date' => '2026-09-01']);
+        $customer = Customer::create($this->tenantAttributes(['name' => 'Source proof customer', 'current_debt' => 0, 'current_credit' => 0]));
+        $debt = app(CustomerDebtService::class)->addDebt($customer, ['amount' => 70, 'transaction_date' => '2026-09-15', 'idempotency_key' => 'source-proof']);
+        $journal = JournalEntry::where('source_type', 'customer_debt_transaction')->where('source_id', $debt->id)->firstOrFail();
+        // Simulate an imported linkage defect without editing monetary history.
+        DB::table('journal_entries')->where('id', $journal->id)->update(['source_type' => 'unknown_legacy_source']);
+        DailySale::create($this->tenantAttributes(['sale_number' => 'PRE-ADOPTION', 'sale_date' => '2026-08-01', 'status' => 'finalized', 'total_amount' => 10, 'total_quantity' => 1, 'created_by' => Auth::id()]));
+        $check = collect(app(FinancialIntegrityChecks::class)->checks())->firstWhere('code', 'required_postings');
+        $this->assertSame(1, $check['count']);
+        $this->assertFalse($check['passed']);
+        $this->assertSame('70.00', $customer->fresh()->current_debt);
+    }
+
+    public function test_integrity_detects_cross_company_gl_mapping_and_recovery_cannot_post_a_draft(): void
+    {
+        [$s] = $this->context();
+        $other = Company::factory()->create();
+        $accountId = DB::table('accounting_accounts')->insertGetId(['company_id' => $other->id, 'code' => 'OTHER-1000', 'name' => 'Other company cash', 'type' => 'asset', 'normal_balance' => 'debit', 'is_posting' => true, 'is_active' => true]);
+        DB::table('accounting_posting_mappings')->where('company_id', Auth::user()->company_id)->where('mapping_key', 'cash')->update(['accounting_account_id' => $accountId]);
+        $check = collect(app(FinancialIntegrityChecks::class)->checks())->firstWhere('code', 'company_links');
+        $this->assertFalse($check['passed']);
+        $sale = DailySale::create($this->tenantAttributes(['sale_number' => 'DRAFT-RECOVERY', 'sale_date' => '2026-09-15', 'status' => 'draft', 'total_amount' => 25, 'total_quantity' => 1, 'created_by' => Auth::id()]));
+        $exception = AccountingException::create($this->tenantAttributes(['exception_key' => 'draft-recovery', 'type' => 'missing_accounting_entry', 'severity' => 'critical', 'status' => 'open', 'message' => 'Stale imported exception', 'details' => ['source_type' => 'daily_sale', 'source_id' => $sale->id]]));
+        try {
+            app(AccountingRecoveryService::class)->retry($exception);
+            $this->fail('Draft source was posted by recovery.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('source', $e->errors());
+        }
+        $this->assertSame(0, JournalEntry::where('source_type', 'daily_sale')->where('source_id', $sale->id)->count());
+        $this->assertDatabaseHas('accounting_recovery_attempts', ['accounting_exception_id' => $exception->id, 'status' => 'failed']);
+    }
+
+    public function test_installation_reconciliation_still_detects_cross_company_master_links(): void
+    {
+        $this->context();
+        $category = Category::create($this->tenantAttributes(['name' => 'Safe category']));
+        $product = Product::create($this->tenantAttributes(['name' => 'Empty inventory control', 'sku' => 'TENANT-PROOF', 'category_id' => $category->id, 'quantity' => 0, 'inventory_value' => 0, 'unit' => 'pcs', 'price' => 1, 'purchase_price' => 1]));
+        $other = Company::factory()->create();
+        $foreignCategory = DB::table('categories')->insertGetId(['company_id' => $other->id, 'name' => 'Other category']);
+        $this->assertTrue(app(InstallationBackupService::class)->reconcile()['healthy']);
+        DB::table('products')->where('id', $product->id)->update(['category_id' => $foreignCategory]);
+        $this->assertFalse(app(InstallationBackupService::class)->reconcile()['healthy']);
+        $this->assertDatabaseHas('products', ['id' => $product->id, 'category_id' => $foreignCategory]);
     }
 }

@@ -1,24 +1,246 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import * as api from '../../api/accounting'
-import WorkspaceModal from '../WorkspaceModal'
-import { ReasonAction } from './FinanceSubledgers'
-import { Badge, CheckList, DateValue, Empty, Field, QueryState, useFinance, useFinanceQuery } from './FinanceShared'
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import * as api from "../../api/accounting";
+import WorkspaceModal from "../WorkspaceModal";
+import { ReasonAction } from "./FinanceSubledgers";
+import {
+  Badge,
+  CheckList,
+  DateValue,
+  Empty,
+  Field,
+  QueryState,
+  useFinance,
+  useFinanceQuery,
+} from "./FinanceShared";
 
 export default function FinancePeriods() {
-  const { t, periods, refresh, busy, can, run } = useFinance()
-  const [selected, setSelected] = useState(''), [create, setCreate] = useState(false), [status, setStatus] = useState('')
-  const period = periods.find(p => p.id === Number(selected))
-  const readiness = useFinanceQuery(() => period ? api.getAccountingPeriodReadiness(period.id) : null, [period?.id, refresh])
-  return <section className="fc-panel"><div className="fc-section-head"><div><h2>{t('Month Close', 'Mbyllja mujore')}</h2><p>{t('Review the fixed integrity controls, investigate differences, then close with a reason.', 'Shqyrto kontrollet e detyrueshme të integritetit, heto diferencat dhe mbyll me arsyetim.')}</p></div><button onClick={() => setCreate(true)}>{t('Create period', 'Krijo periudhë')}</button></div><Field label={t('Accounting period', 'Periudha kontabël')}><select value={selected} onChange={e => setSelected(e.target.value)}><option value="">{t('Select period', 'Zgjidh periudhën')}</option>{periods.map(p => <option key={p.id} value={p.id}>{p.name} · {p.status}</option>)}</select></Field>
-    {!periods.length && <Empty>{t('Create the company’s first accounting period.', 'Krijo periudhën e parë kontabël të kompanisë.')}</Empty>}
-    {period && <><div className="fc-statusbar"><span>{period.name} · <DateValue value={period.starts_at} /> — <DateValue value={period.ends_at} /></span><Badge value={period.status} /></div><QueryState query={readiness}>{r => r && <><h3><Badge value={r.status} good={r.ready_to_close} /> {r.ready_to_close ? t('Ready for reviewed close', 'Gati për mbyllje pas shqyrtimit') : t('Not ready to close', 'Nuk është gati për mbyllje')}</h3><CheckList checks={r.checks} /><p className="fc-caption">{r.basis}</p><p className="fc-caption">{r.retained_earnings_policy}</p><div className="fc-toolbar">{period.status === 'open' && <button disabled={busy} onClick={() => setStatus('soft_closed')}>{t('Soft close · adjustments only', 'Mbyll paraprakisht · vetëm korrigjime')}</button>}{period.status !== 'closed' && can('accounting.periods.close') && <button disabled={busy || !r.ready_to_close} onClick={() => setStatus('closed')}>{t('Review final close', 'Shqyrto mbylljen përfundimtare')}</button>}{period.status !== 'open' && (period.status !== 'closed' || can('accounting.periods.reopen')) && <button disabled={busy} onClick={() => setStatus('open')}>{t('Reopen with reason', 'Rihap me arsyetim')}</button>}</div></>}</QueryState>{period.close_snapshot && <details><summary>{t('Last close evidence', 'Dëshmia e mbylljes së fundit')}</summary><p>{t('Closed by user', 'Mbyllur nga përdoruesi')} #{period.closed_by} · <DateValue value={period.closed_at} time /></p><p>{period.change_reason}</p><p className="fc-fingerprint">{period.close_snapshot.fingerprint}</p>{period.reopened_at && <p>{t('Reopened by', 'Rihapur nga')} #{period.reopened_by} · <DateValue value={period.reopened_at} time /></p>}</details>}</>}
-    <p><Link to="/accounting?tab=reconciliation">{t('Open financial reconciliation', 'Hap rakordimin financiar')} ↗</Link></p>
-    {status && <ReasonAction title={status === 'closed' ? t('Final accounting period close', 'Mbyllja përfundimtare e periudhës') : status === 'open' ? t('Reopen accounting period', 'Rihap periudhën kontabël') : t('Soft close accounting period', 'Mbyll paraprakisht periudhën kontabël')} impact={status === 'closed' ? t('All mandatory checks run again under the posting lock. Final close blocks backdated activity. Existing journals remain unchanged.', 'Të gjitha kontrollet e detyrueshme përsëriten nën bllokimin e postimit. Mbyllja përfundimtare bllokon aktivitetin prapaveprues. Ditarët ekzistues ruhen.') : status === 'open' ? t('The reason, user and time are audited. Review any later adjustment before closing again.', 'Arsyeja, përdoruesi dhe koha auditohen. Shqyrto çdo korrigjim para mbylljes së radhës.') : t('Normal posting is blocked. Only authorized accountants can explicitly post reasoned adjustments.', 'Postimi i zakonshëm bllokohet. Vetëm kontabilistët e autorizuar postojnë korrigjime me arsyetim.')} showDate={false} onClose={() => setStatus('')} onConfirm={({ reason }) => api.setAccountingPeriodStatus(period.id, { status, reason })} />}
-    {create && <NewPeriod onClose={() => setCreate(false)} onSave={p => { setSelected(String(p.id)); setCreate(false) }} />}
-  </section>
+  const { t, periods, refresh, busy, can, run } = useFinance();
+  const [selected, setSelected] = useState(""),
+    [create, setCreate] = useState(false),
+    [status, setStatus] = useState("");
+  const period = periods.find((p) => p.id === Number(selected));
+  const readiness = useFinanceQuery(
+    () => (period ? api.getAccountingPeriodReadiness(period.id) : null),
+    [period?.id, refresh],
+  );
+  return (
+    <section className="fc-panel">
+      <div className="fc-section-head">
+        <div>
+          <h2>{t("Month Close", "Mbyllja mujore")}</h2>
+          <p>
+            {t(
+              "Review the fixed integrity controls, investigate differences, then close with a reason.",
+              "Shqyrto kontrollet e detyrueshme të integritetit, heto diferencat dhe mbyll me arsyetim.",
+            )}
+          </p>
+        </div>
+        <button onClick={() => setCreate(true)}>
+          {t("Create period", "Krijo periudhë")}
+        </button>
+      </div>
+      <Field label={t("Accounting period", "Periudha kontabël")}>
+        <select value={selected} onChange={(e) => setSelected(e.target.value)}>
+          <option value="">{t("Select period", "Zgjidh periudhën")}</option>
+          {periods.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name} · {p.status}
+            </option>
+          ))}
+        </select>
+      </Field>
+      {!periods.length && (
+        <Empty>
+          {t(
+            "Create the company’s first accounting period.",
+            "Krijo periudhën e parë kontabël të kompanisë.",
+          )}
+        </Empty>
+      )}
+      {period && (
+        <>
+          <div className="fc-statusbar">
+            <span>
+              {period.name} · <DateValue value={period.starts_at} /> —{" "}
+              <DateValue value={period.ends_at} />
+            </span>
+            <Badge value={period.status} />
+          </div>
+          <QueryState query={readiness}>
+            {(r) =>
+              r && (
+                <>
+                  <h3>
+                    <Badge value={r.status} good={r.ready_to_close} />{" "}
+                    {r.ready_to_close
+                      ? t(
+                          "Ready for reviewed close",
+                          "Gati për mbyllje pas shqyrtimit",
+                        )
+                      : t("Not ready to close", "Nuk është gati për mbyllje")}
+                  </h3>
+                  <CheckList checks={r.checks} />
+                  <p className="fc-caption">{r.basis}</p>
+                  <p className="fc-caption">{r.retained_earnings_policy}</p>
+                  <div className="fc-toolbar">
+                    {period.status === "open" && (
+                      <button
+                        disabled={busy}
+                        onClick={() => setStatus("soft_closed")}
+                      >
+                        {t(
+                          "Soft close · adjustments only",
+                          "Mbyll paraprakisht · vetëm korrigjime",
+                        )}
+                      </button>
+                    )}
+                    {period.status !== "closed" &&
+                      can("accounting.periods.close") && (
+                        <button
+                          disabled={busy || !r.ready_to_close}
+                          onClick={() => setStatus("closed")}
+                        >
+                          {t(
+                            "Review final close",
+                            "Shqyrto mbylljen përfundimtare",
+                          )}
+                        </button>
+                      )}
+                    {period.status !== "open" &&
+                      (period.status !== "closed" ||
+                        can("accounting.periods.reopen")) && (
+                        <button
+                          disabled={busy}
+                          onClick={() => setStatus("open")}
+                        >
+                          {t("Reopen with reason", "Rihap me arsyetim")}
+                        </button>
+                      )}
+                  </div>
+                </>
+              )
+            }
+          </QueryState>
+          {period.close_snapshot && (
+            <details>
+              <summary>
+                {t("Last close evidence", "Dëshmia e mbylljes së fundit")}
+              </summary>
+              <p>
+                {t("Closed by user", "Mbyllur nga përdoruesi")} #
+                {period.closed_by} · <DateValue value={period.closed_at} time />
+              </p>
+              <p>{period.change_reason}</p>
+              {period.close_snapshot.historical && (
+                <p className="fc-caption">
+                  {period.close_snapshot.archive_reason}
+                </p>
+              )}
+              <p className="fc-fingerprint">
+                {period.close_snapshot.fingerprint}
+              </p>
+              {period.reopened_at && (
+                <p>
+                  {t("Reopened by", "Rihapur nga")} #{period.reopened_by} ·{" "}
+                  <DateValue value={period.reopened_at} time />
+                </p>
+              )}
+            </details>
+          )}
+        </>
+      )}
+      <p>
+        <Link to="/accounting?tab=reconciliation">
+          {t("Open financial reconciliation", "Hap rakordimin financiar")} ↗
+        </Link>
+      </p>
+      {status && (
+        <ReasonAction
+          title={
+            status === "closed"
+              ? t(
+                  "Final accounting period close",
+                  "Mbyllja përfundimtare e periudhës",
+                )
+              : status === "open"
+                ? t("Reopen accounting period", "Rihap periudhën kontabël")
+                : t(
+                    "Soft close accounting period",
+                    "Mbyll paraprakisht periudhën kontabël",
+                  )
+          }
+          impact={
+            status === "closed"
+              ? t(
+                  "All mandatory checks run again under the posting lock. Final close blocks backdated activity. Existing journals remain unchanged.",
+                  "Të gjitha kontrollet e detyrueshme përsëriten nën bllokimin e postimit. Mbyllja përfundimtare bllokon aktivitetin prapaveprues. Ditarët ekzistues ruhen.",
+                )
+              : status === "open"
+                ? t(
+                    "The reason, user and time are audited. Review any later adjustment before closing again.",
+                    "Arsyeja, përdoruesi dhe koha auditohen. Shqyrto çdo korrigjim para mbylljes së radhës.",
+                  )
+                : t(
+                    "Normal posting is blocked. Only authorized accountants can explicitly post reasoned adjustments.",
+                    "Postimi i zakonshëm bllokohet. Vetëm kontabilistët e autorizuar postojnë korrigjime me arsyetim.",
+                  )
+          }
+          showDate={false}
+          onClose={() => setStatus("")}
+          onConfirm={({ reason }) =>
+            api.setAccountingPeriodStatus(period.id, { status, reason })
+          }
+        />
+      )}
+      {create && (
+        <NewPeriod
+          onClose={() => setCreate(false)}
+          onSave={(p) => {
+            setSelected(String(p.id));
+            setCreate(false);
+          }}
+        />
+      )}
+    </section>
+  );
 }
 function NewPeriod({ onClose, onSave }) {
-  const { t, busy, run } = useFinance(), [form, setForm] = useState({ name: '', starts_at: '', ends_at: '' })
-  return <WorkspaceModal title={t('Create accounting period', 'Krijo periudhë kontabël')} busy={busy} onClose={onClose} warnOnUnsaved={!!form.name}><form className="fc-form" onSubmit={async e => { e.preventDefault(); const p = await run(() => api.createAccountingPeriod(form)); if (p) onSave(p) }}>{Object.keys(form).map((key, i) => <Field key={key} label={[t('Name', 'Emri'), t('Starts', 'Fillon'), t('Ends', 'Mbaron')][i]} required type={i ? 'date' : 'text'} min={i === 2 ? form.starts_at : undefined} maxLength={i ? undefined : 100} value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} />)}<button disabled={busy}>{t('Create open period', 'Krijo periudhë të hapur')}</button></form></WorkspaceModal>
+  const { t, busy, run } = useFinance(),
+    [form, setForm] = useState({ name: "", starts_at: "", ends_at: "" });
+  return (
+    <WorkspaceModal
+      title={t("Create accounting period", "Krijo periudhë kontabël")}
+      busy={busy}
+      onClose={onClose}
+      warnOnUnsaved={!!form.name}
+    >
+      <form
+        className="fc-form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const p = await run(() => api.createAccountingPeriod(form));
+          if (p) onSave(p);
+        }}
+      >
+        {Object.keys(form).map((key, i) => (
+          <Field
+            key={key}
+            label={
+              [t("Name", "Emri"), t("Starts", "Fillon"), t("Ends", "Mbaron")][i]
+            }
+            required
+            type={i ? "date" : "text"}
+            min={i === 2 ? form.starts_at : undefined}
+            maxLength={i ? undefined : 100}
+            value={form[key]}
+            onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+          />
+        ))}
+        <button disabled={busy}>
+          {t("Create open period", "Krijo periudhë të hapur")}
+        </button>
+      </form>
+    </WorkspaceModal>
+  );
 }

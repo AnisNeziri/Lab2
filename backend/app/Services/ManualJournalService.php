@@ -19,17 +19,22 @@ class ManualJournalService
 {
     public function __construct(private readonly AccountingService $accounting) {}
 
-    public function controlledAccounts(JournalEntry $entry): array
+    public function controlledAccountIds(): array
     {
         $accounts = AccountingAccount::query()->get(['id', 'parent_id', 'code', 'name']);
-        $controlled = AccountingPostingMapping::query()->pluck('accounting_account_id')
+        $controlled = AccountingPostingMapping::query()->whereIn('mapping_key',['cash','bank','accounts_receivable','customer_advances','accounts_payable','supplier_advances','inventory','sales_revenue','cost_of_goods_sold','goods_receipt_clearing','input_vat','output_vat'])->pluck('accounting_account_id')
             ->merge(FinancialAccount::query()->whereNotNull('accounting_account_id')->pluck('accounting_account_id'))->unique()->all();
         do {
             $old = count($controlled);
             $controlled = array_values(array_unique([...$controlled, ...$accounts->whereIn('parent_id', $controlled)->pluck('id')->all()]));
         } while (count($controlled) !== $old);
 
-        return $entry->lines()->with('account:id,code,name')->whereIn('accounting_account_id', $controlled)
+        return $controlled;
+    }
+
+    public function controlledAccounts(JournalEntry $entry): array
+    {
+        return $entry->lines()->with('account:id,code,name')->whereIn('accounting_account_id', $this->controlledAccountIds())
             ->get()->pluck('account')->unique('id')->values()->all();
     }
 

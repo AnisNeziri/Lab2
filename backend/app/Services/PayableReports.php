@@ -16,24 +16,31 @@ use Illuminate\Support\Facades\DB;
 /** Read-only supplier positions, built from existing bills and settlement audit. */
 class PayableReports
 {
+    private function effectiveDate(string $table,string $date,string $timestamp):string
+    {
+        // Installation backup must also read a supported pre-migration database.
+        // New rows use their company business date; old rows keep their legacy date.
+        return \Illuminate\Support\Facades\Schema::hasColumn($table,$date)?"COALESCE($table.$date,DATE($table.$timestamp))":"DATE($table.$timestamp)";
+    }
+
     private function allocations(string $asOf)
     {
         return DB::table('supplier_payment_allocation_requests')->where('supplier_payment_allocation_requests.company_id', Auth::user()->company_id)
-            ->whereRaw('COALESCE(supplier_payment_allocation_requests.allocation_date,DATE(supplier_payment_allocation_requests.allocated_at)) <= ?',[$asOf])->where(fn ($q) => $q->where('supplier_payment_allocation_requests.status', 'completed')->orWhere(fn ($r) => $r->where('supplier_payment_allocation_requests.status', 'reversed')->whereRaw('COALESCE(supplier_payment_allocation_requests.reversal_date,DATE(supplier_payment_allocation_requests.reversed_at)) > ?', [$asOf])));
+            ->whereRaw($this->effectiveDate('supplier_payment_allocation_requests','allocation_date','allocated_at').' <= ?',[$asOf])->where(fn ($q) => $q->where('supplier_payment_allocation_requests.status', 'completed')->orWhere(fn ($r) => $r->where('supplier_payment_allocation_requests.status', 'reversed')->whereRaw($this->effectiveDate('supplier_payment_allocation_requests','reversal_date','reversed_at').' > ?', [$asOf])));
     }
 
     public function positions(string $asOf, array $filters = [])
     {
         $direct = ExpensePayment::query()->join('expenses as b', fn ($j) => $j->on('b.id', '=', 'expense_payments.expense_id')->where('b.company_id', Auth::user()->company_id))
-            ->whereDate('payment_date', '<=', $asOf)->where(fn ($q) => $q->where('expense_payments.status', 'completed')->orWhereRaw('COALESCE(expense_payments.reversal_date,DATE(expense_payments.reversed_at)) > ?',[$asOf]))
+            ->whereDate('payment_date', '<=', $asOf)->where(fn ($q) => $q->where('expense_payments.status', 'completed')->orWhereRaw($this->effectiveDate('expense_payments','reversal_date','reversed_at').' > ?',[$asOf]))
             ->selectRaw('expense_id,SUM(amount) amount,SUM(ROUND(amount*COALESCE(b.exchange_rate,1),2)) carrying')->groupBy('expense_id');
         $allocated = $this->allocations($asOf)->join('expenses as b', fn ($j) => $j->on('b.id', '=', 'supplier_payment_allocation_requests.expense_id')->where('b.company_id', Auth::user()->company_id))
             ->selectRaw('expense_id,SUM(amount) amount,SUM(ROUND(amount*COALESCE(b.exchange_rate,1),2)) carrying')->groupBy('expense_id');
         $credits = Expense::query()->where('document_type', 'credit_note')->whereDate('invoice_date', '<=', $asOf)
-            ->where(fn ($q) => $q->where('status', 'posted')->orWhere(fn ($r) => $r->where('status', 'reversed')->whereRaw('COALESCE(reversal_date,DATE(reversed_at)) > ?',[$asOf])))
+            ->where(fn ($q) => $q->where('status', 'posted')->orWhere(fn ($r) => $r->where('status', 'reversed')->whereRaw($this->effectiveDate('expenses','reversal_date','reversed_at').' > ?',[$asOf])))
             ->selectRaw('original_expense_id,SUM(gross_amount) amount,SUM(gross_amount_eur) carrying')->groupBy('original_expense_id');
         $q = Expense::query()->whereIn('document_type', ['purchase_invoice', 'opening_balance', 'fiscal_receipt', 'customs_document', 'other'])->whereDate('invoice_date', '<=', $asOf)
-            ->where(fn ($q) => $q->where('expenses.status', 'posted')->orWhere(fn ($r) => $r->where('expenses.status', 'reversed')->whereRaw('COALESCE(expenses.reversal_date,DATE(expenses.reversed_at)) > ?',[$asOf])))
+            ->where(fn ($q) => $q->where('expenses.status', 'posted')->orWhere(fn ($r) => $r->where('expenses.status', 'reversed')->whereRaw($this->effectiveDate('expenses','reversal_date','reversed_at').' > ?',[$asOf])))
             ->leftJoinSub($direct->toBase(), 'p', 'p.expense_id', '=', 'expenses.id')->leftJoinSub($allocated, 'a', 'a.expense_id', '=', 'expenses.id')->leftJoinSub($credits->toBase(), 'c', 'c.original_expense_id', '=', 'expenses.id')
             ->select('expenses.id', 'expenses.supplier_id', 'expenses.vendor_name', 'expenses.document_number', 'expenses.invoice_date', 'expenses.due_date', 'expenses.currency', 'expenses.gross_amount', 'expenses.gross_amount_eur', 'expenses.purchase_order_id')
             ->selectRaw('expenses.gross_amount-COALESCE(p.amount,0)-COALESCE(a.amount,0)-COALESCE(c.amount,0) outstanding,expenses.gross_amount_eur-COALESCE(p.carrying,0)-COALESCE(a.carrying,0)-COALESCE(c.carrying,0) base_outstanding');

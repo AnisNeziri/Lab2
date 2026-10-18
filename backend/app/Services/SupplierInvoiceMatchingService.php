@@ -151,6 +151,7 @@ class SupplierInvoiceMatchingService
             if ($locked->approved_at) {
                 return $this->show($locked);
             }
+            if(!in_array($locked->status,['draft','posted'],true))throw ValidationException::withMessages(['supplier_invoice'=>'Only an active draft or posted bill can be approved. A reversal remains part of its history.']);
             if (in_array($locked->match_status, ['exception', 'unmatched'], true) && blank($reason)) {
                 throw ValidationException::withMessages(['reason' => ['Explain why this supplier invoice can be approved despite matching exceptions.']]);
             }
