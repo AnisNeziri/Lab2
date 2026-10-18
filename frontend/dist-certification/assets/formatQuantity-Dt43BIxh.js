@@ -1,0 +1,1 @@
+function n(t){return["m","meter","meters","metre","metër","metri","metra"].includes(String(t||"").trim().toLowerCase())}function m(t,r="pcs",i="en"){if(t==null||t===""||!Number.isFinite(Number(t)))return"—";const e=Number(t);return new Intl.NumberFormat(i==="sq"?"sq-AL":"en-US",{minimumFractionDigits:0,maximumFractionDigits:n(r)?3:0}).format(e)}export{m as f,n as i};

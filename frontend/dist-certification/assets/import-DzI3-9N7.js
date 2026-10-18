@@ -1,0 +1,1 @@
+import{b as i}from"./index-3ItdEiRT.js";async function a(t,o){const r=new FormData;return r.append("file",o),i(t,{method:"POST",body:r},"Import failed")}function p(t){return a("/products/import",t)}function e(t,o){return a(`/import/${t}`,o)}export{e as a,p as i};

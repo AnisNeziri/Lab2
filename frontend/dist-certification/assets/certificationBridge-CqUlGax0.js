@@ -1,0 +1,1 @@
+import{d as a,a as t,b as i,u as o,c as s}from"./index-3ItdEiRT.js";import"./vendor-eGkVEfl3.js";import"./state-CTLKLeWX.js";import"./realtime-C_MPqNUu.js";window.__aimsCertification={useSettingsStore:s,useAuthStore:o,apiRequest:i,defaultDashboard:t,defaultNavigation:a};
