@@ -34,6 +34,14 @@ class SystemIntegrityService
             $this->relationshipIntegrityCheck($companyId),
             $this->countCheck('outbound_quantities','Outbound quantity integrity',\App\Models\OutboundAllocation::query()->where(fn($q)=>$q->whereColumn('picked_quantity','>','quantity')->orWhereColumn('packed_quantity','>','picked_quantity')->orWhereColumn('dispatched_quantity','>','packed_quantity')->orWhereColumn('delivered_quantity','>','dispatched_quantity')->orWhereColumn('returned_quantity','>','delivered_quantity'))->count(),'/fulfillment'),
         ];
+        if (Schema::hasTable('bank_statement_matches') && app(PermissionService::class)->roleHasPermission(Auth::user()->role, 'accounting.integrity.view')) {
+            foreach (app(FinancialIntegrityChecks::class)->checks() as $financialCheck) {
+                $checks[] = $this->countCheck('finance_'.$financialCheck['code'], $financialCheck['label'], $financialCheck['count'], $financialCheck['url'], true);
+            }
+            foreach (app(AccountingService::class)->reconciliation(false)['rows'] as $control) {
+                $checks[] = $this->countCheck('finance_control_'.$control['control'], ucwords(str_replace('_', ' ', $control['control'])).' / General Ledger', $control['reconciled'] ? 0 : 1, '/accounting?tab=reconciliation', true);
+            }
+        }
         if (Schema::hasTable('automation_executions')) {
             $checks[]=$this->countCheck('automation_failures','Failed or blocked automations',\App\Models\AutomationExecution::whereIn('status',['failed','blocked'])->count(),'/automation-studio');
             $checks[]=$this->countCheck('automation_stuck','Stuck automation executions',\App\Models\AutomationExecution::whereIn('status',['queued','running'])->where('updated_at','<',now()->subMinutes(15))->count(),'/automation-studio');

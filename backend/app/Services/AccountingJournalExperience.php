@@ -17,6 +17,9 @@ class AccountingJournalExperience
     public const SOURCES = [
         'daily_sale' => ['DailySale', 'Customer Sale', 'daily_sales.manage', '/daily-sales?sale='],
         'invoice' => ['Invoice', 'Customer Invoice', 'invoices.manage', '/invoices?invoice='],
+        'invoice_payment' => ['PaymentTransaction', 'Customer Payment', 'payments.process', '/invoices?payment='],
+        'order_invoice_tax' => ['Invoice','Customer Invoice Tax','invoices.manage','/invoices?invoice='],
+        'landed_cost_reversal_reclassification' => ['LandedCost','Landed Cost Reversal Adjustment','landed_costs.manage','/operations-center?tab=landed&landed_cost='],
         'payment_transaction' => ['PaymentTransaction', 'Customer Payment', 'payments.process', '/invoices?payment='],
         'customer_debt_transaction' => ['CustomerDebtTransaction', 'Customer Ledger', 'debts.view', '/customer-debts?transaction='],
         'expense' => ['Expense', 'Supplier Bill / Expense', 'finance.view', '/finance?expense='],
@@ -94,6 +97,10 @@ class AccountingJournalExperience
                 if ($j->source_type === 'payment_transaction' && $record->invoice_id) {
                     $url = '/invoices?invoice='.$record->invoice_id;
                 }
+                if ($j->source_type === 'invoice_payment' && $record->invoice_id) $url = '/invoices?invoice='.$record->invoice_id;
+                if ($j->source_type === 'financial_account_transaction') $url = '/accounting?tab=bank&account='.$record->financial_account_id.'&transaction='.$record->id;
+                if ($j->source_type === 'financial_account') $url = '/accounting?tab=bank&account='.$record->id;
+                if ($j->source_type === 'expense' && $record->supplier_id && $record->document_type === 'purchase_invoice') $url = '/accounting?tab=ap&supplier_invoice='.$record->id;
                 $source = ['label' => $this->label($j), 'id' => $record->id, 'url' => $url];
             }
         }
@@ -111,7 +118,9 @@ class AccountingJournalExperience
     {
         $record = app(DocumentEntityRegistry::class)->resolve($type, $id);
         $sourceType = match ($type) {
-            'invoice' => 'invoice', 'payment' => 'payment_transaction', 'expense' => 'expense', 'journal' => 'journal_entry', default => null,
+            'invoice' => 'invoice', 'payment' => 'payment_transaction', 'expense' => 'expense', 'journal' => 'journal_entry',
+            'daily-sale'=>'daily_sale','customer-transaction'=>'customer_debt_transaction','supplier-payment'=>'purchase_order_payment','supplier-allocation'=>'supplier_payment_allocation',
+            'financial-account'=>'financial_account','financial-transaction'=>'financial_account_transaction','financial-transfer'=>'financial_account_transfer','stock-movement'=>'stock_movement','landed-cost'=>'landed_cost', default => null,
         };
         $q = JournalEntry::query()->where(function ($q) use ($type, $id, $record, $sourceType) {
             $q->whereRaw('1=0');
@@ -126,10 +135,17 @@ class AccountingJournalExperience
             }
             if ($type === 'expense') {
                 $q->orWhere(fn ($x) => $x->where('source_type', 'expense_payment')->whereIn('source_id', ExpensePayment::where('expense_id', $id)->select('id')));
+                $q->orWhere(fn ($x) => $x->where('source_type', 'supplier_payment_allocation')->whereIn('source_id', \App\Models\SupplierInvoicePaymentAllocation::where('expense_id', $id)->select('id')));
             }
             if ($type === 'customer') {
                 $q->orWhere(fn ($x) => $x->where('source_type', 'customer_debt_transaction')->whereIn('source_id', $record->debtTransactions()->select('id')));
             }
+            if ($type === 'financial-account') {
+                $q->orWhere(fn($x)=>$x->where('source_type','financial_account_transaction')->whereIn('source_id',\App\Models\FinancialAccountTransaction::where('financial_account_id',$id)->select('id')));
+                $q->orWhereIn('id',\App\Models\FinancialAccountTransaction::where('financial_account_id',$id)->whereNotNull('journal_entry_id')->select('journal_entry_id'));
+            }
+            if ($type === 'landed-cost') $q->orWhere(fn($x)=>$x->whereIn('source_type',['landed_cost_reclassification','landed_cost_reversal_reclassification'])->where('source_id',$id));
+            if ($type === 'invoice') $q->orWhere(fn($x)=>$x->whereIn('source_type',['invoice_payment','payment_transaction'])->whereIn('source_id',\App\Models\PaymentTransaction::where('invoice_id',$id)->select('id')));
         });
 
         return $q->orderByDesc('posting_date')->limit(20)->get(['id', 'journal_number', 'posting_date', 'status', 'total_debit', 'source_type', 'source_module'])

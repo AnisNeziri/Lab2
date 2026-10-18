@@ -24,7 +24,7 @@ class PaymentTransaction extends Model
         'note',
         'payment_date',
         'paid_at',
-        'reversed_at',
+        'reversal_date', 'reversed_at',
         'reversed_by',
         'reversal_reason',
         'financial_account_id',
@@ -41,7 +41,7 @@ class PaymentTransaction extends Model
             'amount' => 'decimal:2',
             'payment_date' => 'date',
             'paid_at' => 'datetime',
-            'reversed_at' => 'datetime',
+            'reversal_date' => 'date:Y-m-d', 'reversed_at' => 'datetime',
         ];
     }
 

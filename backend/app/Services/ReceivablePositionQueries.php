@@ -39,16 +39,25 @@ class ReceivablePositionQueries
             ->whereIn('debt_transaction_id', $activeIds())->whereIn('settlement_transaction_id', $activeIds());
         $debtAllocated = (clone $allocations)->selectRaw('debt_transaction_id, SUM(amount) amount')->groupBy('debt_transaction_id');
         $customerAllocated = (clone $allocations)->selectRaw('customer_id, SUM(amount) amount')->groupBy('customer_id');
+        $creditJson=DB::connection()->getQueryGrammar()->wrap('metadata->settled_debt_credit');
+        $retired=CustomerDebtTransaction::query()->whereNotNull('reversed_transaction_id')->whereDate('transaction_date','<=',$asOf)
+            ->when($customerIds,fn($q)=>$q->whereIn('customer_id',$customerIds))->selectRaw("customer_id,SUM(COALESCE(CAST($creditJson AS DECIMAL(18,2)),0)) amount")->groupBy('customer_id');
         $open = 'CASE WHEN d.capacity>COALESCE(a.amount,0) THEN d.capacity-COALESCE(a.amount,0) ELSE 0 END';
-        $pool = 'CASE WHEN COALESCE(p.capacity,0)>COALESCE(x.amount,0) THEN COALESCE(p.capacity,0)-COALESCE(x.amount,0) ELSE 0 END';
+        $pool = 'CASE WHEN COALESCE(p.capacity,0)>COALESCE(x.amount,0)+COALESCE(retired.amount,0) THEN COALESCE(p.capacity,0)-COALESCE(x.amount,0)-COALESCE(retired.amount,0) ELSE 0 END';
         $ordered = DB::query()->fromSub($debts->toBase(), 'd')->leftJoinSub($debtAllocated, 'a', 'a.debt_transaction_id', '=', 'd.id')
             ->leftJoinSub($payments->toBase(), 'p', 'p.customer_id', '=', 'd.customer_id')->leftJoinSub($customerAllocated, 'x', 'x.customer_id', '=', 'd.customer_id')
+            ->leftJoinSub($retired->toBase(),'retired','retired.customer_id','=','d.customer_id')
             ->selectRaw("d.*, COALESCE(a.amount,0) explicitly_allocated, $open open_amount, $pool fallback_pool,
                 COALESCE(SUM($open) OVER (PARTITION BY d.customer_id ORDER BY CASE WHEN d.due_date IS NULL THEN 1 ELSE 0 END,d.due_date,d.transaction_date,d.id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) prior_open");
         $available = 'CASE WHEN ranked.fallback_pool>ranked.prior_open THEN ranked.fallback_pool-ranked.prior_open ELSE 0 END';
         $outstanding = "CASE WHEN $available>=ranked.open_amount THEN 0 ELSE ranked.open_amount-($available) END";
 
         return DB::query()->fromSub($ordered, 'ranked')->selectRaw("ranked.*, $outstanding outstanding_amount, ranked.open_amount-($outstanding) automatically_allocated");
+    }
+
+    public function receiptHasReclassifiedFunding(CustomerDebtTransaction $payment):bool
+    {
+        return CustomerDebtTransaction::query()->where('customer_id',$payment->customer_id)->whereNotNull('reversed_transaction_id')->where('id','>',$payment->id)->where('metadata->settled_debt_credit','>',0)->exists();
     }
 
     public function obligations(Customer $customer, ?string $asOf = null): Collection

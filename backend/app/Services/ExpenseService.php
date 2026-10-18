@@ -181,6 +181,10 @@ class ExpenseService
                 return $this->find($expense);
             }
             $this->ensureDraft($expense);
+            if (\App\Support\CompanyCurrency::forCompanyId($expense->company_id) !== 'EUR') {
+                throw ValidationException::withMessages(['currency'=>'Supplier expense accounting currently requires EUR as the company base currency. Keep this bill in draft until a supported base-currency policy is configured.']);
+            }
+
             if ($expense->document_type === 'credit_note' && blank($expense->original_document_number)) {
                 throw ValidationException::withMessages(['original_document_number' => ['A credit note must reference the original vendor document.']]);
             }
@@ -218,7 +222,7 @@ class ExpenseService
                 throw ValidationException::withMessages(['expense' => ['Reverse active payments before reversing this expense.']]);
             }
             $expense->update([
-                'status' => 'reversed', 'reversed_at' => now(), 'reversed_by' => Auth::id(),
+                'status' => 'reversed', 'reversal_date' => \App\Support\CompanyClock::today()->toDateString(), 'reversed_at' => now(), 'reversed_by' => Auth::id(),
                 'reversal_reason' => trim($reason), 'updated_by' => Auth::id(),
             ]);
             $this->accounting->reverseSource('supplier_accounting', 'expense:'.$expense->id, \App\Support\CompanyClock::today()->toDateString(), $reason);
@@ -316,7 +320,7 @@ class ExpenseService
                 throw ValidationException::withMessages(['payment' => ['Only an active payment can be reversed.']]);
             }
             $payment->update([
-                'status' => 'reversed', 'reversed_at' => now(), 'reversed_by' => Auth::id(),
+                'status' => 'reversed', 'reversal_date' => \App\Support\CompanyClock::today()->toDateString(), 'reversed_at' => now(), 'reversed_by' => Auth::id(),
                 'reversal_reason' => trim($reason),
             ]);
             if ($payment->financial_account_transaction_id) {

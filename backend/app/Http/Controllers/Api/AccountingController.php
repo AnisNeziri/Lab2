@@ -38,6 +38,20 @@ class AccountingController extends Controller
         return response()->json(app(FinancialControlService::class)->summary($dates['from'] ?? null, $dates['to'] ?? null));
     }
 
+    public function export(Request $r, string $report)
+    {
+        $filters = $r->validate(['from'=>'nullable|date','to'=>'nullable|date|after_or_equal:from','account_id'=>'nullable|integer|min:1','account_from'=>'nullable|string|max:30','account_to'=>'nullable|string|max:30','customer_id'=>'nullable|integer|min:1','supplier_id'=>'nullable|integer|min:1','currency'=>'nullable|string|size:3']);
+        return app(\App\Services\AccountingExportService::class)->export($report,$filters);
+    }
+
+    public function parties(Request $r): JsonResponse
+    {
+        $d=$r->validate(['type'=>'required|in:customer,supplier','search'=>'nullable|string|max:100']);
+        abort_unless(app(PermissionService::class)->roleHasPermission($r->user()->role,$d['type']==='customer'?'debts.view':'finance.view'),403);
+        $model=$d['type']==='customer'?Customer::class:Supplier::class;
+        return response()->json($model::query()->when($d['search']??null,fn($q,$s)=>$q->where('name','like','%'.$s.'%'))->orderBy('name')->limit(30)->get(['id','name']));
+    }
+
     public function arSettlements(Customer $customer): JsonResponse
     {
         return response()->json(app(CustomerSettlementService::class)->workbench($customer));
@@ -207,9 +221,10 @@ class AccountingController extends Controller
         return response()->json($this->accounting->integrity());
     }
 
-    public function reconciliation(): JsonResponse
+    public function reconciliation(Request $r): JsonResponse
     {
-        return response()->json($this->accounting->reconciliation(true));
+        $d=$r->validate(['to'=>'nullable|date']);
+        return response()->json(isset($d['to'])?app(\App\Services\DatedFinancialReconciliation::class)->report($d['to']):$this->accounting->reconciliation(false));
     }
 
     public function retryException(Request $r, AccountingException $exception, AccountingRecoveryService $recovery): JsonResponse
@@ -268,6 +283,12 @@ class AccountingController extends Controller
     public function supplierWorkbench(Supplier $supplier): JsonResponse
     {
         return response()->json(app(PayableReports::class)->workbench($supplier));
+    }
+
+    public function supplierStatement(Request $r,Supplier $supplier):JsonResponse
+    {
+        $d=$r->validate(['from'=>'required|date','to'=>'required|date|after_or_equal:from','page'=>'nullable|integer|min:1']);
+        return response()->json(app(\App\Services\SupplierStatementQueries::class)->statement($supplier,$d['from'],$d['to']));
     }
 
     private function dates(Request $r): array

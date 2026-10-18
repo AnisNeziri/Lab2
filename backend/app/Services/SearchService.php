@@ -119,10 +119,14 @@ class SearchService
         }
 
         if ($this->can('accounting.journal.view')) {
+            $result['accounting_accounts']=\App\Models\AccountingAccount::query()->where(fn($q)=>$q->where('code','like',$like)->orWhere('name','like',$like))->orderBy('code')->limit(8)->get()->map(fn($a)=>$this->item($a->id,$a->code.' · '.$a->name,ucfirst($a->type),'/accounting?tab=accounts&account='.$a->id));
             $result['journals'] = JournalEntry::query()
                 ->where(fn ($q) => $q->where('journal_number', 'like', $like)->orWhere('reference_number', 'like', $like)->orWhere('description', 'like', $like))
                 ->latest('posting_date')->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->journal_number, $x->description ?: $x->status, '/accounting?tab=journal&journal='.$x->id));
         }
+
+        if($this->can('finance.view'))$result['supplier_bills']=\App\Models\Expense::query()->whereNotNull('supplier_id')->where('document_type','purchase_invoice')->where(fn($q)=>$q->where('document_number','like',$like)->orWhere('vendor_name','like',$like))->latest('invoice_date')->limit(8)->get()->map(fn($e)=>$this->item($e->id,$e->document_number,$e->vendor_name.' · '.$e->status,'/accounting?tab=ap&supplier_invoice='.$e->id));
+        if($this->can('financial_accounts.view'))$result['bank_references']=\App\Models\FinancialAccountTransaction::query()->with('account:id,name')->where(fn($q)=>$q->where('reference_number','like',$like)->orWhere('description','like',$like))->latest('transaction_date')->limit(8)->get()->map(fn($p)=>$this->item($p->id,$p->reference_number?:'Payment #'.$p->id,$p->account?->name.' · '.$p->status,'/accounting?tab=bank&account='.$p->financial_account_id.'&transaction='.$p->id));
 
         if ($this->can('analytics.view') && $this->can('inventory.view')) {
             // Match the business labels users see, not only internal decision codes.

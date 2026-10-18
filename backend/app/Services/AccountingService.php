@@ -227,8 +227,9 @@ class AccountingService
             if ($old === 'closed') {
                 $values += ['reopened_by' => Auth::id(), 'reopened_at' => now()];
             }
+            $previousCloseProof=$period->close_snapshot;
             $period->update($values);
-            $this->audit('accounting.period.'.$status, $period, ['from' => $old], ['to' => $status, 'reason' => $reason, 'close_fingerprint' => $values['close_snapshot']['fingerprint'] ?? null]);
+            $this->audit('accounting.period.'.$status, $period, ['from' => $old,'close_proof'=>$previousCloseProof], ['to' => $status, 'reason' => $reason, 'close_fingerprint' => $values['close_snapshot']['fingerprint'] ?? null,'close_proof'=>$values['close_snapshot']??null]);
             $event = $status === 'closed' ? 'accounting.period_closed' : ($old === 'closed' ? 'accounting.period_reopened' : null);
             if ($event) {
                 app(BusinessEventService::class)->record($event, $period, $period->name, ['from' => $old, 'to' => $status, 'reason' => $reason], "accounting-period:{$period->id}:{$status}:".$period->updated_at?->timestamp);
@@ -314,7 +315,9 @@ class AccountingService
 
     public function createAndPost(array $data): JournalEntry
     {
-        return $this->post($this->createDraft($data));
+        // Keep the draft and its posting under one company lock. A concurrent
+        // close must see either the complete journal or no journal at all.
+        return DB::transaction(fn () => $this->post($this->createDraft($data)));
     }
 
     public function reverse(JournalEntry $entry, string $date, string $reason): JournalEntry
@@ -489,7 +492,9 @@ class AccountingService
         }$from = $this->ensureFinancialAccount($source);
         $to = $this->ensureFinancialAccount($destination);
 
-        return $this->createAndPost(['posting_date' => $transfer->transfer_date->toDateString(), 'reference_number' => $transfer->reference_number, 'description' => 'Money transfer '.$source->name.' → '.$destination->name, 'source_module' => 'banking', 'source_type' => 'financial_account_transfer', 'source_id' => $transfer->id, 'source_key' => 'financial-transfer:'.$transfer->id, 'currency' => $source->currency, 'exchange_rate' => 1, 'lines' => [['accounting_account_id' => $to->id, 'debit' => $transfer->amount], ['accounting_account_id' => $from->id, 'credit' => $transfer->amount]]]);
+        $entry = $this->createAndPost(['posting_date' => $transfer->transfer_date->toDateString(), 'reference_number' => $transfer->reference_number, 'description' => 'Money transfer '.$source->name.' → '.$destination->name, 'source_module' => 'banking', 'source_type' => 'financial_account_transfer', 'source_id' => $transfer->id, 'source_key' => 'financial-transfer:'.$transfer->id, 'currency' => $source->currency, 'exchange_rate' => 1, 'lines' => [['accounting_account_id' => $to->id, 'debit' => $transfer->amount], ['accounting_account_id' => $from->id, 'credit' => $transfer->amount]]]);
+        FinancialAccountTransaction::query()->where('source_type','financial_account_transfer')->where('source_id',$transfer->id)->update(['journal_entry_id'=>$entry->id]);
+        return $entry;
     }
 
     public function postFinancialOpening(FinancialAccount $financial): ?JournalEntry
@@ -531,7 +536,7 @@ class AccountingService
             throw ValidationException::withMessages(['counter_accounting_account_id' => ['Choose an active posting account.']]);
         }$amount = Money::multiply($transaction->amount, $rate);
         $in = in_array($transaction->type, ['inflow', 'transfer_in', 'adjustment_in', 'refund_in'], true);
-        $entry = $this->createAndPost(['posting_date' => $transaction->transaction_date->toDateString(), 'reference_number' => $transaction->reference_number, 'description' => $transaction->description ?: 'Classified money-account transaction', 'source_module' => 'banking', 'source_type' => 'financial_account_transaction', 'source_id' => $transaction->id, 'source_key' => 'financial-transaction:'.$transaction->id, 'currency' => $transaction->currency, 'exchange_rate' => $rate, 'lines' => [['accounting_account_id' => $cash->id, $in ? 'debit' : 'credit' => $amount], ['accounting_account_id' => $counter->id, $in ? 'credit' : 'debit' => $amount]]]);
+        $entry = $this->createAndPost(['posting_date' => $transaction->transaction_date->toDateString(), 'reference_number' => $transaction->reference_number, 'description' => $transaction->description ?: 'Classified money-account transaction', 'source_module' => 'banking', 'source_type' => 'financial_account_transaction', 'source_id' => $transaction->id, 'source_key' => 'financial-transaction:'.$transaction->id, 'currency' => $transaction->currency, 'exchange_rate' => $rate, 'exchange_rate_date'=>$transaction->exchange_rate_date,'exchange_rate_source'=>$transaction->exchange_rate_source,'lines' => [['accounting_account_id' => $cash->id, $in ? 'debit' : 'credit' => $amount], ['accounting_account_id' => $counter->id, $in ? 'credit' : 'debit' => $amount]]]);
         $transaction->update(['journal_entry_id' => $entry->id]);
         $this->resolveException('unclassified-financial-transaction:'.$transaction->id);
 
@@ -618,7 +623,7 @@ class AccountingService
         foreach ($drafts as $e) {
             $key = "unbalanced:{$e->id}";
             if (Money::compare($e->debit_sum ?? 0, $e->credit_sum ?? 0) !== 0) {
-                $this->exception($key, 'unbalanced_draft', 'critical', "Draft journal {$e->journal_number} is not balanced.", ['journal_entry_id' => $e->id]);
+                $this->exception($key, 'unbalanced_draft', 'warning', "Draft journal {$e->journal_number} is not balanced.", ['journal_entry_id' => $e->id]);
             } else {
                 $this->resolveException($key);
             }

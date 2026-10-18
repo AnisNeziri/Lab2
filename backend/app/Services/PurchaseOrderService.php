@@ -346,7 +346,7 @@ class PurchaseOrderService
                 if($payment->status==='reversed')return $payment;
                 if($payment->status!=='completed'||$payment->allocations()->exists())throw ValidationException::withMessages(['payment'=>'Reverse supplier allocations before reversing an opening advance.']);
                 app(AccountingService::class)->reverseSource('procurement','purchase-order-payment:'.$payment->id,\App\Support\CompanyClock::today()->toDateString(),trim($reason));
-                $payment->update(['status'=>'reversed','reversed_at'=>now(),'reversed_by'=>Auth::id(),'reversal_reason'=>trim($reason)]);
+                $payment->update(['status'=>'reversed','reversal_date'=>\App\Support\CompanyClock::today()->toDateString(),'reversed_at'=>now(),'reversed_by'=>Auth::id(),'reversal_reason'=>trim($reason)]);
                 return $payment->fresh();
             }
             $order = PurchaseOrder::query()->lockForUpdate()->findOrFail($payment->purchase_order_id);
@@ -374,7 +374,7 @@ class PurchaseOrderService
                     ->where('expense_id', $allocation->expense_id)
                     ->where('status', 'completed')
                     ->update([
-                        'status' => 'reversed', 'reversed_at' => now(),
+                        'status' => 'reversed', 'reversal_date' => \App\Support\CompanyClock::today()->toDateString(), 'reversed_at' => now(),
                         'reversed_by' => Auth::id(), 'reversal_reason' => trim($reason),
                         'updated_at' => now(),
                     ]);
@@ -392,7 +392,7 @@ class PurchaseOrderService
             }
 
             $payment->update([
-                'status' => 'reversed', 'expense_id' => null, 'reversed_at' => now(),
+                'status' => 'reversed', 'expense_id' => null, 'reversal_date' => \App\Support\CompanyClock::today()->toDateString(), 'reversed_at' => now(),
                 'reversed_by' => Auth::id(), 'reversal_reason' => trim($reason),
             ]);
             if ($payment->financial_account_transaction_id) {

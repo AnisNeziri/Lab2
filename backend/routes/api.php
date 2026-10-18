@@ -463,11 +463,14 @@ Route::middleware('auth.token')->group(function () {
                 Route::post('/initialize', [AccountingController::class, 'initialize'])->middleware('permission:accounting.settings.manage');
                 Route::get('/ap/aging', [AccountingController::class, 'payableAging'])->middleware('permission:finance.view');
                 Route::get('/ap/suppliers/{supplier}/workbench', [AccountingController::class, 'supplierWorkbench'])->middleware('permission:supplier_invoices.view');
+                Route::get('/ap/suppliers/{supplier}/statement', [AccountingController::class, 'supplierStatement'])->middleware('permission:finance.view');
                 Route::get('/ar/customers/{customer}/statement', [AccountingController::class, 'customerStatement'])->middleware('permission:debts.view');
                 Route::get('/ar/customers/{customer}/settlements', [AccountingController::class, 'arSettlements'])->middleware('permission:debts.view');
                 Route::post('/ar/payments/{transaction}/allocate', [AccountingController::class, 'allocateCustomerPayment'])->middleware(['permission:debts.view', 'permission:accounting.ar.allocate']);
                 Route::post('/ar/allocations/{allocation}/release', [AccountingController::class, 'releaseCustomerAllocation'])->middleware(['permission:debts.view', 'permission:accounting.ar.allocate']);
                 Route::get('/control-center', [AccountingController::class, 'controlCenter'])->middleware('permission:accounting.reports.view');
+                Route::get('/exports/{report}', [AccountingController::class, 'export'])->middleware('permission:accounting.reports.view');
+                Route::get('/parties', [AccountingController::class, 'parties'])->middleware('permission:accounting.reports.view');
                 Route::get('/overview', [AccountingController::class, 'overview'])->middleware('permission:accounting.reports.view');
                 Route::get('/accounts', [AccountingController::class, 'accounts'])->middleware('permission:accounting.journal.view');
                 Route::get('/accounts/{account}/activity', [AccountingController::class, 'accountActivity'])->middleware('permission:accounting.journal.view');
@@ -628,6 +631,10 @@ Route::middleware('auth.token')->group(function () {
             Route::get('/finance/bank-statements', [BankReconciliationController::class, 'index'])->middleware('permission:bank_reconciliation.view');
             Route::post('/finance/bank-statements/import', [BankReconciliationController::class, 'import'])->middleware('permission:bank_reconciliation.manage');
             Route::get('/finance/bank-statements/{bankStatement}', [BankReconciliationController::class, 'show'])->middleware('permission:bank_reconciliation.view');
+            Route::put('/finance/bank-statements/{bankStatement}/balances', [BankReconciliationController::class, 'balances'])->middleware('permission:bank_reconciliation.confirm');
+            Route::post('/finance/bank-statements/{bankStatement}/complete', [BankReconciliationController::class, 'complete'])->middleware('permission:bank_reconciliation.complete');
+            Route::post('/finance/bank-statements/{bankStatement}/reopen', [BankReconciliationController::class, 'reopen'])->middleware('permission:bank_reconciliation.reopen');
+            Route::post('/finance/bank-statement-rows/{row}/review-duplicate', [BankReconciliationController::class, 'reviewDuplicate'])->middleware('permission:bank_reconciliation.confirm');
             Route::get('/finance/bank-statement-rows/{row}/suggestions', [BankReconciliationController::class, 'suggestions'])->middleware('permission:bank_reconciliation.view');
             Route::post('/finance/bank-statement-rows/{row}/reconcile', [BankReconciliationController::class, 'reconcile'])->middleware('permission:bank_reconciliation.confirm');
             Route::post('/finance/bank-statement-rows/{row}/ignore', [BankReconciliationController::class, 'ignore'])->middleware('permission:bank_reconciliation.confirm');

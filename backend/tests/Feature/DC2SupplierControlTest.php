@@ -83,8 +83,15 @@ class DC2SupplierControlTest extends TestCase
         $this->assertEquals(10000, $product->fresh()->quantity);
         $this->assertEquals(9000, Expense::findOrFail($id)->remaining_amount);
         $this->getJson('/api/accounting/ap/aging?as_of=2026-09-30')->assertOk()->assertJsonPath('summary.total', '25000.00');
+        $dated=app(\App\Services\DatedFinancialReconciliation::class)->report('2026-09-30');
+        $this->assertTrue($dated['all_reconciled'],json_encode($dated));
+        $this->assertSame('16000.00',collect($dated['rows'])->firstWhere('control','supplier_advances')['operational_amount']);
         $this->getJson('/api/accounting/ap/aging?as_of='.CompanyClock::today()->toDateString())->assertOk()->assertJsonPath('summary.total', '9000.00');
         $this->getJson('/api/accounting/ap/suppliers/'.$supplier->id.'/workbench')->assertOk()->assertJsonPath('summary.total', '9000.00')->assertJsonPath('advances.data.0.remaining', '0.00');
+        $this->getJson('/api/accounting/ap/suppliers/'.$supplier->id.'/statement?from=2026-09-01&to=2026-09-30')->assertOk()->assertJsonPath('closing.payable','25000.00')->assertJsonPath('closing.advance','16000.00');
+        $this->getJson('/api/accounting/ap/suppliers/'.$supplier->id.'/statement?from=2026-09-01&to='.CompanyClock::today()->toDateString())->assertOk()->assertJsonPath('closing.payable','9000.00')->assertJsonPath('closing.advance','0.00');
+        $csv=$this->getJson('/api/accounting/exports/supplier-statement?supplier_id='.$supplier->id.'&from=2026-09-01&to='.CompanyClock::today()->toDateString())->assertOk()->streamedContent();
+        $this->assertStringContainsString('9000.00',$csv);
     }
 
     public function test_incremental_allocation_posts_only_the_new_amount_and_cross_rate_realized_difference(): void

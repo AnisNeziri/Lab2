@@ -68,7 +68,7 @@ class FinancialControlService
             }
         }
         foreach ([['unbalanced_drafts', 'Unbalanced draft journals', 'journal'], ['stale_drafts', 'Draft journals older than seven days', 'journal'],
-            ['unreconciled_bank_items', 'Unreconciled bank items', 'bank'], ['unreviewed_supplier_bills', 'Supplier invoices need review', 'ap'],
+            ['unreconciled_bank_items', 'Unreconciled bank items', 'bank'], ['unreconciled_system_bank_items','Bank activity is awaiting a statement match','bank'], ['unreviewed_supplier_bills', 'Supplier invoices need review', 'ap'],
             ['unposted_financial_documents', 'Unposted financial documents', 'ap'], ['pending_landed_costs', 'Landed cost is awaiting posting', 'landed'],
             ['opening_issues', 'Opening reconciliation is unfinished', 'opening'], ['failed_financial_jobs', 'Financial posting needs recovery', 'integrity'],
             ['closed_period_attempts', 'Recent posting attempts were blocked by a closed period', 'periods']] as [$key,$label,$tab]) {
@@ -101,6 +101,7 @@ class FinancialControlService
         return ['unbalanced_drafts' => $this->integrity->journalDifferences('draft', $to), 'draft_journals' => (clone $drafts)->count(),
             'stale_drafts' => (clone $drafts)->where('created_at', '<', now()->subDays(7))->count(),
             'unreconciled_bank_items' => BankStatementRow::query()->whereIn('status', ['unmatched', 'suggested'])->when($cutoff, fn ($q) => $q->where('transaction_date', '<', $cutoff))->count(),
+            'unreconciled_system_bank_items'=>app(BankReconciliationProof::class)->unreconciledSystem(null,null,$to)->count(),
             'uncompleted_bank_statements' => BankStatement::query()->where('reconciliation_status', '!=', 'completed')->when($cutoff, fn ($q) => $q->where('period_to', '<', $cutoff))->count(),
             'unreviewed_supplier_bills' => Expense::query()->where('document_type', 'purchase_invoice')->whereNotNull('supplier_id')->whereIn('status', ['draft', 'posted'])->whereNull('approved_at')->when($cutoff, fn ($q) => $q->where('invoice_date', '<', $cutoff))->count(),
             'unposted_financial_documents' => Expense::query()->where('status', 'draft')->when($cutoff, fn ($q) => $q->where('invoice_date', '<', $cutoff))->count(),
@@ -118,18 +119,20 @@ class FinancialControlService
         $counts = $this->counts($to);
         $tb = $this->accounting->trialBalance(null, $to);
         $bs = $this->accounting->balanceSheet($to);
-        $reconciliation = $this->accounting->reconciliation(false);
+        $reconciliation = app(DatedFinancialReconciliation::class)->report($to);
+        $currentReconciliation = $this->accounting->reconciliation(false);
         $inventory = app(InventoryIntegrityService::class)->companySummary();
         $checks = $this->integrity->checks($to);
         $checks[] = $this->check('period_ended', 'The selected period has ended', $to <= CompanyClock::today()->toDateString() ? 0 : 1, 'periods');
         $checks[] = $this->check('trial_balance', 'Trial Balance is balanced', $tb['balanced'] ? 0 : 1, 'reports');
         $checks[] = $this->check('balance_sheet', 'Balance Sheet is balanced', $bs['balanced'] ? 0 : 1, 'reports');
         foreach ($reconciliation['rows'] as $row) {
-            $checks[] = [...$this->check($row['control'], ucwords(str_replace('_', ' ', $row['control'])).' reconciles', $row['reconciled'] ? 0 : 1, 'reconciliation'), 'difference' => $row['difference']];
+            $checks[] = [...$this->check($row['control'], ucwords(str_replace('_', ' ', $row['control'])).' reconciles at period end', $row['reconciled'] ? 0 : 1, 'reconciliation'), 'difference' => $row['difference'],'detail'=>implode(' ',$row['evidence_issues'])];
         }
+        foreach($currentReconciliation['rows'] as $row)if(!$row['reconciled'])$checks[]=[...$this->check('current_'.$row['control'],ucwords(str_replace('_',' ',$row['control'])).' currently differs from GL',1,'reconciliation'),'difference'=>$row['difference']];
         $checks[] = [...$this->check('inventory_integrity', 'Inventory quantities and trace states reconcile', $inventory['issue_count'], 'reconciliation'), 'examples' => $inventory['examples']];
         foreach ([['draft_journals', 'No unposted journals', 'journal'], ['unbalanced_drafts', 'No unbalanced drafts', 'journal'],
-            ['unreconciled_bank_items', 'All bank statement rows reviewed', 'bank'], ['uncompleted_bank_statements', 'Statement balances are reconciled', 'bank'],
+            ['unreconciled_bank_items', 'All bank statement rows reviewed', 'bank'], ['unreconciled_system_bank_items','All bank activity has a statement match','bank'], ['uncompleted_bank_statements', 'Statement balances are reconciled', 'bank'],
             ['unreviewed_supplier_bills', 'Supplier invoices reviewed', 'ap'], ['unposted_financial_documents', 'No unposted financial documents', 'ap'],
             ['pending_landed_costs', 'No pending landed-cost postings', 'landed'], ['opening_issues', 'Opening reconciliation is complete', 'opening'],
             ['failed_financial_jobs', 'No unresolved failed financial postings', 'integrity']] as [$key,$label,$tab]) {
@@ -137,15 +140,15 @@ class FinancialControlService
         }
         // An advance can legitimately remain a balance at month end. It is
         // inspected and disclosed, never netted or forced into expense/revenue.
-        $checks[] = $this->check('customer_advances', 'Review unapplied customer advances', $counts['unallocated_customer_advances'], 'ar', false);
-        $checks[] = $this->check('supplier_advances', 'Review unapplied supplier advances', $counts['unallocated_supplier_payments'], 'ap', false);
+        $checks[] = $this->check('unapplied_customer_advances', 'Review unapplied customer advances', $counts['unallocated_customer_advances'], 'ar', false);
+        $checks[] = $this->check('unapplied_supplier_advances', 'Review unapplied supplier advances', $counts['unallocated_supplier_payments'], 'ap', false);
         $blocked = collect($checks)->contains(fn ($c) => $c['required'] && ! $c['passed']);
         $attention = collect($checks)->contains(fn ($c) => ! $c['passed']);
 
         return ['period' => $period, 'checked_at' => now()->toIso8601String(), 'status' => $blocked ? 'BLOCKED' : ($attention ? 'ATTENTION' : 'READY'),
-            'ready_to_close' => ! $blocked, 'checks' => $checks, 'reconciliation' => $reconciliation, 'inventory' => $inventory,
+            'ready_to_close' => ! $blocked, 'checks' => $checks, 'reconciliation' => $reconciliation, 'current_reconciliation'=>$currentReconciliation,'inventory' => $inventory,
             'retained_earnings_policy' => 'Current earnings are derived dynamically from posted revenue and expense journals across fiscal-year boundaries. No duplicate closing/opening profit journal is generated.',
-            'basis' => 'Dated Trial Balance and Balance Sheet, with current operational control-account and inventory integrity checks.'];
+            'basis' => 'Period-end financial statements and independently dated subledger/GL comparisons, plus current operational integrity checks. Missing historical evidence blocks closing.'];
     }
 
     private function check(string $code, string $label, int $count, string $tab, bool $required = true): array

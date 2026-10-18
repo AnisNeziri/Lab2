@@ -13,6 +13,8 @@ class RolePermissionSeeder extends Seeder
     {
         $existingPermissionIds = Permission::pluck('id')->all();
         $permissions = [
+            ['name'=>'Complete bank reconciliation','slug'=>'bank_reconciliation.complete','group'=>'finance'],
+            ['name'=>'Reopen bank reconciliation','slug'=>'bank_reconciliation.reopen','group'=>'finance'],
             ...array_map(fn($action) => ['name' => 'Onboarding '.ucfirst($action), 'slug' => 'onboarding.'.$action, 'group' => 'onboarding'], ['view','manage','review','approve','post','lock']),
             ...array_map(fn($slug)=>['name'=>'Documents '.str_replace('_',' ',$slug),'slug'=>'documents.'.$slug,'group'=>'documents'],['view','upload','update_metadata','new_version','archive','download','review','manage','confidential']),
             ['name'=>'View Fulfillment','slug'=>'fulfillment.view','group'=>'fulfillment'],
@@ -129,12 +131,12 @@ class RolePermissionSeeder extends Seeder
                 'dashboard.view','finance.view','finance.export','analytics.view','analytics.finance','reports.view',
                 'accounting.reports.view','accounting.journal.view','accounting.journal.create','accounting.journal.post','accounting.journal.reverse',
                 'accounting.ar.allocate','accounting.accounts.manage','accounting.periods.manage','accounting.periods.close','accounting.periods.reopen','accounting.periods.adjust','accounting.integrity.view',
-                'financial_accounts.view','financial_accounts.manage','financial_accounts.adjust','bank_reconciliation.view','bank_reconciliation.manage','bank_reconciliation.confirm',
+                'financial_accounts.view','financial_accounts.manage','financial_accounts.adjust','bank_reconciliation.view','bank_reconciliation.manage','bank_reconciliation.confirm','bank_reconciliation.complete','bank_reconciliation.reopen',
                 'supplier_invoices.view','supplier_invoices.manage','supplier_invoices.approve','supplier_invoices.post','expenses.manage',
                 'purchase_orders.view','purchase_orders.payments','suppliers.manage','customers.manage','debts.view','debts.payments','debts.adjust','debts.export',
                 'invoices.manage','payments.process','inventory.view','landed_costs.manage','documents.view','documents.upload','documents.download','documents.update_metadata','documents.new_version','documents.review',
             ])->pluck('id')->all(),
-            'manager' => Permission::whereNotIn('slug', ['users.manage', 'activity.view', 'cms.manage'])->where('slug', 'not like', 'onboarding.%')->where(fn($q)=>$q->where('slug','not like','accounting.%')->orWhereIn('slug',['accounting.reports.view','accounting.journal.view']))->whereNotIn('slug',['supplier_invoices.post','supplier_invoices.approve'])->pluck('id')->all(),
+            'manager' => Permission::whereNotIn('slug', ['users.manage', 'activity.view', 'cms.manage'])->where('slug', 'not like', 'onboarding.%')->where(fn($q)=>$q->where('slug','not like','accounting.%')->orWhereIn('slug',['accounting.reports.view','accounting.journal.view']))->whereNotIn('slug',['supplier_invoices.post','supplier_invoices.approve','bank_reconciliation.complete','bank_reconciliation.reopen'])->pluck('id')->all(),
             'staff' => Permission::whereIn('slug', [
                 'documents.view', 'documents.upload', 'documents.download', 'documents.update_metadata',
                 'fulfillment.view', 'fulfillment.pick',

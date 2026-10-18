@@ -117,6 +117,7 @@ class SupplierPaymentAllocationService
                 'idempotency_key' => $idempotencyKey,
                 'reason' => $reason,
                 'allocated_by' => Auth::id(),
+                'allocation_date' => CompanyClock::today()->toDateString(),
                 'allocated_at' => now(),
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -182,7 +183,7 @@ class SupplierPaymentAllocationService
 
                 return $expense->fresh();
             }
-            if ($date < substr($request->allocated_at, 0, 10) || $date > CompanyClock::today()->toDateString()) {
+            if ($date < ($request->allocation_date ?? substr($request->allocated_at, 0, 10)) || $date > CompanyClock::today()->toDateString()) {
                 throw ValidationException::withMessages(['reversal_date' => 'Use an effective date from the original allocation through today.']);
             }
             if (Money::compare($allocation->amount, $request->amount) < 0) {

@@ -586,6 +586,9 @@ class CustomerDebtService
             throw ValidationException::withMessages(['transaction' => 'Release the explicit payment allocations first. Allocation history is retained.']);
         }
         $increase = ! in_array($transaction->type, self::INCREASE_TYPES, true);
+        if($increase&&Money::compare($transaction->balance_before,$transaction->balance_after)>0&&app(ReceivablePositionQueries::class)->receiptHasReclassifiedFunding($transaction)){
+            throw ValidationException::withMessages(['transaction'=>'This receipt may fund a customer advance created by cancelling settled debt. Review the correction lineage before reversing it; a direct reversal would duplicate the receivable effect.']);
+        }
         $openingPosition = $transaction->source === 'onboarding_opening' || (bool) data_get($transaction->metadata, 'opening_position');
         $reversal = $this->record($transaction->customer, [
             'amount' => $transaction->amount,

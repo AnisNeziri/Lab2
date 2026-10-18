@@ -16,6 +16,9 @@ use Symfony\Component\HttpFoundation\Response;
 
 class PortableBackupService
 {
+    /** Schema metadata only; no company records or balances are cached here. */
+    private array $foreignKeyRelations = [];
+    private array $foreignKeySchemasLoaded = [];
     public const FORMAT = 'aims-portable-backup';
 
     public const VERSION = 1;
@@ -79,7 +82,7 @@ class PortableBackupService
             'landed_cost_accounting_entries',
             'financial_accounts', 'financial_account_transactions',
             'financial_account_transfers', 'bank_statements', 'bank_statement_rows',
-            'bank_reconciliation_events',
+            'bank_reconciliation_events', 'bank_statement_matches',
         ],
         'shipments' => [
             'shipments', 'shipment_histories', 'shipment_containers',
@@ -132,7 +135,7 @@ class PortableBackupService
         'customer_sales_snapshots','customer_intelligence_policies','decision_learning_records','supply_optimization_plans',
         'financial_intelligence_snapshots','financial_intelligence_observations','financial_intelligence_policies',
         'financial_account_transfers', 'financial_account_transactions',
-        'bank_statements', 'bank_statement_rows', 'bank_reconciliation_events',
+        'bank_statements', 'bank_statement_rows', 'bank_reconciliation_events', 'bank_statement_matches',
         'sales_orders','sales_order_items','pick_waves','pick_tasks','outbound_allocations','outbound_dispatches','outbound_packages','outbound_package_items','outbound_returns','outbound_actions',
         'order_channels','order_channel_mappings','order_intakes','order_hub_presets',
         'document_links',
@@ -554,6 +557,19 @@ class PortableBackupService
                 }
             }
 
+            $prefixTables=['daily-sale'=>'daily_sales','invoice'=>'invoices','invoice-payment'=>'payment_transactions','customer-debt'=>'customer_debt_transactions','expense'=>'expenses','expense-payment'=>'expense_payments',
+                'purchase-order-payment'=>'purchase_order_payments','stock-movement'=>'stock_movements','landed-cost'=>'landed_costs','landed-reversal-adjustment'=>'landed_costs','supplier-allocation'=>'supplier_payment_allocation_requests',
+                'financial-transaction'=>'financial_account_transactions','financial-transfer'=>'financial_account_transfers','financial-opening'=>'financial_accounts','reversal'=>'journal_entries','order-invoice-tax'=>'invoices','order-return-tax'=>'invoices'];
+            foreach($activeData['journal_entries']??[] as $original){
+                $targetId=$idMap['journal_entries'][(string)$original['id']]??null;if(!$targetId)continue;
+                $key=$original['source_key']??'';
+                if(preg_match('/^([a-z-]+):(\\d+)(.*)$/D',$key,$m)){
+                    $mapped=$m[1]==='company-opening'?$companyId:($idMap[$prefixTables[$m[1]]??''][(string)$m[2]]??null);
+                    if($mapped)DB::table('journal_entries')->where('company_id',$companyId)->where('id',$targetId)->update(['source_key'=>$m[1].':'.$mapped.$m[3]]);
+                }
+                if(str_starts_with((string)DB::table('journal_entries')->where('company_id',$companyId)->where('id',$targetId)->value('source_type'),'archived:'))\App\Models\ActivityLog::create(['company_id'=>$companyId,'user_id'=>$user->id,'action'=>'accounting.restored_source_unresolved','entity'=>'JournalEntry','entity_id'=>$targetId,'description'=>'Historical source is unresolved after restore; accountant review required.','old_value'=>['source_type'=>$original['source_type'],'source_id'=>$original['source_id'],'source_key'=>$key]]);
+            }
+
             foreach (array_values($idMap['invoices'] ?? []) as $invoiceId) {
                 $invoice = Invoice::withoutGlobalScopes()
                     ->where('company_id', $companyId)
@@ -756,9 +772,33 @@ class PortableBackupService
         return [$data, $encodings];
     }
 
+    private function schemaRelations(string $table):array
+    {
+        $connection=DB::connection();
+        $prefix=$connection->getName().':'.$connection->getDatabaseName().':';
+        $key=$prefix.$table;
+        if($connection->getDriverName()==='mysql'){
+            if(!isset($this->foreignKeySchemasLoaded[$prefix])){
+                // One dictionary read instead of a referential-constraints join
+                // per table and restored row. Only relationship metadata is read.
+                $keys=DB::table('information_schema.KEY_COLUMN_USAGE')->where('TABLE_SCHEMA',$connection->getDatabaseName())->whereNotNull('REFERENCED_TABLE_NAME')
+                    ->selectRaw('TABLE_NAME as table_name,CONSTRAINT_NAME as constraint_name,COLUMN_NAME as column_name,REFERENCED_TABLE_NAME as foreign_table,REFERENCED_COLUMN_NAME as foreign_column')
+                    ->orderBy('TABLE_NAME')->orderBy('CONSTRAINT_NAME')->orderBy('ORDINAL_POSITION')->get()->groupBy(fn($r)=>$r->table_name.':'.$r->constraint_name);
+                foreach($keys as $parts){$first=$parts->first();$this->foreignKeyRelations[$prefix.$first->table_name][]=['columns'=>$parts->pluck('column_name')->all(),'foreign_table'=>$first->foreign_table,'foreign_columns'=>$parts->pluck('foreign_column')->all()];}
+                $this->foreignKeySchemasLoaded[$prefix]=true;
+            }
+            $relations=$this->foreignKeyRelations[$key]??[];
+        }else{
+            if(isset($this->foreignKeyRelations[$key]))return $this->foreignKeyRelations[$key];
+            $relations=Schema::getForeignKeys($table);
+        }
+        if(in_array($table,['financial_account_transactions','bank_statement_rows'],true)&&!collect($relations)->contains(fn($r)=>($r['columns'][0]??null)==='journal_entry_id'))$relations[]=['columns'=>['journal_entry_id'],'foreign_table'=>'journal_entries'];
+        return $this->foreignKeyRelations[$key]=$relations;
+    }
+
     private function portableRelations(string $table): array
     {
-        $relations = Schema::getForeignKeys($table);
+        $relations = $this->schemaRelations($table);
         if ($table === 'analytics_snapshots') {
             foreach (['product' => 'products', 'inventory' => 'products', 'customer' => 'customers', 'supplier' => 'suppliers','supplier_intelligence'=>'suppliers'] as $type => $target) {
                 $relations[] = ['columns' => ['entity_id'], 'foreign_table' => $target, 'entity_type' => $type];
@@ -976,6 +1016,17 @@ class PortableBackupService
         unset($row['id']);
         $columns = collect(Schema::getColumns($table))->reject(fn (array $column) => $column['generation'] !== null)->pluck('name')->flip();
         $row = array_intersect_key($row, $columns->all());
+        if($table==='bank_statement_rows')$row['source_fingerprint']=null;
+        if($table==='accounting_periods'&&!empty($row['close_snapshot'])){
+            $proof=json_decode((string)$row['close_snapshot'],true,512,JSON_THROW_ON_ERROR);
+            $proof['historical']=true;$proof['archive_reason']='Original installation close evidence. Embedded identifiers and fingerprint remain historical; reopening and closing again regenerates company-local proof.';
+            $row['close_snapshot']=json_encode($proof,JSON_THROW_ON_ERROR);
+        }
+        if($table==='bank_statements'&&!empty($row['reconciliation_proof'])){
+            $proof=json_decode((string)$row['reconciliation_proof'],true,512,JSON_THROW_ON_ERROR);
+            $proof['historical']=true;$proof['archive_reason']='Restored evidence requires company-local balance review before completion.';
+            $row['reconciliation_proof']=json_encode($proof,JSON_THROW_ON_ERROR);$row['reconciliation_status']='open';
+        }
         if ($table === 'customer_allocation_requests') {
             $ids = json_decode((string) $row['result'], true, 512, JSON_THROW_ON_ERROR);
             $row['result'] = json_encode(array_map(function ($id) use ($idMap) {
@@ -1151,7 +1202,7 @@ class PortableBackupService
             if ($table==='automations') $definition=$actions; else $definition['actions']=$actions;
             $row[$column]=json_encode($definition);
         }
-        foreach (Schema::getForeignKeys($table) as $foreign) {
+        foreach ($this->schemaRelations($table) as $foreign) {
             $column = $foreign['columns'][0] ?? null;
             $foreignTable = $foreign['foreign_table'] ?? null;
             if (! $column || ! $foreignTable || ! array_key_exists($column, $row) || $row[$column] === null) {
@@ -1180,6 +1231,16 @@ class PortableBackupService
             }
         }
 
+        if($table==='journal_entries'&&!empty($row['source_id'])){
+            $type=$row['source_type']??'';$definition=AccountingJournalExperience::SOURCES[$type]??null;
+            if(!$definition&&str_starts_with($type,'App\\Models\\'))foreach(AccountingJournalExperience::SOURCES as $canonical=>$candidate)if('App\\Models\\'.$candidate[0]===$type){$definition=$candidate;$row['source_type']=$canonical;break;}
+            if($type==='company')$row['source_id']=$companyId;
+            elseif($definition){$class='App\\Models\\'.$definition[0];$sourceTable=(new $class)->getTable();$old=(string)$row['source_id'];
+                if(isset($idMap[$sourceTable][$old]))$row['source_id']=$idMap[$sourceTable][$old];
+                elseif(in_array($sourceTable,$importTables,true)){$deferred['source_id']=[$sourceTable,$old];$row['source_id']=null;}
+                else{$row['source_id']=null;$row['source_type']='archived:'.substr($type,0,80);}
+            }else{$row['source_id']=null;$row['source_type']='archived:'.substr($type,0,80);}
+        }
         if ($table === 'stock_movements' && array_key_exists('source_id', $row) && $row['source_id'] !== null) {
             $sourceTable = match ($row['source_type'] ?? null) {
                 'sales_order' => 'sales_orders',
@@ -1574,6 +1635,7 @@ class PortableBackupService
         if (! empty($data['customer_settlement_allocations']) && DB::table('customer_settlement_allocations')->where('company_id', $companyId)->exists()) {
             throw ValidationException::withMessages(['mode' => 'Customer allocation history requires a complete Replace restore when allocation history already exists.']);
         }
+        if(!empty($data['bank_statement_matches'])&&DB::table('bank_statement_matches')->where('company_id',$companyId)->exists())throw ValidationException::withMessages(['mode'=>'Bank match history requires a complete Replace restore when match history already exists.']);
         $unsafeLedgers = [
             'stock_movements' => 'idempotency_key',
             'customer_debt_transactions' => 'idempotency_key',

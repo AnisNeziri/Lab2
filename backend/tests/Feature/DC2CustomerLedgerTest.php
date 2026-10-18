@@ -115,6 +115,18 @@ class DC2CustomerLedgerTest extends TestCase
         $this->assertSame('0.00', $c->fresh()->current_credit);
     }
 
+    public function test_cancelled_settled_receivable_does_not_apply_its_retired_payment_to_an_unrelated_debt_again():void
+    {
+        [$c,$s,$a]=$this->context();$sale=$this->debt($s,$c,40,'cancelled-sale');$payment=$this->payment($s,$c,20,'retired-payment');$unrelated=$this->debt($s,$c,30,'other-debt');
+        $s->reverse($sale,'Cancel only the first partly settled sale.');
+        $this->assertSame('30.00',$c->fresh()->current_debt);$this->assertSame('20.00',$c->fresh()->current_credit);
+        $position=app(\App\Services\ReceivablePositionQueries::class)->rows(null,[$c->id])->where('id',$unrelated->id)->first();
+        $this->assertEquals(30,$position->outstanding_amount);$this->assertTrue($a->reconciliation(false)['all_reconciled']);
+        $before=JournalEntry::count();
+        try{$s->reverse($payment,'Cannot refund already reclassified funding directly.');$this->fail('Unsafe receipt reversal succeeded.');}catch(ValidationException){}
+        $this->assertSame($before,JournalEntry::count());
+    }
+
     public function test_cash_payment_reversal_preserves_ar_cash_and_journal_lineage(): void
     {
         [$c,$s,$a] = $this->context();

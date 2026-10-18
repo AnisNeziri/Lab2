@@ -80,6 +80,7 @@ class FinancialAccountController extends Controller
 
     public function reverse(Request $request, FinancialAccountTransaction $transaction): JsonResponse
     {
+        abort_unless(in_array($transaction->source_type,[null,'manual','financial_account_transfer'],true),422,'Reverse this transaction through its source module so receivables/payables and cash remain together.');
         $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:2000']]);
         return response()->json($this->accounts->reverse($transaction, $data['reason']));
     }

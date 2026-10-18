@@ -18,9 +18,9 @@ use Symfony\Component\Process\Process;
 
 $database = config('database.connections.mysql.database');
 if (! app()->environment('testing') || config('database.default') !== 'mysql'
-    || ! preg_match('/^aims_dc1_[a-z0-9_]+_test$/', $database)
+    || ! preg_match('/^aims_dc[12]_[a-z0-9_]+_test$/', $database)
     || ! in_array(config('database.connections.mysql.host'), ['127.0.0.1', 'localhost'], true)) {
-    throw new RuntimeException('Requires a named disposable aims_dc1_*_test loopback MariaDB database.');
+    throw new RuntimeException('Requires a named disposable aims_dc1_*_test or aims_dc2_*_test loopback MariaDB database.');
 }
 
 if (($argv[1] ?? '') === 'worker') {
@@ -55,7 +55,7 @@ $user = User::factory()->create(['company_id' => $company->id, 'role' => 'admin'
 Auth::login($user);
 $accounts = app(FinancialAccountService::class);
 $bank = $accounts->createAccount(['type' => 'bank', 'name' => 'DC1 race fixture', 'currency' => 'EUR', 'opening_balance' => 0, 'opening_date' => '2026-10-16']);
-$transaction = $accounts->post($bank, ['type' => 'inflow', 'amount' => '75.00', 'transaction_date' => '2026-10-16', 'description' => 'Race fixture', 'idempotency_key' => 'race-'.$company->id]);
+$transaction = $accounts->post($bank, ['type' => 'inflow', 'amount' => '75.00', 'transaction_date' => '2026-10-16', 'description' => 'Race fixture', 'counter_accounting_account_id'=>\App\Models\AccountingAccount::where('code','3000')->firstOrFail()->id, 'idempotency_key' => 'race-'.$company->id]);
 $statement = app(BankReconciliationService::class)->import($bank, UploadedFile::fake()->createWithContent('race.csv', "Date,Amount\n2026-10-16,75.00\n2026-10-16,75.00\n"), ['date' => 'Date', 'amount' => 'Amount']);
 if ($statement->rows->where('status', 'suggested')->count() !== 2) throw new RuntimeException('Both rows must retain legitimate suggestions.');
 $barrier = storage_path('framework/testing/dc1-bank-'.bin2hex(random_bytes(8)));
@@ -84,6 +84,9 @@ $service->reconcile($winner, $transaction);
 if ($winner->events()->count() !== $events) throw new RuntimeException('Match replay duplicated audit effects.');
 $service->unmatch($winner, 'Fixture reviewer corrected the row selection.');
 $service->reconcile($loser, $transaction);
+try { $accounts->reverse($transaction, 'Fixture matched transaction reversal.'); throw new RuntimeException('A matched source was reversed without releasing its bank owner.'); }
+catch (ValidationException) {}
+$service->unmatch($loser, 'Release the final match before reversing its source.');
 $accounts->reverse($transaction, 'Fixture transaction reversal.');
 try { $service->reconcile($winner, $transaction); throw new RuntimeException('Reversed transaction was accepted.'); }
 catch (ValidationException) {}

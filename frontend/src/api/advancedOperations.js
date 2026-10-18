@@ -59,10 +59,16 @@ export const postFinancialTransaction = (id, payload) => apiRequest(`/finance/ac
 export const transferFinancialAccounts = (payload) => apiRequest("/finance/account-transfers", json("POST", payload));
 export const reverseFinancialTransaction = (id, reason) => apiRequest(`/finance/account-transactions/${id}/reverse`, json("POST", { reason }));
 
-export const getBankStatements = () => apiRequest("/finance/bank-statements");
-export const getBankStatement = (id) => apiRequest(`/finance/bank-statements/${id}`);
+export const getBankStatements = (p={}) => apiRequest(buildApiUrl('/finance/bank-statements',p));
+export const getBankStatement = (id,p={}) => apiRequest(buildApiUrl(`/finance/bank-statements/${id}`,p));
 export const importBankStatement = (formData) => apiRequest("/finance/bank-statements/import", { method: "POST", body: formData });
 export const getBankMatchSuggestions = (id) => apiRequest(`/finance/bank-statement-rows/${id}/suggestions`);
 export const reconcileBankRow = (id, transactionId) => apiRequest(`/finance/bank-statement-rows/${id}/reconcile`, json("POST", { transaction_id: transactionId }));
 export const ignoreBankRow = (id, reason) => apiRequest(`/finance/bank-statement-rows/${id}/ignore`, json("POST", { reason }));
 export const unmatchBankRow = (id, reason) => apiRequest(`/finance/bank-statement-rows/${id}/unmatch`, json("POST", { reason }));
+export const reconcileBankRows = (id, transaction_ids) => apiRequest(`/finance/bank-statement-rows/${id}/reconcile`, json('POST', {transaction_ids}));
+export const setBankStatementBalances = (id,p) => apiRequest(`/finance/bank-statements/${id}/balances`,json('PUT',p));
+export const completeBankStatement = id => apiRequest(`/finance/bank-statements/${id}/complete`,{method:'POST'});
+export const reopenBankStatement = (id,reason) => apiRequest(`/finance/bank-statements/${id}/reopen`,json('POST',{reason}));
+export const reviewBankDuplicate = (id,reason) => apiRequest(`/finance/bank-statement-rows/${id}/review-duplicate`,json('POST',{reason}));
+export const reverseSupplierAllocation = (id,p) => apiRequest(`/supplier-payment-allocation-requests/${id}/reverse`,json('POST',p));

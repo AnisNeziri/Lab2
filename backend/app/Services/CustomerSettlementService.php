@@ -38,6 +38,7 @@ class CustomerSettlementService
                 throw ValidationException::withMessages(['payment' => 'Choose an effective unreversed settlement.']);
             }
             $capacity = $this->capacity($payment, false);
+            if(Money::compare($capacity,0)>0&&app(ReceivablePositionQueries::class)->receiptHasReclassifiedFunding($payment))throw ValidationException::withMessages(['payment'=>'Earlier receipt funds were reclassified to customer advances after cancelling settled debt. Review that correction lineage before assigning this receipt again.']);
             $used = CustomerSettlementAllocation::where('settlement_transaction_id', $payment->id)->whereNull('released_on')->sum('amount');
             $requested = Money::decimal(array_sum(array_map(fn ($a) => Money::minor($a['amount']), $d['allocations'])));
             if (Money::compare($requested, Money::subtract($capacity, $used)) > 0) {
@@ -111,8 +112,10 @@ class CustomerSettlementService
         $payments = $customer->debtTransactions()->whereIn('type', ['payment', 'negative_adjustment', 'return', 'cancellation'])->whereNull('reversed_transaction_id')->whereDoesntHave('reversals')
             ->orderByDesc('transaction_date')->orderByDesc('id')->paginate(50, ['id', 'customer_id', 'type', 'amount', 'transaction_date', 'reference_number', 'balance_before', 'balance_after', 'credit_before', 'credit_after']);
         $sums = CustomerSettlementAllocation::whereIn('settlement_transaction_id', $payments->getCollection()->pluck('id'))->whereNull('released_on')->selectRaw('settlement_transaction_id,SUM(amount) total')->groupBy('settlement_transaction_id')->pluck('total', 'settlement_transaction_id');
+        $retiredAfterId=$customer->debtTransactions()->whereNotNull('reversed_transaction_id')->where('metadata->settled_debt_credit','>',0)->max('id')??0;
         $payments->through(fn ($p) => [...$p->toArray(), 'receivable_portion' => $this->capacity($p, false), 'explicitly_allocated' => Money::normalize($sums[$p->id] ?? 0),
-            'remaining_for_review' => Money::maximum(Money::subtract($this->capacity($p, false), $sums[$p->id] ?? 0), 0),
+            'remaining_for_review' => $p->id<$retiredAfterId?'0.00':Money::maximum(Money::subtract($this->capacity($p, false), $sums[$p->id] ?? 0), 0),
+            'funding_review_required'=>$p->id<$retiredAfterId&&Money::compare($this->capacity($p,false),0)>0,
             'advance_created' => Money::maximum(Money::subtract($p->credit_after, $p->credit_before), 0)]);
         $history = CustomerSettlementAllocation::where('customer_id', $customer->id)->with(['debt:id,reference_number,transaction_date', 'settlement:id,reference_number,transaction_date', 'allocator:id,name', 'releaser:id,name'])->latest('id')->paginate(50, ['*'], 'history_page');
         $debts = app(ReceivablePositionQueries::class)->rows(null, [$customer->id])->where('capacity', '>', 0)->orderBy('transaction_date')->orderBy('id')->paginate(50, ['*'], 'debts_page');

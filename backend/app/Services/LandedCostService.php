@@ -142,6 +142,7 @@ class LandedCostService
     public function post(LandedCost $landedCost): LandedCost
     {
         return DB::transaction(function () use ($landedCost) {
+            DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
             $landedCost = LandedCost::query()->lockForUpdate()->findOrFail($landedCost->id);
             if ($landedCost->status === 'posted') {
                 return $this->find($landedCost);
@@ -242,6 +243,7 @@ class LandedCostService
     public function reverse(LandedCost $landedCost, string $reason): LandedCost
     {
         return DB::transaction(function () use ($landedCost, $reason) {
+            DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
             $locked = LandedCost::query()->lockForUpdate()->findOrFail($landedCost->id);
             if ($locked->status === 'reversed') {
                 return $this->find($locked);
@@ -261,7 +263,8 @@ class LandedCostService
                 $product = Product::query()->lockForUpdate()->findOrFail($allocation->product_id);
                 $split = $this->recognitionSplit($receiptItem, $product, (float) $allocation->allocated_amount);
                 $inventoryAmount = (float) $split['inventory_adjustment_amount'];
-                $this->costing->applyLandedCostAdjustment($product, -$inventoryAmount);
+                $valuation=$this->costing->applyLandedCostAdjustment($product, -$inventoryAmount);
+                $entry->update(['reversal_date'=>\App\Support\CompanyClock::today()->toDateString(),'reversal_inventory_value_before'=>$valuation['inventory_value_before'],'reversal_inventory_value_after'=>$valuation['inventory_value_after']]);
 
                 $remainingLanded = round(max(0, (float) $receiptItem->landed_cost_allocated - (float) $allocation->allocated_amount), 6);
                 $quantity = $this->inventoryQuantity($receiptItem);

@@ -22,7 +22,7 @@ class Expense extends Model
         'gross_amount', 'vat_treatment', 'input_vat_eligible', 'deductible_vat_amount',
         'non_deductible_vat_amount', 'net_amount_eur', 'vat_amount_eur', 'self_assessed_vat_amount_eur', 'gross_amount_eur',
         'deductible_vat_amount_eur', 'non_deductible_vat_amount_eur', 'tax_legal_reference',
-        'notes', 'status', 'vat_period', 'posted_at', 'posted_by', 'reversed_at',
+        'notes', 'status', 'vat_period', 'posted_at', 'posted_by', 'reversal_date', 'reversed_at',
         'reversed_by', 'reversal_reason', 'retention_until', 'proof_filename', 'proof_mime',
         'proof_size', 'proof_sha256', 'proof_data', 'created_by', 'updated_by',
         'supplier_id', 'purchase_order_id', 'original_expense_id', 'match_status', 'match_summary',
@@ -44,7 +44,7 @@ class Expense extends Model
             'gross_amount_eur' => 'decimal:2', 'deductible_vat_amount_eur' => 'decimal:2',
             'non_deductible_vat_amount_eur' => 'decimal:2', 'invoice_date' => 'date',
             'received_date' => 'date', 'supply_date' => 'date', 'due_date' => 'date', 'exchange_rate_date' => 'date', 'posted_at' => 'datetime',
-            'reversed_at' => 'datetime', 'retention_until' => 'date', 'proof_size' => 'integer',
+            'reversal_date' => 'date:Y-m-d', 'reversed_at' => 'datetime', 'retention_until' => 'date', 'proof_size' => 'integer',
             'match_summary' => 'array', 'approved_at' => 'datetime',
         ];
     }

@@ -32,7 +32,7 @@ class ReceivableReports
             ->leftJoin('daily_sales as s', fn ($j) => $j->on('s.id', '=', 'd.daily_sale_id')->where('s.company_id', $company))
             ->selectRaw("'customer_ledger' source,d.id source_id,d.customer_id,c.name customer_name,d.reference_number reference,d.transaction_date invoice_date,d.due_date,? currency,COALESCE(s.created_by,d.user_id) salesperson_id,d.outstanding_amount outstanding,d.legacy_snapshot", [$base]);
         $payments = PaymentTransaction::query()->whereDate('payment_date', '<=', $asOf)
-            ->where(fn ($q) => $q->whereNull('reversed_at')->orWhereDate('reversed_at', '>', $asOf))
+            ->where(fn ($q) => $q->whereNull('reversed_at')->orWhereRaw('COALESCE(reversal_date,DATE(reversed_at)) > ?', [$asOf]))
             ->selectRaw('invoice_id,SUM(amount) paid')->groupBy('invoice_id');
         $credits = Invoice::query()->where('document_type', 'credit_note')->whereNotNull('issued_at')
             ->whereDate('invoice_date', '<=', $asOf)->where(fn ($q) => $q->whereNull('voided_at')->orWhereDate('voided_at', '>', $asOf))
@@ -86,7 +86,7 @@ class ReceivableReports
     }
 
     /** Effective-date deltas, including reversals: no mutable current balance as opening. */
-    public function statement(Customer $customer, string $from, string $to, string $currency): array
+    public function statementEvents(Customer $customer, string $to, string $currency)
     {
         abort_unless((int) $customer->company_id === (int) Auth::user()->company_id, 404);
         $base = CompanyCurrency::current();
@@ -99,15 +99,21 @@ class ReceivableReports
         $payment = PaymentTransaction::query()->whereIn('invoice_id', (clone $standalone)->select('invoices.id'))->whereDate('payment_date', '<=', $to)
             ->join('invoices as i', 'i.id', '=', 'payment_transactions.invoice_id')
             ->selectRaw("'invoice_payment' source,payment_transactions.id source_id,payment_date date,'payment' type,reference_number reference,note description,i.currency,-amount ar_delta,0 advance_delta,0 legacy_snapshot,NULL reversed_transaction_id");
-        $paymentReversal = (clone $payment)->whereNotNull('reversed_at')->whereDate('reversed_at', '<=', $to);
+        $paymentReversal = (clone $payment)->whereNotNull('reversed_at')->whereRaw('COALESCE(payment_transactions.reversal_date,DATE(payment_transactions.reversed_at)) <= ?', [$to]);
         $paymentReversal->getQuery()->columns = null;
-        $paymentReversal->selectRaw("'invoice_payment_reversal' source,payment_transactions.id source_id,DATE(reversed_at) date,'payment_reversal' type,reference_number reference,note description,i.currency,amount ar_delta,0 advance_delta,0 legacy_snapshot,NULL reversed_transaction_id");
+        $paymentReversal->selectRaw("'invoice_payment_reversal' source,payment_transactions.id source_id,COALESCE(payment_transactions.reversal_date,DATE(payment_transactions.reversed_at)) date,'payment_reversal' type,reference_number reference,note description,i.currency,amount ar_delta,0 advance_delta,0 legacy_snapshot,NULL reversed_transaction_id");
         $credit = Invoice::query()->whereIn('original_invoice_id', (clone $standalone)->select('invoices.id'))->whereNotNull('issued_at')->whereDate('invoice_date', '<=', $to)
             ->selectRaw("'credit_note' source,id source_id,invoice_date date,'credit_note' type,invoice_number reference,credit_reason description,currency,-grand_total ar_delta,0 advance_delta,0 legacy_snapshot,NULL reversed_transaction_id");
         $void = (clone $standalone)->whereNotNull('voided_at')->whereDate('voided_at', '<=', $to)
             ->selectRaw("'invoice_void' source,invoices.id source_id,DATE(voided_at) date,'invoice_void' type,invoice_number reference,notes description,currency,-grand_total ar_delta,0 advance_delta,0 legacy_snapshot,NULL reversed_transaction_id");
         $union = $ledger->toBase()->unionAll($invoice->toBase())->unionAll($payment->toBase())->unionAll($paymentReversal->toBase())->unionAll($credit->toBase())->unionAll($void->toBase());
-        $events = DB::query()->fromSub($union, 'events')->where('currency', $currency);
+
+        return DB::query()->fromSub($union, 'events')->where('currency', $currency);
+    }
+
+    public function statement(Customer $customer, string $from, string $to, string $currency): array
+    {
+        $events = $this->statementEvents($customer, $to, $currency);
         $opening = (clone $events)->whereDate('date', '<', $from)->selectRaw('COALESCE(SUM(ar_delta),0) ar,COALESCE(SUM(advance_delta),0) advance')->first();
         $closing = (clone $events)->whereDate('date', '<=', $to)->selectRaw('COALESCE(SUM(ar_delta),0) ar,COALESCE(SUM(advance_delta),0) advance,SUM(legacy_snapshot) legacy_rows')->first();
         $running = (clone $events)->select('events.*')->selectRaw('SUM(ar_delta) OVER (ORDER BY DATE(date),source,source_id) ar_balance,SUM(advance_delta) OVER (ORDER BY DATE(date),source,source_id) advance_balance');
