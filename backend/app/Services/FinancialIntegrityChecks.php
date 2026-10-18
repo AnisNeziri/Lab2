@@ -27,24 +27,26 @@ class FinancialIntegrityChecks
     {
         $company = (int) Auth::user()->company_id;
         $unbalanced = $this->journalDifferences('posted', $to);
-        $crossCompany = DB::table('journal_lines as l')->join('journal_entries as j', 'j.id', '=', 'l.journal_entry_id')
-            ->join('accounting_accounts as a', 'a.id', '=', 'l.accounting_account_id')->where('j.company_id', $company)->where('a.company_id', '!=', $company)->count();
+        $companyChecks = [DB::table('journal_lines as l')->join('journal_entries as j', 'j.id', '=', 'l.journal_entry_id')
+            ->join('accounting_accounts as a', 'a.id', '=', 'l.accounting_account_id')->where('j.company_id', $company)->where('a.company_id', '!=', $company)];
         foreach ([['customer_debt_transactions', 'customer_id', 'customers'], ['expenses', 'supplier_id', 'suppliers'], ['expense_payments', 'expense_id', 'expenses'], ['purchase_order_payments', 'purchase_order_id', 'purchase_orders'], ['purchase_order_payments', 'supplier_id', 'suppliers'], ['financial_account_transactions', 'financial_account_id', 'financial_accounts'], ['payment_transactions', 'invoice_id', 'invoices'], ['invoices', 'customer_id', 'customers'], ['accounting_posting_mappings', 'accounting_account_id', 'accounting_accounts'], ['financial_accounts', 'accounting_account_id', 'accounting_accounts'], ['financial_account_transactions', 'journal_entry_id', 'journal_entries'], ['accounting_accounts', 'parent_id', 'accounting_accounts'], ['financial_account_transfers', 'source_account_id', 'financial_accounts'], ['financial_account_transfers', 'destination_account_id', 'financial_accounts']] as [$table,$column,$parent]) {
-            $crossCompany += DB::table($table.' as child')->leftJoin($parent.' as parent', 'parent.id', '=', 'child.'.$column)->where('child.company_id', $company)->whereNotNull('child.'.$column)
-                ->where(fn ($q) => $q->whereNull('parent.id')->orWhere('parent.company_id', '!=', $company))->count();
+            $companyChecks[] = DB::table($table.' as child')->leftJoin($parent.' as parent', 'parent.id', '=', 'child.'.$column)->where('child.company_id', $company)->whereNotNull('child.'.$column)
+                ->where(fn ($q) => $q->whereNull('parent.id')->orWhere('parent.company_id', '!=', $company));
         }
+        $crossCompany = $this->countUnion($companyChecks);
         $badLines = DB::table('journal_lines as l')->join('journal_entries as j', 'j.id', '=', 'l.journal_entry_id')
             ->where('j.company_id', $company)->whereIn('j.status', ['posted', 'reversed'])
             ->where(fn ($q) => $q->where('l.debit', '<', 0)->orWhere('l.credit', '<', 0)->orWhere(fn ($x) => $x->where('l.debit', '>', 0)->where('l.credit', '>', 0)))->count();
-        $orphans = 0;
+        $sourceChecks = [];
         foreach (AccountingJournalExperience::SOURCES as $type => [$model]) {
             $class = 'App\\Models\\'.$model;
             $table = (new $class)->getTable();
             // JournalLine is not used as a tenant root: every check starts at
             // the authenticated company's journal, then checks source company.
-            $orphans += JournalEntry::query()->where('source_type', $type)->whereNotNull('source_id')
-                ->whereNotExists(fn ($q) => $q->selectRaw('1')->from($table.' as source')->whereColumn('source.id', 'journal_entries.source_id')->where('source.company_id', $company))->count();
+            $sourceChecks[] = JournalEntry::query()->where('source_type', $type)->whereNotNull('source_id')
+                ->whereNotExists(fn ($q) => $q->selectRaw('1')->from($table.' as source')->whereColumn('source.id', 'journal_entries.source_id')->where('source.company_id', $company))->toBase();
         }
+        $orphans = $this->countUnion($sourceChecks);
         $late = DB::table('journal_entries as j')->join('accounting_periods as p', function ($join) {
             $join->on('p.company_id', '=', 'j.company_id')->whereColumn('j.posting_date', '>=', 'p.starts_at')->whereColumn('j.posting_date', '<=', 'p.ends_at');
         })->where('j.company_id', $company)->where('p.status', 'closed')->whereIn('j.status', ['posted', 'reversed'])->whereColumn('j.posted_at', '>', 'p.closed_at')->count();
@@ -103,19 +105,35 @@ class FinancialIntegrityChecks
             ['payment_transactions', 'invoice_payment', 'payment_date', fn ($q) => $q->where('source.status', 'completed')],
             ['stock_movements', 'stock_movement', 'occurred_at', fn ($q) => $q->where('source.affects_company_quantity', true)->whereNotNull('source.cost_total')->whereIn('source.movement_code', ['opening_balance', 'purchase_receipt', 'damage_received', 'daily_sale', 'invoice_sale', 'daily_sale_reversal', 'invoice_credit', 'customer_return', 'supplier_return', 'damage_writeoff', 'internal_use', 'sample', 'manual_adjustment_in', 'import_adjustment_in', 'legacy_stock_in', 'manual_adjustment_out', 'import_adjustment_out', 'legacy_stock_out', 'stock_count', 'reconciliation_adjustment'])->where(fn ($q) => $q->where('source.cost_total', '<>', 0)->orWhereColumn('source.inventory_value_before', '<>', 'source.inventory_value_after'))],
         ];
-        $missing = 0;
+        $queries = [];
         foreach ($sources as [$table, $type, $date, $scope]) {
             $q = DB::table($table.' as source')->where('source.company_id', $company)
                 ->when($start, fn ($q) => $q->whereDate('source.'.$date, '>=', $start))
                 ->when($to, fn ($q) => $q->whereDate('source.'.$date, '<=', $to));
             $scope($q);
-            $missing += $q->whereNotExists(fn ($j) => $j->selectRaw('1')->from('journal_entries as posted')
-                ->where('posted.company_id', $company)->where('posted.source_type', $type)->whereColumn('posted.source_id', 'source.id')->whereIn('posted.status', ['posted', 'reversed']))->count();
+            $queries[] = $q->whereNotExists(fn ($j) => $j->selectRaw('1')->from('journal_entries as posted')
+                ->where('posted.company_id', $company)->where('posted.source_type', $type)->whereColumn('posted.source_id', 'source.id')->whereIn('posted.status', ['posted', 'reversed']));
         }
-        $missing += DB::table('financial_account_transactions as f')->where('f.company_id', $company)->where('f.status', 'posted')
+        $queries[] = DB::table('financial_account_transactions as f')->where('f.company_id', $company)->where('f.status', 'posted')
             ->when($start, fn ($q) => $q->whereDate('f.transaction_date', '>=', $start))->when($to, fn ($q) => $q->whereDate('f.transaction_date', '<=', $to))
-            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('journal_entries as j')->whereColumn('j.id', 'f.journal_entry_id')->where('j.company_id', $company)->whereIn('j.status', ['posted', 'reversed']))->count();
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('journal_entries as j')->whereColumn('j.id', 'f.journal_entry_id')->where('j.company_id', $company)->whereIn('j.status', ['posted', 'reversed']));
 
-        return $missing;
+        return $this->countUnion($queries);
+    }
+
+    /** Preserve every domain check while avoiding a database round trip per source. */
+    private function countUnion(array $queries): int
+    {
+        $combined = null;
+        foreach ($queries as $query) {
+            $query->selectRaw('COUNT(*) issue_count');
+            if ($combined === null) {
+                $combined = $query;
+            } else {
+                $combined->unionAll($query);
+            }
+        }
+
+        return $combined ? (int) DB::query()->fromSub($combined, 'financial_control_counts')->sum('issue_count') : 0;
     }
 }
