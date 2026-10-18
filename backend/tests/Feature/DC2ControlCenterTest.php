@@ -230,4 +230,39 @@ class DC2ControlCenterTest extends TestCase
         $this->assertFalse(app(InstallationBackupService::class)->reconcile()['healthy']);
         $this->assertDatabaseHas('products', ['id' => $product->id, 'category_id' => $foreignCategory]);
     }
+
+    public function test_integrity_uses_cent_precision_and_still_detects_one_cent_posted_corruption(): void
+    {
+        [$service,$accounts] = $this->context();
+        $journal = $service->createAndPost(['posting_date' => '2026-09-15', 'description' => 'Decimal cent precision', 'source_module' => 'precision_test', 'source_key' => 'decimal-cents', 'lines' => [
+            ['accounting_account_id' => $accounts['1000']->id, 'debit' => '0.10'],
+            ['accounting_account_id' => $accounts['1000']->id, 'debit' => '0.20'],
+            ['accounting_account_id' => $accounts['3000']->id, 'credit' => '0.30'],
+        ]]);
+        $checks = app(FinancialIntegrityChecks::class);
+        $this->assertSame(0, $checks->journalDifferences());
+        $this->assertTrue(collect($checks->checks())->firstWhere('code', 'valid_lines')['passed']);
+        DB::table('journal_lines')->where('journal_entry_id', $journal->id)->where('credit', '>', 0)->update(['credit' => '0.31']);
+        $this->assertSame(1, $checks->journalDifferences());
+        $this->assertFalse($service->trialBalance(null, '2026-09-30')['balanced']);
+        $this->assertDatabaseHas('journal_lines', ['journal_entry_id' => $journal->id, 'credit' => '0.31']);
+        if (DB::getDriverName() === 'sqlite') {
+            DB::table('journal_lines')->where('journal_entry_id', $journal->id)->where('credit', '>', 0)->update(['credit' => '0.301']);
+            $this->assertFalse(collect($checks->checks())->firstWhere('code', 'valid_lines')['passed']);
+        }
+    }
+
+    public function test_fractional_internal_transfer_is_not_an_unclassified_cash_flow(): void
+    {
+        [$service,$accounts] = $this->context();
+        $service->createAndPost(['posting_date' => '2026-09-15', 'description' => 'Internal split transfer', 'source_module' => 'banking', 'source_key' => 'fractional-transfer', 'lines' => [
+            ['accounting_account_id' => $accounts['1000']->id, 'debit' => '0.10'],
+            ['accounting_account_id' => $accounts['1010']->id, 'debit' => '0.20'],
+            ['accounting_account_id' => $accounts['1000']->id, 'credit' => '0.30'],
+        ]]);
+        $flow = $service->cashFlow('2026-09-01', '2026-09-30');
+        $this->assertSame('0.00', $flow['net_cash_change']);
+        $this->assertSame(0, $flow['unclassified_entries']);
+        $this->assertTrue($flow['reconciles']);
+    }
 }

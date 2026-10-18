@@ -67,7 +67,7 @@ class BankReconciliationProof
             ->orWhereRaw("bank_statement_matches.signed_amount <> CASE WHEN f.type IN ('inflow','transfer_in','adjustment_in','refund_in') THEN f.amount ELSE -f.amount END"))->count();
         $stale += $statement->rows()->where('status', 'reconciled')->whereDoesntHave('matches', fn ($q) => $q->whereNotNull('active_transaction_id'))->count();
         $rowSums = DB::table('bank_statement_rows as r')->leftJoin('bank_statement_matches as m', fn ($j) => $j->on('m.bank_statement_row_id', '=', 'r.id')->whereNotNull('m.active_transaction_id'))
-            ->where('r.bank_statement_id', $statement->id)->where('r.status', 'reconciled')->select('r.id')->groupBy('r.id', 'r.amount')->havingRaw('COALESCE(SUM(m.signed_amount),0)<>r.amount');
+            ->where('r.bank_statement_id', $statement->id)->where('r.status', 'reconciled')->select('r.id')->groupBy('r.id', 'r.amount')->havingRaw('ROUND(COALESCE(SUM(m.signed_amount),0),2)<>r.amount');
         $stale += DB::query()->fromSub($rowSums, 'differences')->count();
         $base = CompanyCurrency::current();
         $gl = null;
@@ -97,7 +97,7 @@ class BankReconciliationProof
             'gl_balance' => $gl, 'gl_currency' => $base, 'gl_difference' => $glDifference, 'gl_qualification' => $statement->account->currency === $base ? 'Compared at base-currency carrying value.' : 'Foreign-currency bank statement is reconciled in its transaction currency. GL carrying value is shown separately; no unconfigured period-end revaluation is implied.',
             'balance_source' => $bankEvidence === null ? 'accountant_entered' : 'csv_running_balances', 'imported_bank_balances' => $bankEvidence,
             'total_rows' => (int) $aggregate->total, 'reconciled_rows' => (int) $aggregate->matched, 'unexplained_rows' => (int) $aggregate->unexplained, 'unreconciled_system_items' => $system, 'unreviewed_duplicates' => (int) $aggregate->duplicates, 'invalid_matches' => $stale,
-            'ready_to_complete' => collect($checks)->every(fn ($c) => $c[2]), 'checks' => array_map(fn ($c) => ['code' => $c[0], 'label' => $c[1], 'passed' => $c[2]],$checks),
+            'ready_to_complete' => collect($checks)->every(fn ($c) => $c[2]), 'checks' => array_map(fn ($c) => ['code' => $c[0], 'label' => $c[1], 'passed' => $c[2]], $checks),
             'policy' => 'Statement matching does not create money or journals. Ignored nonzero bank rows remain unexplained until their source is recorded and matched. Source transactions retain exclusive ownership.'];
     }
 }

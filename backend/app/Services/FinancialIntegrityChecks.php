@@ -13,12 +13,14 @@ class FinancialIntegrityChecks
 {
     public function journalDifferences(string $status = 'posted', ?string $to = null): int
     {
+        // SQLite stores DECIMAL values as numeric floats. Compare totals at
+        // the ledger's cent precision; line-scale corruption is checked below.
         $q = DB::table('journal_entries as j')->leftJoin('journal_lines as l', 'l.journal_entry_id', '=', 'j.id')
             ->where('j.company_id', Auth::user()->company_id)
             ->whereIn('j.status', $status === 'posted' ? ['posted', 'reversed'] : ['draft'])
             ->when($to, fn ($q) => $q->where('j.posting_date', '<', CarbonImmutable::parse($to)->addDay()->toDateString()))
             ->groupBy('j.id', 'j.total_debit', 'j.total_credit')
-            ->selectRaw('j.id')->havingRaw('COALESCE(SUM(l.debit),0) <> COALESCE(SUM(l.credit),0) OR j.total_debit <> COALESCE(SUM(l.debit),0) OR j.total_credit <> COALESCE(SUM(l.credit),0) OR COALESCE(SUM(l.debit),0) <= 0');
+            ->selectRaw('j.id')->havingRaw('ROUND(COALESCE(SUM(l.debit),0),2) <> ROUND(COALESCE(SUM(l.credit),0),2) OR j.total_debit <> ROUND(COALESCE(SUM(l.debit),0),2) OR j.total_credit <> ROUND(COALESCE(SUM(l.credit),0),2) OR ROUND(COALESCE(SUM(l.debit),0),2) <= 0');
 
         return DB::query()->fromSub($q, 'differences')->count();
     }
@@ -36,7 +38,7 @@ class FinancialIntegrityChecks
         $crossCompany = $this->countUnion($companyChecks);
         $badLines = DB::table('journal_lines as l')->join('journal_entries as j', 'j.id', '=', 'l.journal_entry_id')
             ->where('j.company_id', $company)->whereIn('j.status', ['posted', 'reversed'])
-            ->where(fn ($q) => $q->where('l.debit', '<', 0)->orWhere('l.credit', '<', 0)->orWhere(fn ($x) => $x->where('l.debit', '>', 0)->where('l.credit', '>', 0)))->count();
+            ->where(fn ($q) => $q->where('l.debit', '<', 0)->orWhere('l.credit', '<', 0)->orWhere(fn ($x) => $x->where('l.debit', '>', 0)->where('l.credit', '>', 0))->orWhereRaw('l.debit <> ROUND(l.debit,2) OR l.credit <> ROUND(l.credit,2)'))->count();
         $sourceChecks = [];
         foreach (AccountingJournalExperience::SOURCES as $type => [$model]) {
             $class = 'App\\Models\\'.$model;
@@ -70,7 +72,7 @@ class FinancialIntegrityChecks
                     ->orWhereRaw("m.signed_amount <> CASE WHEN f.type IN ('inflow','transfer_in','adjustment_in','refund_in') THEN f.amount ELSE -f.amount END");
             })->count();
         $sums = DB::table('bank_statement_rows as r')->leftJoin('bank_statement_matches as m', fn ($j) => $j->on('m.bank_statement_row_id', '=', 'r.id')->whereNotNull('m.active_transaction_id'))
-            ->where('r.company_id', $company)->where('r.status', 'reconciled')->groupBy('r.id', 'r.amount')->select('r.id')->havingRaw('COALESCE(SUM(m.signed_amount),0) <> r.amount');
+            ->where('r.company_id', $company)->where('r.status', 'reconciled')->groupBy('r.id', 'r.amount')->select('r.id')->havingRaw('ROUND(COALESCE(SUM(m.signed_amount),0),2) <> r.amount');
         $matches += DB::query()->fromSub($sums, 'bad_bank_sums')->count();
         $legacyOwners = DB::table('bank_statement_rows')->where('company_id', $company)->where('status', 'reconciled')->whereNotNull('matched_transaction_id')
             ->select('matched_transaction_id')->groupBy('matched_transaction_id')->havingRaw('COUNT(*) > 1');

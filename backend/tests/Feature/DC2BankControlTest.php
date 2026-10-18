@@ -10,6 +10,7 @@ use App\Models\FinancialAccountTransaction;
 use App\Models\JournalEntry;
 use App\Models\User;
 use App\Services\AccountingService;
+use App\Services\BankReconciliationProof;
 use App\Services\BankReconciliationService;
 use App\Services\CustomerDebtService;
 use App\Services\ExpenseService;
@@ -279,5 +280,23 @@ class DC2BankControlTest extends TestCase
             $this->assertSame($before, JournalEntry::count());
             $this->assertSame(0, $bank->transactions()->count());
         }
+    }
+
+    public function test_decimal_split_bank_match_is_not_an_integrity_difference(): void
+    {
+        [$accounts,$bank,$service] = $this->context();
+        $equity = AccountingAccount::where('code', '3000')->firstOrFail()->id;
+        $parts = [];
+        foreach (['0.10', '0.20'] as $i => $amount) {
+            $parts[] = $accounts->post($bank, ['type' => 'inflow', 'amount' => $amount, 'transaction_date' => '2026-09-15', 'counter_accounting_account_id' => $equity, 'idempotency_key' => 'decimal-bank-'.$i])->id;
+        }
+        $statement = $this->import($service, $bank, "Date,Amount,Balance\n2026-09-15,0.30,0.30\n", ['date' => 'Date', 'amount' => 'Amount', 'balance' => 'Balance']);
+        $service->reconcileMany($statement->rows->sole(), $parts);
+        $check = collect(app(FinancialIntegrityChecks::class)->checks())->firstWhere('code', 'bank_match_integrity');
+        $this->assertTrue($check['passed']);
+        $proof = app(BankReconciliationProof::class)->summary($statement->fresh());
+        $this->assertTrue($proof['ready_to_complete'], json_encode($proof));
+        DB::table('bank_statement_matches')->where('active_transaction_id', $parts[0])->update(['signed_amount' => '0.11']);
+        $this->assertFalse(collect(app(FinancialIntegrityChecks::class)->checks())->firstWhere('code', 'bank_match_integrity')['passed']);
     }
 }

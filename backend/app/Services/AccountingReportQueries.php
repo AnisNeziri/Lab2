@@ -95,7 +95,7 @@ class AccountingReportQueries
             ->where('j.company_id', Auth::user()->company_id)->whereIn('j.status', ['posted', 'reversed'])
             ->when($from, fn ($q) => $q->where('j.posting_date', '>=', $from))->where('j.posting_date', '<', CarbonImmutable::parse($to)->addDay()->toDateString());
         $cash = $base()->whereIn('l.accounting_account_id', $cashIds)->groupBy('j.id')
-            ->selectRaw('j.id, SUM(l.debit)-SUM(l.credit) net')->havingRaw('SUM(l.debit)-SUM(l.credit) <> 0');
+            ->selectRaw('j.id, ROUND(SUM(l.debit)-SUM(l.credit),2) net')->havingRaw('ROUND(SUM(l.debit)-SUM(l.credit),2) <> 0');
         $classes = $base()->join('accounting_accounts as a', 'a.id', '=', 'l.accounting_account_id')
             ->whereNotIn('l.accounting_account_id', $cashIds)->groupBy('j.id')
             ->selectRaw("j.id, CASE WHEN COUNT(DISTINCT a.cash_flow_class)=1 AND SUM(CASE WHEN a.cash_flow_class IS NULL THEN 1 ELSE 0 END)=0 THEN MIN(a.cash_flow_class) ELSE 'unclassified' END flow_class");
