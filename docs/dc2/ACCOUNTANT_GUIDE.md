@@ -44,7 +44,7 @@ Supply original opening/closing balances and statement dates where the CSV lacks
 
 Posted journals/lines are immutable through the application. A manual correction reverses the original and prepares a linked draft; review and post it separately. Operational corrections use their own source, periods, allocation and inventory guards. Original and reversal remain visible.
 
-Attach supporting documents through Document Center. Records show linked journals and documents; journal/source links are permission checked. Restore remaps company-local IDs; historical close/reconciliation proofs require fresh local review.
+Attach supporting documents through Document Center. Records show linked journals and documents; journal/source links are permission checked. Selective company restore remaps company-local IDs and marks earlier close/reconciliation proofs historical for fresh local review. Full installation disaster recovery preserves IDs and verifies its restored controls; follow the recovery runbook before resuming work.
 
 Ask AIMS can summarize AR, AP, cash, close blockers, reconciliation, payment attribution and posted profit comparisons in English, Albanian or mixed wording. It is read-only and refuses posting, paying, allocating, reversing, reconciling or closing commands. Check its source cards and date qualifications. Export CSV for spreadsheet work; the ledger remains authoritative. Exports have bounded size and spreadsheet-formula escaping.
 

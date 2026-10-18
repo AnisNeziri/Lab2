@@ -1,0 +1,386 @@
+{
+  "application_source": "d1e43a530f67d76ce698007d67479cd8cf38b120",
+  "branch": "codex/dc2-accounting-financial-control",
+  "draft_pr": "https://github.com/AnisNeziri/Lab2/pull/6",
+  "stack_base": "5be35c1646d91ad2018c867658ac71bbe560d6db",
+  "upgrade_baseline": "5db868660dcf70247b557c755580f888167f0fce",
+  "date": "2026-10-18",
+  "qualification": "Synthetic and disposable environments only. Reconciliation YES is tested evidence, not a claim about unreviewed live data. No deployment or next phase.",
+  "tests": {
+    "sqlite_full": {
+      "status": "PASS",
+      "passed": 707,
+      "assertions": 6447,
+      "skipped": 1,
+      "skip_reason": "Conditional Redis round-trip; local Redis unavailable.",
+      "source": "6b5d703de62098322d8e59d1ec95ea6e9d5c8edd"
+    },
+    "sqlite_finance_recovery": {
+      "status": "PASS",
+      "passed": 120,
+      "assertions": 919
+    },
+    "mariadb_finance_recovery": {
+      "status": "PASS",
+      "passed": 120,
+      "assertions": 919,
+      "version": "11.8.9",
+      "loopback_port": 3312
+    },
+    "sqlite_final_integrity_aggregation": {
+      "status": "PASS",
+      "passed": 27,
+      "assertions": 248
+    },
+    "mariadb_final_integrity_aggregation": {
+      "status": "PASS",
+      "passed": 27,
+      "assertions": 248
+    },
+    "chromium_finance": {
+      "status": "PASS",
+      "passed": 3,
+      "journeys": [
+        "manual post/TB export/bank CSV/match/complete/month close",
+        "AR allocation/AP draft/approve/partial settlement/reversal/statement/Ask read-only",
+        "Albanian dark mobile loaded finance view"
+      ]
+    },
+    "node": {
+      "status": "PASS",
+      "passed": 89
+    },
+    "python_ml": {
+      "status": "PASS",
+      "passed": 16
+    },
+    "python_supply_optimizer": {
+      "status": "PASS",
+      "passed": 8
+    },
+    "real_mariadb_process_races": {
+      "status": "PASS",
+      "cases": [
+        "exclusive split bank-match ownership",
+        "AR allocation capacity",
+        "supplier advance capacity",
+        "atomic period close versus posting",
+        "bank completion versus posting"
+      ]
+    },
+    "ci_sized_read_budgets": {
+      "status": "PASS",
+      "action_center_queries": 97,
+      "action_center_bytes": 3285,
+      "action_center_warm_ms": 523.77,
+      "budget_queries": 100
+    },
+    "source_links_sqlite": {
+      "status": "PASS",
+      "passed": 14,
+      "assertions": 58
+    },
+    "source_links_mariadb": {
+      "status": "PASS",
+      "passed": 14,
+      "assertions": 58
+    }
+  },
+  "required_journeys": {
+    "A": "DC2CustomerLedgerTest and DC2DatedReconciliationTest: 3700-3400+1000-700=600, aging/statement/GL/cash",
+    "B": "DC2CustomerLedgerTest: advance1000 then sale1400 leaves AR400",
+    "C": "DC2SupplierControlTest: PO25000, advances6000+10000, receipt/bill, AP9000",
+    "D": "DC2SupplierControlTest: ordered10000 at2, received9800, invoiced10000 at2.10, price1000 and quantity200 variance",
+    "E": "DC2DatedReconciliationTest: goods16000 + freight850/customs420/insurance100/inland230 =17600; later sale/reversal do not rewrite historical inventory",
+    "F": "DC2BankControlTest and independent MariaDB races: staging/split/ownership/zero proof and releases",
+    "G": "DC2ControlCenterTest/DC2BankControlTest: unresolved bank/proof/control issues block close, closed-date posting fails",
+    "H": "DC2SupplierControlTest: source invoice/payment/allocation reversal lineage and audit"
+  },
+  "sqlite_populated_recovery": {
+    "status": "PASS",
+    "upgrade_baseline": "5db86866 / AIMS desktop 1.1.0",
+    "populated_forward_migration": true,
+    "critical_records_preserved": true,
+    "restored_http_login_verified": true,
+    "tenant_route_matrix": {
+      "products": 404,
+      "customers": 404,
+      "suppliers": 404,
+      "orders": 404,
+      "purchase_orders": 404,
+      "shipments": 404,
+      "documents": 404,
+      "financial_records": 404,
+      "decisions": 404,
+      "simulations": 404,
+      "workspace_settings": 422
+    },
+    "restore": {
+      "status": "restored_and_reconciled",
+      "version": "1.1.2-rc.1",
+      "inventory": true,
+      "finance": true,
+      "attachments": 31,
+      "tenant_isolation": true,
+      "totals": {
+        "2": {
+          "inventory_quantity": "16058.020",
+          "finance": {
+            "accounts_receivable": {
+              "operational_amount": "54792.59",
+              "gl_amount": "54792.59",
+              "difference": "0.00",
+              "reconciled": true
+            },
+            "customer_advances": {
+              "operational_amount": "2613.54",
+              "gl_amount": "2613.54",
+              "difference": "0.00",
+              "reconciled": true
+            },
+            "accounts_payable": {
+              "operational_amount": "0.00",
+              "gl_amount": "0.00",
+              "difference": "0.00",
+              "reconciled": true
+            },
+            "supplier_advances": {
+              "operational_amount": "162246.98",
+              "gl_amount": "162246.98",
+              "difference": "0.00",
+              "reconciled": true
+            },
+            "inventory": {
+              "operational_amount": "94175.62",
+              "gl_amount": "94175.62",
+              "difference": "0.00",
+              "reconciled": true
+            },
+            "cash_bank": {
+              "operational_amount": "186381.28",
+              "gl_amount": "186381.28",
+              "difference": "0.00",
+              "reconciled": true
+            }
+          },
+          "users": 5,
+          "documents": 10
+        }
+      }
+    },
+    "business_workflows": null,
+    "wrong_key_rejected": true,
+    "corrupted_archive_rejected": true
+  },
+  "mariadb_populated_recovery": {
+    "status": "PASS",
+    "upgrade_baseline": "5db86866 / AIMS desktop 1.1.0",
+    "populated_forward_migration": true,
+    "critical_records_preserved": true,
+    "restored_http_login_verified": true,
+    "tenant_route_matrix": {
+      "products": 404,
+      "customers": 404,
+      "suppliers": 404,
+      "orders": 404,
+      "purchase_orders": 404,
+      "shipments": 404,
+      "documents": 404,
+      "financial_records": 404,
+      "decisions": 404,
+      "simulations": 404,
+      "workspace_settings": 422
+    },
+    "restore": {
+      "status": "restored_and_reconciled",
+      "version": "1.1.2-rc.1",
+      "inventory": true,
+      "finance": true,
+      "attachments": 31,
+      "tenant_isolation": true,
+      "totals": {
+        "2": {
+          "inventory_quantity": "16058.020",
+          "finance": {
+            "accounts_receivable": {
+              "operational_amount": "54792.59",
+              "gl_amount": "54792.59",
+              "difference": "0.00",
+              "reconciled": true
+            },
+            "customer_advances": {
+              "operational_amount": "2613.54",
+              "gl_amount": "2613.54",
+              "difference": "0.00",
+              "reconciled": true
+            },
+            "accounts_payable": {
+              "operational_amount": "0.00",
+              "gl_amount": "0.00",
+              "difference": "0.00",
+              "reconciled": true
+            },
+            "supplier_advances": {
+              "operational_amount": "162246.98",
+              "gl_amount": "162246.98",
+              "difference": "0.00",
+              "reconciled": true
+            },
+            "inventory": {
+              "operational_amount": "94175.62",
+              "gl_amount": "94175.62",
+              "difference": "0.00",
+              "reconciled": true
+            },
+            "cash_bank": {
+              "operational_amount": "186381.28",
+              "gl_amount": "186381.28",
+              "difference": "0.00",
+              "reconciled": true
+            }
+          },
+          "users": 5,
+          "documents": 10
+        }
+      }
+    },
+    "business_workflows": {
+      "stock_movement": true,
+      "customer_payment": true,
+      "goods_receipt": true,
+      "journal_posting": true,
+      "order_dispatch": true,
+      "repeated_actions_posted_once": true,
+      "shipment_and_intelligence_reads": true,
+      "post_workflow_reconciliation": {
+        "healthy": true,
+        "totals": {
+          "2": {
+            "inventory_quantity": "16059.020",
+            "finance": {
+              "accounts_receivable": {
+                "operational_amount": "54791.59",
+                "gl_amount": "54791.59",
+                "difference": "0.00",
+                "reconciled": true
+              },
+              "customer_advances": {
+                "operational_amount": "2613.54",
+                "gl_amount": "2613.54",
+                "difference": "0.00",
+                "reconciled": true
+              },
+              "accounts_payable": {
+                "operational_amount": "0.00",
+                "gl_amount": "0.00",
+                "difference": "0.00",
+                "reconciled": true
+              },
+              "supplier_advances": {
+                "operational_amount": "162246.98",
+                "gl_amount": "162246.98",
+                "difference": "0.00",
+                "reconciled": true
+              },
+              "inventory": {
+                "operational_amount": "94187.26",
+                "gl_amount": "94187.26",
+                "difference": "0.00",
+                "reconciled": true
+              },
+              "cash_bank": {
+                "operational_amount": "186387.28",
+                "gl_amount": "186387.28",
+                "difference": "0.00",
+                "reconciled": true
+              }
+            },
+            "users": 5,
+            "documents": 10
+          }
+        }
+      }
+    },
+    "wrong_key_rejected": null,
+    "corrupted_archive_rejected": null
+  },
+  "hosted": {
+    "status": "RUNNING",
+    "run_id": 39142079458,
+    "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39142079458",
+    "source": "d1e43a530f67d76ce698007d67479cd8cf38b120",
+    "performance_run_id": 39142084866,
+    "performance_status": "PASS",
+    "performance_url": "https://github.com/AnisNeziri/Lab2/actions/runs/39142084866"
+  },
+  "preservation": {
+    "original_checkout": "C:/Users/anisi/Lab2",
+    "observed_head": "07c66520187db1486f994e9527670b1e7dcbcd24",
+    "observed_branch": "main",
+    "tracked_and_untracked_status": "clean",
+    "difference_from_selected_5db_baseline": "Only pre-existing generated frontend/dist-certification artifacts, preserved.",
+    "business_database_modified": false,
+    "implementation_worktree": "C:/Users/anisi/.codex/worktrees/pr2-performance-scale/Lab2",
+    "owned_mariadb_test_server_stopped": true
+  },
+  "known_limits": [
+    "External accountant/company/policy acceptance not performed",
+    "Legacy differences require source-owned investigation; posted histories not rewritten",
+    "Conservative receipt funding review after settled-debt cancellation",
+    "EUR expense carrying foundation; complex FX customer settlement/revaluation and foreign cash transfers deferred",
+    "No partial sharing of one cash record across multiple bank rows",
+    "CSV bank import and accounting exports; no new XLSX parser or statutory tax filing",
+    "Pre-existing inventory Dashboard at 10002-product scale returns ~14.5MB; outside the bounded Finance Control Center and passes the existing CI-sized fixture only",
+    "Approved inventory-bill variance/receipt-clearing treatment requires accountant policy review; no automatic price-variance capitalization."
+  ],
+  "real_accountant_pilot_ready": false,
+  "hosted_previous_source": {
+    "status": "SUPERSEDED_CANCELLED",
+    "run_id": 39140477870,
+    "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39140477870",
+    "source": "b1a0725fdabddbd92d6ef76ae239ceeba6417466",
+    "performance_run_id": 39140481246,
+    "performance_status": "PASS",
+    "performance_url": "https://github.com/AnisNeziri/Lab2/actions/runs/39140481246",
+    "jobs_completed": {
+      "sqlite_full": {
+        "status": "PASS",
+        "passed": 707,
+        "assertions": 6447,
+        "skipped": 1
+      },
+      "mariadb_full": {
+        "status": "PASS",
+        "passed": 707,
+        "assertions": 6448,
+        "skipped": 1,
+        "server": "MariaDB11.4"
+      },
+      "node": {
+        "status": "PASS",
+        "passed": 89
+      },
+      "python_ml": {
+        "status": "PASS",
+        "passed": 16
+      },
+      "python_optimizer": {
+        "status": "PASS",
+        "passed": 8
+      },
+      "desktop_startup": {
+        "status": "PASS",
+        "runtime_tests": 5
+      },
+      "linux_workers": {
+        "status": "PASS"
+      },
+      "browser_smoke": {
+        "status": "PASS"
+      },
+      "dc1_and_dc2_mariadb_process_races": {
+        "status": "PASS"
+      }
+    }
+  }
+}
