@@ -7,6 +7,7 @@ import { businessDate, businessMoney } from "../utils/businessFormat";
 
 const sources = new Set([
   "invoice",
+  "return",
   "payment",
   "expense",
   "customer",
@@ -57,6 +58,13 @@ export default function EntityJournals({ entityType, entityId }) {
           {j.status} · {businessMoney(j.total_debit, "", language)}
         </p>
       ))}
+      {data.length === 20 && (
+        <p>
+          {language === "sq"
+            ? "20 ditarët më të fundit. Përdorni filtrat e librit kryesor për historikun e plotë."
+            : "Latest 20 linked journals. Use General Ledger filters for the complete history."}
+        </p>
+      )}
       {!error && !data.length && (
         <p>
           {language === "sq"

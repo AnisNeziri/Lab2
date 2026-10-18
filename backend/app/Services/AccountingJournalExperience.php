@@ -76,6 +76,10 @@ class AccountingJournalExperience
         $debit = Money::normalize($j->lines->sum('debit'));
         $credit = Money::normalize($j->lines->sum('credit'));
         $source = null;
+        if ($j->source_type === 'company' && (int) $j->source_id === (int) Auth::user()->company_id
+            && app(PermissionService::class)->roleHasPermission(Auth::user()->role, 'accounting.settings.manage')) {
+            $source = ['label' => 'Opening Balance', 'id' => $j->source_id, 'url' => '/accounting?tab=settings'];
+        }
         $config = self::SOURCES[$j->source_type] ?? null;
         if ($config && $j->source_id && app(PermissionService::class)->roleHasPermission(Auth::user()->role, $config[2])) {
             $model = 'App\\Models\\'.$config[0];
@@ -120,13 +124,19 @@ class AccountingJournalExperience
         $sourceType = match ($type) {
             'invoice' => 'invoice', 'payment' => 'payment_transaction', 'expense' => 'expense', 'journal' => 'journal_entry',
             'daily-sale'=>'daily_sale','customer-transaction'=>'customer_debt_transaction','supplier-payment'=>'purchase_order_payment','supplier-allocation'=>'supplier_payment_allocation',
-            'financial-account'=>'financial_account','financial-transaction'=>'financial_account_transaction','financial-transfer'=>'financial_account_transfer','stock-movement'=>'stock_movement','landed-cost'=>'landed_cost', default => null,
+            'return'=>'inventory_return','financial-account'=>'financial_account','financial-transaction'=>'financial_account_transaction','financial-transfer'=>'financial_account_transfer','stock-movement'=>'stock_movement','landed-cost'=>'landed_cost', default => null,
         };
         $q = JournalEntry::query()->where(function ($q) use ($type, $id, $record, $sourceType) {
             $q->whereRaw('1=0');
             if ($sourceType) {
                 $q->orWhere(fn ($x) => $x->where('source_type', $sourceType)->where('source_id', $id));
             }
+            if ($type === 'payment') $q->orWhere(fn ($x) => $x->where('source_type', 'invoice_payment')->where('source_id', $id));
+            if ($type === 'invoice') {
+                $q->orWhere(fn ($x) => $x->where('source_type', 'order_invoice_tax')->where('source_id', $id));
+                if ($record->daily_sale_id) $q->orWhere(fn ($x) => $x->where('source_type', 'daily_sale')->where('source_id', $record->daily_sale_id));
+            }
+            if ($type === 'daily-sale') $q->orWhere(fn ($x) => $x->where('source_type', 'stock_movement')->whereIn('source_id', StockMovement::where('source_type', 'daily_sale')->where('source_id', $id)->select('id')));
             if ($type === 'goods-receipt') {
                 $q->orWhere(fn ($x) => $x->where('source_type', 'stock_movement')->whereIn('source_id', StockMovement::where('source_type', 'goods_receipt')->where('source_id', $id)->select('id')));
             }

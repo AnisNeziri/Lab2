@@ -46,6 +46,8 @@ class FinancialIntegrityChecks
             $sourceChecks[] = JournalEntry::query()->where('source_type', $type)->whereNotNull('source_id')
                 ->whereNotExists(fn ($q) => $q->selectRaw('1')->from($table.' as source')->whereColumn('source.id', 'journal_entries.source_id')->where('source.company_id', $company))->toBase();
         }
+        $sourceChecks[] = JournalEntry::query()->where('source_type', 'company')
+            ->where(fn ($q) => $q->whereNull('source_id')->orWhere('source_id', '!=', $company))->toBase();
         $orphans = $this->countUnion($sourceChecks);
         $late = DB::table('journal_entries as j')->join('accounting_periods as p', function ($join) {
             $join->on('p.company_id', '=', 'j.company_id')->whereColumn('j.posting_date', '>=', 'p.starts_at')->whereColumn('j.posting_date', '<=', 'p.ends_at');

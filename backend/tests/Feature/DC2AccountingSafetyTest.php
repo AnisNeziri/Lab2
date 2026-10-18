@@ -3,9 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\AccountingAccount;
+use App\Models\Customer;
+use App\Models\Invoice;
 use App\Models\JournalEntry;
+use App\Models\PaymentTransaction;
 use App\Models\User;
 use App\Services\AccountingService;
+use App\Services\FinancialIntegrityChecks;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -104,5 +108,23 @@ class DC2AccountingSafetyTest extends TestCase
         DB::disableQueryLog();
         $this->assertTrue($result['balanced']);
         $this->assertLessThanOrEqual(8, $count, 'Trial balance query count must not grow once per account.');
+    }
+
+    public function test_opening_and_direct_payment_trace_links_are_owned_and_read_only(): void
+    {
+        [$service,$accounts] = $this->context();
+        $entry = $service->createAndPost(['posting_date' => '2026-09-01', 'description' => 'Opening trace fixture', 'source_module' => 'opening', 'source_type' => 'company', 'source_id' => Auth::user()->company_id, 'source_key' => 'opening-trace', 'lines' => [['accounting_account_id' => $accounts['1000']->id, 'debit' => 100], ['accounting_account_id' => $accounts['3000']->id, 'credit' => 100]]]);
+        $this->getJson('/api/accounting/journals/'.$entry->id)->assertOk()->assertJsonPath('source.url', '/accounting?tab=settings')->assertJsonPath('source.label', 'Opening Balance');
+        $customer = Customer::create($this->tenantAttributes(['name' => 'Trace customer', 'current_debt' => 0, 'current_credit' => 0]));
+        $invoice = Invoice::create($this->tenantAttributes(['customer_id' => $customer->id, 'customer_name' => $customer->name, 'invoice_number' => 'TRACE-INVOICE', 'invoice_date' => '2026-09-01', 'currency' => 'EUR', 'status' => 'issued', 'document_type' => 'invoice', 'grand_total' => 100, 'total_amount' => 100, 'total_paid' => 0]));
+        $payment = PaymentTransaction::create($this->tenantAttributes(['invoice_id' => $invoice->id, 'user_id' => Auth::id(), 'amount' => 25, 'status' => 'completed', 'payment_method' => 'cash', 'transaction_ref' => 'TRACE-PAYMENT', 'payment_date' => '2026-09-15']));
+        $journal = $service->postMapped('sales', 'invoice_payment', $payment->id, 'trace-payment:'.$payment->id, '2026-09-15', 'Customer receipt trace', [['mapping' => 'cash', 'debit' => 25], ['mapping' => 'accounts_receivable', 'credit' => 25]]);
+        $before = JournalEntry::count();
+        $this->getJson('/api/accounting/source-journals?entity_type=payment&entity_id='.$payment->id)->assertOk()->assertJsonPath('0.id', $journal->id);
+        $this->assertSame($before, JournalEntry::count());
+        DB::table('journal_entries')->where('id', $entry->id)->update(['source_id' => Auth::user()->company_id + 1000]);
+        $this->getJson('/api/accounting/journals/'.$entry->id)->assertOk()->assertJsonPath('source', null);
+        $check = collect(app(FinancialIntegrityChecks::class)->checks())->firstWhere('code', 'source_links');
+        $this->assertFalse($check['passed']);
     }
 }

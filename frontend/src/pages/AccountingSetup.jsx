@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { useUiText } from "../hooks/useUiText";
 import * as api from "../api/accounting";
@@ -69,7 +70,10 @@ function OpeningSetup({ data, accounts, run }) {
         <p>
           {tx("Accounting started on")} <b>{data.accounting_start_date}</b>
           {tx(". Posted opening journal #")}
-          {data.journal_entry_id} {tx("is immutable.")}
+          <Link to={`/accounting?tab=journal&journal=${data.journal_entry_id}`}>
+            {data.journal_entry_id}
+          </Link>{" "}
+          {tx("is immutable.")}
         </p>
         <ReconciliationRows data={{ rows: data.operational_balances }} />
       </section>

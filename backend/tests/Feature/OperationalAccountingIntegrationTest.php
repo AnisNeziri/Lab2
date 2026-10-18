@@ -42,6 +42,9 @@ class OperationalAccountingIntegrationTest extends TestCase
         ]]];
         $sale = $this->postJson('/api/daily-sales', $payload)->assertCreated();
 
+        $links = $this->getJson('/api/accounting/source-journals?entity_type=daily-sale&entity_id='.$sale->json('id'))->assertOk()->json();
+        $this->assertContains('daily_sale',array_column($links,'source_type'));
+        $this->assertContains('stock_movement',array_column($links,'source_type'));
         $service = app(AccountingService::class);
         $this->assertSame('50.00', $service->profitAndLoss(null, now()->toDateString())['revenue']);
         $this->assertSame('30.00', $service->profitAndLoss(null, now()->toDateString())['cost_of_goods_sold']);
