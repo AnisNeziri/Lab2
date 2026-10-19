@@ -35,6 +35,7 @@ class ExpenseRequest extends FormRequest
             'exchange_rate' => ['nullable', 'numeric', 'gt:0', 'max:1000000'],
             'exchange_rate_date' => ['nullable', 'date'],
             'exchange_rate_source' => ['nullable', 'string', 'max:255'],
+            'tax_code_id' => ['nullable','integer', Rule::exists('tax_codes','id')->where('company_id', $this->user()?->company_id)],
             'net_amount' => ['required', 'numeric', 'min:0', 'max:9000000000000'],
             'vat_rate' => ['required', Rule::in([0, 8, 18, '0', '8', '18'])],
             'vat_amount' => ['required', 'numeric', 'min:0', 'max:9000000000000'],

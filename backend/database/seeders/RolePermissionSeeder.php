@@ -13,6 +13,12 @@ class RolePermissionSeeder extends Seeder
     {
         $existingPermissionIds = Permission::pluck('id')->all();
         $permissions = [
+            ['name'=>'View VAT and tax configuration','slug'=>'tax.view','group'=>'tax'],
+            ['name'=>'Configure effective tax rules','slug'=>'tax.configure','group'=>'tax'],
+            ['name'=>'View fiscalization','slug'=>'fiscalization.view','group'=>'fiscalization'],
+            ['name'=>'Configure fiscalization','slug'=>'fiscalization.configure','group'=>'fiscalization'],
+            ['name'=>'Prepare fiscal requests','slug'=>'fiscalization.prepare','group'=>'fiscalization'],
+            ['name'=>'Submit ATK TEST fiscal requests','slug'=>'fiscalization.submit','group'=>'fiscalization'],
             ['name'=>'Complete bank reconciliation','slug'=>'bank_reconciliation.complete','group'=>'finance'],
             ['name'=>'Reopen bank reconciliation','slug'=>'bank_reconciliation.reopen','group'=>'finance'],
             ...array_map(fn($action) => ['name' => 'Onboarding '.ucfirst($action), 'slug' => 'onboarding.'.$action, 'group' => 'onboarding'], ['view','manage','review','approve','post','lock']),
@@ -128,6 +134,7 @@ class RolePermissionSeeder extends Seeder
             'superadmin' => Permission::pluck('id')->all(),
             'admin' => Permission::pluck('id')->all(),
             'accountant' => Permission::whereIn('slug',[
+                'tax.view','tax.configure','fiscalization.view','fiscalization.prepare','fiscalization.submit',
                 'dashboard.view','finance.view','finance.export','analytics.view','analytics.finance','reports.view',
                 'accounting.reports.view','accounting.journal.view','accounting.journal.create','accounting.journal.post','accounting.journal.reverse',
                 'accounting.ar.allocate','accounting.accounts.manage','accounting.periods.manage','accounting.periods.close','accounting.periods.reopen','accounting.periods.adjust','accounting.integrity.view',
@@ -136,7 +143,7 @@ class RolePermissionSeeder extends Seeder
                 'purchase_orders.view','purchase_orders.payments','suppliers.manage','customers.manage','debts.view','debts.payments','debts.adjust','debts.export',
                 'invoices.manage','payments.process','inventory.view','landed_costs.manage','documents.view','documents.upload','documents.download','documents.update_metadata','documents.new_version','documents.review',
             ])->pluck('id')->all(),
-            'manager' => Permission::whereNotIn('slug', ['users.manage', 'activity.view', 'cms.manage'])->where('slug', 'not like', 'onboarding.%')->where(fn($q)=>$q->where('slug','not like','accounting.%')->orWhereIn('slug',['accounting.reports.view','accounting.journal.view']))->whereNotIn('slug',['supplier_invoices.post','supplier_invoices.approve','bank_reconciliation.complete','bank_reconciliation.reopen'])->pluck('id')->all(),
+            'manager' => Permission::whereNotIn('slug', ['users.manage', 'activity.view', 'cms.manage'])->where('slug', 'not like', 'onboarding.%')->where(fn($q)=>$q->where('slug','not like','accounting.%')->orWhereIn('slug',['accounting.reports.view','accounting.journal.view']))->whereNotIn('slug',['supplier_invoices.post','supplier_invoices.approve','bank_reconciliation.complete','bank_reconciliation.reopen','tax.configure','fiscalization.configure','fiscalization.prepare','fiscalization.submit'])->pluck('id')->all(),
             'staff' => Permission::whereIn('slug', [
                 'documents.view', 'documents.upload', 'documents.download', 'documents.update_metadata',
                 'fulfillment.view', 'fulfillment.pick',

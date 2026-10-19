@@ -1,0 +1,77 @@
+{
+  "retrieved_at": "2026-10-19T00:24:04.331358+00:00",
+  "documents": [
+    {
+      "file": "mf-01-2026.pdf",
+      "url": "https://apps.atk-ks.org/sefaplikimi/uploads/documents/87a43adf-6ee2-42e5-a5af-043c031f514f.pdf",
+      "sha256": "70792e81833bda72285ee088582e7e9798c0334058afb785a105c4ae68a52978",
+      "bytes": 432520,
+      "version": "MF No.01/2026; ATK listing published 2026-04-27"
+    },
+    {
+      "file": "technical-amendment.pdf",
+      "url": "https://apps.atk-ks.org/sefaplikimi/uploads/documents/4994a4cd-75c8-46fd-bb7c-d541e4aa0e40.pdf",
+      "sha256": "1d2aa83cd389e0958d6c84f077bb86108e8176e48f976fcde4a782af486797e2",
+      "bytes": 732132,
+      "version": "Amendment to 01-06-1967; signed 2026-06-22, incoming stamp 2026-06-24 (visually checked)"
+    },
+    {
+      "file": "technical-requirements.pdf",
+      "url": "https://apps.atk-ks.org/sefaplikimi/uploads/documents/150ab6cc-084f-490d-b5fc-d8639d0287dc.pdf",
+      "sha256": "69ac172e1903dfca9dac4f10b4773f96458bcb6896da3b88c49d441803340962",
+      "bytes": 8046610,
+      "version": "Technical requirements 01-06-1967, 2026-05-29; 88-page portal edition"
+    },
+    {
+      "file": "certification.pdf",
+      "url": "https://apps.atk-ks.org/sefaplikimi/uploads/documents/0d8c2056-98ad-403a-a685-57e8cf33d1cc.pdf",
+      "sha256": "38e3e08618807c52990b5dc12e1be63f738cfc5c93e7bb8d50df904524f8b9e2",
+      "bytes": 2378190,
+      "version": "Certification conditions, signed 2026-07-03; portal edition (visually checked)"
+    },
+    {
+      "file": "test-guide.pdf",
+      "url": "https://apps.atk-ks.org/sefaplikimi/uploads/documents/1e869fe5-02a2-4471-95a8-0ec6844d6f12.pdf",
+      "sha256": "3dc47ab10d5da2418a0b6eab9ae6f1b00afa2b596c8a1abc51c0d3eb661e39e7",
+      "bytes": 448664,
+      "version": "ATK testing/application guide, 5-page portal edition; no revision identifier observed"
+    },
+    {
+      "file": "units-categories.docx",
+      "url": "https://apps.atk-ks.org/sefaplikimi/uploads/documents/1d551126-ea39-49eb-8b89-6e0deb6e117f.docx",
+      "sha256": "1045a55e2bab7d2a1f702305f8e6c90c59d6f51608004f23adc6c9f46d7ed35d",
+      "bytes": 26786,
+      "version": "Official unit/category catalog, 31 units and 53 categories; no revision identifier observed"
+    }
+  ],
+  "retrieval_context": "Official references inspected on 2026-10-19. Research evidence; not legal or ATK certification.",
+  "protocol_sources": [
+    {
+      "url": "https://github.com/fiskalizimi/pos-csharp",
+      "commit": "09401c83fac00bed4ef702103468792434aef44f",
+      "schema_sha256": "e1fc4fd018c1a31e5186da05f3f75efd89e876971ab0bf75b14b6a13efb96195",
+      "use": "Current canonical schema"
+    },
+    {
+      "url": "https://github.com/fiskalizimi/pos-golang",
+      "commit": "e28cc25d32f315674c72ed5710cb2fba274f2714",
+      "schema_sha256": "e1fc4fd018c1a31e5186da05f3f75efd89e876971ab0bf75b14b6a13efb96195",
+      "use": "Current schema cross-check"
+    },
+    {
+      "url": "https://github.com/fiskalizimi/pos-php",
+      "commit": "4e7dddbbed6c48674e1e37548849e996a9956ed1",
+      "schema_sha256": "deb167eaf2e9cc33cdecb945d181255e211ff813511c122a71ecc49593531c50",
+      "use": "Not adopted: stale schema and incompatible signing example"
+    }
+  ],
+  "portal": "https://apps.atk-ks.org/sefaplikimi/",
+  "vat_return_preview_source": "https://crmm.atk-ks.org/sq/Public/CalculatorDetail?id=8",
+  "vat_law_register": "https://gzk.rks-gov.net/ActDetail.aspx?ActID=11015",
+  "vat_law_amendments_to_review": [
+    "Law08/L-276 (2024-12-27)",
+    "Administrative instruction03/2015",
+    "Amendment06/2016",
+    "Amendment01/2018"
+  ]
+}

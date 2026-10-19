@@ -73,7 +73,7 @@ class OperationalAccountingService
         $revenue = Money::subtract($total, $vat);
         $lines = [['mapping' => 'accounts_receivable', 'debit' => $total]];
         if (Money::compare($revenue, '0') > 0) $lines[] = ['mapping' => 'sales_revenue', 'credit' => $revenue];
-        if (Money::compare($vat, '0') > 0) $lines[] = ['mapping' => 'output_vat', 'credit' => $vat];
+        if (Money::compare($vat, '0') > 0) $lines = [...$lines,...app(TaxCodeService::class)->outputLines($invoice)];
 
         return $this->accounting->postMapped(
             'sales', 'invoice', $invoice->id, 'invoice:'.$invoice->id,

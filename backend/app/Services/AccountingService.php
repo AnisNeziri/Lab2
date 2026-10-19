@@ -420,7 +420,8 @@ class AccountingService
         }
         $gross = Money::normalize(abs((float) $expense->gross_amount_eur));
         $deductible = Money::normalize(abs((float) $expense->deductible_vat_amount_eur));
-        $expenseAmount = Money::subtract($gross, $deductible);
+        $selfAssessed = Money::normalize($expense->self_assessed_vat_amount_eur ?? 0);
+        $expenseAmount = Money::subtract(Money::add($gross,$selfAssessed), $deductible);
         $creditNote = $expense->document_type === 'credit_note';
         $lines = [];
         $expenseMapping = $expense->category === 'inventory' && $expense->purchase_order_id ? 'goods_receipt_clearing' : 'operating_expense';
@@ -428,8 +429,9 @@ class AccountingService
             $lines[] = ['mapping' => $expenseMapping, $creditNote ? 'credit' : 'debit' => $expenseAmount];
         }
         if (Money::compare($deductible, '0') > 0) {
-            $lines[] = ['mapping' => 'input_vat', $creditNote ? 'credit' : 'debit' => $deductible];
+            $lines[] = [...($expense->tax_snapshot['input_account_id'] ?? null ? ['accounting_account_id'=>$expense->tax_snapshot['input_account_id']] : ['mapping'=>'input_vat']), $creditNote ? 'credit' : 'debit' => $deductible];
         }
+        if (Money::compare($selfAssessed,0)>0) $lines[] = [...($expense->tax_snapshot['output_account_id'] ?? null ? ['accounting_account_id'=>$expense->tax_snapshot['output_account_id']] : ['mapping'=>'output_vat']), $creditNote ? 'debit' : 'credit' => $selfAssessed];
         $lines[] = ['mapping' => 'accounts_payable', $creditNote ? 'debit' : 'credit' => $gross];
         $entry = $this->postMapped('supplier_accounting', 'expense', $expense->id, 'expense:'.$expense->id, $expense->invoice_date->toDateString(), 'Supplier document '.$expense->document_number, $lines, $expense->currency, $expense->exchange_rate, ['date' => $expense->exchange_rate_date, 'source' => $expense->exchange_rate_source]);
         if (! $creditNote) {

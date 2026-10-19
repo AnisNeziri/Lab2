@@ -14,6 +14,7 @@ class Expense extends Model
     use BelongsToCompany, SoftDeletes;
 
     protected $fillable = [
+        'tax_code_id', 'tax_snapshot',
         'document_version_id', 'company_id', 'vendor_name', 'vendor_business_number', 'vendor_fiscal_number',
         'vendor_vat_number', 'vendor_key', 'document_type', 'document_number',
         'document_number_normalized', 'original_document_number', 'source_type',
@@ -36,7 +37,7 @@ class Expense extends Model
     protected function casts(): array
     {
         return [
-            'company_id' => 'integer', 'input_vat_eligible' => 'boolean',
+            'tax_snapshot' => 'array', 'tax_code_id' => 'integer',            'company_id' => 'integer', 'input_vat_eligible' => 'boolean',
             'exchange_rate' => 'decimal:6', 'net_amount' => 'decimal:2', 'vat_rate' => 'decimal:2',
             'vat_amount' => 'decimal:2', 'self_assessed_vat_amount' => 'decimal:2', 'gross_amount' => 'decimal:2',
             'deductible_vat_amount' => 'decimal:2', 'non_deductible_vat_amount' => 'decimal:2',
@@ -47,6 +48,15 @@ class Expense extends Model
             'reversal_date' => 'date:Y-m-d', 'reversed_at' => 'datetime', 'retention_until' => 'date', 'proof_size' => 'integer',
             'match_summary' => 'array', 'approved_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::updating(function (self $expense) {
+            if ($expense->getOriginal('status') !== 'draft' && $expense->isDirty(['tax_code_id','tax_snapshot','net_amount','vat_rate','vat_amount','deductible_vat_amount','non_deductible_vat_amount','vat_treatment','vat_period'])) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['tax'=>'Posted purchase tax evidence is immutable. Use a source-owned correction.']);
+            }
+        });
     }
 
     public function payments(): HasMany

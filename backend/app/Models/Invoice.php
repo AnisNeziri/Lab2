@@ -93,6 +93,15 @@ class Invoice extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::updating(function (self $invoice) {
+            if ($invoice->getOriginal('issued_at') && $invoice->isDirty(['invoice_date','currency','subtotal','discount_total','taxable_total','vat_total','grand_total','seller_snapshot','buyer_snapshot'])) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['tax'=>'Posted invoice tax evidence cannot be edited. Use a linked correction.']);
+            }
+        });
+    }
+
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class)->withTrashed();

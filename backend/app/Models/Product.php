@@ -14,6 +14,7 @@ class Product extends Model
     use BelongsToCompany, LogsActivity;
 
     protected $fillable = [
+        'default_tax_code_id',
         'company_id',
         'category_id',
         'supplier_id',

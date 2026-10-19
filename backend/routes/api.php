@@ -621,6 +621,14 @@ Route::middleware('auth.token')->group(function () {
             Route::post('/supplier-invoices/{supplierInvoice}/allocate-payment', [SupplierInvoiceController::class, 'allocatePayment'])->middleware('permission:supplier_invoices.manage');
             Route::post('/supplier-invoices/{supplierInvoice}/approve', [SupplierInvoiceController::class, 'approve'])->middleware(['permission:supplier_invoices.approve','permission:supplier_invoices.post']);
 
+            Route::get('/tax/configuration', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'index'])->middleware('permission:tax.view');
+            Route::post('/tax/configuration/initialize', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'initialize'])->middleware('permission:tax.configure');
+            Route::post('/tax/codes', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'store'])->middleware('permission:tax.configure');
+            Route::put('/tax/codes/{taxCode}', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'update'])->middleware('permission:tax.configure');
+            Route::post('/tax/codes/{taxCode}/retire', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'retire'])->middleware('permission:tax.configure');
+            Route::put('/tax/products/{product}', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'product'])->middleware('permission:tax.configure');
+            Route::put('/tax/configuration/policy', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'policy'])->middleware('permission:tax.configure');
+
             Route::get('/finance/accounts', [FinancialAccountController::class, 'index'])->middleware('permission:financial_accounts.view');
             Route::get('/finance/account-transactions/{transaction}', [FinancialAccountController::class, 'transaction'])->middleware('permission:financial_accounts.view');
             Route::get('/finance/account-transfers/{transfer}', [FinancialAccountController::class, 'transferRecord'])->middleware('permission:financial_accounts.view');
