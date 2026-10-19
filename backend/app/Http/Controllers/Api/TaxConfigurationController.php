@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\InvoiceProfile;
 use App\Models\Product;
 use App\Models\TaxCode;
@@ -74,7 +75,9 @@ class TaxConfigurationController extends Controller
         $date = CompanyClock::today()->toDateString();
         $d = $r->validate(['tax_codes_required_from' => ['required', 'date', 'after_or_equal:'.$date]]);
         $profile = InvoiceProfile::query()->firstOrFail();
+        $previous = $profile->tax_codes_required_from;
         $profile->update($d);
+        ActivityLog::create(['company_id' => $r->user()->company_id, 'user_id' => $r->user()->id, 'action' => 'tax.entry_policy.changed', 'entity' => 'InvoiceProfile', 'entity_id' => $profile->id, 'description' => 'Explicit tax-code entry policy changed', 'old_value' => ['tax_codes_required_from' => $previous], 'new_value' => $d]);
 
         return response()->json(['required_from' => $profile->tax_codes_required_from]);
     }

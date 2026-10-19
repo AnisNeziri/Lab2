@@ -372,6 +372,41 @@ export default function TaxWorkspace() {
                 )}
               </div>
               <p>{config.qualification}</p>
+              <p className="tax-caption">
+                {t(
+                  "Explicit tax codes required from",
+                  "Kodet tatimore kërkohen nga",
+                )}
+                : {config.required_from || "—"}
+              </p>
+              {can && (
+                <form
+                  className="tax-toolbar"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const date = new FormData(e.currentTarget).get(
+                      "required_from",
+                    );
+                    run(() => api.saveTaxPolicy(date));
+                  }}
+                >
+                  <label>
+                    {t("Require tax codes from", "Kërko kodet tatimore nga")}
+                    <input
+                      name="required_from"
+                      type="date"
+                      min={new Date().toISOString().slice(0, 10)}
+                      required
+                    />
+                  </label>
+                  <button disabled={busy}>
+                    {t(
+                      "Apply future entry policy",
+                      "Zbato politikën e regjistrimit",
+                    )}
+                  </button>
+                </form>
+              )}
               <section className="tax-panel">
                 <table>
                   <thead>

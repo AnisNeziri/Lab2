@@ -1,13 +1,8 @@
 {
   "qualification": "Local synthetic evidence. No actual ATK endpoint was exercised. Counts below are overlapping focused runs, not a cumulative count.",
-  "sqlite_latest_full_focus": {
-    "tests": 35,
-    "assertions": 382,
-    "result": "PASS"
-  },
   "sqlite_and_mariadb_dc3_focus": {
     "tests_each": 13,
-    "assertions_each": 186,
+    "assertions_each": 196,
     "result": "PASS"
   },
   "existing_financial_regressions": {
@@ -26,14 +21,14 @@
   },
   "production_build": {
     "result": "PASS",
-    "seconds": 16.4,
+    "seconds": 28.15,
     "qualification": "Existing large PDF/3D chunk warnings remain."
   },
   "browser": {
     "journeys": 1,
     "result": "PASS",
     "seconds": 37.2,
-    "qualification": "Real app on isolated SQLite / ports8010 and4173. Synthetic local certificate, transport disabled. Missing mapping blocked; correction allowed signed preparation; VAT/GL zero. An earlier fixture attempt failed missing payment idempotency key and was corrected."
+    "qualification": "Real app on isolated SQLite / ports8010 and4173. Synthetic local certificate, transport disabled. Missing mapping blocked; correction allowed signed preparation; VAT/GL zero. An earlier fixture attempt failed missing payment idempotency key and was corrected. The journey preceded final policy-review count and future-entry form additions; those were verified through focused backend checks and the final build."
   },
   "mariadb_process_race": {
     "engine": "11.8.9",
@@ -70,23 +65,38 @@
     "preserved": true
   },
   "read_projection_probe": {
-    "scope": "one-company small browser fixture; no scale extrapolation",
-    "vat_period": {
-      "queries": 7,
-      "json_bytes": 8653,
-      "ms": 12.99
-    },
-    "fiscal_summary": {
-      "queries": 9,
-      "json_bytes": 1363,
-      "ms": 31.41
-    },
-    "fiscal_invoice_page": {
-      "queries": 4,
-      "json_bytes": 1050,
-      "ms": 6.55
+    "scope": "single-company small synthetic browser fixture; no scale extrapolation",
+    "projections": {
+      "vat_period": {
+        "queries": 7,
+        "elapsed_ms": 19.7,
+        "json_bytes": 8653
+      },
+      "fiscal_summary": {
+        "queries": 10,
+        "elapsed_ms": 19.43,
+        "json_bytes": 1386
+      },
+      "fiscal_invoices": {
+        "queries": 4,
+        "elapsed_ms": 7.16,
+        "json_bytes": 1050
+      }
     }
   },
   "official_atk_test": "NOT TESTED — registered credentials/access unavailable",
-  "official_certification": false
+  "official_certification": false,
+  "earlier_sqlite_full_focus": {
+    "tests": 35,
+    "assertions": 382,
+    "result": "PASS"
+  },
+  "permission_upgrade": {
+    "existing_revocation_preserved": true,
+    "admin_tax_view": true,
+    "accountant_tax_configure": true,
+    "manager_tax_view": true,
+    "manager_cannot_configure_tax": true,
+    "manager_cannot_submit_fiscalization": true
+  }
 }

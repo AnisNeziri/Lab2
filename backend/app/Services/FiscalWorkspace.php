@@ -16,7 +16,8 @@ use Illuminate\Validation\ValidationException;
 
 class FiscalWorkspace
 {
-    private const RECEIPT_SUMMARY=['id','company_id','invoice_id','environment','status','coupon_no','provider_transaction_id','operator_message','error_code','created_at','submitted_at','fiscalized_at'];
+    private const RECEIPT_SUMMARY = ['id', 'company_id', 'invoice_id', 'environment', 'status', 'coupon_no', 'provider_transaction_id', 'operator_message', 'error_code', 'created_at', 'submitted_at', 'fiscalized_at'];
+
     public function summary(): array
     {
         $config = FiscalConfiguration::where('environment', 'test')->first();
@@ -48,7 +49,7 @@ class FiscalWorkspace
             $gaps[] = $missing.' products have no explicit default tax classification.';
         }
 
-        return ['environment' => 'test', 'today_fiscalized' => $today, 'counts' => $counts, 'configuration' => $config,
+        return ['needs_review_count' => app(FiscalizationPolicy::class)->needsReviewCount($config), 'environment' => 'test', 'today_fiscalized' => $today, 'counts' => $counts, 'configuration' => $config,
             'signing_ready' => $signing, 'mapping_counts' => ['units' => $units, 'categories' => $categories],
             'products_missing_tax' => $missing, 'recent_failures' => FiscalReceipt::whereIn('status', ['failed', 'unknown', 'pending'])->latest('id')->limit(10)->get(self::RECEIPT_SUMMARY),
             'readiness' => ['ready_for_certification' => false, 'official_api_result' => $official ? 'PASS (recorded TEST response)' : 'NOT TESTED', 'official_certification' => false, 'gaps' => $gaps],
@@ -71,14 +72,14 @@ class FiscalWorkspace
 
     public function receipt(FiscalReceipt $receipt): array
     {
-        $receipt->load(['invoice:id,invoice_number', 'attempts' => fn ($q) => $q->select(['id','company_id','fiscal_receipt_id','number','state','credential_fingerprint','signature_format','http_status','response_fingerprint','started_at','finished_at','user_id'])->orderBy('number')]);
+        $receipt->load(['invoice:id,invoice_number', 'attempts' => fn ($q) => $q->select(['id', 'company_id', 'fiscal_receipt_id', 'number', 'state', 'credential_fingerprint', 'signature_format', 'http_status', 'response_fingerprint', 'started_at', 'finished_at', 'user_id'])->orderBy('number')]);
         $qr = null;
         $evidenceWarning = null;
         if ($receipt->status === 'fiscalized') {
             $success = $receipt->attempts->last(fn ($a) => $a->state === 'fiscalized');
             if ($success) {
                 try {
-                    $data = $receipt->attempts()->whereKey($success->id)->firstOrFail(['id','request_evidence'])->request_evidence;
+                    $data = $receipt->attempts()->whereKey($success->id)->firstOrFail(['id', 'request_evidence'])->request_evidence;
                     $qr = $data['citizen_details'].'|'.$data['citizen_signature'];
                 } catch (DecryptException) {
                     $evidenceWarning = 'Historical signed evidence cannot be decrypted with this restored application key. Preserve the original record and recover its encryption key; do not prepare or resend another receipt.';

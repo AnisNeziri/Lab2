@@ -49,20 +49,22 @@
     {
       "url": "https://github.com/fiskalizimi/pos-csharp",
       "commit": "09401c83fac00bed4ef702103468792434aef44f",
-      "schema_sha256": "e1fc4fd018c1a31e5186da05f3f75efd89e876971ab0bf75b14b6a13efb96195",
-      "use": "Current canonical schema"
+      "use": "Current canonical schema",
+      "checkout_schema_sha256": "e1fc4fd018c1a31e5186da05f3f75efd89e876971ab0bf75b14b6a13efb96195",
+      "source_lf_schema_sha256": "fc42f76e353d23b575c989d186b05671a340f5845fc8304306bdfac05cf68efb"
     },
     {
       "url": "https://github.com/fiskalizimi/pos-golang",
       "commit": "e28cc25d32f315674c72ed5710cb2fba274f2714",
-      "schema_sha256": "e1fc4fd018c1a31e5186da05f3f75efd89e876971ab0bf75b14b6a13efb96195",
-      "use": "Current schema cross-check"
+      "use": "Current schema cross-check",
+      "checkout_schema_sha256": "e1fc4fd018c1a31e5186da05f3f75efd89e876971ab0bf75b14b6a13efb96195",
+      "source_lf_schema_sha256": "fc42f76e353d23b575c989d186b05671a340f5845fc8304306bdfac05cf68efb"
     },
     {
       "url": "https://github.com/fiskalizimi/pos-php",
       "commit": "4e7dddbbed6c48674e1e37548849e996a9956ed1",
-      "schema_sha256": "deb167eaf2e9cc33cdecb945d181255e211ff813511c122a71ecc49593531c50",
-      "use": "Not adopted: stale schema and incompatible signing example"
+      "use": "Not adopted: stale schema and incompatible signing example",
+      "checkout_schema_sha256": "deb167eaf2e9cc33cdecb945d181255e211ff813511c122a71ecc49593531c50"
     }
   ],
   "portal": "https://apps.atk-ks.org/sefaplikimi/",
@@ -78,5 +80,6 @@
     "url": "https://www.atk-ks.org/njoftim-per-tatimpagues-sot-fillon-zbatimi-i-pakos-se-re-fiskale/",
     "effective_from": "2015-09-01",
     "verified": "Official ATK notice explicitly applies 8% and 18% from 01 September 2015. Retrieved via search index on 2026-10-19; direct page intermittently returned 502."
-  }
+  },
+  "protocol_hash_basis": "Checkout hashes retain Windows CRLF. The canonical LF source hash matches backend/resources/sef/models.proto; line-ending normalization changes no wire fields."
 }

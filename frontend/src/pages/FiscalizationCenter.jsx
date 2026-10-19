@@ -41,7 +41,11 @@ export default function FiscalizationCenter() {
     let alive = true;
     Promise.all([
       api.fiscalSummary(),
-      api.fiscalInvoices({ search, invoice:params.get("invoice")||undefined, page: params.get("page") || 1 }),
+      api.fiscalInvoices({
+        search,
+        invoice: params.get("invoice") || undefined,
+        page: params.get("page") || 1,
+      }),
       api.fiscalMappings(),
     ])
       .then(([s, l, m]) => {
@@ -139,6 +143,10 @@ export default function FiscalizationCenter() {
               ["Pending", summary.counts.pending || 0],
               ["Failed", summary.counts.failed || 0],
               ["Unknown result", summary.counts.unknown || 0],
+              [
+                t("Needs review", "Për shqyrtim"),
+                summary.needs_review_count || 0,
+              ],
             ].map(([label, n]) => (
               <div key={label}>
                 {label}
@@ -146,7 +154,24 @@ export default function FiscalizationCenter() {
               </div>
             ))}
           </div>
-          {summary.recent_failures.length>0&&<section className="tax-panel"><h2>{t('Recent deliveries requiring review','Dërgimet e fundit për shqyrtim')}</h2>{summary.recent_failures.map(r=><p key={r.id}><button onClick={()=>show(r.id)}>#{r.coupon_no} · {r.status}</button> {r.operator_message}</p>)}</section>}
+          {summary.recent_failures.length > 0 && (
+            <section className="tax-panel">
+              <h2>
+                {t(
+                  "Recent deliveries requiring review",
+                  "Dërgimet e fundit për shqyrtim",
+                )}
+              </h2>
+              {summary.recent_failures.map((r) => (
+                <p key={r.id}>
+                  <button onClick={() => show(r.id)}>
+                    #{r.coupon_no} · {r.status}
+                  </button>{" "}
+                  {r.operator_message}
+                </p>
+              ))}
+            </section>
+          )}
           <section className="tax-panel">
             <h2>{t("Configuration status", "Gjendja e konfigurimit")}</h2>
             <p>
@@ -371,7 +396,12 @@ export default function FiscalizationCenter() {
                 {t("Fiscal receipt", "Kuponi fiskal")} #
                 {detail.receipt.coupon_no} · ATK TEST
               </h2>
-              <TaxStatus value={detail.receipt.status} />{detail.evidence_warning&&<p role="alert" className="tax-error">{detail.evidence_warning}</p>}
+              <TaxStatus value={detail.receipt.status} />
+              {detail.evidence_warning && (
+                <p role="alert" className="tax-error">
+                  {detail.evidence_warning}
+                </p>
+              )}
               <p>{detail.receipt.operator_message}</p>
               <p>
                 {t("ATK transaction", "Transaksioni ATK")}:{" "}

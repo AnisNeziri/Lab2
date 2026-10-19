@@ -53,3 +53,9 @@ export async function exportVat(period) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+export const saveTaxPolicy = (tax_codes_required_from) =>
+  apiRequest(
+    "/tax/configuration/policy",
+    body("PUT", { tax_codes_required_from }),
+  );

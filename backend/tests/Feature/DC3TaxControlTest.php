@@ -7,15 +7,19 @@ use App\Models\AccountingPostingMapping;
 use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\JournalEntry;
+use App\Models\Permission;
+use App\Models\Role;
 use App\Models\TaxCode;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Validation\ValidationException;
+use Tests\Concerns\CreatesDC3TaxCompany;
 use Tests\TestCase;
 
 class DC3TaxControlTest extends TestCase
 {
+    use CreatesDC3TaxCompany;
     use RefreshDatabase;
-    use \Tests\Concerns\CreatesDC3TaxCompany;
 
     public function test_decimal_inclusive_discount_and_mixed_rates_survive_issue_without_recalculation_drift(): void
     {
@@ -30,6 +34,12 @@ class DC3TaxControlTest extends TestCase
         $this->assertSame('18.0000', $issued->json('items.0.tax_snapshot.rate'));
         $this->assertSame('10.00', $issued->json('items.0.discount_amount'));
         $this->assertSame('11.80', $issued->json('items.0.pricing_discount_amount'));
+        $this->putJson('/api/tax/configuration/policy', ['tax_codes_required_from' => now()->toDateString()])->assertOk();
+        $legacy = $this->invoiceData($code->id);
+        unset($legacy['items'][0]['tax_code_id']);
+        $this->postJson('/api/invoices', $legacy)->assertUnprocessable();
+        $this->assertDatabaseHas('audit_logs', ['action' => 'tax.entry_policy.changed']);
+
     }
 
     public function test_used_rule_is_versioned_and_posted_tax_evidence_cannot_be_changed(): void
@@ -62,6 +72,11 @@ class DC3TaxControlTest extends TestCase
         $this->putJson('/api/tax/codes/'.$foreign->id, [])->assertNotFound();
         $code->update(['effective_to' => now()->subDay()->toDateString()]);
         $this->postJson('/api/invoices', $this->invoiceData($code->id))->assertUnprocessable();
+        $role = Role::where('slug', 'admin')->firstOrFail();
+        $revoked = Permission::where('slug', 'inventory.view')->value('id');
+        $role->permissions()->detach($revoked);
+        $this->assertSame(0, Artisan::call('tax:setup'));
+        $this->assertFalse($role->permissions()->whereKey($revoked)->exists());
     }
 
     public function test_unclassified_exemption_requires_legal_basis_and_does_not_infer_product_names(): void
@@ -104,5 +119,4 @@ class DC3TaxControlTest extends TestCase
         $entry = JournalEntry::where('source_key', 'invoice:'.$issued->json('id'))->firstOrFail();
         $this->assertSame('18.00', $entry->lines()->where('accounting_account_id', $account->id)->value('credit'));
     }
-
 }
