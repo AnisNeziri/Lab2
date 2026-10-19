@@ -1,6 +1,6 @@
 # DC4 — Workforce, HR & Payroll Core
 
-Implementation through `ba3a4302440e8804d91f32617a01399aa490877a`. Review build based on DC3 `4290c6541c4988d82e367206b72da8face6d31b3`, on `codex/dc4-workforce-payroll`. The original `C:/Users/anisi/Lab2` checkout remains at `07c66520187db1486f994e9527670b1e7dcbcd24`. No customer database migration, deployment, merge or DC5 work was performed. Exact evidence is in [VALIDATION.json](VALIDATION.json).
+Implementation through `5f7ed654e8b42c4644857bf19dd003a3b8e4e991`. Review build based on DC3 `4290c6541c4988d82e367206b72da8face6d31b3`, on `codex/dc4-workforce-payroll`. The original `C:/Users/anisi/Lab2` checkout remains at `07c66520187db1486f994e9527670b1e7dcbcd24`. No customer database migration, deployment, merge or DC5 work was performed. Exact evidence is in [VALIDATION.json](VALIDATION.json).
 
 ## Completion report
 
@@ -53,3 +53,5 @@ Small synthetic read probe: summary 9 queries / 901 bytes and detail 22 queries 
 Review artifacts are local under `output/dc4-*`; those paths and synthetic databases are ignored by Git. The reproducible browser configuration uses isolated `dc4-preview.sqlite` and ports 8011/4174. It applies migrations without `migrate:fresh`. The original business database and the running DC3 preview are not migrated by these checks.
 
 The hosted Action Center check exposed a 108-query regression. Request-local schema/workforce presence and supplier date-column metadata reuse preserve the same privacy/integrity checks and the existing 100-query budget. The existing marked 50,000-order fixture passes locally at 99 queries (no generation or reset). See [PR #8 checks](https://github.com/AnisNeziri/Lab2/pull/8/checks) for the current exact-HEAD hosted result.
+
+Final pre-migration compatibility check: the existing authenticated DC3 preview returns HTTP 200 for Action Center while its database still has no workforce tables. Payroll journal references are inspected without querying absent tables; a genuine missing-schema reference remains an orphan. Final legacy/accounting/privacy slice: 35 tests / 307 assertions, including critical detection of a corrupted cross-company payroll/employee relationship.

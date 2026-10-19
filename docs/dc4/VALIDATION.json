@@ -1,5 +1,5 @@
 {
-  "implementation_head": "ba3a4302440e8804d91f32617a01399aa490877a",
+  "implementation_head": "5f7ed654e8b42c4644857bf19dd003a3b8e4e991",
   "base_head": "4290c6541c4988d82e367206b72da8face6d31b3",
   "original_checkout_head": "07c66520187db1486f994e9527670b1e7dcbcd24",
   "branch": "codex/dc4-workforce-payroll",
@@ -245,6 +245,33 @@
       "previous_run": 39251641524,
       "previous_result": "FAIL: Action Center 108 queries exceeded 100",
       "fix": "Reuse request-local workforce/schema presence and supplier date-column names; keep balances, tenant checks and authorization fresh. No budget increase. Consult PR checks for the final exact-HEAD result."
+    },
+    "previous_exact_head_hosted_pass": {
+      "status": "PASS",
+      "head": "1639a9cf2e7fd27629b7fee72cfc3f720c9cb98d",
+      "run": 39253429880,
+      "url": "https://github.com/AnisNeziri/Lab2/actions/runs/39253429880",
+      "scope": "Unchanged bounded-read budgets after metadata optimization; before final pre-migration compatibility guard."
+    },
+    "final_legacy_and_tenant_integrity_slice": {
+      "status": "PASS",
+      "tests": 35,
+      "assertions": 307,
+      "seconds": 12.03,
+      "scope": [
+        "DC4WorkforcePayrollTest",
+        "DC2AccountingSafetyTest",
+        "DC2ControlCenterTest",
+        "DC3TaxControlTest"
+      ],
+      "note": "After legacy source-table guard and batched workforce foreign-company/orphan relationship checks. Includes direct corrupted payroll-employee linkage detected as critical. Overlapping coverage."
+    },
+    "legacy_preview_compatibility": {
+      "status": "PASS",
+      "workforce_migrated": false,
+      "action_center_http_status": 200,
+      "url": "http://127.0.0.1:4173/api/action-center",
+      "qualification": "Authenticated synthetic DC3 preview remains usable without applying DC4 migration. Existing financial source checks remain active; any payroll reference without its schema is classified as an orphan."
     }
   },
   "explicit_flags": {
