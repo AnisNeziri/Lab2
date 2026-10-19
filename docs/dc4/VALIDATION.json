@@ -1,5 +1,5 @@
 {
-  "implementation_head": "b96f88d035a8555b4c069573b66e84ad2c608b7d",
+  "implementation_head": "ba3a4302440e8804d91f32617a01399aa490877a",
   "base_head": "4290c6541c4988d82e367206b72da8face6d31b3",
   "original_checkout_head": "07c66520187db1486f994e9527670b1e7dcbcd24",
   "branch": "codex/dc4-workforce-payroll",
@@ -203,6 +203,48 @@
         "employees": 1,
         "qualification": "Small synthetic projection probe only; no scale extrapolation. Summary avoids payroll-line/private snapshot and Financial Intelligence payloads."
       }
+    },
+    "final_metadata_privacy_reconciliation_slice": {
+      "status": "PASS",
+      "tests": 35,
+      "assertions": 373,
+      "seconds": 16.31,
+      "scope": [
+        "DC4WorkforcePayrollTest",
+        "DC2DatedReconciliationTest",
+        "DC2ControlCenterTest",
+        "DocumentCenterTest"
+      ],
+      "note": "After request-local schema/workforce-presence reuse and supplier date-column metadata sharing. Includes same-request employee-creation cache invalidation and two-company isolation. Overlaps other coverage."
+    },
+    "existing_bounded_read_fixture": {
+      "status": "PASS",
+      "action_center_queries": 99,
+      "action_center_bytes": 5914,
+      "action_center_median_ms": 2276.37,
+      "query_budget": 100,
+      "dataset_counts": {
+        "products": 1002,
+        "customers": 2002,
+        "suppliers": 100,
+        "warehouses": 12,
+        "sales_orders": 50000,
+        "daily_sales": 50000,
+        "stock_movements": 101002,
+        "customer_debt_transactions": 100000,
+        "purchase_orders": 5002,
+        "goods_receipts": 5000,
+        "shipments": 5000,
+        "journal_entries": 50002
+      },
+      "qualification": "Read-only reuse of an existing marked 50,000-order performance fixture. No PM3 run, fixture generation or reset. Not a payroll scale or production latency claim."
+    },
+    "hosted_bounded_reads": {
+      "workflow": "PR2 read performance regressions",
+      "checks_url": "https://github.com/AnisNeziri/Lab2/pull/8/checks",
+      "previous_run": 39251641524,
+      "previous_result": "FAIL: Action Center 108 queries exceeded 100",
+      "fix": "Reuse request-local workforce/schema presence and supplier date-column names; keep balances, tenant checks and authorization fresh. No budget increase. Consult PR checks for the final exact-HEAD result."
     }
   },
   "explicit_flags": {
@@ -231,11 +273,12 @@
     "Portable workforce identity/reference remapping is unsupported; use complete encrypted installation backup with application key preserved."
   ],
   "not_run": [
-    "PM3/large synthetic suites",
+    "PM3 or large synthetic generation/reset",
     "Live bank submission",
     "Automatic or official EDI filing",
     "Customer database migration",
     "Deployment/merge",
     "DC5"
-  ]
+  ],
+  "initial_implementation_head": "b96f88d035a8555b4c069573b66e84ad2c608b7d"
 }
