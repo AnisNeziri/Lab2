@@ -138,11 +138,11 @@ export default function FiscalizationCenter() {
           </div>
           <div className="tax-kpis">
             {[
-              ["Today", summary.today_fiscalized],
-              ["Fiscalized", summary.counts.fiscalized || 0],
-              ["Pending", summary.counts.pending || 0],
-              ["Failed", summary.counts.failed || 0],
-              ["Unknown result", summary.counts.unknown || 0],
+              [t("Today","Sot"), summary.today_fiscalized],
+              [t("Fiscalized","Fiskalizuar"), summary.counts.fiscalized || 0],
+              [t("Waiting","Në pritje"), summary.counts.pending || 0],
+              [t("Failed","Dështuar"), summary.counts.failed || 0],
+              [t("Unknown result","Rezultat i panjohur"), summary.counts.unknown || 0],
               [
                 t("Needs review", "Për shqyrtim"),
                 summary.needs_review_count || 0,
@@ -186,13 +186,13 @@ export default function FiscalizationCenter() {
                 : t("Required", "Kërkohet")}
             </p>
             {summary.configuration && (
-              <p className="tax-caption">
+              <details className="px1-technical"><summary>{t("Technical details","Detajet teknike")}</summary><p className="tax-caption">
                 NUI {summary.configuration.taxpayer_nui} · Branch{" "}
                 {summary.configuration.branch_id} · POS{" "}
                 {summary.configuration.pos_id} · Certificate SHA256{" "}
                 {summary.configuration.credential_fingerprint || "—"} · Expires{" "}
                 {summary.configuration.certificate_valid_to || "—"}
-              </p>
+              </p></details>
             )}
             {can("configure") && (
               <button onClick={configure}>
@@ -206,7 +206,7 @@ export default function FiscalizationCenter() {
               )}
             </p>
           </section>
-          <details className="tax-panel" open>
+          <details className="tax-panel">
             <summary>
               {t(
                 "Certification readiness — NOT READY",

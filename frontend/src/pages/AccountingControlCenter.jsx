@@ -12,6 +12,8 @@ import {
   Settings2,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
+import { NextStep } from "../components/WorkflowSummary";
+import { useSessionState } from "../hooks/useSessionState";
 import { useSettingsStore } from "../store/settingsStore";
 import * as api from "../api/accounting";
 import {
@@ -47,7 +49,7 @@ export default function AccountingControlCenter() {
   const t = (en, sq) => (language === "sq" ? sq || en : en);
   const [params, setParams] = useSearchParams();
   const today = localToday(user?.company?.timezone);
-  const [dates, setDates] = useState({
+  const [dates, setDates] = useSessionState("accounting.dates", {
     from: `${today.slice(0, 7)}-01`,
     to: today,
   });
@@ -173,6 +175,7 @@ export default function AccountingControlCenter() {
     run,
     accounts: chart.data || [],
     periods: periods.data || [],
+    availableTabs: tabs.map(([id])=>id),
     go,
   };
   return (
@@ -281,7 +284,7 @@ export default function AccountingControlCenter() {
 }
 
 function ControlOverview({ data, owner }) {
-  const { t, go, can } = useFinance();
+  const { t, go, can, availableTabs } = useFinance();
   const labels = {
     cash: ["Cash", "Arka", "bank"],
     bank: ["Bank", "Banka", "bank"],
@@ -299,8 +302,14 @@ function ControlOverview({ data, owner }) {
     expenses: ["Operating expenses", "Shpenzimet operative", "reports"],
     net_profit: ["Net result", "Rezultati neto", "reports"],
   };
+  const requestedNext=data.integrity_status==='BLOCKED'?'reconciliation':data.attention.length?new URLSearchParams(data.attention[0].url.split('?')[1]).get('tab')||'reconciliation':'periods';
+  const nextTab=({integrity:'reconciliation',opening:'settings'})[requestedNext]||requestedNext;
+  const canContinue=availableTabs.includes(nextTab);
   return (
     <>
+      <NextStep title={data.integrity_status==='BLOCKED'?t('Investigate accounting differences','Heto diferencat kontabël'):data.attention.length?t('Review financial exceptions','Shqyrto përjashtimet financiare'):t('Review month close','Shqyrto mbylljen mujore')} tone={data.attention.length?'attention':'complete'} action={canContinue?<button onClick={()=>go(nextTab)}>{data.integrity_status==='BLOCKED'?t('Review reconciliation','Shqyrto rakordimin'):data.attention.length?t('Review first issue','Shqyrto çështjen e parë'):t('Open month close','Hap mbylljen mujore')}</button>:can('tasks.view')?<Link to="/action-center?area=finance">{t('Open finance attention','Hap çështjet financiare')}</Link>:null}>
+        {data.integrity_status==='BLOCKED'?t('One or more control balances differ. Open reconciliation and follow the source links before closing.','Një ose më shumë llogari kontrolli kanë diferenca. Hap rakordimin dhe ndiq burimin para mbylljes.'):data.attention.length?t('Review the prioritized exceptions below. Posted balances and the open accounting period are shown here.','Shqyrto përjashtimet sipas përparësisë më poshtë. Gjendjet e postuara dhe periudha e hapur shfaqen këtu.'):t('No configured finance exception is currently detected. Complete the period checklist before closing.','Nuk u zbulua përjashtim financiar. Plotëso listën e kontrollit para mbylljes.')}
+      </NextStep>
       <div className="fc-statusbar">
         <span>
           <Badge
@@ -345,7 +354,7 @@ function ControlOverview({ data, owner }) {
         <button onClick={() => go("journal")}>
           {t("Draft journals", "Ditarët draft")}: {data.counts.draft_journals}
         </button>
-        <button onClick={() => go("periods")}>
+        <button disabled={!availableTabs.includes("periods")} onClick={() => go("periods")}>
           {t("Review month close", "Shqyrto mbylljen mujore")} ↗
         </button>
       </div>
@@ -360,6 +369,7 @@ function ControlOverview({ data, owner }) {
             <button
               key={key}
               className="fc-metric"
+              disabled={!availableTabs.includes(label[2])}
               onClick={() => go(label[2])}
             >
               <span>{t(label[0], label[1])}</span>

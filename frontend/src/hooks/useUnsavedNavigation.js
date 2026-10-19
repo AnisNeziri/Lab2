@@ -36,4 +36,6 @@ export function useUnsavedNavigation(dirty,message) {
     document.addEventListener('click',click,true)
     return()=>{historyGuards.splice(historyGuards.indexOf(guard),1);window.removeEventListener('beforeunload',unload);window.removeEventListener('aims:before-navigate',navigation);document.removeEventListener('click',click,true)}
   },[dirty,message])
+  // Reuse the same guard for buttons that replace the current editor.
+  return () => !dirty || window.confirm(message)
 }

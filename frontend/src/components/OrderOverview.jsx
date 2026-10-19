@@ -1,18 +1,20 @@
 import { formatOrderMoney, formatOrderDate } from './orderPresentation'
 
-export default function OrderOverview({ detail, t, language, label }) {
+export default function OrderOverview({ detail, t, language, label, nextStep }) {
   const order = detail.order
   const currency = order?.currency || detail.payload?.currency
   const warehouses=[...new Set((order?.allocations||[]).map(row=>row.warehouse?.name).filter(Boolean))]
   const facts = [
-    [t('Order value','Vlera e porosisë'), formatOrderMoney(order?.total_amount, currency, language)],
+    [t('Order total','Totali i porosisë'), formatOrderMoney(order?.total_amount, currency, language)],
     [t('Payment','Pagesa'), label(detail.states?.payment)],
     [t('Paid','Paguar'),formatOrderMoney(detail.states?.paid_amount,currency,language)],
     [t('Remaining order value','Vlera e mbetur e porosisë'),formatOrderMoney(detail.states?.remaining_amount,currency,language)],
     [t('Fulfillment','Përmbushja'), label(detail.states?.fulfillment)],
+    [t('Delivery','Dorëzimi'),label(detail.states?.delivery)],
   ]
   return <div className="hub-overview">
     <div className="hub-order-heading"><div><p className="workspace-eyebrow">{t('Order overview','Përmbledhja e porosisë')}</p><h2>{order?.order_number || detail.external_id || `#${detail.id}`}</h2></div><span className="fulfillment-badge">{label(order?.status || detail.states?.order || detail.state)}</span></div>
+    {nextStep}
     <dl className="hub-order-metrics">{facts.map(([name,value])=><div key={name}><dt>{name}</dt><dd>{value ?? '—'}</dd></div>)}</dl>
     <dl className="hub-order-context">
       {[

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import * as api from "../../api/accounting";
 import WorkspaceModal from "../WorkspaceModal";
 import { ReasonAction } from "./FinanceSubledgers";
@@ -16,8 +16,9 @@ import {
 
 export default function FinancePeriods() {
   const { t, periods, refresh, busy, can, run } = useFinance();
-  const [selected, setSelected] = useState(""),
-    [create, setCreate] = useState(false),
+  const [params,setParams]=useSearchParams();
+  const selected=params.get("period")||"",setSelected=value=>setParams({...Object.fromEntries(params),period:value});
+  const [create, setCreate] = useState(false),
     [status, setStatus] = useState("");
   const period = periods.find((p) => p.id === Number(selected));
   const readiness = useFinanceQuery(

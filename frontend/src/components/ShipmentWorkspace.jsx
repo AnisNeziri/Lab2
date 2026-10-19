@@ -9,6 +9,8 @@ import {etaRange,shipmentIntelligenceLabel} from './shipmentIntelligencePresenta
 import {cargoGroups,logisticsProgress,projectedReceiptBalance} from './shipmentCargoPresentation'
 import {businessDate,businessNumber} from '../utils/businessFormat'
 import './ShipmentWorkspace.css'
+import { NextStep } from './WorkflowSummary'
+import { businessStatus } from '../utils/businessStatus'
 
 export default function ShipmentWorkspace({shipment}){
  const {language}=useTranslation(),t=(en,sq)=>language==='sq'?sq:en,permissions=useAuthStore(s=>s.permissions)
@@ -21,7 +23,10 @@ export default function ShipmentWorkspace({shipment}){
  const cargo=shipment.cargo,groups=cargoGroups(cargo,query),impact=intelligence?.impact
  const fact=(name,value)=><div key={name}><dt>{name}</dt><dd>{value||'—'}</dd></div>
  return <section className="shipment-workspace" aria-label={t('Vessel and incoming stock','Anija dhe stoku në ardhje')}>
-  <header className="cargo-heading"><div><small><Ship size={15}/>{shipment.tracking_number||shipment.tracking_reference}</small><h2>{shipment.vessel_name||t('Vessel details pending','Në pritje të detajeve të anijes')}</h2></div><span className="cargo-status" data-state={intelligence?.risk}>{intelligence?.risk?label(intelligence.risk):shipment.status?.replaceAll('_',' ')}</span></header>
+  <header className="cargo-heading"><div><small><Ship size={15}/>{shipment.tracking_number||shipment.tracking_reference}</small><h2>{shipment.vessel_name||shipment.tracking_number||t('Shipment details','Detajet e dërgesës')}</h2></div><span className="cargo-status" data-state={intelligence?.risk}>{intelligence?.risk?label(intelligence.risk):businessStatus(shipment.status,language)}</span></header>
+  <NextStep title={t('Shipment status & next step','Gjendja e dërgesës dhe hapi i radhës')} action={shipment.purchase_order_id&&permissions.includes('purchase_orders.view')?<Link to={'/purchase-orders?po='+shipment.purchase_order_id}>{t('Open PO / review receipt','Hap porosinë / shqyrto pranimin')}</Link>:null}>
+    {['arrived','delivered'].includes(shipment.status)?t('Confirm physical quantities in the linked purchase order before recording receipt.','Konfirmo sasitë fizike te porosia e lidhur para regjistrimit të pranimit.'):t('Check the recorded ETA and incoming cargo below. A tracking update does not receive inventory.','Kontrollo ETA dhe ngarkesën më poshtë. Përditësimi i gjurmimit nuk pranon stok.')}
+  </NextStep>
   <div className="shipment-overview"><dl className="shipment-key-facts">{fact(t('Current location','Vendndodhja aktuale'),shipment.last_location_label)}{fact(t('Origin → destination','Nisja → destinacioni'),`${shipment.origin_port||'—'} → ${shipment.destination_port||'—'}`)}{fact(t('Recorded ETA','ETA e regjistruar'),date(shipment.eta))}{fact(intelligence?.eta?.target==='warehouse'?t('AIMS warehouse ETA','ETA AIMS në depo'):t('AIMS port ETA','ETA AIMS në port'),etaRange(intelligence?.eta,date))}{fact(t('Destination warehouse','Depoja e destinacionit'),shipment.warehouse?.name||cargo?.groups?.[0]?.destination)}{fact(t('Last tracking update','Përditësimi i fundit i gjurmimit'),shipment.position_updated_at?businessDate(shipment.position_updated_at,language,true):t('No position received','Pa pozicion të pranuar'))}</dl>
    <div className="shipment-compact-map"><ShipmentRouteMap shipment={shipment} pendingLabel={shipment.tracking_provider==='synthetic'?t('Synthetic logistics record — no live AIS position.','Regjistrim logjistik sintetik — pa pozicion të drejtpërdrejtë AIS.'):t('Waiting for an AIS position.','Në pritje të pozicionit AIS.')}/></div>
   </div>

@@ -30,7 +30,7 @@ export default function WidgetContent({definition:def,data,settings}) {
   const currency=useSettingsStore(s=>s.base_currency),permissions=useAuthStore(s=>s.permissions),theme=useSettingsStore(s=>s.theme)
   const money=(n,c=currency)=>formatOrderMoney(n,c,language),number=n=>n==null?'—':Number(n).toLocaleString(language==='sq'?'sq-AL':'en-GB'),date=n=>formatOrderDate(n,language)
   const none=t('No recorded data for this view.','Nuk ka të dhëna të regjistruara për këtë pamje.')
-  if(def.id==='quick-actions')return <div className="widget-quick-actions">{matchingCommands('',permissions,language).filter(c=>['add-product','daily-sales','hub-new','purchase-order','stock-locator','debts'].includes(c.id)).map(c=><Link key={c.id} to={c.path}>{c.label} →</Link>)}</div>
+  if(def.id==='quick-actions')return <div className="widget-quick-actions">{matchingCommands('',permissions,language).filter(c=>['add-product','daily-sales','hub-new','purchase-order','stock-locator','debts','workforce','payroll','page-my-workforce'].includes(c.id)).map(c=><Link key={c.id} to={c.path}>{c.label} →</Link>)}</div>
   if(def.id==='supplier-reliability'&&!settings.supplier_id)return <Empty>{t('Choose a supplier in Configure to show its recorded scorecard.','Zgjidh një furnitor te Konfiguro për të shfaqur vlerësimin e tij.')}</Empty>
   if(!data)return <Empty>{none}</Empty>
   switch(def.id) {

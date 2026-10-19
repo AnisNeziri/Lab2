@@ -2,6 +2,8 @@ import { cloneElement, useId, useState } from 'react';
 import { useTranslation } from '../hooks/useTranslation';
 import { money, payrollLabels } from './workforcePresentation';
 import './Workforce.css';
+import WorkspaceModal from '../components/WorkspaceModal';
+import { businessStatus } from '../utils/businessStatus';
 export function useWorkforceText() {
   const {
     language
@@ -21,14 +23,16 @@ export function Field({
 export function Status({
   value
 }) {
-  return <span className={'wf-status wf-' + value}>{String(value).replaceAll('_', ' ')}</span>;
+  const { language } = useTranslation();
+  return <span className={'wf-status wf-' + value}>{businessStatus(value, language)}</span>;
 }
 export function Modal({
   title,
   close,
+  busy = false,
   children
 }) {
-  return <div className="wf-overlay"><section className="wf-dialog" role="dialog" aria-modal="true" aria-label={title}><header><h2>{title}</h2><button type="button" aria-label="Close dialog" onClick={close}>×</button></header>{children}</section></div>;
+  return <WorkspaceModal title={title} onClose={close} busy={busy} protectForms closeOnBackdrop className="wf-dialog">{children}</WorkspaceModal>;
 }
 export function Form({
   submit,
@@ -41,7 +45,7 @@ export function Form({
     e.preventDefault();
     const form = e.currentTarget;
     submit(Object.fromEntries(new FormData(form)));
-  }}><h3>{title}</h3><div className="wf-fields">{children}</div><button disabled={disabled} type="submit">{label}</button></form>;
+  }} aria-busy={disabled}><h3>{title}</h3><fieldset className="wf-fields" disabled={disabled}>{children}</fieldset><div className="workspace-sticky-actions"><button disabled={disabled} type="submit">{label}</button></div></form>;
 }
 export function Pager({
   page,
@@ -53,7 +57,8 @@ export function Payslip({
   data,
   close
 }) {
-  const [lang, setLang] = useState('en'),
+  const {language}=useTranslation();
+  const [lang, setLang] = useState(language),
     t = (en, sq) => lang === 'sq' ? sq : en,
     l = data.line,
     e = l.snapshot.employee,

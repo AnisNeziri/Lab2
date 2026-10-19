@@ -20,7 +20,7 @@ test('record history presents money, quantities and events in business language 
 
 test('Action Center groups identical exceptions without deleting records and surfaces approvals and overdue work',()=>{
  const items=[{kind:'stock',title:'Watch',url:'/stock'},{kind:'order',title:'short_pick',description:'Quantity short',url:'/fulfillment?order=1'},{kind:'order',title:'short_pick',description:'Quantity short',url:'/fulfillment?order=1'},{kind:'customer',title:'Buyer',due_at:'2026-09-01',url:'/customer-debts?customer=1'},{kind:'approval',title:'Approval',url:'/procurement'}]
- const result=attentionPreview(items,new Date('2026-10-10').getTime());assert.equal(items.length,5);assert.equal(result.length,4);assert.equal(result[0].kind,'approval');assert.equal(result[1].kind,'customer');assert.equal(result.find(r=>r.title==='short_pick').occurrences,2)
+ const result=attentionPreview(items,new Date('2026-10-10').getTime());assert.equal(items.length,5);assert.equal(result.length,4);assert.equal(result[0].kind,'customer');assert.equal(result[1].kind,'approval');assert.equal(result.find(r=>r.title==='short_pick').occurrences,2)
  assert.equal(attentionDescription({description:'Review enterprise decision'},'en'),'Review the recommended stock action');assert.match(attentionDescription({description:'Customer payment overdue'},'sq'),/Pagesa/)
 })
 
@@ -52,8 +52,8 @@ test('technical errors are readable while useful validation reasons survive',()=
  for(const value of ['SQLSTATE[HY000] failed','PDOException','Failed to fetch','TypeError undefined']){assert.equal(businessError(value),'The request could not be completed. Please try again.');assert.match(businessError(value,undefined,'sq'),/Provo përsëri/)}
  assert.equal(businessError('Quantity must be greater than 0.'),'Quantity must be greater than 0.')
 })
-test('all six work profiles are distinct and never grant permissions',()=>{
- const permissions=['dashboard.view','inventory.view','transfers.view','tasks.view'];assert.equal(Object.keys(workProfiles).length,6)
+test('all seven work profiles are distinct and never grant permissions',()=>{
+ const permissions=['dashboard.view','inventory.view','transfers.view','tasks.view'];assert.equal(Object.keys(workProfiles).length,7)
  assert.notDeepEqual(workProfiles.sales.widgets,workProfiles.warehouse.widgets)
  for(const profile of Object.keys(workProfiles)){const layout=profileDashboard(profile,permissions);for(const w of layout.widgets)assert.notEqual(w.id,'cash-outlook');const nav=profileNavigation(profile,permissions,'staff',false);assert.ok(!nav.hidden.includes('dashboard'));for(const id of nav.favorites){const page=id==='inventory-planning'?'/inventory-intelligence?view=planning':'/'+id;assert.equal(canOpenPage(page,permissions),true)}}
 })

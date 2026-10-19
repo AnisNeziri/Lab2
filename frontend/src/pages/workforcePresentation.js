@@ -4,6 +4,7 @@ export const money = value => value == null ? '—' : new Intl.NumberFormat('en-
 }).format(Number(value));
 export const payrollMoneyKeys = ['gross', 'employee_pension', 'employer_pension', 'tax', 'deductions', 'advance_repayment', 'net', 'employer_cost'];
 export const payrollLabels = {
+  salary:['Salaries','Pagat'],
   gross: ['Gross', 'Bruto'],
   employee_pension: ['Employee pension', 'Pensioni i punonjësit'],
   employer_pension: ['Employer pension', 'Pensioni i punëdhënësit'],

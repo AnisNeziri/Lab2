@@ -1,4 +1,4 @@
-import { businessError } from '../utils/businessErrors'
+import { businessError, businessFieldErrors } from '../utils/businessErrors.js'
 const API_BASE = window.__AIMS_API_BASE__ || '/api'
 
 let refreshPromise = null
@@ -110,7 +110,7 @@ export async function parseApiResponse(response, fallbackMessage) {
   if (!response.ok) {
     const validation = response.status === 422 ? Object.values(payload?.errors || {}).flat()[0] : null
     const error = new Error(businessError(validation || payload?.message, businessError(fallbackMessage), document.documentElement.lang))
-    error.errors = payload?.errors
+    error.errors = businessFieldErrors(payload?.errors, document.documentElement.lang)
     error.code = payload?.code
     error.status = response.status
     error.requestId = payload?.request_id || response.headers.get('x-request-id') || null

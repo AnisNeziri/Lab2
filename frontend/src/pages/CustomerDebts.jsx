@@ -18,6 +18,8 @@ import { getFinancialAccounts } from "../api/advancedOperations";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAuthStore } from "../store/authStore";
 import EntityContext from "../components/EntityContext";
+import { BusinessFacts } from "../components/WorkflowSummary";
+import RowActions from "../components/RowActions";
 import CustomerSalesSummary from "../components/CustomerSalesSummary";
 import { Link, useSearchParams } from 'react-router-dom';
 import { useSessionState } from '../hooks/useSessionState';
@@ -1028,52 +1030,26 @@ export default function CustomerDebts() {
               <small>{selected.notes || ""}</small>
             </div>
             <div className="table-actions">
-              {canCreateDebt && (
-                <button onClick={() => begin("debt")}>
-                  {t("debts.addDebt")}
-                </button>
-              )}
-              {canRecordPayment && (
-                <button
-                  onClick={() => begin("payment")}
-                  disabled={Number(selected.current_debt) <= 0}
-                >
-                  {t("debts.recordPayment")}
-                </button>
-              )}
-              {canManageCustomers && (
-                <button className="secondary" onClick={() => begin("edit")}>
-                  {t("debts.editCustomer")}
-                </button>
-              )}
-              {canExportDebt && (
-                <button
-                  className="secondary"
-                  onClick={() => downloadDebtStatement(selected.id)}
-                >
-                  {t("debts.export")}
-                </button>
-              )}
-              <button className="secondary" onClick={() => window.print()}>
-                {t("debts.print")}
-              </button>
-              {canManageCustomers && (
-                <button
-                  className="danger"
-                  disabled={busy}
-                  onClick={() => removeSheet(selected)}
-                >
-                  {t("debts.deleteSheet")}
-                </button>
-              )}
-              <button
-                className="secondary"
-                onClick={backToCustomers}
-              >
-                {t("debts.back")}
-              </button>
+              {canRecordPayment && Number(selected.current_debt)>0 && <button disabled={busy} onClick={()=>begin("payment")}>{t("debts.recordPayment")}</button>}
+              <RowActions label={selected.name} actions={[
+                canCreateDebt && {label:t("debts.addDebt"),onClick:()=>begin("debt")},
+                canManageCustomers && {label:t("debts.editCustomer"),onClick:()=>begin("edit")},
+                canExportDebt && {label:t("debts.export"),onClick:()=>downloadDebtStatement(selected.id)},
+                {label:t("debts.print"),onClick:()=>window.print()},
+                canManageCustomers && {label:t("debts.deleteSheet"),danger:true,disabled:busy,onClick:()=>removeSheet(selected)},
+              ]}/>
+              <button className="secondary" onClick={backToCustomers}>{t("debts.back")}</button>
             </div>
           </div>
+          <BusinessFacts label={language==='sq'?'Gjendja financiare e klientit':'Customer financial position'} facts={[
+            {label:t("debts.currentDebt"),value:euro(selectedCredit.current_debt)},
+            {label:t("debts.overdue"),value:euro(selectedCredit.overdue)},
+            {label:t("debts.advance"),value:euro(selectedCredit.advance)},
+          ]}/>
+          <nav className="workspace-actions" aria-label={language==='sq'?'Regjistrimet e klientit':'Customer records'}>
+            {permissions.includes('fulfillment.view') && <Link to={'/order-hub?customer='+selected.id}>{language==='sq'?'Porositë e klientit':'Customer orders'}</Link>}
+            {permissions.includes('accounting.reports.view') && <Link to={'/accounting?tab=ar&customer='+selected.id}>{language==='sq'?'Pasqyra dhe alokimi':'Statement & allocation'}</Link>}
+          </nav>
           <section className="credit-policy-strip">
             <div>
               <small>{t("debts.creditLimit")}</small>
@@ -1096,7 +1072,7 @@ export default function CustomerDebts() {
           </section>
           <EntityContext entityType="customer" entityId={selected.id} />
           <CustomerSalesSummary customerId={selected.id} />
-          {permissions.includes('fulfillment.view')&&<Link to={`/order-hub?customer=${selected.id}`}>{language==='sq'?'Porositë e klientit':'Customer orders'}</Link>}
+
           {correction && (
             <section className="inline-editor">
               <div className="section-header">

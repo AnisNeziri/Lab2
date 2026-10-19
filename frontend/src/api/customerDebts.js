@@ -1,4 +1,5 @@
 import { apiRequest, authenticatedFetch, buildApiUrl } from "./client";
+import { businessError, businessFieldErrors } from "../utils/businessErrors.js";
 
 async function customerCreditRequest(path, options, fallbackMessage) {
   const response = await authenticatedFetch(buildApiUrl(path), options);
@@ -8,9 +9,9 @@ async function customerCreditRequest(path, options, fallbackMessage) {
     : null;
 
   if (!response.ok) {
-    const error = new Error(payload?.message || fallbackMessage);
+    const error = new Error(businessError(payload?.message, fallbackMessage, document.documentElement.lang));
     error.code = payload?.code;
-    error.errors = payload?.errors;
+    error.errors = businessFieldErrors(payload?.errors, document.documentElement.lang);
     error.creditControl = payload?.credit_control;
     error.payload = payload;
     throw error;

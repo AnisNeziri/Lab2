@@ -17,6 +17,7 @@ import { openAimsAssistant } from './AskAimsButton'
 import { useSettingsStore } from '../store/settingsStore'
 
 const labels = {
+  employees:'Employees',
   onboarding_sessions:'Company openings',onboarding_batches:'Opening source batches',
   automations:'Automations', tasks:'Tasks', decisions:'Decisions',
   order_hub:'Orders',
@@ -27,8 +28,8 @@ const labels = {
   purchase_requests: 'Purchase requests', rfqs: 'Requests for quotes', shipments: 'Shipments',
   containers: 'Containers', warehouses: 'Warehouses', bins: 'Storage locations', journals: 'Journals', accounting_accounts:'Accounts', supplier_bills:'Supplier invoices', bank_references:'Cash / bank references',
 }
-const labelsSq = { automations:'Automatizimet', tasks:'Detyrat', order_hub:'Porositë', documents: 'Dokumentet', sales_orders: 'Porositë e shitjeve', pick_tasks: 'Detyrat e mbledhjes', pick_waves: 'Valët e mbledhjes', dispatches: 'Dërgesat / dorëzimet', returns: 'Kthimet e klientëve', products: 'Produktet', stock_movements: 'Lëvizjet e stokut', suppliers: 'Furnitorët', customers: 'Klientët', invoices: 'Faturat', purchase_orders: 'Porositë e blerjes', purchase_requests: 'Kërkesat për blerje', rfqs: 'Kërkesat për oferta', shipments: 'Dërgesat', containers: 'Kontejnerët', warehouses: 'Depot', bins: 'Lokacionet', journals: 'Ditarët kontabël', accounting_accounts:'Llogaritë', supplier_bills:'Faturat e furnitorëve', bank_references:'Referencat arkë / bankë' }
-const entityIcons = { decisions: Activity, products: Package, customers: Users, suppliers: Truck, shipments: Ship, containers: Ship, warehouses: Warehouse, bins: Warehouse, invoices: FileText, documents: FileText, journals: Landmark, stock_movements: Activity }
+const labelsSq = { employees:'Punonjësit', automations:'Automatizimet', tasks:'Detyrat', order_hub:'Porositë', documents: 'Dokumentet', sales_orders: 'Porositë e shitjeve', pick_tasks: 'Detyrat e mbledhjes', pick_waves: 'Valët e mbledhjes', dispatches: 'Dërgesat / dorëzimet', returns: 'Kthimet e klientëve', products: 'Produktet', stock_movements: 'Lëvizjet e stokut', suppliers: 'Furnitorët', customers: 'Klientët', invoices: 'Faturat', purchase_orders: 'Porositë e blerjes', purchase_requests: 'Kërkesat për blerje', rfqs: 'Kërkesat për oferta', shipments: 'Dërgesat', containers: 'Kontejnerët', warehouses: 'Depot', bins: 'Lokacionet', journals: 'Ditarët kontabël', accounting_accounts:'Llogaritë', supplier_bills:'Faturat e furnitorëve', bank_references:'Referencat arkë / bankë' }
+const entityIcons = { employees: Users, decisions: Activity, products: Package, customers: Users, suppliers: Truck, shipments: Ship, containers: Ship, warehouses: Warehouse, bins: Warehouse, invoices: FileText, documents: FileText, journals: Landmark, stock_movements: Activity }
 const commandIcon = path => {
   const group = navigationContext(path)?.group.id
   return ({ sales: Users, inventory: Package, purchasing: Truck, shipments: Ship, finance: Landmark, intelligence: Activity, operations: ClipboardList, settings: Activity })[group] || Command

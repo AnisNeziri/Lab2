@@ -14,6 +14,9 @@ import {
 } from '../api/suppliers'
 import { getSupplierScorecard } from '../api/quality'
 import EntityContext from '../components/EntityContext'
+import SupplierPosition from '../components/SupplierPosition'
+import RowActions from '../components/RowActions'
+import { useUnsavedNavigation } from '../hooks/useUnsavedNavigation'
 import SupplierIntelligence from '../components/SupplierIntelligence'
 import { useSearchParams } from 'react-router-dom'
 import { useSessionState } from '../hooks/useSessionState'
@@ -28,7 +31,7 @@ const emptyForm = {
 }
 
 function Suppliers() {
-  const [documentParams] = useSearchParams()
+  const [documentParams,setDocumentParams] = useSearchParams()
   const { t, language } = useTranslation()
   const ui = useUiText()
   const permissions = useAuthStore(state => state.permissions)
@@ -51,6 +54,9 @@ function Suppliers() {
   const [formError, setFormError] = useState('')
   const [scorecard, setScorecard] = useState(null)
   const scoreRef = useDialog(() => setScorecard(null), false, Boolean(scorecard))
+  const selectedSupplier=suppliers.find(s=>String(s.id)===documentParams.get('supplier'))
+  const dirty=formOpen && JSON.stringify(form)!==JSON.stringify(editingId?{name:suppliers.find(s=>s.id===editingId)?.name,phone:suppliers.find(s=>s.id===editingId)?.phone??'',email:suppliers.find(s=>s.id===editingId)?.email??'',address:suppliers.find(s=>s.id===editingId)?.address??''}:emptyForm)
+  const confirmDiscard=useUnsavedNavigation(dirty,language==='sq'?'Të hidhen poshtë ndryshimet e paruajtura?':'Discard unsaved supplier changes?')
   const visibleSuppliers = suppliers.filter(supplier => [supplier.name, supplier.phone, supplier.email, supplier.address].some(value => String(value || '').toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())))
 
   async function loadSuppliers(silent = false) {
@@ -79,6 +85,7 @@ function Suppliers() {
   }
 
   function startEdit(supplier) {
+    if(saving||!confirmDiscard())return
     setFormOpen(true)
     requestAnimationFrame(() => { formRef.current?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }); formRef.current?.querySelector('input')?.focus({ preventScroll: true }) })
     setEditingId(supplier.id)
@@ -177,7 +184,7 @@ function Suppliers() {
       <PageHeader title={t('nav.suppliers')} description={ui('Supplier contacts and purchasing evidence.')} actions={canManage && !formOpen && <button type="button" className="workspace-primary" onClick={() => setFormOpen(true)}>{ui('Add supplier')}</button>}/>
       {message && <p role="status" className="workspace-success">{message}</p>}
       {scoreBusy && <p role="status">{ui('Loading supplier performance…')}</p>}
-      {suppliers.filter(s=>String(s.id)===documentParams.get('supplier')).map(s=><section className="card" key={s.id}><h2>{s.name}</h2><EntityContext entityType="supplier" entityId={s.id}/></section>)}
+      {selectedSupplier && <SupplierPosition key={selectedSupplier.id} supplier={selectedSupplier} onClose={()=>setDocumentParams({})}/>}
       {formOpen && canManage && <section className="card" ref={formRef}>
         <h2>{ui(editingId ? 'Edit supplier' : 'Add supplier')}</h2>
         <form className="supplier-form" onSubmit={handleSubmit}>
@@ -208,7 +215,7 @@ function Suppliers() {
           <div className="form-actions">
             <button type="submit" disabled={saving}>{ui(saving ? 'Saving…' : editingId ? 'Update supplier' : 'Save supplier')}</button>
             {(
-              <button type="button" className="secondary" disabled={saving} onClick={() => { if (form.name && !window.confirm(ui('Discard unsaved supplier changes?'))) return; cancelEdit(); setFormOpen(false) }}>
+              <button type="button" className="secondary" disabled={saving} onClick={() => { if (!confirmDiscard()) return; cancelEdit(); setFormOpen(false) }}>
                 {ui("Cancel")}
               </button>
             )}
@@ -246,34 +253,23 @@ function Suppliers() {
             <tbody>
               {visibleSuppliers.map((supplier) => (
                 <tr key={supplier.id} className={editingId === supplier.id ? 'editing' : ''}>
-                  <td>{supplier.name}</td>
+                  <td><button className="fc-link" onClick={()=>setDocumentParams({supplier:supplier.id})}>{supplier.name}</button></td>
                   <td>{supplier.phone ?? '—'}</td>
                   <td>{supplier.email ?? '—'}</td>
                   <td>{supplier.address ?? '—'}</td>
                   <td>{supplier.products_count ?? 0}</td>
-                  <td className="actions">
-                    {canScore && <button type="button" disabled={scoreBusy} className="secondary" onClick={() => openScorecard(supplier)}>
-                      {ui('Scorecard')}
-                    </button>}
-                    {canManage && <button type="button" disabled={saving} className="secondary" onClick={() => startEdit(supplier)}>
-                      {ui('Edit')}
-                    </button>}
-                    {canManage && (
-                      <button
-                        type="button"
-                        className="danger"
-                        disabled={deletingId === supplier.id} onClick={() => handleDelete(supplier)}
-                      >
-                        {ui("Delete")}
-                      </button>
-                    )}
-                  </td>
+                  <td className="actions"><button className="secondary" onClick={()=>setDocumentParams({supplier:supplier.id})}>{language==='sq'?'Hap furnitorin':'Open supplier'}</button><RowActions label={supplier.name} actions={[
+                    canScore&&{label:ui('Scorecard'),disabled:scoreBusy,onClick:()=>openScorecard(supplier)},
+                    canManage&&{label:ui('Edit'),disabled:saving,onClick:()=>startEdit(supplier)},
+                    canManage&&{label:ui('Delete'),danger:true,disabled:deletingId===supplier.id,onClick:()=>handleDelete(supplier)},
+                  ]}/></td>
                 </tr>
               ))}
             </tbody>
           </table></div>
         )}
       </section>
+      {selectedSupplier && <details><summary>{language==='sq'?'Historia dhe dokumentet':'History and documents'}</summary><EntityContext entityType="supplier" entityId={selectedSupplier.id}/></details>}
       {canIntelligence && <details className="supplier-intelligence-disclosure" open={intelligenceOpen} onToggle={event => setIntelligenceOpen(event.currentTarget.open)}><summary>{ui('Delivery intelligence and forecasting')}</summary>{intelligenceOpen && <SupplierIntelligence suppliers={suppliers} initialSupplier={documentParams.get('supplier')}/>}</details>}
       {scorecard && createPortal(
         <div className="quality-modal-backdrop" onMouseDown={event => event.target === event.currentTarget && setScorecard(null)}>

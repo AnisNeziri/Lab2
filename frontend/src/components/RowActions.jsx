@@ -7,18 +7,27 @@ export default function RowActions({ label, actions }) {
   const { language } = useTranslation(), id = useId(), trigger = useRef(null), menu = useRef(null)
   const [open, setOpen] = useState(false), [position, setPosition] = useState({ top: 0, left: 0 })
   const close = () => { setOpen(false); trigger.current?.focus({ preventScroll: true }) }
-  useLayoutEffect(() => {
-    if (!open) return
+  const place = () => {
+    if(!trigger.current)return
     const rect = trigger.current.getBoundingClientRect(), height = menu.current?.offsetHeight || 140
     setPosition({ left: Math.max(8, Math.min(rect.right - 190, window.innerWidth - 198)), top: rect.bottom + height + 8 > window.innerHeight ? Math.max(8, rect.top - height - 4) : rect.bottom + 4 })
+  }
+  useLayoutEffect(() => {
+    if (!open) return
+    place()
     menu.current?.querySelector('button:not(:disabled)')?.focus({ preventScroll: true })
   }, [open])
   useEffect(() => {
     if (!open) return
     const dismiss = event => { if (!menu.current?.contains(event.target) && !trigger.current?.contains(event.target)) setOpen(false) }
-    const hide = () => setOpen(false)
-    document.addEventListener('pointerdown', dismiss); window.addEventListener('resize', hide); window.addEventListener('scroll', hide, true)
-    return () => { document.removeEventListener('pointerdown', dismiss); window.removeEventListener('resize', hide); window.removeEventListener('scroll', hide, true) }
+    const follow = event => {
+      if(event.target instanceof Node&&menu.current?.contains(event.target))return
+      const rect=trigger.current?.getBoundingClientRect()
+      if(!rect||rect.bottom<=0||rect.top>=window.innerHeight){setOpen(false);return}
+      place()
+    }
+    document.addEventListener('pointerdown', dismiss); window.addEventListener('resize', follow); window.addEventListener('scroll', follow, true)
+    return () => { document.removeEventListener('pointerdown', dismiss); window.removeEventListener('resize', follow); window.removeEventListener('scroll', follow, true) }
   }, [open])
   const keyboard = e => {
     const buttons = [...menu.current.querySelectorAll('button:not(:disabled)')], index = buttons.indexOf(document.activeElement)

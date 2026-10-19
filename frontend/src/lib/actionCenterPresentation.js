@@ -1,7 +1,7 @@
 export function attentionPreview(items=[],now=Date.now()) {
  const groups=new Map()
  for(const item of items){const key=JSON.stringify([item.kind,item.title,item.description,item.url]);const previous=groups.get(key);if(previous)previous.occurrences++;else groups.set(key,{...item,occurrences:1})}
- const priority=item=>item.kind==='approval'?0:item.values?.risk==='CRITICAL'?1:item.due_at&&new Date(item.due_at).getTime()<now?2:3
+ const priority=item=>String(item.severity||item.values?.risk).toUpperCase()==='CRITICAL'?0:item.overdue||(item.due_at&&new Date(item.due_at).getTime()<now)?1:item.kind==='approval'?2:3
  return [...groups.values()].sort((a,b)=>priority(a)-priority(b))
 }
 export function attentionDescription(item,language='en') {
