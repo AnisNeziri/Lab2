@@ -98,6 +98,7 @@ class FinancialAccountService
     public function transactions(FinancialAccount $account, array $filters): LengthAwarePaginator
     {
         $query = $account->transactions()->with('creator:id,name')->latest('transaction_date')->latest('id');
+        if(!app(PermissionService::class)->roleHasPermission(Auth::user()->role,'payroll.view')) $query->where(fn($q)=>$q->whereNull('source_type')->orWhereNotIn('source_type',['payroll_payment','employee_advance']));
         if (! empty($filters['from'])) $query->whereDate('transaction_date', '>=', $filters['from']);
         if (! empty($filters['to'])) $query->whereDate('transaction_date', '<=', $filters['to']);
         if (! empty($filters['type'])) $query->where('type', $filters['type']);
@@ -254,6 +255,7 @@ class FinancialAccountService
         return DB::transaction(function () use ($transaction, $reason) {
             DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
             $current = FinancialAccountTransaction::query()->findOrFail($transaction->id);
+            if(in_array($current->source_type,['payroll_payment','employee_advance'],true)) throw ValidationException::withMessages(['transaction'=>'Payroll owns this settlement. Use a reviewed workforce correction workflow; a generic bank reversal cannot change payroll balances.']);
             $ids = array_values(array_filter([$current->id, $current->related_transaction_id]));
             sort($ids);
             $lockedTransactions = FinancialAccountTransaction::query()
@@ -310,6 +312,9 @@ class FinancialAccountService
 
     private function audit(string $action, object $entity, mixed $old, mixed $new, ?string $reason = null): void
     {
+        if($entity instanceof FinancialAccountTransaction && in_array($entity->source_type,['employee_advance','payroll_payment'],true)) {
+            $old=null; $new=['source_type'=>$entity->source_type,'source_id'=>$entity->source_id,'status'=>$entity->status,'confidential_workforce'=>true];
+        }
         ActivityLog::create([
             'company_id' => Auth::user()->company_id, 'user_id' => Auth::id(),
             'action' => $action, 'entity' => class_basename($entity), 'entity_id' => $entity->id,

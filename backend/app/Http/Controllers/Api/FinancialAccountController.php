@@ -15,7 +15,10 @@ class FinancialAccountController extends Controller
     public function __construct(private readonly FinancialAccountService $accounts) {}
 
     public function index(): JsonResponse { return response()->json($this->accounts->accounts()); }
-    public function transaction(FinancialAccountTransaction $transaction):JsonResponse{return response()->json($transaction->load(['account','journalEntry']));}
+    public function transaction(FinancialAccountTransaction $transaction):JsonResponse{
+        if(in_array($transaction->source_type,['payroll_payment','employee_advance'],true)) abort_unless(app(\App\Services\PermissionService::class)->roleHasPermission(auth()->user()->role,'payroll.view'),403);
+        return response()->json($transaction->load(['account','journalEntry']));
+    }
     public function transferRecord(\App\Models\FinancialAccountTransfer $transfer):JsonResponse{return response()->json($transfer->load(['sourceAccount','destinationAccount']));}
 
     public function postingAccounts(): JsonResponse

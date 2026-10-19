@@ -23,6 +23,8 @@ final class IntelligenceAssistantService
         $v=validator($input,['question'=>'required|string|min:2|max:600','language'=>'sometimes|in:en,sq','conversation_id'=>'nullable|uuid','clear_context'=>'sometimes|boolean','simulation_id'=>'nullable|integer|min:1','customer_id'=>'nullable|integer|min:1','entity'=>'nullable|array:type,id','entity.type'=>'required_with:entity|in:product,customer,supplier,shipment,decision,task,purchase_order,sales_order,warehouse','entity.id'=>'required_with:entity|integer|min:1'])->validate();
         $id=$v['conversation_id']??(string)Str::uuid();$context=$this->contextCache()->get($this->key($id),[]);$sq=($v['language']??'en')==='sq';
         if($v['clear_context']??false)$context=[];
+        $workforce=app(\App\Services\Workforce\WorkforceAssistantFacts::class);
+        if($workforceIntent=$workforce->intent($v['question'])) return $workforce->reply($workforceIntent,$id,$sq);
         $factIntent=app(AssistantPlanner::class)->plan($v['question'])['intent'];
         $finance=app(FinanceAssistantFacts::class);
         if($v['clear_context']??false)$finance->clear($id);

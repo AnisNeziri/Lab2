@@ -1,0 +1,7 @@
+const {spawn,spawnSync}=require('node:child_process')
+const path=require('node:path'),vite=path.resolve(process.cwd(),'node_modules/vite/bin/vite.js')
+const build=spawnSync(process.execPath,[vite,'build','--mode','certification','--outDir','dist-dc4'],{stdio:'inherit',windowsHide:true})
+if(build.status!==0)process.exit(build.status??1)
+const server=spawn(process.execPath,[vite,'preview','--outDir','dist-dc4','--host','127.0.0.1','--port','4174','--strictPort'],{stdio:'inherit',windowsHide:true})
+for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>{server.kill(signal);process.exit()})
+server.on('exit',code=>{process.exitCode=code??1})

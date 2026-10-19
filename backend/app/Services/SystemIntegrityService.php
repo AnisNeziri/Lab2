@@ -35,6 +35,7 @@ class SystemIntegrityService
             $this->countCheck('outbound_quantities','Outbound quantity integrity',\App\Models\OutboundAllocation::query()->where(fn($q)=>$q->whereColumn('picked_quantity','>','quantity')->orWhereColumn('packed_quantity','>','picked_quantity')->orWhereColumn('dispatched_quantity','>','packed_quantity')->orWhereColumn('delivered_quantity','>','dispatched_quantity')->orWhereColumn('returned_quantity','>','delivered_quantity'))->count(),'/fulfillment'),
         ];
         if (Schema::hasTable('bank_statement_matches') && app(PermissionService::class)->roleHasPermission(Auth::user()->role, 'accounting.integrity.view')) {
+            foreach(app(\App\Services\Workforce\PayrollReadService::class)->closeChecks(\App\Support\CompanyClock::today()->startOfMonth()->toDateString(),\App\Support\CompanyClock::today()->toDateString()) as $payrollCheck) $checks[]=$this->countCheck($payrollCheck['code'],$payrollCheck['label'],$payrollCheck['count'],'/payroll',$payrollCheck['code']==='payroll_controls');
             foreach (app(FinancialIntegrityChecks::class)->checks() as $financialCheck) {
                 $checks[] = $this->countCheck('finance_'.$financialCheck['code'], $financialCheck['label'], $financialCheck['count'], $financialCheck['url'], $financialCheck['severity']==='critical');
             }
@@ -66,6 +67,7 @@ class SystemIntegrityService
             $checks[]=$this->countCheck('document_current_version','Documents missing their current version',$missing,'/documents');
             $broken=DB::table('document_links')->where('company_id',$companyId)->whereNotIn('entity_type',array_keys(DocumentEntityRegistry::TYPES))->count();
             foreach(DocumentEntityRegistry::TYPES as $type=>[$model,$table]){
+                if(!Schema::hasTable($table))continue;
                 $broken+=DB::table('document_links as l')->where('l.company_id',$companyId)->where('l.entity_type',$type)->whereNotExists(fn($q)=>$q->selectRaw('1')->from($table.' as e')->whereColumn('e.id','l.entity_id')->whereColumn('e.company_id','l.company_id'))->count();
             }
             $checks[]=$this->countCheck('document_relationships','Broken document relationships',$broken,'/documents');

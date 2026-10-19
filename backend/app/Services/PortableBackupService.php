@@ -278,6 +278,9 @@ class PortableBackupService
         abort_unless($user?->company_id, 403, 'Select an explicit company context before creating a backup.');
 
         $modules = $this->normalizeModules($requestedModules);
+        if(Schema::hasTable('employees') && \App\Models\Employee::query()->exists() && ($requestedModules===null || in_array('finance',$modules,true) || in_array('documents',$modules,true))) {
+            throw ValidationException::withMessages(['modules'=>'This company contains confidential workforce/payroll history. Use a complete encrypted installation backup. Portable payroll snapshot/identity remapping is not supported; this export cannot silently omit those records.']);
+        }
         $company = Company::query()->findOrFail($user->company_id);
         $coreTables = $this->tablesForModules($modules);
         $rawData = [];

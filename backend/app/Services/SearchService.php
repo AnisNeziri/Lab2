@@ -31,6 +31,7 @@ class SearchService
         $term = trim($term);
         $like = '%'.addcslashes($term, '%_\\').'%';
         $result = [];
+        if($this->can('employees.view')) $result['employees']=\App\Models\Employee::where(fn($q)=>$q->where('name','like',$like)->orWhere('employee_number','like',$like)->orWhere('department','like',$like)->orWhere('position','like',$like))->orderBy('name')->limit(8)->get(['id','name','employee_number','department','position'])->map(fn($e)=>$this->item($e->id,$e->name,$e->employee_number.' · '.$e->department.' · '.$e->position,'/workforce?employee='.$e->id));
         if ($this->can('onboarding.view')) {
             $result['onboarding_sessions']=\App\Models\OnboardingSession::where(fn($q)=>$q->where('name','like',$like)->orWhere('source_period','like',$like)->orWhere('public_id','like',$like))->latest('id')->limit(6)->get()->map(fn($s)=>$this->item($s->id,$s->name,$s->source_period,'/onboarding?session='.$s->id));
             $result['onboarding_batches']=\App\Models\OnboardingBatch::where('filename','like',$like)->latest('id')->limit(6)->get()->map(fn($b)=>$this->item($b->id,$b->filename,$b->row_count,'/onboarding?session='.$b->onboarding_session_id.'&domain='.$b->domain));
@@ -121,6 +122,7 @@ class SearchService
         if ($this->can('accounting.journal.view')) {
             $result['accounting_accounts']=\App\Models\AccountingAccount::query()->where(fn($q)=>$q->where('code','like',$like)->orWhere('name','like',$like))->orderBy('code')->limit(8)->get()->map(fn($a)=>$this->item($a->id,$a->code.' · '.$a->name,ucfirst($a->type),'/accounting?tab=accounts&account='.$a->id));
             $result['journals'] = JournalEntry::query()
+                ->when(!$this->can('payroll.view'),fn($q)=>$q->where('source_module','!=','payroll')->whereDoesntHave('reversalOf',fn($q)=>$q->where('source_module','payroll')))
                 ->where(fn ($q) => $q->where('journal_number', 'like', $like)->orWhere('reference_number', 'like', $like)->orWhere('description', 'like', $like))
                 ->latest('posting_date')->limit(6)->get()->map(fn ($x) => $this->item($x->id, $x->journal_number, $x->description ?: $x->status, '/accounting?tab=journal&journal='.$x->id));
         }

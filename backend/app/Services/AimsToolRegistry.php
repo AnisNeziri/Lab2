@@ -51,6 +51,7 @@ class AimsToolRegistry
         abort_unless($this->can($definition['required_permission']), 403, 'You do not have permission to use this capability.');
 
         $result = match ($name) {
+            'get_workforce_summary','get_payroll_summary','get_unpaid_payroll','get_pending_workforce_approvals'=>app(\App\Services\Workforce\WorkforceAssistantFacts::class)->read($name),
             'get_vat_control_facts','get_fiscalization_facts','get_tax_mapping_gaps','get_accounting_control_summary','get_accounting_receivables','get_accounting_payables','get_month_close_blockers','get_financial_reconciliation','get_payment_allocation_review','get_posted_profit_comparison'=>app(FinanceAssistantFacts::class)->read($name,$input),
             'get_low_stock_facts'=>app(OpeningFactsService::class)->lowStock(),
             'get_onboarding_status','get_import_review','get_onboarding_reconciliation'=>app(OpeningFactsService::class)->onboarding($input),
@@ -255,6 +256,7 @@ class AimsToolRegistry
         $id = fn (string $key) => ['type' => 'object', 'required' => [$key], 'properties' => [$key => ['type' => 'integer', 'minimum' => 1]]];
         $tool = fn ($name, $description, $input, $permission) => ['name' => $name, 'description' => $description, 'input_schema' => $input, 'output_schema' => ['type' => 'object'], 'required_permission' => $permission, 'company_scoped' => true, 'read_only' => true, 'audit_required' => false];
         return [
+            ...array_map(fn($name,$permission)=>$tool($name,'Read-only authorized workforce facts. Never changes payroll, approves leave, pays or makes employment decisions.',['type'=>'object','properties'=>[]],$permission),array_keys(\App\Services\Workforce\WorkforceAssistantFacts::TOOLS),array_values(\App\Services\Workforce\WorkforceAssistantFacts::TOOLS)),
             $tool('get_low_stock_facts','Current authoritative available stock below configured minimum or reorder threshold. Never a prediction.',['type'=>'object','properties'=>[]],'inventory.view'),
             ...array_map(fn($name)=>$tool($name,'Read-only company opening controls and a bounded review preview. No raw source or operational mutation.',['type'=>'object','properties'=>['session_id'=>['type'=>'integer','minimum'=>1],'domain'=>['type'=>'string','enum'=>array_keys(\App\Services\Onboarding\OnboardingSchema::DOMAINS)]]],'onboarding.view'),['get_onboarding_status','get_import_review','get_onboarding_reconciliation']),
             ...array_map(fn($name)=>$tool($name,'Create an isolated hypothetical simulation run; no operational records or automations.',['type'=>'object','required'=>['name','horizon','assumptions'],'properties'=>['parent_id'=>['type'=>'integer','minimum'=>1],'name'=>['type'=>'string'],'description'=>['type'=>'string'],'horizon'=>['type'=>'integer','enum'=>[30,60,90,180,365]],'scope'=>['type'=>'array'],'assumptions'=>['type'=>'array'],'optimize'=>['type'=>'boolean']]],'analytics.finance'),['create_simulation_scenario','run_strategic_simulation']),

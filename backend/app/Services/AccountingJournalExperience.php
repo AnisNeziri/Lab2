@@ -15,6 +15,8 @@ use Illuminate\Support\Facades\Auth;
 class AccountingJournalExperience
 {
     public const SOURCES = [
+        'payroll_run'=>['PayrollRun','Payroll','payroll.view','/payroll?run='],
+        'employee_advance'=>['Employee','Employee Advance','payroll.view','/workforce?employee='],
         'daily_sale' => ['DailySale', 'Customer Sale', 'daily_sales.manage', '/daily-sales?sale='],
         'invoice' => ['Invoice', 'Customer Invoice', 'invoices.manage', '/invoices?invoice='],
         'invoice_payment' => ['PaymentTransaction', 'Customer Payment', 'payments.process', '/invoices?payment='],
@@ -39,6 +41,7 @@ class AccountingJournalExperience
     public function listing(array $f)
     {
         $q = JournalEntry::query()->with(['creator:id,name', 'poster:id,name'])->withCount('lines');
+        if(!app(PermissionService::class)->roleHasPermission(Auth::user()->role,'payroll.view')) $q->where('source_module','!=','payroll')->whereDoesntHave('reversalOf',fn($q)=>$q->where('source_module','payroll'));
         if (! empty($f['period_id'])) {
             $period = AccountingPeriod::findOrFail($f['period_id']);
             $f['from'] = $period->starts_at->toDateString();
@@ -72,6 +75,7 @@ class AccountingJournalExperience
 
     public function detail(JournalEntry $j): array
     {
+        if($j->source_module==='payroll'||$j->reversalOf?->source_module==='payroll') abort_unless(app(PermissionService::class)->roleHasPermission(Auth::user()->role,'payroll.view'),403);
         $j->load(['lines.account', 'creator:id,name', 'poster:id,name', 'reversal', 'reversalOf']);
         $debit = Money::normalize($j->lines->sum('debit'));
         $credit = Money::normalize($j->lines->sum('credit'));
@@ -122,6 +126,7 @@ class AccountingJournalExperience
     {
         $record = app(DocumentEntityRegistry::class)->resolve($type, $id);
         $sourceType = match ($type) {
+            'payroll-run'=>'payroll_run', 'employee'=>'employee_advance',
             'invoice' => 'invoice', 'payment' => 'payment_transaction', 'expense' => 'expense', 'journal' => 'journal_entry',
             'daily-sale'=>'daily_sale','customer-transaction'=>'customer_debt_transaction','supplier-payment'=>'purchase_order_payment','supplier-allocation'=>'supplier_payment_allocation',
             'return'=>'inventory_return','financial-account'=>'financial_account','financial-transaction'=>'financial_account_transaction','financial-transfer'=>'financial_account_transfer','stock-movement'=>'stock_movement','landed-cost'=>'landed_cost', default => null,

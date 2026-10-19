@@ -193,6 +193,11 @@ final class InstallationBackupService
                 if (! $finance['all_reconciled']) $healthy = false;
                 if (app(DocumentMaintenanceService::class)->verifyCompany($company->id)) $healthy = false;
                 $totals[(string) $company->id] = ['inventory_quantity' => number_format((float) DB::table('products')->where('company_id', $company->id)->sum('quantity'), 3, '.', ''), 'finance' => array_map(fn ($row) => array_intersect_key($row, array_flip(['operational_amount', 'gl_amount', 'difference', 'reconciled'])), $finance['rows']), 'users' => DB::table('users')->where('company_id', $company->id)->count(), 'documents' => DB::table('documents')->where('company_id', $company->id)->count()];
+                if(Schema::hasTable('employees') && \App\Models\Employee::query()->exists()) {
+                    $payroll=app(\App\Services\Workforce\PayrollReadService::class)->reconcile('9999-12-31');
+                    if(!$payroll['reconciled']) $healthy=false;
+                    $totals[(string)$company->id]['workforce']=['employees'=>\App\Models\Employee::count(),'runs'=>\App\Models\PayrollRun::count(),'payroll_lines'=>\App\Models\PayrollLine::count(),'advances'=>\App\Models\EmployeeAdvance::count(),'payments'=>\App\Models\PayrollPayment::count(),'controls'=>$payroll['rows']];
+                }
             }
             if (! $this->tenantLinksAreValid()) $healthy = false;
         } finally { if ($prior) Auth::setUser($prior); else Auth::forgetUser(); }
