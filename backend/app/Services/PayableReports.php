@@ -16,11 +16,13 @@ use Illuminate\Support\Facades\DB;
 /** Read-only supplier positions, built from existing bills and settlement audit. */
 class PayableReports
 {
+    private array $dateColumns=[];
     private function effectiveDate(string $table,string $date,string $timestamp):string
     {
         // Installation backup must also read a supported pre-migration database.
         // New rows use their company business date; old rows keep their legacy date.
-        return \Illuminate\Support\Facades\Schema::hasColumn($table,$date)?"COALESCE($table.$date,DATE($table.$timestamp))":"DATE($table.$timestamp)";
+        $columns=$this->dateColumns[$table]??=\Illuminate\Support\Facades\Schema::getColumnListing($table);
+        return in_array($date,$columns,true)?"COALESCE($table.$date,DATE($table.$timestamp))":"DATE($table.$timestamp)";
     }
 
     private function allocations(string $asOf)
@@ -31,6 +33,8 @@ class PayableReports
 
     public function positions(string $asOf, array $filters = [])
     {
+        // Only schema names are shared while building this projection, never balances or authorization.
+        $this->dateColumns=[];
         $direct = ExpensePayment::query()->join('expenses as b', fn ($j) => $j->on('b.id', '=', 'expense_payments.expense_id')->where('b.company_id', Auth::user()->company_id))
             ->whereDate('payment_date', '<=', $asOf)->where(fn ($q) => $q->where('expense_payments.status', 'completed')->orWhereRaw($this->effectiveDate('expense_payments','reversal_date','reversed_at').' > ?',[$asOf]))
             ->selectRaw('expense_id,SUM(amount) amount,SUM(ROUND(amount*COALESCE(b.exchange_rate,1),2)) carrying')->groupBy('expense_id');

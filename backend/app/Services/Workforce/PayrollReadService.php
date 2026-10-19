@@ -59,7 +59,7 @@ class PayrollReadService
 
     public function closeChecks(string $from, string $to): array
     {
-        if (! Schema::hasTable('payroll_runs')) {
+        if (! WorkforcePresence::exists()) {
             return [];
         }
         $unposted = PayrollRun::whereIn('status', ['draft', 'calculated', 'needs_review', 'approved'])->whereHas('period', fn ($q) => $q->where('starts_on', '<=', $to)->where('ends_on', '>=', $from))->count();
@@ -76,6 +76,7 @@ class PayrollReadService
 
     public function attention(): array
     {
+        if(!WorkforcePresence::exists()) return [];
         $items = [];
         if ($this->workforce->can('workforce.approve')) {
             foreach (WorkforceRecord::where('status', 'requested')->whereIn('kind', ['leave', 'overtime'])->orderBy('starts_on')->limit(15)->get(['id', 'kind', 'employee_id', 'starts_on']) as $r) {

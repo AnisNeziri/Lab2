@@ -35,6 +35,7 @@ class Employee extends Model
 
     protected static function booted(): void
     {
+        static::created(fn($e)=>\App\Services\Workforce\WorkforcePresence::forget((int)$e->company_id));
         static::deleting(fn () => throw new \LogicException('Archive an employee; employment history cannot be deleted.'));
     }
 }

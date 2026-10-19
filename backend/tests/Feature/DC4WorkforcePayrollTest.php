@@ -7,6 +7,7 @@ use App\Models\AccountingPostingMapping;
 use App\Models\Company;
 use App\Models\Document;
 use App\Models\DocumentType;
+use App\Models\Employee;
 use App\Models\EmployeeAdvance;
 use App\Models\EmploymentTerm;
 use App\Models\FinancialAccountTransaction;
@@ -22,6 +23,7 @@ use App\Services\PermissionService;
 use App\Services\Workforce\KosovoPayrollCalculator;
 use App\Services\Workforce\PayrollReadService;
 use App\Services\Workforce\PayrollService;
+use App\Services\Workforce\WorkforcePresence;
 use App\Support\Money;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -243,6 +245,9 @@ class DC4WorkforcePayrollTest extends TestCase
         $this->postJson('/api/payroll/'.$run.'/post', ['fingerprint' => $hash])->assertNotFound();
         $this->postJson('/api/workforce/employees/'.$employee.'/terms', $this->term('999', '2026-10-01'))->assertNotFound();
         $this->getJson('/api/payroll/summary')->assertOk()->assertJsonPath('active_employees', 0);
+        $this->assertFalse(WorkforcePresence::exists());
+        Employee::create(['employee_number' => 'SECOND-COMPANY', 'name' => 'Second company employee', 'status' => 'draft', 'start_date' => '2026-01-01', 'payment_method' => 'cash']);
+        $this->assertTrue(WorkforcePresence::exists());
     }
 
     public function test_leave_attendance_approvals_and_upgrade_permissions_are_preserved(): void

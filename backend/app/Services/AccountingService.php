@@ -151,6 +151,7 @@ class AccountingService
             foreach ($rows as $key => $id) {
                 $a = AccountingAccount::query()->findOrFail($id);
                 if(str_starts_with($key,'payroll_')) {
+                    \App\Services\Workforce\WorkforcePresence::forget((int)Auth::user()->company_id);
                     abort_unless(app(PermissionService::class)->roleHasPermission(Auth::user()->role,'payroll.configure'),403);
                     $definition=\App\Services\Workforce\PayrollService::ACCOUNTS[substr($key,8)]??null;
                     if(!$definition || $a->type!==$definition[2] || AccountingPostingMapping::where('accounting_account_id',$id)->where('mapping_key','!=',$key)->exists()) throw ValidationException::withMessages([$key=>'Use a separate payroll account of the expected type.']);

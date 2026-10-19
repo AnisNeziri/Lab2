@@ -46,7 +46,9 @@ class DocumentService
     {
         $this->permit('documents.view');
         $q = Document::query()->where('company_id', Auth::user()->company_id);
-        if(\Illuminate\Support\Facades\Schema::hasColumn('documents','workforce_scope')) {
+        // The additive DC4 migration creates workforce_scope before employees.
+        // Reuse that request-scoped schema marker; privacy predicates are still evaluated for each user.
+        if(\App\Services\Workforce\WorkforcePresence::schemaExists()) {
             if(!$this->can('employees.documents')) $q->whereNull('workforce_scope');
             if(!$this->can('employees.compensation')) $q->where(fn($q)=>$q->whereNull('workforce_scope')->orWhere('workforce_scope','!=','compensation'));
             if(!$this->can('payroll.view')) $q->where(fn($q)=>$q->whereNull('workforce_scope')->orWhere('workforce_scope','!=','payroll'));
