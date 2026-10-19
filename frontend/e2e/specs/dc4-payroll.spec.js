@@ -231,7 +231,7 @@ test('DC4 approved bonus + advance → calculate → review → post → pay →
       name: 'October 2026 · PAY-' + runId,
       exact: true
     })
-  }).locator('.wf-status').first()).toHaveText('closed');
+  }).locator('.wf-status').first()).toHaveText('Closed');
   await page.screenshot({
     path: path.resolve('../output/dc4-payroll-browser.png'),
     fullPage: true

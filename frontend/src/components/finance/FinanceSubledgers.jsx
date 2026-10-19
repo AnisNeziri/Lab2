@@ -670,7 +670,7 @@ export function FinancePayables() {
     }),
     [view, setView] = useState("aging"),
     [newBill, setNewBill] = useState(false),
-    [supplier, setSupplier] = useState("");
+    [supplier, setSupplier] = useState(params.get("workbench") === "1" ? params.get("supplier") || "" : "");
   const query = useFinanceQuery(
     () =>
       view === "aging"

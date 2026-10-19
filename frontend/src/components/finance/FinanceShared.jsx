@@ -9,6 +9,7 @@ import {
 import { Link } from "react-router-dom";
 import { businessDate, businessMoney } from "../../utils/businessFormat";
 import { getFinanceParties } from "../../api/accounting";
+import { businessStatus } from "../../utils/businessStatus";
 
 export const FinanceContext = createContext(null);
 export const useFinance = () => useContext(FinanceContext);
@@ -84,11 +85,12 @@ export function DateValue({ value, time = false }) {
   return businessDate(value, language, time);
 }
 export function Badge({ value, good }) {
+  const {language}=useFinance();
   return (
     <span
       className={`fc-badge ${good === true ? "fc-good" : good === false ? "fc-bad" : ""}`}
     >
-      {String(value || "—").replaceAll("_", " ")}
+      {businessStatus(value?.toLowerCase(),language)}
     </span>
   );
 }

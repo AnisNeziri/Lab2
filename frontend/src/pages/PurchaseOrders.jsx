@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useSessionState } from '../hooks/useSessionState';
 import { businessDate, businessMoney } from '../utils/businessFormat';
@@ -24,6 +24,9 @@ import { getWarehouses, getWarehouseLocations } from "../api/warehouseOperations
 import { getFinancialAccounts } from "../api/advancedOperations";
 import { useAuthStore } from "../store/authStore";
 import EntityContext from "../components/EntityContext";
+import { BusinessFacts, NextStep, WorkflowSteps } from "../components/WorkflowSummary";
+import RowActions from "../components/RowActions";
+import { useUnsavedNavigation } from "../hooks/useUnsavedNavigation";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const dateOnly = (value) => (value ? String(value).slice(0, 10) : "—");
@@ -137,18 +140,24 @@ export default function PurchaseOrders() {
     reason: "",
   });
   const [search, setSearch] = useSessionState('purchases.search', "");
-  const [supplierFilter, setSupplierFilter] = useSessionState('purchases.supplier', "");
+  const [supplierFilter, setSupplierFilter] = useSessionState('purchases.supplier', detailParams.get('supplier') || "");
   const [orderStatus, setOrderStatus] = useSessionState('purchases.status', "");
   const [paymentStatus, setPaymentStatus] = useSessionState('purchases.payment', "");
   const [orderedDate, setOrderedDate] = useSessionState('purchases.ordered', "");
   const [dueDate, setDueDate] = useSessionState('purchases.due', "");
   const [sort, setSort] = useSessionState('purchases.sort', "recent");
   const [page, setPage] = useSessionState('purchases.page', 1);
+  useEffect(()=>{if(detailParams.get('supplier')){setSupplierFilter(detailParams.get('supplier'));setPage(1)}},[detailParams.get('supplier')]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [shipmentSuccess, setShipmentSuccess] = useState(null);
+  const [editorEpoch,setEditorEpoch]=useState(0),[editorBaseline,setEditorBaseline]=useState(null);
+  const editorSnapshot=JSON.stringify(mode==='order'?form:mode==='payment'?payment:mode==='receive'?{receipt,receiptMeta}:mode==='status'?statusForm:null);
+  useLayoutEffect(()=>setEditorBaseline(editorSnapshot),[mode,selected?.id,editorEpoch]);
+  const editorDirty=Boolean(mode)&&editorBaseline!==null&&editorSnapshot!==editorBaseline;
+  const confirmDiscard=useUnsavedNavigation(editorDirty,language==='sq'?'Të hidhen poshtë ndryshimet e paruajtura të porosisë?':'Discard unsaved purchase order changes?');
 
   const exportStatement = async () => {
     setError("");
@@ -296,8 +305,8 @@ export default function PurchaseOrders() {
     }
   };
 
-  const openOrder = id => setDetailParams(current => { const next = new URLSearchParams(current); next.set('po', id); next.delete('new'); return next; });
-  const backToOrders = () => { detailRequest.current++; setLoading(false); setSelected(null); setMode(''); setDetailParams(current => { const next = new URLSearchParams(current); next.delete('po'); next.delete('new'); return next; }); };
+  const openOrder = id => { if(!confirmDiscard())return; setDetailParams(current => { const next = new URLSearchParams(current); next.set('po', id); next.delete('new'); return next; }); };
+  const backToOrders = () => { if(!confirmDiscard())return; detailRequest.current++; setLoading(false); setSelected(null); setMode(''); setDetailParams(current => { const next = new URLSearchParams(current); next.delete('po'); next.delete('new'); return next; }); };
   useEffect(() => {
     const requestedOrder = Number(detailParams.get('po'));
     if (Number.isInteger(requestedOrder) && requestedOrder > 0) loadOrder(requestedOrder);
@@ -306,6 +315,8 @@ export default function PurchaseOrders() {
   }, [detailParams.get('po'),detailParams.get('new')]);
 
   const beginNew = () => {
+    if(busy||!confirmDiscard())return;
+    setEditorEpoch(x=>x+1);
     detailRequest.current++;
     setDetailParams(current=>{const next=new URLSearchParams(current);next.delete('po');next.set('new','1');return next;});
     setSelected(null);
@@ -316,6 +327,8 @@ export default function PurchaseOrders() {
     setMessage("");
   };
   const beginEdit = () => {
+    if(busy||!confirmDiscard())return;
+    setEditorEpoch(x=>x+1);
     setForm({
       revision: selected.revision,
       supplier_id: String(selected.supplier_id),
@@ -344,10 +357,14 @@ export default function PurchaseOrders() {
     setMode("order");
   };
   const beginPayment = () => {
+    if(busy||!confirmDiscard())return;
+    setEditorEpoch(x=>x+1);
     setPayment(emptyPayment());
     setMode("payment");
   };
   const beginReceipt = () => {
+    if(busy||!confirmDiscard())return;
+    setEditorEpoch(x=>x+1);
     setReceiptKey(crypto.randomUUID());
     setReceiptMeta({ warehouse_id: selected.warehouse_id ? String(selected.warehouse_id) : String(warehouses.find((warehouse) => warehouse.is_default)?.id || ""), location_id: "", received_at: today(), supplier_document_number: "", notes: "", allow_expired_receipt: false, expired_receipt_reason: "" });
     setReceipt(
@@ -378,6 +395,8 @@ export default function PurchaseOrders() {
     setMode("receive");
   };
   const beginStatus = () => {
+    if(busy||!confirmDiscard())return;
+    setEditorEpoch(x=>x+1);
     setStatusForm({
       status: selected.status === "received" ? "completed" : selected.status,
       reason: "",
@@ -588,7 +607,8 @@ export default function PurchaseOrders() {
   const paymentMethodText = (value) => t(`po.method.${value}`);
 
   return (
-    <main className="page-stack">
+    <main className="page-stack purchase-workspace">
+      {editorDirty&&<p role="status" className="workspace-notice">{language==='sq'?'Ndryshime të paruajtura':'Unsaved changes'}</p>}
       <SuccessAnimation
         open={Boolean(shipmentSuccess)}
         variant="shipment"
@@ -701,7 +721,7 @@ export default function PurchaseOrders() {
             </>}
             <label>
               {t("po.notes")}
-              <textarea
+              <textarea aria-label={t("po.notes")}
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
               />
@@ -709,7 +729,7 @@ export default function PurchaseOrders() {
             {selected && (
               <label>
                 {t("po.changeReason")}
-                <textarea
+                <textarea aria-label={t("po.changeReason")}
                   value={form.change_reason}
                   onChange={(e) =>
                     setForm({ ...form, change_reason: e.target.value })
@@ -840,7 +860,7 @@ export default function PurchaseOrders() {
               <button
                 type="button"
                 className="secondary"
-                onClick={()=>{if(selected)setMode("");else backToOrders();}}
+                onClick={()=>{if(selected){if(confirmDiscard())setMode("");}else backToOrders();}}
               >
                 {t("po.close")}
               </button>
@@ -978,7 +998,7 @@ export default function PurchaseOrders() {
               <button
                 type="button"
                 className="secondary"
-                onClick={() => setMode("")}
+                onClick={() => {if(confirmDiscard())setMode("")}}
               >
                 {t("po.close")}
               </button>
@@ -1062,7 +1082,7 @@ export default function PurchaseOrders() {
               <button
                 type="button"
                 className="secondary"
-                onClick={() => setMode("")}
+                onClick={() => {if(confirmDiscard())setMode("")}}
               >
                 {t("po.close")}
               </button>
@@ -1108,7 +1128,7 @@ export default function PurchaseOrders() {
               <button
                 type="button"
                 className="secondary"
-                onClick={() => setMode("")}
+                onClick={() => {if(confirmDiscard())setMode("")}}
               >
                 {t("po.close")}
               </button>
@@ -1128,81 +1148,28 @@ export default function PurchaseOrders() {
               </p>
             </div>
             <div className="table-actions">
-              <button
-                className="secondary"
-                disabled={["completed", "cancelled"].includes(selected.status)}
-                onClick={beginEdit}
-              >
-                {t("po.edit")}
-              </button>
-              <button
-                disabled={
-                  Number(selected.remaining_balance) <= 0 ||
-                  selected.status === "cancelled"
-                }
-                onClick={beginPayment}
-              >
-                {t("po.recordPayment")}
-              </button>
-              <button
-                className="secondary"
-                disabled={
-                  ["completed", "cancelled"].includes(selected.status) ||
-                  !selected.items.some(
-                    (item) => Number(item.remaining_quantity) > 0,
-                  )
-                }
-                onClick={beginReceipt}
-              >
-                {t("po.receiveProducts")}
-              </button>
-              <button
-                className="secondary"
-                disabled={
-                  selected.status === "partially_received" ||
-                  selected.status === "cancelled" ||
-                  selected.status === "completed"
-                }
-                onClick={beginStatus}
-              >
-                {t("po.changeStatus")}
-              </button>
-              <button className="secondary" onClick={exportStatement}>
-                {t("po.export")}
-              </button>
-              <button
-                className="danger"
-                disabled={
-                  busy ||
-                  [
-                    "received",
-                    "partially_received",
-                    "completed",
-                    "cancelled",
-                  ].includes(selected.status) ||
-                  Number(selected.total_paid) > 0
-                }
-                onClick={cancelOrder}
-              >
-                {t("po.cancelOrder")}
-              </button>
-              {selected.status === "completed" && (
-                <button
-                  className="danger"
-                  disabled={busy}
-                  onClick={removeCompletedOrder}
-                >
-                  {t("po.deleteOrder")}
-                </button>
-              )}
-              <button
-                className="secondary"
-                onClick={backToOrders}
-              >
-                {t("po.back")}
-              </button>
+              <RowActions label={selected.po_number} actions={[
+                {label:t("po.edit"),disabled:busy||["completed","cancelled"].includes(selected.status),onClick:beginEdit},
+                {label:t("po.recordPayment"),disabled:busy||Number(selected.remaining_balance)<=0||selected.status==='cancelled',onClick:beginPayment},
+                {label:t("po.receiveProducts"),disabled:busy||["completed","cancelled"].includes(selected.status)||!selected.items.some(i=>Number(i.remaining_quantity)>0),onClick:beginReceipt},
+                {label:t("po.changeStatus"),disabled:busy||["partially_received","cancelled","completed"].includes(selected.status),onClick:beginStatus},
+                {label:t("po.export"),onClick:exportStatement},
+                {label:t("po.cancelOrder"),danger:true,disabled:busy||["received","partially_received","completed","cancelled"].includes(selected.status)||Number(selected.total_paid)>0,onClick:cancelOrder},
+                selected.status==='completed'&&{label:t("po.deleteOrder"),danger:true,disabled:busy,onClick:removeCompletedOrder},
+              ]}/>
+              <button className="secondary" onClick={backToOrders}>{t("po.back")}</button>
             </div>
           </div>
+          <BusinessFacts facts={[
+            {label:t("po.total"),value:money(selected.total_amount,selected.currency)},
+            {label:t("po.paid"),value:money(selected.total_paid,selected.currency)},
+            {label:t("po.remaining"),value:money(selected.remaining_balance,selected.currency)},
+            {label:t("po.expectedDate"),value:displayDate(selected.expected_at)},
+          ]}/>
+          <WorkflowSteps label={language==='sq'?'Ecuria e blerjes':'Purchasing progress'} steps={language==='sq'?['Porosia','Transporti','Pranimi','Fatura','Pagesa']:['Order','Shipment','Receipt','Bill','Payment']} current={['draft','confirmed'].includes(selected.status)?0:selected.status==='ordered'?1:selected.status==='partially_received'?2:['received','completed'].includes(selected.status)?3:-1}/>
+          {!['cancelled','completed'].includes(selected.status) && <NextStep title={language==='sq'?'Hapi i radhës':'Next step'} action={['draft','confirmed'].includes(selected.status)?<button disabled={busy} onClick={beginStatus}>{t('po.changeStatus')}</button>:selected.items.some(i=>Number(i.remaining_quantity)>0)?<button disabled={busy} onClick={beginReceipt}>{t('po.receiveProducts')}</button>:null}>
+            {['draft','confirmed'].includes(selected.status)?(language==='sq'?'Shqyrto porosinë dhe konfirmo gjendjen para transportit.':'Review the purchase order and confirm its status before shipment.'):(language==='sq'?'Shqyrto dërgesat e lidhura. Regjistro vetëm mallin që ka mbërritur realisht. Faturat dhe pagesat shqyrtohen veçmas.':'Review linked shipments. Record only goods that have physically arrived. Supplier bills and payments are reviewed separately.')}
+          </NextStep>}
           <div className="form-row">
             <p>
               {t("po.orderDate")}:{" "}

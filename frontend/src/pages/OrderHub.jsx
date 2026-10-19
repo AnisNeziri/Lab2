@@ -8,6 +8,7 @@ import EntityDocuments from '../components/EntityDocuments'
 import OrderEditor from '../components/OrderEntry'
 import OrderConnections from '../components/OrderConnections'
 import OrderOverview from '../components/OrderOverview'
+import OrderNextStep from '../components/OrderNextStep'
 import SearchField from '../components/SearchField'
 import Disclosure from '../components/Disclosure'
 import { formatOrderMoney, formatOrderDate } from '../components/orderPresentation'
@@ -43,11 +44,11 @@ export default function OrderHub(){
   const action=(name,data={})=>run(async()=>{const result=await api.action(id,name,data);if(name==='tracking-link')setTracking(`${location.origin}/order-tracking/${result.token}`);else setNotice(({confirm:t('Order confirmed and stock reserved.','Porosia u konfirmua dhe stoku u rezervua.'),cancel:t('Order cancelled. History is preserved.','Porosia u anulua. Historia ruhet.'),note:t('Order note saved.','Shënimi i porosisë u ruajt.'),retry:t('Order matching reviewed.','Përputhja e porosisë u rishikua.')})[name]||t('Order updated.','Porosia u përditësua.'));return result})
   const submit=async data=>{const result=await run(()=>editing?api.resolve(id,data):api.create(data.channel_id,data));if(result){setEditing(false);setParams({intake:result.id})}}
   return <main className="fulfillment-page order-hub"><header className="fulfillment-heading"><div><h1><Inbox/>{t('Orders','Porositë')}</h1><p>{t('Create, prepare and deliver orders — without entering the same sale twice.','Krijoni, përgatitni dhe dorëzoni porositë — pa regjistruar të njëjtën shitje dy herë.')}</p></div><div className="fulfillment-toolbar"><Link to="/fulfillment">{t('Warehouse fulfillment','Përmbushja në depo')}</Link>{manage&&<button className={!id&&!settings&&!creating?'hub-primary':undefined} onClick={()=>navigate({new:1})}><Plus size={17}/>{t('New order','Porosi e re')}</button>}{manage&&<button onClick={()=>navigate({channels:1})}><Settings2 size={17}/>{t('Channels','Kanalet')}</button>}<button aria-label={t('Refresh','Përditëso')} disabled={busy} onClick={()=>run(load)}><RefreshCw size={17}/></button></div></header>
-    {(id||creating||settings)&&<button className="hub-back" onClick={()=>navigate({view})}>{t('Back to inbox','Kthehu te porositë')}</button>}
+    {(id||creating||settings)&&<button className="hub-back" onClick={()=>navigate(Object.fromEntries([...params].filter(([key])=>!['intake','new','channels'].includes(key))))}>{t('Back to inbox','Kthehu te porositë')}</button>}
     {settings&&permissions.includes('approvals.manage')&&<OrderAcceptanceRule {...{t,run,busy}}/>}
     {error&&<div role="alert" className="fulfillment-error">{error}</div>}{notice&&<p role="status">{notice}</p>}
     {settings?<ChannelSettings {...{channels,setChannels,run,busy,t,currency,integrations}}/>:creating||editing?<OrderEditor {...{t,busy,channels}} initial={editing?{...detail?.payload,customer:detail?.order?.customer||detail?.payload?.customer,items:(detail?.payload?.items||[]).map((item,n)=>({...item,name:detail?.order?.items?.[n]?.product?.name,unit_price:item.unit_price??detail?.order?.items?.[n]?.unit_price,unit:item.unit||detail?.order?.items?.[n]?.unit}))}:null} onSubmit={submit} onCancel={()=>editing?setEditing(false):setParams({})}/>:id?detail?<>
-      <section className="fulfillment-panel"><OrderOverview {...{detail,t,language,label}}/>
+      <section className="fulfillment-panel"><OrderOverview {...{detail,t,language,label}} nextStep={<OrderNextStep {...{detail,t,busy,manage,action}} edit={()=>setEditing(true)}/>}/>
         <details><summary>{t("Payment, fulfillment & delivery status","Gjendja e pagesës, përmbushjes & dorëzimit")}</summary><div className="hub-states">{[['order','Order','Porosia'],['payment','Payment','Pagesa'],['fulfillment','Fulfillment','Përmbushja'],['delivery','Delivery','Dorëzimi'],['sync','Sync','Sinkronizimi'],['health','Health','Gjendja']].map(([key,en,sq])=><div key={key}><small>{t(en,sq)}</small><strong>{label(detail.states[key])}</strong></div>)}</div></details>
         {!!detail.issues?.length&&<div className="hub-attention"><h3>{t('Review before acceptance','Shqyrto para pranimit')}</h3><ul>{detail.issues.map((issue,n)=><li key={n}>{issue.line?`${t('Line','Rreshti')} ${issue.line}: `:''}{issue.message}{issue.expected&&` (${issue.submitted} → ${issue.expected})`}</li>)}</ul></div>}
         {detail.last_error&&<p role="alert">{detail.last_error}</p>}
@@ -58,10 +59,10 @@ export default function OrderHub(){
         {detail.order?.approval&&<p>{t('Credit approval','Miratimi i kredisë')}: {label(detail.order.approval.status)} · <Link to="/procurement?view=approvals">{t('Open approvals','Hap miratimet')}</Link></p>}
         {manage&&<div className="fulfillment-toolbar">
           {!detail.order?.confirmed_at&&detail.order?.status!=='cancelled'&&<>
-            <button disabled={busy} onClick={()=>setEditing(true)}>{t('Review / edit','Shqyrto / ndrysho')}</button>
+            <button className="secondary" disabled={busy} onClick={()=>setEditing(true)}>{t('Review / edit','Shqyrto / ndrysho')}</button>
             {!!detail.issues?.length&&<button disabled={busy} onClick={()=>action('retry')}>{t('Retry matching','Riprovo përputhjen')}</button>}
             {detail.acceptance_approval_required&&<button disabled={busy} onClick={()=>{const reason=prompt(t('Reason for order approval','Arsyeja e miratimit të porosisë'));if(reason)action('request-approval',{reason})}}>{t('Request order approval','Kërko miratim porosie')}</button>}
-            {detail.order&&!detail.issues?.length&&(!detail.acceptance_approval_required||['approved','consumed'].includes(detail.acceptance_approval?.status))&&<button className="hub-primary" disabled={busy} onClick={()=>action('confirm')}>{t('Confirm & reserve','Konfirmo & rezervo')}</button>}
+
             {detail.order&&detail.channel.oversale_policy==='require_review'&&<button disabled={busy} onClick={()=>{const reason=prompt(t('Reason for accepting a possible backorder','Arsyeja për pranimin e porosisë në pritje stoku'));if(reason)action('review-stock',{reason})}}>{t('Review backorder','Shqyrto mungesën e stokut')}</button>}
             {detail.order?.payment_type==='credit'&&<button disabled={busy} onClick={()=>{const reason=prompt(t('Credit override reason','Arsyeja e tejkalimit të kredisë'));if(reason)action('credit-override',{reason})}}>{t('Request credit override','Kërko miratim kredie')}</button>}
           </>}

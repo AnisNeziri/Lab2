@@ -6,6 +6,7 @@ import * as api from "../api/tax";
 import { getAccountingAccounts } from "../api/accounting";
 import { getProducts } from "../api/products";
 import "./TaxWorkspace.css";
+import { businessStatus } from "../utils/businessStatus";
 export const cash = (v) =>
   v == null
     ? "—"
@@ -14,9 +15,10 @@ export const cash = (v) =>
         currency: "EUR",
       }).format(Number(v));
 export function TaxStatus({ value }) {
+  const {language}=useTranslation();
   return (
     <span className={"tax-status tax-status-" + String(value).toLowerCase()}>
-      {String(value).replaceAll("_", " ")}
+      {value==='unknown'?(language==='sq'?'Rezultati kërkon verifikim':'Result needs verification'):businessStatus(value,language)}
     </span>
   );
 }
