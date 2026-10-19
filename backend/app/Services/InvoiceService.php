@@ -108,7 +108,7 @@ class InvoiceService
     {
         $this->assertInvoiceCompany($invoice);
         $invoice->load([
-            'customer', 'items.product:id,name,sku,unit,default_warehouse_id', 'items.product.units',
+            'customer', 'items.product:id,name,sku,unit,default_warehouse_id,category_id', 'items.product.units',
             'items.warehouse:id,name,code', 'items.location:id,name,code,path',
             'payments' => fn ($query) => $query->latest('payment_date')->latest('id'),
             'creator:id,name', 'issuer:id,name', 'voider:id,name', 'dailySale.outboundDispatch.order.intake',
