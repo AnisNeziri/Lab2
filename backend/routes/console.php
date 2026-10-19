@@ -98,3 +98,8 @@ Artisan::command('tax:setup', function () {
     app(\Database\Seeders\RolePermissionSeeder::class)->run(preserveExisting: true);
     $this->info('Tax/fiscal permissions installed; existing role grants and revocations preserved.');
 })->purpose('Install current tax/fiscal permissions without resetting customized roles');
+
+Artisan::command('workforce:setup', function () {
+    app(\Database\Seeders\RolePermissionSeeder::class)->run(preserveExisting: true);
+    $this->info('Workforce/payroll permissions installed; existing grants and revocations preserved. Initialize company payroll mappings explicitly in Payroll Configuration.');
+})->purpose('Install workforce permissions without resetting customized roles');

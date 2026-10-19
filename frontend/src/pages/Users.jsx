@@ -173,6 +173,7 @@ function Users() {
               <option value="staff">{text("Staff", "Staf")}</option>
               <option value="manager">{text("Manager", "Menaxher")}</option>
               <option value="accountant">{text("Accountant", "Kontabilist")}</option>
+              <option value="hr">{text("HR — confidential workforce", "HR — personeli konfidencial")}</option>
             </select>
           </label>
 
@@ -242,6 +243,7 @@ function Users() {
                           <option value="staff">{text("Staff", "Staf")}</option>
                           <option value="manager">{text("Manager", "Menaxher")}</option>
               <option value="accountant">{text("Accountant", "Kontabilist")}</option>
+              <option value="hr">{text("HR — confidential workforce", "HR — personeli konfidencial")}</option>
                         </select>
                       ) : (
                         user.role

@@ -35,6 +35,17 @@ class FinancialIntegrityChecks
             $companyChecks[] = DB::table($table.' as child')->leftJoin($parent.' as parent', 'parent.id', '=', 'child.'.$column)->where('child.company_id', $company)->whereNotNull('child.'.$column)
                 ->where(fn ($q) => $q->whereNull('parent.id')->orWhere('parent.company_id', '!=', $company));
         }
+        if(\App\Services\Workforce\WorkforcePresence::schemaExists()) {
+            foreach([
+                ['employees','user_id','users'],['employees','manager_id','employees'],
+                ['employment_terms','employee_id','employees'],['employment_terms','work_schedule_id','work_schedules'],['employment_terms','supersedes_id','employment_terms'],
+                ['workforce_records','employee_id','employees'],['payroll_runs','payroll_period_id','payroll_periods'],['payroll_runs','correction_of_id','payroll_runs'],
+                ['payroll_runs','journal_entry_id','journal_entries'],['payroll_runs','reversal_journal_id','journal_entries'],
+                ['payroll_lines','employee_id','employees'],['payroll_lines','payroll_run_id','payroll_runs'],['payroll_lines','payroll_rule_id','payroll_rules'],
+                ['employee_advances','employee_id','employees'],['employee_advances','journal_entry_id','journal_entries'],['employee_advances','financial_account_transaction_id','financial_account_transactions'],
+                ['payroll_payments','payroll_run_id','payroll_runs'],['payroll_payments','payroll_line_id','payroll_lines'],['payroll_payments','journal_entry_id','journal_entries'],['payroll_payments','financial_account_transaction_id','financial_account_transactions'],
+            ] as [$table,$column,$parent]) $companyChecks[]=DB::table($table.' as child')->leftJoin($parent.' as parent','parent.id','=','child.'.$column)->where('child.company_id',$company)->whereNotNull('child.'.$column)->where(fn($q)=>$q->whereNull('parent.id')->orWhere('parent.company_id','!=',$company));
+        }
         $crossCompany = $this->countUnion($companyChecks);
         $badLines = DB::table('journal_lines as l')->join('journal_entries as j', 'j.id', '=', 'l.journal_entry_id')
             ->where('j.company_id', $company)->whereIn('j.status', ['posted', 'reversed'])
@@ -45,8 +56,11 @@ class FinancialIntegrityChecks
             $table = (new $class)->getTable();
             // JournalLine is not used as a tenant root: every check starts at
             // the authenticated company's journal, then checks source company.
-            $sourceChecks[] = JournalEntry::query()->where('source_type', $type)->whereNotNull('source_id')
-                ->whereNotExists(fn ($q) => $q->selectRaw('1')->from($table.' as source')->whereColumn('source.id', 'journal_entries.source_id')->where('source.company_id', $company))->toBase();
+            $sourceQuery=JournalEntry::query()->where('source_type', $type)->whereNotNull('source_id');
+            // A DC3 installation can be inspected before DC4 migration. Any actual
+            // payroll reference without its schema remains an orphan, not a SQL error.
+            if(!in_array($type,['payroll_run','employee_advance'],true)||\App\Services\Workforce\WorkforcePresence::schemaExists()) $sourceQuery->whereNotExists(fn ($q) => $q->selectRaw('1')->from($table.' as source')->whereColumn('source.id', 'journal_entries.source_id')->where('source.company_id', $company));
+            $sourceChecks[]=$sourceQuery->toBase();
         }
         $sourceChecks[] = JournalEntry::query()->where('source_type', 'company')
             ->where(fn ($q) => $q->whereNull('source_id')->orWhere('source_id', '!=', $company))->toBase();

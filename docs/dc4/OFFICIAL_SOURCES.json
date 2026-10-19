@@ -1,0 +1,43 @@
+{
+  "checked_on": "2026-10-19",
+  "jurisdiction": "XK",
+  "scope": "Ordinary monthly salary withholding and pension foundation; not legal or EDI certification",
+  "sources": [
+    {
+      "authority": "Tax Administration of Kosovo",
+      "url": "https://www.atk-ks.org/njoftim-shtese-lidhur-me-aplikimin-e-shkalleve-te-reja-per-tatimin-ne-te-ardhurat-personale/",
+      "published_on": "2024-08-29",
+      "supports": "Law 08/L-142 new brackets apply from the August 2024 payroll period. Legal publication/entry into force was 2024-08-23; payroll rule effective_from is 2024-08-01 based on the explicit period clarification."
+    },
+    {
+      "authority": "Tax Administration of Kosovo",
+      "url": "https://crmm.atk-ks.org/sq/Public/CalculatorDetail?id=21",
+      "name": "BN24 — Law 08/L-142 gross-to-net calculator",
+      "download_sha256": "8a03268421b8183ea672599c9df7016132babe8d542661b13a6177aa02860950",
+      "supports": "Current primary bands, pension subtraction, separate employer/employee contributions, and 5–15% contribution inputs. Published inline calculator functions independently reproduce gross 1000 / EE 50 / ER 50 / taxable 950 / tax 66 / net 884.",
+      "verification_script": "scripts/verify-dc4-official-fixture.cjs"
+    },
+    {
+      "authority": "Tax Administration of Kosovo — interactive guide",
+      "url": "https://crmm.atk-ks.org/en/Public/InteractiveTaxGuide?ParentId=bdfda16f-f901-4191-2fdf-08dba4862e41&StartingQuestionId=e4dea38e-c11a-4376-2fc7-08dba4862e41",
+      "supports": "Secondary employer 10% withholding; separately permitted pension ranges and withholding/declaration timing."
+    },
+    {
+      "authority": "Official pension legislation published by ATK",
+      "url": "https://www.atk-ks.org/wp-content/uploads/2017/11/Law-No.-04-L-101.pdf",
+      "articles": "6.13–6.14",
+      "supports": "Resident-employee pension applicability up to pension age; temporary foreign stay exclusion subject to residency, not a blanket foreign-citizen exemption."
+    },
+    {
+      "authority": "Kosovo Pension Savings Trust",
+      "url": "https://www.trusti.org/wp-content/uploads/2023/04/2022_KPST_IFRS_PA_en.pdf",
+      "supports": "Separate employee/employer contributions, minimum 5% and maximum 15% including voluntary contributions. Current range also checked against ATK BN24."
+    },
+    {
+      "authority": "Tax Administration of Kosovo",
+      "url": "https://www.atk-ks.org/portfolio/informata-te-pergjithshme-per-tatimet-ne-kosove/",
+      "supports": "Monthly WM/CM declaration window, 1–15 of the following month. Non-working-day deadline extensions require current official-calendar review."
+    }
+  ],
+  "not_verified": ["Official EDI upload schema or automatic filing integration", "Company-specific employment/pension exceptions and legal interpretation", "Full statutory and amendment review for live payroll", "Accountant acceptance of cent-rounding boundary cases"]
+}

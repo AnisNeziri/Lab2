@@ -40,6 +40,7 @@ class AccountingExportService
                         $columns = ['metric', 'value'];
                         break;
                     case 'gl':
+                        if(!app(PermissionService::class)->roleHasPermission(Auth::user()->role,'payroll.view') && \App\Models\JournalEntry::where(fn($q)=>$q->where('source_module','payroll')->orWhereHas('reversalOf',fn($q)=>$q->where('source_module','payroll')))->when($from,fn($q)=>$q->where('posting_date','>=',$from))->where('posting_date','<=',$to)->exists()) abort(403,'This General Ledger export includes confidential payroll. Payroll viewing permission is required.');
                         $query = DB::table('journal_lines as l')->join('journal_entries as j', 'j.id', '=', 'l.journal_entry_id')->join('accounting_accounts as a', 'a.id', '=', 'l.accounting_account_id')
                             ->where('j.company_id', Auth::user()->company_id)->where('a.company_id', Auth::user()->company_id)->whereIn('j.status', ['posted', 'reversed'])
                             ->when($from, fn ($q) => $q->where('j.posting_date', '>=', $from))->whereDate('j.posting_date', '<=', $to)

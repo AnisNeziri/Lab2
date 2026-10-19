@@ -165,6 +165,7 @@ class FinancialControlService
         // An advance can legitimately remain a balance at month end. It is
         // inspected and disclosed, never netted or forced into expense/revenue.
         $checks[] = $this->check('unapplied_customer_advances', 'Review unapplied customer advances', $counts['unallocated_customer_advances'], 'ar', false);
+        foreach(app(\App\Services\Workforce\PayrollReadService::class)->closeChecks($period->starts_at->toDateString(),$to) as $payrollCheck) $checks[]=[...$this->check($payrollCheck['code'],$payrollCheck['label'],$payrollCheck['count'],'periods'),'url'=>'/payroll'];
         $checks[] = $this->check('unapplied_supplier_advances', 'Review unapplied supplier advances', $counts['unallocated_supplier_payments'], 'ap', false);
         $blocked = collect($checks)->contains(fn ($c) => $c['required'] && ! $c['passed']);
         $attention = collect($checks)->contains(fn ($c) => ! $c['passed']);

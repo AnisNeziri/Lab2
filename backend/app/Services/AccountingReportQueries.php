@@ -16,12 +16,14 @@ class AccountingReportQueries
 {
     public function accountActivity(AccountingAccount $account, ?string $from, ?string $to, int $perPage = 50): array
     {
+        if(\App\Models\AccountingPostingMapping::where('mapping_key','like','payroll_%')->where('accounting_account_id',$account->id)->exists()) abort_unless(app(PermissionService::class)->roleHasPermission(Auth::user()->role,'payroll.view'),403);
         $to ??= CompanyClock::today()->toDateString();
         $totals = collect($this->trialBalance($from, $to)['rows'])->firstWhere('id', $account->id);
         $q = DB::table('journal_lines as l')->join('journal_entries as j', 'j.id', '=', 'l.journal_entry_id')
             ->where('j.company_id', Auth::user()->company_id)->whereIn('j.status', ['posted', 'reversed'])
             ->where('l.accounting_account_id', $account->id)->when($from, fn ($q) => $q->where('j.posting_date', '>=', $from))
             ->where('j.posting_date', '<', CarbonImmutable::parse($to)->addDay()->toDateString());
+        if(!app(PermissionService::class)->roleHasPermission(Auth::user()->role,'payroll.view') && (clone $q)->where(fn($q)=>$q->where('j.source_module','payroll')->orWhereExists(fn($q)=>$q->selectRaw('1')->from('journal_entries as original')->whereColumn('original.id','j.reversal_of_id')->where('original.source_module','payroll')))->exists()) abort(403,'This account activity contains confidential payroll details. Payroll viewing permission is required. Financial statement totals remain available.');
         $page = (clone $q)->select(['l.id', 'l.line_number', 'l.debit', 'l.credit', 'l.description', 'l.dimensions',
             'j.id as journal_id', 'j.journal_number', 'j.posting_date', 'j.reference_number', 'j.source_type', 'j.source_module'])
             ->orderBy('j.posting_date')->orderBy('j.id')->orderBy('l.line_number')->orderBy('l.id')->paginate($perPage);

@@ -29,6 +29,9 @@ class DocumentMaintenanceService
                     }
                     foreach (User::withoutGlobalScopes()->where('company_id', $d->company_id)->get() as $user) {
                         $p = app(PermissionService::class);
+                        if($d->workforce_scope && !$p->roleHasPermission($user->role,'employees.documents')) continue;
+                        if($d->workforce_scope==='compensation'&&!$p->roleHasPermission($user->role,'employees.compensation')) continue;
+                        if($d->workforce_scope==='payroll'&&!$p->roleHasPermission($user->role,'payroll.view')) continue;
                         if (! $p->roleHasPermission($user->role, 'documents.view')) {
                             continue;
                         }if ($d->confidentiality === 'restricted' && ! $p->roleHasPermission($user->role, 'documents.manage')) {

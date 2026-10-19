@@ -36,7 +36,7 @@ class UserController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
-            'role' => ['required', Rule::in(['manager', 'staff', 'accountant'])],
+            'role' => ['required', Rule::in(['manager', 'staff', 'accountant', 'hr'])],
             'temporary_password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
@@ -76,7 +76,7 @@ class UserController extends Controller
         $this->ensureManageableUser($user);
 
         $validated = $request->validate([
-            'role' => ['required', Rule::in(['manager', 'staff', 'accountant'])],
+            'role' => ['required', Rule::in(['manager', 'staff', 'accountant', 'hr'])],
         ]);
 
         return response()->json([

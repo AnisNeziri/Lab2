@@ -147,8 +147,17 @@ class AccountingService
     {
         $before = $this->mappings();
         DB::transaction(function () use ($rows) {
+            $this->lockCompany();
             foreach ($rows as $key => $id) {
                 $a = AccountingAccount::query()->findOrFail($id);
+                if(str_starts_with($key,'payroll_')) {
+                    \App\Services\Workforce\WorkforcePresence::forget((int)Auth::user()->company_id);
+                    abort_unless(app(PermissionService::class)->roleHasPermission(Auth::user()->role,'payroll.configure'),403);
+                    $definition=\App\Services\Workforce\PayrollService::ACCOUNTS[substr($key,8)]??null;
+                    if(!$definition || $a->type!==$definition[2] || AccountingPostingMapping::where('accounting_account_id',$id)->where('mapping_key','!=',$key)->exists()) throw ValidationException::withMessages([$key=>'Use a separate payroll account of the expected type.']);
+                    $current=AccountingPostingMapping::where('mapping_key',$key)->value('accounting_account_id');
+                    if($current && (int)$current!==(int)$id && \App\Models\PayrollRun::whereIn('status',['posted','paid','closed','reversed'])->exists()) throw ValidationException::withMessages([$key=>'Posted payroll control mappings cannot be changed without a reviewed balance migration.']);
+                } elseif(AccountingPostingMapping::where('mapping_key','like','payroll_%')->where('accounting_account_id',$id)->exists()) throw ValidationException::withMessages([$key=>'A payroll control account cannot be reused by another subledger.']);
                 if (! $a->is_active || ! $a->is_posting) {
                     throw ValidationException::withMessages([$key => ['Mapping requires an active posting account.']]);
                 }AccountingPostingMapping::query()->updateOrCreate(['company_id' => Auth::user()->company_id, 'mapping_key' => $key], ['accounting_account_id' => $a->id, 'updated_by' => Auth::id()]);
@@ -308,7 +317,7 @@ class AccountingService
                 throw ValidationException::withMessages(['journal' => ['Total debits must equal total credits and be greater than zero.']]);
             }$entry->update(['status' => 'posted', 'posted_by' => Auth::id(), 'posted_at' => now()]);
             $this->audit('accounting.journal_posted', $entry, null, ['debit' => $entry->total_debit, 'credit' => $entry->total_credit]);
-            app(BusinessEventService::class)->record('accounting.journal_posted', $entry, $entry->journal_number, ['source_module' => $entry->source_module, 'source_type' => $entry->source_type, 'source_id' => $entry->source_id, 'total' => $entry->total_debit], "journal:{$entry->id}:posted");
+            app(BusinessEventService::class)->record('accounting.journal_posted', $entry, $entry->journal_number, ['source_module' => $entry->source_module, 'source_type' => $entry->source_type, 'source_id' => $entry->source_id, ...($entry->source_module==='payroll'?['confidential_workforce'=>true]:['total' => $entry->total_debit])], "journal:{$entry->id}:posted");
 
             return $entry->fresh(['lines.account', 'poster:id,name']);
         });
@@ -914,6 +923,7 @@ class AccountingService
 
     private function audit(string $action, object $entity, mixed $old, mixed $new): void
     {
+        if($entity instanceof JournalEntry && ($entity->source_module==='payroll'||$entity->reversalOf?->source_module==='payroll')) { $old=null; $new=['journal_entry_id'=>$entity->id,'status'=>$entity->status,'confidential_workforce'=>true]; }
         ActivityLog::create(['company_id' => Auth::user()->company_id, 'user_id' => Auth::id(), 'action' => $action, 'entity' => class_basename($entity), 'entity_id' => $entity->id, 'description' => str_replace('.', ' ', $action), 'old_value' => $old, 'new_value' => $new, 'ip_address' => request()?->ip()]);
     }
 }

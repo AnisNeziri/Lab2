@@ -1,4 +1,36 @@
 <?php
+\Illuminate\Support\Facades\Route::middleware(['auth.token','password.changed','company.context',\App\Http\Middleware\ConfidentialWorkforceResponse::class,'throttle:120,1'])->group(function(){
+    $w=\App\Http\Controllers\Api\WorkforceController::class;
+    \Illuminate\Support\Facades\Route::get('/workforce/options',[$w,'options']);
+    \Illuminate\Support\Facades\Route::get('/workforce/employees',[$w,'index']);
+    \Illuminate\Support\Facades\Route::post('/workforce/employees',[$w,'store']);
+    \Illuminate\Support\Facades\Route::get('/workforce/employees/{id}',[$w,'show'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::put('/workforce/employees/{id}',[$w,'update'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::post('/workforce/employees/{id}/terms',[$w,'terms'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::put('/workforce/employees/{id}/private',[$w,'privateDetails'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::post('/workforce/employees/{id}/advances',[$w,'advance'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::post('/workforce/schedules',[$w,'schedule']);
+    \Illuminate\Support\Facades\Route::get('/workforce/records',[$w,'records']);
+    \Illuminate\Support\Facades\Route::post('/workforce/records',[$w,'record']);
+    \Illuminate\Support\Facades\Route::post('/workforce/records/{id}/decision',[$w,'decide'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::get('/workforce/self',[$w,'self']);
+    \Illuminate\Support\Facades\Route::get('/workforce/self/records',[$w,'records'])->name('workforce.self.records');
+    \Illuminate\Support\Facades\Route::post('/workforce/self/records',[$w,'record'])->name('workforce.self.record');
+    \Illuminate\Support\Facades\Route::post('/workforce/self/records/{id}/decision',[$w,'decide'])->name('workforce.self.decide')->whereNumber('id');
+    $p=\App\Http\Controllers\Api\PayrollController::class;
+    \Illuminate\Support\Facades\Route::get('/payroll/summary',[$p,'summary']);
+    \Illuminate\Support\Facades\Route::get('/payroll/configuration',[$p,'configuration']);
+    \Illuminate\Support\Facades\Route::post('/payroll/configuration/initialize',[$p,'initialize']);
+    \Illuminate\Support\Facades\Route::put('/payroll/configuration/mappings',[$p,'mappings']);
+    \Illuminate\Support\Facades\Route::post('/payroll/configuration/rules',[$p,'rule']);
+    \Illuminate\Support\Facades\Route::post('/payroll/estimate',[$p,'estimate']);
+    \Illuminate\Support\Facades\Route::get('/payroll/payslips/{id}',[$p,'payslip'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::get('/payroll',[$p,'index']);
+    \Illuminate\Support\Facades\Route::post('/payroll',[$p,'store']);
+    \Illuminate\Support\Facades\Route::get('/payroll/{id}',[$p,'show'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::get('/payroll/{id}/export',[$p,'export'])->whereNumber('id');
+    foreach(['calculate','approve','post','pay','close','reverse','correction'] as $method) \Illuminate\Support\Facades\Route::post('/payroll/{id}/'.$method,[$p,$method])->whereNumber('id');
+});
 \Illuminate\Support\Facades\Route::middleware(['auth.token','password.changed','company.context','throttle:120,1'])->prefix('onboarding')->group(function(){
     $c=\App\Http\Controllers\Api\OnboardingController::class;
     \Illuminate\Support\Facades\Route::get('/',[$c,'index']);

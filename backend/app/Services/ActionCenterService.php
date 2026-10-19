@@ -71,7 +71,7 @@ class ActionCenterService
             'approvals'=>$this->can('approvals.view')?app(ApprovalService::class)->pendingForUser(Auth::user())->count():0,
             'issues'=>OperationalTask::whereIn('id',collect($tasks->items())->pluck('id'))->whereIn('priority',['high','urgent'])->count(),
         ]];
-        $items=[];$intelligentProducts=[];
+        $items=app(\App\Services\Workforce\PayrollReadService::class)->attention();$intelligentProducts=[];
         if($this->can('accounting.reports.view')&&$this->can('accounting.integrity.view'))foreach(app(FinancialControlService::class)->summary()['attention'] as $issue){
             $items[]=['kind'=>'finance','id'=>'dc2-'.$issue['code'],'title'=>$issue['label'],'description'=>($issue['count']??1).' items require review','url'=>$issue['url'],'due_at'=>null,'values'=>['count'=>$issue['count']??1,'difference'=>$issue['difference']??null],'severity'=>$issue['severity']];
         }
