@@ -83,7 +83,7 @@ class TaxCodeService
 continue;
                 }
                 $account = AccountingAccount::query()->findOrFail($data[$field]);
-                if (! $account->is_active || $account->type !== $type) {
+                if (! $account->is_active || !$account->is_posting || $account->type !== $type) {
                     $this->fail('Use an active company-local VAT control account of the correct type.');
                 }
             }

@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\InvoiceProfile;
 use App\Models\Product;
 use App\Models\TaxCode;
+use App\Services\PermissionService;
 use App\Services\TaxCodeService;
 use App\Support\CompanyClock;
+use App\Support\Money;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -19,6 +21,22 @@ class TaxConfigurationController extends Controller
         return response()->json(['codes' => TaxCode::orderBy('code')->orderByDesc('effective_from')->get(),
             'required_from' => InvoiceProfile::query()->value('tax_codes_required_from'), 'treatments' => TaxCodeService::TREATMENTS,
             'qualification' => 'Template rates do not classify goods. An accountant must confirm category, legal basis and credit rights.']);
+    }
+
+    public function available(): JsonResponse
+    {
+        $permissions = app(PermissionService::class);
+        abort_unless(collect(['tax.view', 'invoices.manage', 'finance.view'])->contains(fn ($p) => $permissions->roleHasPermission(auth()->user()->role, $p)), 403);
+
+        return response()->json(['codes' => TaxCode::where('active', true)->orderBy('code')->get(['id', 'code', 'name', 'rate', 'treatment', 'sales_enabled', 'purchases_enabled', 'effective_from', 'effective_to', 'legal_reference'])->map(function ($c) {
+            $data = $c->toArray();
+            $data['invoice_treatment'] = $c->sales_enabled ? app(TaxCodeService::class)->invoiceTreatment($data) : null;
+            $data['purchase_treatment'] = match ($c->treatment) {
+                'taxable' => (Money::compareDecimal($c->rate, 8) === 0 ? 'reduced' : 'standard'),'import' => 'import_vat','reverse_charge' => 'reverse_charge','exempt_without_credit','exempt_with_credit' => 'exempt',default => 'non_vat'
+            };
+
+            return $data;
+        })]);
     }
 
     public function initialize(TaxCodeService $service): JsonResponse

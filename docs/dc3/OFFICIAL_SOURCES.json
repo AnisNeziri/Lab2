@@ -73,5 +73,10 @@
     "Administrative instruction03/2015",
     "Amendment06/2016",
     "Amendment01/2018"
-  ]
+  ],
+  "vat_rate_effective_date_source": {
+    "url": "https://www.atk-ks.org/njoftim-per-tatimpagues-sot-fillon-zbatimi-i-pakos-se-re-fiskale/",
+    "effective_from": "2015-09-01",
+    "verified": "Official ATK notice explicitly applies 8% and 18% from 01 September 2015. Retrieved via search index on 2026-10-19; direct page intermittently returned 502."
+  }
 }

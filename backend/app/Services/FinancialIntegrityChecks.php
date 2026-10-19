@@ -31,7 +31,7 @@ class FinancialIntegrityChecks
         $unbalanced = $this->journalDifferences('posted', $to);
         $companyChecks = [DB::table('journal_lines as l')->join('journal_entries as j', 'j.id', '=', 'l.journal_entry_id')
             ->join('accounting_accounts as a', 'a.id', '=', 'l.accounting_account_id')->where('j.company_id', $company)->where('a.company_id', '!=', $company)];
-        foreach ([['customer_debt_transactions', 'customer_id', 'customers'], ['expenses', 'supplier_id', 'suppliers'], ['expense_payments', 'expense_id', 'expenses'], ['purchase_order_payments', 'purchase_order_id', 'purchase_orders'], ['purchase_order_payments', 'supplier_id', 'suppliers'], ['financial_account_transactions', 'financial_account_id', 'financial_accounts'], ['payment_transactions', 'invoice_id', 'invoices'], ['invoices', 'customer_id', 'customers'], ['accounting_posting_mappings', 'accounting_account_id', 'accounting_accounts'], ['financial_accounts', 'accounting_account_id', 'accounting_accounts'], ['financial_account_transactions', 'journal_entry_id', 'journal_entries'], ['accounting_accounts', 'parent_id', 'accounting_accounts'], ['financial_account_transfers', 'source_account_id', 'financial_accounts'], ['financial_account_transfers', 'destination_account_id', 'financial_accounts']] as [$table,$column,$parent]) {
+        foreach ([['fiscal_receipts','invoice_id','invoices'],['fiscal_receipts','configuration_id','fiscal_configurations'],['fiscal_attempts','fiscal_receipt_id','fiscal_receipts'],['tax_codes','input_account_id','accounting_accounts'],['tax_codes','output_account_id','accounting_accounts'],['landed_costs','source_expense_id','expenses'],['customer_debt_transactions', 'customer_id', 'customers'], ['expenses', 'supplier_id', 'suppliers'], ['expense_payments', 'expense_id', 'expenses'], ['purchase_order_payments', 'purchase_order_id', 'purchase_orders'], ['purchase_order_payments', 'supplier_id', 'suppliers'], ['financial_account_transactions', 'financial_account_id', 'financial_accounts'], ['payment_transactions', 'invoice_id', 'invoices'], ['invoices', 'customer_id', 'customers'], ['accounting_posting_mappings', 'accounting_account_id', 'accounting_accounts'], ['financial_accounts', 'accounting_account_id', 'accounting_accounts'], ['financial_account_transactions', 'journal_entry_id', 'journal_entries'], ['accounting_accounts', 'parent_id', 'accounting_accounts'], ['financial_account_transfers', 'source_account_id', 'financial_accounts'], ['financial_account_transfers', 'destination_account_id', 'financial_accounts']] as [$table,$column,$parent]) {
             $companyChecks[] = DB::table($table.' as child')->leftJoin($parent.' as parent', 'parent.id', '=', 'child.'.$column)->where('child.company_id', $company)->whereNotNull('child.'.$column)
                 ->where(fn ($q) => $q->whereNull('parent.id')->orWhere('parent.company_id', '!=', $company));
         }
@@ -78,7 +78,7 @@ class FinancialIntegrityChecks
             ->select('matched_transaction_id')->groupBy('matched_transaction_id')->havingRaw('COUNT(*) > 1');
         $matches += DB::query()->fromSub($legacyOwners, 'duplicate_owners')->count();
 
-        return collect([
+        return [...app(TaxIntegrityChecks::class)->checks($to), ...collect([
             ['posted_balance', 'Posted journal lines and totals balance', $unbalanced],
             ['company_links', 'Financial records belong to one company', $crossCompany],
             ['valid_lines', 'Posted debit and credit lines are valid', $badLines],
@@ -90,7 +90,7 @@ class FinancialIntegrityChecks
             ['bank_company_links', 'Bank statements and accounts belong to one company', $bankLinks],
             ['bank_match_integrity', 'Bank matches have exclusive, balanced, valid posted ownership', $matches],
         ])->map(fn ($c) => ['code' => $c[0], 'label' => $c[1], 'count' => $c[2], 'passed' => $c[2] === 0,
-            'required' => true, 'severity' => 'critical', 'url' => '/accounting?tab=integrity'])->all();
+            'required' => true, 'severity' => 'critical', 'url' => '/accounting?tab=integrity'])->all()];
     }
 
     /** Aggregate finalized sources; never hydrate the ledger or repair a source. */

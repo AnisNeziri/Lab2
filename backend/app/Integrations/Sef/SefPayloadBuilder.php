@@ -70,7 +70,11 @@ class SefPayloadBuilder
             $item->setName($line->description);
             $item->setPrice((int) Money::multiply($unitGross, '10000', 0));
             $item->setUnit($unit['code']);
-            $item->setQuantity((float) $line->quantity);
+            $quantity=unpack('f',pack('f',(float)$line->quantity))[1];
+            if (Money::compareDecimal(Money::normalizeDecimal((string)$quantity,3),(string)$line->quantity)!==0) {
+                $this->fail('This quantity cannot be represented at the official protocol precision. Split/review the source quantity before fiscalization.');
+            }
+            $item->setQuantity($quantity);
             $item->setTotal(Money::minor($line->line_total));
             $item->setTaxRate($tax);
             $item->setType($category['code']);

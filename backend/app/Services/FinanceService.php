@@ -270,7 +270,7 @@ class FinanceService
     private function salesRows(string $from, string $to): Collection
     {
         return Invoice::query()->with('items')->whereNotIn('status', ['draft', 'void'])
-            ->whereBetween('invoice_date', [$from, $to])->orderBy('invoice_date')->orderBy('id')->get()
+            ->where('invoice_date','>=',$from)->where('invoice_date','<',CarbonImmutable::parse($to)->addDay()->toDateString())->orderBy('invoice_date')->orderBy('id')->get()
             ->flatMap(function (Invoice $invoice) {
                 $sign = $invoice->document_type === 'credit_note' ? -1 : 1;
                 $buyer = $invoice->buyer_snapshot ?? [];
@@ -304,19 +304,19 @@ class FinanceService
     {
         $expenses = Expense::query()->where('document_type','!=','opening_balance')->whereIn('status', ['posted', 'reversed'])
             ->where(function ($query) use ($from, $to) {
-                $query->whereBetween('received_date', [$from, $to])
+                $query->whereBetween('vat_period', [substr($from,0,7), substr($to,0,7)])
                     ->orWhere(function ($reversal) use ($from, $to) {
-                        $reversal->whereNotNull('reversed_at')->whereDate('reversed_at', '>=', $from)->whereDate('reversed_at', '<=', $to);
+                        $reversal->whereNotNull('reversal_date')->whereDate('reversal_date', '>=', $from)->whereDate('reversal_date', '<=', $to);
                     });
             })->orderBy('received_date')->orderBy('id')->get();
         $rows = collect();
         foreach ($expenses as $expense) {
             $documentSign = $expense->document_type === 'credit_note' ? -1 : 1;
-            if ($expense->received_date->betweenIncluded(CarbonImmutable::parse($from), CarbonImmutable::parse($to))) {
-                $rows->push($this->purchaseRow($expense, $documentSign, 'document', $expense->received_date->toDateString(), $expense->original_document_number));
+            if ($expense->vat_period >= substr($from,0,7) && $expense->vat_period <= substr($to,0,7)) {
+                $rows->push($this->purchaseRow($expense, $documentSign, 'document', $expense->vat_period.'-01', $expense->original_document_number));
             }
-            if ($expense->reversed_at && CarbonImmutable::parse($expense->reversed_at)->betweenIncluded(CarbonImmutable::parse($from), CarbonImmutable::parse($to))) {
-                $rows->push($this->purchaseRow($expense, -$documentSign, 'reversal', $expense->reversed_at->toDateString(), $expense->reversal_reason));
+            if ($expense->reversal_date && CarbonImmutable::parse($expense->reversal_date)->betweenIncluded(CarbonImmutable::parse($from), CarbonImmutable::parse($to))) {
+                $rows->push($this->purchaseRow($expense, -$documentSign, 'reversal', $expense->reversal_date->toDateString(), $expense->reversal_reason));
             }
         }
 
@@ -339,6 +339,7 @@ class FinanceService
             'deductible_vat_amount_eur' => round($sign * (float) $expense->deductible_vat_amount_eur, 2),
             'non_deductible_vat_amount_eur' => round($sign * (float) $expense->non_deductible_vat_amount_eur, 2),
             'gross_amount_eur' => round($sign * (float) $expense->gross_amount_eur, 2),
+            'import_taxable_base_eur'=>$expense->import_taxable_base_eur, 'vat_period'=>$expense->vat_period, 'received_date'=>$expense->received_date?->toDateString(),
             'bucket_code' => $this->purchaseBucket($expense), 'reference' => $reference,
         ];
     }

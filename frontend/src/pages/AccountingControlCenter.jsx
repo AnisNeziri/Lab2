@@ -506,6 +506,8 @@ function ControlOverview({ data, owner }) {
             </span>
           </div>
           <p className="fc-caption">{data.tax_controls.qualification}</p>
+          {can('tax.view')&&<Link to="/tax">VAT reconciliation / Rakordimi i TVSH ↗</Link>}{' '}
+          {can('fiscalization.view')&&<Link to="/fiscalization">Fiscalization / Fiskalizimi ↗</Link>}
         </section>
       )}
       {can("accounting.settings.manage") && (

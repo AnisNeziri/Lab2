@@ -1,0 +1,11 @@
+{
+  "package": "qrcode-generator",
+  "version": "2.0.4",
+  "integrity": "sha512-mZSiP6RnbHl4xL2Ap5HfkjLnmxfKcPWpWe/c+5XxCuetEenqmNFf1FH/ftXPCtFG5/TDobjsjz6sSNL0Sr8Z9g==",
+  "source": "https://github.com/kazuhikoarase/qrcode-generator",
+  "license": "MIT",
+  "qualification": "Pinned upstream distribution. Local vendoring avoids changing other worktrees dependency stores.",
+  "upstream_git_head": "83b7e8fe3fddd3b0368dbafd6ce56995bd25e3c8",
+  "license_url": "https://github.com/kazuhikoarase/qrcode-generator/blob/83b7e8fe3fddd3b0368dbafd6ce56995bd25e3c8/LICENSE",
+  "license_sha256": "3a850fa5f08101db6f40676c2786e10bd2cd5fff7b12ffdf1e0c434d4e49d90c"
+}

@@ -1,0 +1,92 @@
+{
+  "qualification": "Local synthetic evidence. No actual ATK endpoint was exercised. Counts below are overlapping focused runs, not a cumulative count.",
+  "sqlite_latest_full_focus": {
+    "tests": 35,
+    "assertions": 382,
+    "result": "PASS"
+  },
+  "sqlite_and_mariadb_dc3_focus": {
+    "tests_each": 13,
+    "assertions_each": 186,
+    "result": "PASS"
+  },
+  "existing_financial_regressions": {
+    "tests": 66,
+    "assertions": 534,
+    "result": "PASS"
+  },
+  "dated_inventory_customer_regressions": {
+    "tests": 2,
+    "result": "PASS",
+    "included_in_earlier_15_test_run": true
+  },
+  "frontend_node": {
+    "tests": 6,
+    "result": "PASS"
+  },
+  "production_build": {
+    "result": "PASS",
+    "seconds": 16.4,
+    "qualification": "Existing large PDF/3D chunk warnings remain."
+  },
+  "browser": {
+    "journeys": 1,
+    "result": "PASS",
+    "seconds": 37.2,
+    "qualification": "Real app on isolated SQLite / ports8010 and4173. Synthetic local certificate, transport disabled. Missing mapping blocked; correction allowed signed preparation; VAT/GL zero. An earlier fixture attempt failed missing payment idempotency key and was corrected."
+  },
+  "mariadb_process_race": {
+    "engine": "11.8.9",
+    "prepare_workers": 2,
+    "same_receipt_id": true,
+    "submit_workers": 2,
+    "one_pending_rejection": true,
+    "receipts": 1,
+    "attempts": 1,
+    "local_mock_sends": 1,
+    "vat_gl": "PASS",
+    "official_atk": "NOT TESTED"
+  },
+  "upgrade": {
+    "engine": "MariaDB 11.8.9 on owned port 3312",
+    "source": "aims_dc2_close_race_20261017_test",
+    "target": "aims_dc3_upgrade_20261019_test",
+    "method": "clone then additive migrate --force; no fresh/reset",
+    "preserved_counts": {
+      "journal_entries": "72",
+      "journal_lines": "144",
+      "expense_tax": "6"
+    },
+    "before_sha256": {
+      "journal_entries": "1742889fc3230811e1c9b9247ce9e8413836aaf3112e82eefb32af5ed5ad55a5",
+      "journal_lines": "c9c7b223573afb184c04b88a07d7c404b47d856b4b090a850bebbe6251248185",
+      "expense_tax": "2d20a16a62841969eede2628458682fc4809d08a9be2b524c21969de020f250a"
+    },
+    "after_sha256": {
+      "journal_entries": "1742889fc3230811e1c9b9247ce9e8413836aaf3112e82eefb32af5ed5ad55a5",
+      "journal_lines": "c9c7b223573afb184c04b88a07d7c404b47d856b4b090a850bebbe6251248185",
+      "expense_tax": "2d20a16a62841969eede2628458682fc4809d08a9be2b524c21969de020f250a"
+    },
+    "preserved": true
+  },
+  "read_projection_probe": {
+    "scope": "one-company small browser fixture; no scale extrapolation",
+    "vat_period": {
+      "queries": 7,
+      "json_bytes": 8653,
+      "ms": 12.99
+    },
+    "fiscal_summary": {
+      "queries": 9,
+      "json_bytes": 1363,
+      "ms": 31.41
+    },
+    "fiscal_invoice_page": {
+      "queries": 4,
+      "json_bytes": 1050,
+      "ms": 6.55
+    }
+  },
+  "official_atk_test": "NOT TESTED — registered credentials/access unavailable",
+  "official_certification": false
+}

@@ -14,7 +14,7 @@ class Expense extends Model
     use BelongsToCompany, SoftDeletes;
 
     protected $fillable = [
-        'tax_code_id', 'tax_snapshot',
+        'tax_code_id', 'tax_snapshot', 'import_taxable_base', 'import_taxable_base_eur',
         'document_version_id', 'company_id', 'vendor_name', 'vendor_business_number', 'vendor_fiscal_number',
         'vendor_vat_number', 'vendor_key', 'document_type', 'document_number',
         'document_number_normalized', 'original_document_number', 'source_type',
@@ -37,6 +37,7 @@ class Expense extends Model
     protected function casts(): array
     {
         return [
+            'import_taxable_base'=>'decimal:2','import_taxable_base_eur'=>'decimal:2',
             'tax_snapshot' => 'array', 'tax_code_id' => 'integer',            'company_id' => 'integer', 'input_vat_eligible' => 'boolean',
             'exchange_rate' => 'decimal:6', 'net_amount' => 'decimal:2', 'vat_rate' => 'decimal:2',
             'vat_amount' => 'decimal:2', 'self_assessed_vat_amount' => 'decimal:2', 'gross_amount' => 'decimal:2',
@@ -53,7 +54,7 @@ class Expense extends Model
     protected static function booted(): void
     {
         static::updating(function (self $expense) {
-            if ($expense->getOriginal('status') !== 'draft' && $expense->isDirty(['tax_code_id','tax_snapshot','net_amount','vat_rate','vat_amount','deductible_vat_amount','non_deductible_vat_amount','vat_treatment','vat_period'])) {
+            if ($expense->getOriginal('status') !== 'draft' && $expense->isDirty(['company_id','document_type','document_number','source_type','asset_treatment','original_expense_id','original_document_number','currency','exchange_rate','invoice_date','received_date','supply_date','import_taxable_base','import_taxable_base_eur','tax_code_id','tax_snapshot','net_amount','vat_rate','vat_amount','deductible_vat_amount','non_deductible_vat_amount','vat_treatment','vat_period','gross_amount','net_amount_eur','vat_amount_eur','gross_amount_eur','deductible_vat_amount_eur','non_deductible_vat_amount_eur','self_assessed_vat_amount','self_assessed_vat_amount_eur','input_vat_eligible','tax_legal_reference'])) {
                 throw \Illuminate\Validation\ValidationException::withMessages(['tax'=>'Posted purchase tax evidence is immutable. Use a source-owned correction.']);
             }
         });

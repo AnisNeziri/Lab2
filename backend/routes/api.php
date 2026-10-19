@@ -621,6 +621,20 @@ Route::middleware('auth.token')->group(function () {
             Route::post('/supplier-invoices/{supplierInvoice}/allocate-payment', [SupplierInvoiceController::class, 'allocatePayment'])->middleware('permission:supplier_invoices.manage');
             Route::post('/supplier-invoices/{supplierInvoice}/approve', [SupplierInvoiceController::class, 'approve'])->middleware(['permission:supplier_invoices.approve','permission:supplier_invoices.post']);
 
+            Route::get('/fiscalization', [\App\Http\Controllers\Api\FiscalizationController::class,'summary'])->middleware('permission:fiscalization.view');
+            Route::get('/fiscalization/invoices', [\App\Http\Controllers\Api\FiscalizationController::class,'candidates'])->middleware('permission:fiscalization.view');
+            Route::get('/fiscalization/mappings', [\App\Http\Controllers\Api\FiscalizationController::class,'mappings'])->middleware('permission:fiscalization.view');
+            Route::put('/fiscalization/configuration', [\App\Http\Controllers\Api\FiscalizationController::class,'configure'])->middleware('permission:fiscalization.configure');
+            Route::put('/fiscalization/mappings', [\App\Http\Controllers\Api\FiscalizationController::class,'saveMapping'])->middleware('permission:fiscalization.configure');
+            Route::get('/fiscalization/receipts/{fiscalReceipt}', [\App\Http\Controllers\Api\FiscalizationController::class,'show'])->middleware('permission:fiscalization.view');
+            Route::post('/fiscalization/invoices/{invoice}/prepare', [\App\Http\Controllers\Api\FiscalizationController::class,'prepare'])->middleware('permission:fiscalization.prepare');
+            Route::post('/fiscalization/receipts/{fiscalReceipt}/submit', [\App\Http\Controllers\Api\FiscalizationController::class,'submit'])->middleware('permission:fiscalization.submit');
+            Route::post('/fiscalization/receipts/{fiscalReceipt}/review', [\App\Http\Controllers\Api\FiscalizationController::class,'review'])->middleware('permission:fiscalization.prepare');
+            Route::get('/tax/vat-period', [\App\Http\Controllers\Api\VatReportingController::class, 'period'])->middleware('permission:tax.view');
+            Route::get('/tax/vat-reconciliation', [\App\Http\Controllers\Api\VatReportingController::class, 'reconciliation'])->middleware('permission:tax.view');
+            Route::get('/tax/vat-documents', [\App\Http\Controllers\Api\VatReportingController::class, 'documents'])->middleware('permission:tax.view');
+            Route::get('/tax/vat-export', [\App\Http\Controllers\Api\VatReportingController::class, 'export'])->middleware(['permission:tax.view','permission:finance.export']);
+            Route::get('/tax/available-codes', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'available']);
             Route::get('/tax/configuration', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'index'])->middleware('permission:tax.view');
             Route::post('/tax/configuration/initialize', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'initialize'])->middleware('permission:tax.configure');
             Route::post('/tax/codes', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'store'])->middleware('permission:tax.configure');

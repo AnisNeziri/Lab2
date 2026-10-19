@@ -77,6 +77,9 @@ return "\x02".chr(strlen($x)).$x;
         $first = FiscalAttempt::orderBy('id')->first();
         $last = FiscalAttempt::orderByDesc('id')->first();
         $this->assertSame($first->request_evidence['details'], $last->request_evidence['details']);
+        $this->getJson('/api/fiscalization/receipts/'.$receipt->id)->assertOk()->assertJsonPath('qr_content',$last->request_evidence['citizen_details'].'|'.$last->request_evidence['citizen_signature'])->assertJsonMissingPath('receipt.request_evidence');
+        $this->getJson('/api/fiscalization')->assertOk()->assertJsonMissingPath('configuration.credentials');
+        $this->getJson('/api/fiscalization/invoices')->assertOk()->assertJsonPath('data.0.receipt.status','fiscalized');
         app(PaymentService::class)->reversePayment($invoice->payments()->firstOrFail(), 'Customer returned the full sale');
         $credit = app(InvoiceService::class)->fullCreditNote($invoice->fresh(), 'Full source-owned customer return');
         $return = $service->prepare($credit);
@@ -180,6 +183,7 @@ return "\x02".chr(strlen($x)).$x;
             'buyer' => ['legal_name' => 'Foreign buyer', 'business_registration_number' => '812111111', 'address' => 'Other company address'],
             'items' => [['description' => 'Foreign draft', 'unit' => 'pcs', 'quantity' => 1, 'unit_price' => 1, 'tax_treatment' => 'non_vat', 'vat_rate' => 0]]]);
         Auth::setUser($owner);
+        $this->postJson('/api/fiscalization/invoices/'.$foreignDraft->id.'/prepare')->assertNotFound();
         try {
             app(FiscalizationService::class)->prepare($foreignDraft);
             $this->fail('Foreign-company document was accessed.');

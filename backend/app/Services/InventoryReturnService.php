@@ -262,7 +262,7 @@ class InventoryReturnService
     {
         if ($return->type !== 'supplier') throw ValidationException::withMessages(['financial_resolution' => ['Supplier credit is available only for a supplier return.']]);
         $original = Expense::query()->where('purchase_order_id', $return->purchase_order_id)
-            ->where('supplier_id', $return->supplier_id)->where('status', 'posted')->latest('id')->first();
+            ->where('supplier_id', $return->supplier_id)->where('status', 'posted')->where('document_type','purchase_invoice')->lockForUpdate()->latest('id')->first();
         if (! $original) throw ValidationException::withMessages(['purchase_order_id' => ['Link a posted supplier invoice before issuing a supplier credit.']]);
         $gross = max(.01, $amount);
         $existingCredits = (float) $original->supplierCredits()->sum('gross_amount');
@@ -273,6 +273,7 @@ class InventoryReturnService
         $vat = round((float) $original->vat_amount * $ratio, 2);
         $net = round($gross - $vat, 2);
         $credit = $this->expenses->create([
+            'original_expense_id'=>$original->id,
             'vendor_name' => $original->vendor_name, 'vendor_business_number' => $original->vendor_business_number,
             'vendor_fiscal_number' => $original->vendor_fiscal_number, 'vendor_vat_number' => $original->vendor_vat_number,
             'document_type' => 'credit_note', 'document_number' => $return->reference_number ?: $return->return_number,

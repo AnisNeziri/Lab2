@@ -189,7 +189,9 @@ class OperationalAccountingService
         $lines = [];
         if (Money::compare($inventory, '0') > 0) $lines[] = ['mapping' => 'inventory', 'debit' => $inventory];
         if (Money::compare($cogs, '0') > 0) $lines[] = ['mapping' => 'cost_of_goods_sold', 'debit' => $cogs];
-        $lines[] = ['mapping' => 'goods_receipt_clearing', 'credit' => $total];
+        $lines[] = $landedCost->source_expense_id
+            ? ['accounting_account_id'=>$landedCost->tax_basis_snapshot['credit_account_id'],'credit'=>$total,'description'=>'Capitalize source bill cost, excluding recoverable VAT']
+            : ['mapping' => 'goods_receipt_clearing', 'credit' => $total];
         $bookDelta = $landedCost->allocations()->get()->sum(fn ($allocation) =>
             Money::minor($allocation->inventory_value_after ?? 0) - Money::minor($allocation->inventory_value_before ?? 0));
         $carry = $bookDelta - Money::minor($inventory);

@@ -9,6 +9,7 @@ use App\Models\FiscalConfiguration;
 use App\Models\FiscalReceipt;
 use App\Models\Invoice;
 use Brick\Math\BigInteger;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -80,7 +81,11 @@ class FiscalizationService
                     $this->fail('The registered POS identity changed. No request was sent.');
                 }
             }
-            $data = $receipt->request_evidence;
+            try {
+                $data = $receipt->request_evidence;
+            } catch (DecryptException) {
+                $this->fail('Prepared evidence cannot be decrypted after restore/key change. Preserve this receipt and obtain a controlled evidence recovery review; no request was sent.');
+            }
             if (! hash_equals($receipt->request_fingerprint, hash('sha256', $data['details']))) {
                 $this->fail('The prepared request fingerprint does not match.');
             }
@@ -126,7 +131,7 @@ class FiscalizationService
                 'http_status' => $result['http_status'], 'finished_at' => now()]);
             $receipt->update(['status' => $result['state'], 'provider_transaction_id' => $result['provider_transaction_id'] ?? null,
                 'fiscalized_at' => $result['state'] === 'fiscalized' ? now() : null, 'error_code' => $result['error_code'], 'operator_message' => $result['message']]);
-            $this->audit('fiscalization.'.$result['state'], $receipt, ['attempt_id' => $attempt->id, 'http_status' => $result['http_status'], 'error_code' => $result['error_code'], 'environment' => 'test', 'evidence_origin' => app()->runningUnitTests() ? 'local_test_double' : 'official_test_response']);
+            $this->audit('fiscalization.'.$result['state'], $receipt, ['attempt_id' => $attempt->id, 'http_status' => $result['http_status'], 'error_code' => $result['error_code'], 'environment' => 'test', 'evidence_origin' => app()->environment(['testing', 'e2e']) ? 'local_test_double' : 'official_test_response']);
 
             return $receipt->fresh();
         });

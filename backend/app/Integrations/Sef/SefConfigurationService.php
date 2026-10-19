@@ -94,7 +94,11 @@ class SefConfigurationService
 
     public function assertSigning(FiscalConfiguration $config): void
     {
-        if (! $config->credential_fingerprint || ! $config->credentials || ! $config->certificate_valid_to || $config->certificate_valid_to->isPast() || $config->certificate_valid_from?->isFuture()) {
+        try { $credentials=$config->credentials; }
+        catch (\Illuminate\Contracts\Encryption\DecryptException) {
+            $this->fail('The signing credential cannot be decrypted after restore/key change. Reinstall it securely on the server; no submission was sent.');
+        }
+        if (! $config->credential_fingerprint || ! $credentials || ! $config->certificate_valid_to || $config->certificate_valid_to->isPast() || $config->certificate_valid_from?->isFuture()) {
             $this->fail('Install a valid ATK TEST credential through the server command. Official interoperability is NOT TESTED until ATK returns evidence.');
         }
     }

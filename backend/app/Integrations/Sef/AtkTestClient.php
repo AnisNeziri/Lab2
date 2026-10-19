@@ -15,6 +15,9 @@ class AtkTestClient
         if ($configuration->environment !== 'test' || ! $configuration->enabled) {
             throw new \LogicException('Only explicitly enabled ATK TEST submissions are supported.');
         }
+        if (app()->environment(['testing', 'e2e']) && ! Http::preventingStrayRequests()) {
+            throw new \LogicException('Automated environments require a protected local HTTP double. Actual ATK TEST interoperability must be an explicit operator run.');
+        }
         try {
             $response = Http::acceptJson()->asJson()->connectTimeout(10)->timeout(30)->withOptions(['allow_redirects' => false, 'verify' => true])->post(self::ENDPOINT, ['details' => $signed['details'], 'signature' => $signed['signature']]);
         } catch (\Throwable $error) {

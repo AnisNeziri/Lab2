@@ -84,6 +84,7 @@ class FinancialControlService
         $cash = $summary['cash'] === null || $summary['bank'] === null ? null : Money::add($summary['cash'], $summary['bank']);
         $working = in_array(null, [$cash, $summary['accounts_receivable'], $summary['inventory_value'], $summary['accounts_payable']], true) ? null
             : Money::subtract(Money::add($cash, $summary['accounts_receivable'], $summary['inventory_value']), $summary['accounts_payable']);
+        $vat=app(VatReportingService::class)->reconciliation(null,$to);
         $period = AccountingPeriod::query()->whereDate('starts_at', '<=', CompanyClock::today())->whereDate('ends_at', '>=', CompanyClock::today())->first();
 
         return ['currency' => $tb['currency'], 'from' => $from, 'to' => $to, 'summary' => $summary, 'counts' => $counts, 'current_period' => $period,
@@ -94,7 +95,7 @@ class FinancialControlService
             'working_capital' => ['cash_bank' => $cash, 'receivables' => $summary['accounts_receivable'], 'inventory' => $summary['inventory_value'],
                 'payables' => $summary['accounts_payable'], 'total' => $working, 'customer_advances' => $summary['customer_advances'], 'supplier_advances' => $summary['supplier_advances'],
                 'explanation' => 'Cash and bank + receivables + inventory − payables. Advances remain visible separately.'],
-            'tax_controls' => ['input_vat' => $value('input_vat'), 'output_vat' => $value('output_vat', true), 'qualification' => 'Configured posted tax-control balances; not an official tax filing.'],
+            'tax_controls' => ['input_vat' => $vat['controls']['input_vat']['gl_total'], 'output_vat' => $vat['controls']['output_vat']['gl_total'], 'reconciliation'=>$vat,'url'=>'/tax?tab=vat', 'qualification' => 'Configured posted tax-control balances; not an official tax filing.'],
             'cash_outlook' => $this->outlook($tb['currency']), 'posted_values_only' => true, 'checked_at' => now()->toIso8601String()];
     }
 

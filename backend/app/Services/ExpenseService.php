@@ -188,7 +188,10 @@ class ExpenseService
             if ($expense->document_type === 'credit_note' && blank($expense->original_document_number)) {
                 throw ValidationException::withMessages(['original_document_number' => ['A credit note must reference the original vendor document.']]);
             }
-            if($expense->tax_code_id) app(TaxCodeService::class)->resolve($expense->tax_code_id,$expense->invoice_date->toDateString(),'purchases');
+            if($expense->tax_code_id && !($expense->document_type==='credit_note'&&$expense->original_expense_id)) app(TaxCodeService::class)->resolve($expense->tax_code_id,$expense->invoice_date->toDateString(),'purchases');
+            if ($expense->vat_treatment === 'import_vat' && (!$expense->import_taxable_base || Money::compare($expense->net_amount,0)!==0)) {
+                throw ValidationException::withMessages(['import_taxable_base'=>'Correct this draft customs VAT assessment: enter the customs taxable base separately and zero goods net amount. Duties/freight belong to separate cost documents.']);
+            }
             $taxPoint = collect([$expense->invoice_date, $expense->received_date, $expense->supply_date])
                 ->filter()->map(fn ($value) => CarbonImmutable::parse($value))->sortDesc()->first();
             $expense->update([
@@ -210,7 +213,11 @@ class ExpenseService
     public function reverse(Expense $expense, string $reason): Expense
     {
         return DB::transaction(function () use ($expense, $reason) {
+            DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
             $expense = Expense::query()->lockForUpdate()->findOrFail($expense->id);
+            if (\App\Models\LandedCost::query()->where('source_expense_id',$expense->id)->whereIn('status',['draft','posted'])->exists()) {
+                throw ValidationException::withMessages(['expense'=>'Reverse or remove linked landed costs before reversing their source bill.']);
+            }
             if ($expense->status === 'reversed') {
                 return $this->find($expense);
             }
@@ -378,8 +385,15 @@ class ExpenseService
     private function prepare(array $data): array
     {
         $taxes=app(TaxCodeService::class);
-        $taxes->assertRequired($data['tax_code_id'] ?? null,$data['invoice_date']);
-        $snapshot=!empty($data['tax_code_id']) ? $taxes->resolve((int)$data['tax_code_id'],$data['invoice_date'],'purchases') : null;
+        $original=null;
+        if(($data['document_type']??'')==='credit_note'&&!empty($data['original_expense_id'])) {
+            $original=Expense::query()->where('status','posted')->lockForUpdate()->findOrFail($data['original_expense_id']);
+            if(\App\Models\LandedCost::where('source_expense_id',$original->id)->whereIn('status',['draft','posted'])->exists())
+                throw ValidationException::withMessages(['credit_note'=>'Reverse or remove linked capitalization before crediting this bill.']);
+            $data['tax_code_id']=$original->tax_code_id;
+        }
+        if(!$original)$taxes->assertRequired($data['tax_code_id'] ?? null,$data['invoice_date']);
+        $snapshot=$original?$original->tax_snapshot:(!empty($data['tax_code_id']) ? $taxes->resolve((int)$data['tax_code_id'],$data['invoice_date'],'purchases') : null);
         if($snapshot) {
             $data['vat_rate']=$snapshot['rate'];
             $data['vat_treatment']=match($snapshot['treatment']) {
@@ -412,8 +426,15 @@ class ExpenseService
         if ($treatment === 'reverse_charge' && Money::compare($vat,0)!==0) {
             throw ValidationException::withMessages(['vat_amount' => ['Supplier VAT must be zero for reverse charge; use the self-assessed VAT field.']]);
         }
+        $importBase = null;
+        if ($treatment === 'import_vat') {
+            $importBase=Money::normalize($data['import_taxable_base']??0);
+            if (Money::compare($importBase,0)<=0 || Money::compare($net,0)!==0) {
+                throw ValidationException::withMessages(['import_taxable_base'=>'A customs VAT assessment requires its taxable customs base and zero goods net amount. The payable is VAT only; record duties and goods separately.']);
+            }
+        }
         if (in_array($treatment, ['standard', 'reduced', 'import_vat'], true)) {
-            $expected = Money::product([$net,$vatRate,'0.01']);
+            $expected = Money::product([$importBase??$net,$vatRate,'0.01']);
             if (abs($vat - $expected) > 0.02) {
                 throw ValidationException::withMessages(['vat_amount' => ["VAT amount must match the {$vatRate}% rate (expected EUR/original {$expected})."]]);
             }
@@ -462,6 +483,7 @@ class ExpenseService
             'document_number' => trim($data['document_number']),
             'document_number_normalized' => $this->normalizeDocumentNumber($data['document_number']),
             'tax_code_id' => $data['tax_code_id'] ?? null, 'tax_snapshot' => $snapshot,
+            'import_taxable_base'=>$importBase,'import_taxable_base_eur'=>$importBase===null?null:Money::multiply($importBase,$rate),
             'net_amount' => $net, 'vat_rate' => $vatRate, 'vat_amount' => $vat,
             'self_assessed_vat_amount' => $selfAssessed,
             'gross_amount' => $gross, 'deductible_vat_amount' => $deductible,

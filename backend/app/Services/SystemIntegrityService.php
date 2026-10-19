@@ -36,7 +36,7 @@ class SystemIntegrityService
         ];
         if (Schema::hasTable('bank_statement_matches') && app(PermissionService::class)->roleHasPermission(Auth::user()->role, 'accounting.integrity.view')) {
             foreach (app(FinancialIntegrityChecks::class)->checks() as $financialCheck) {
-                $checks[] = $this->countCheck('finance_'.$financialCheck['code'], $financialCheck['label'], $financialCheck['count'], $financialCheck['url'], true);
+                $checks[] = $this->countCheck('finance_'.$financialCheck['code'], $financialCheck['label'], $financialCheck['count'], $financialCheck['url'], $financialCheck['severity']==='critical');
             }
             foreach (app(AccountingService::class)->reconciliation(false)['rows'] as $control) {
                 $checks[] = $this->countCheck('finance_control_'.$control['control'], ucwords(str_replace('_', ' ', $control['control'])).' / General Ledger', $control['reconciled'] ? 0 : 1, '/accounting?tab=reconciliation', true);
