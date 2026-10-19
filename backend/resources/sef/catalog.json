@@ -1,0 +1,517 @@
+{
+  "units": [
+    {
+      "id": 1,
+      "code": "EA",
+      "label": "Një  ( njësi )",
+      "description": "Pjese   individuale"
+    },
+    {
+      "id": 2,
+      "code": "CP",
+      "label": "Copë",
+      "description": "Pjese   identike"
+    },
+    {
+      "id": 3,
+      "code": "LTR",
+      "label": "Litër",
+      "description": "Matje  e  lendes  ne  gjendje   te   lenget"
+    },
+    {
+      "id": 4,
+      "code": "SEC",
+      "label": "Sekondë",
+      "description": "Njesi   matese  e  kohes"
+    },
+    {
+      "id": 5,
+      "code": "MIN",
+      "label": "Minutë",
+      "description": "Njesi   matese  e  kohes"
+    },
+    {
+      "id": 6,
+      "code": "HUR",
+      "label": "Orë",
+      "description": "Njesi   matese  e  kohes"
+    },
+    {
+      "id": 7,
+      "code": "DAY",
+      "label": "Ditë",
+      "description": "Njesi   matese  e  kohes"
+    },
+    {
+      "id": 8,
+      "code": "MON",
+      "label": "Muaj",
+      "description": "Njesi   matese  e  kohes"
+    },
+    {
+      "id": 9,
+      "code": "ANN",
+      "label": "Vite",
+      "description": "Njesi   matese  e  kohes"
+    },
+    {
+      "id": 10,
+      "code": "KGB",
+      "label": "Kilogram  bruto",
+      "description": "Njesi   matese  e  peshes  me  paketim"
+    },
+    {
+      "id": 11,
+      "code": "KGN",
+      "label": "Kilogram  neto",
+      "description": "Njesi   matese  e  peshes   vetem   permbajtja"
+    },
+    {
+      "id": 12,
+      "code": "TN",
+      "label": "ton",
+      "description": "Njesi   matese  e  peshes"
+    },
+    {
+      "id": 13,
+      "code": "GRM",
+      "label": "Gram",
+      "description": "Njesi   matese  e  peshes"
+    },
+    {
+      "id": 14,
+      "code": "M4",
+      "label": "Vlerë   monetare",
+      "description": ""
+    },
+    {
+      "id": 15,
+      "code": "UDH",
+      "label": "udhetim",
+      "description": "Udhetim   nga   nje  vend ne  vendin   tjeter"
+    },
+    {
+      "id": 16,
+      "code": "KMT",
+      "label": "km",
+      "description": "Njesi   matese  e  largesise"
+    },
+    {
+      "id": 17,
+      "code": "LM",
+      "label": "metër  linear",
+      "description": "Njesi   matese  e  gjatesise"
+    },
+    {
+      "id": 18,
+      "code": "MTS",
+      "label": "m2",
+      "description": "Njesi   matese  e  siperfaqes"
+    },
+    {
+      "id": 19,
+      "code": "MTV",
+      "label": "m3",
+      "description": "Njesi   matese  e  vellimit"
+    },
+    {
+      "id": 20,
+      "code": "MSK",
+      "label": "m/s2",
+      "description": "Njesi   matese  e  largesise"
+    },
+    {
+      "id": 21,
+      "code": "KWH",
+      "label": "kWh",
+      "description": "Njesi   matese  e  Fuqise"
+    },
+    {
+      "id": 22,
+      "code": "NFJ",
+      "label": "numri   i   fjalëve",
+      "description": "Njesi   matese  e  tekstit"
+    },
+    {
+      "id": 23,
+      "code": "NFQ",
+      "label": "numri   i   faqeve",
+      "description": "Njesi   matese  e  largesise"
+    },
+    {
+      "id": 24,
+      "code": "PRQ",
+      "label": "përqindje   për   njëqind",
+      "description": ""
+    },
+    {
+      "id": 25,
+      "code": "DP",
+      "label": "ditë   pune",
+      "description": "Njesi   matese  e  kohes"
+    },
+    {
+      "id": 26,
+      "code": "OP",
+      "label": "orë   pune",
+      "description": "Njesi   matese  e  kohes"
+    },
+    {
+      "id": 27,
+      "code": "PRD",
+      "label": "përdorim",
+      "description": "Njesi   matese  per  numrin  e  perdorimeve"
+    },
+    {
+      "id": 28,
+      "code": "PAL",
+      "label": "palë",
+      "description": "Njesi   matese"
+    },
+    {
+      "id": 29,
+      "code": "XBX",
+      "label": "kuti",
+      "description": "Njesi   matese"
+    },
+    {
+      "id": 30,
+      "code": "PK",
+      "label": "pako",
+      "description": "Njesi   matese"
+    },
+    {
+      "id": 31,
+      "code": "SET",
+      "label": "set",
+      "description": "Njesi   matese"
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "code": "TT",
+      "label": "Te   Tjera",
+      "description": "Te   Tjera"
+    },
+    {
+      "id": 2,
+      "code": "UR",
+      "label": "Ushqim   Restorani",
+      "description": "Ushqim   Restorani   te   krijuar  ne  kuzhinen  e  tyre"
+    },
+    {
+      "id": 3,
+      "code": "AU",
+      "label": "Artikuj   Ushqimore",
+      "description": "Artikuj   Ushqimore   nge   nga   dyqanet  me  pakice"
+    },
+    {
+      "id": 4,
+      "code": "VM",
+      "label": "Vashmbathje",
+      "description": "Artikuj   Vashmbathje , Tesha,  Kepuce ,  nga   dyqanet  me  pakice"
+    },
+    {
+      "id": 5,
+      "code": "KO",
+      "label": "Kozmetike",
+      "description": "Kozmetike ,  Materiale  per  zbukurim"
+    },
+    {
+      "id": 6,
+      "code": "AP",
+      "label": "Auto  Pjese",
+      "description": "Auto  Pjese  , nga  auto  sevriset   dhe   dyqanet  e auto  pjeseve"
+    },
+    {
+      "id": 7,
+      "code": "BM",
+      "label": "Barna   Mjeksore",
+      "description": "Barna   mjeksore ,  Ilaqe"
+    },
+    {
+      "id": 8,
+      "code": "PM",
+      "label": "Paisje   Medicionale",
+      "description": "Paisje   Medicionale ,  aparatura   te   ndryshme   medicionale"
+    },
+    {
+      "id": 9,
+      "code": "PP",
+      "label": "Peme   dhe   Perime",
+      "description": "Peme   dhe   Perime"
+    },
+    {
+      "id": 10,
+      "code": "PE",
+      "label": "Paisje   Elektronike",
+      "description": "Paisje   elektronie ,  Auido  Video  Paisje"
+    },
+    {
+      "id": 11,
+      "code": "PS",
+      "label": "Paisje   Shtepiake",
+      "description": "Paisje   shtepiake ,  Frigorifera ,  Friza ,  Thithse   Pluhuri ,  Shporeta ,  Paisje   kuzhine   shtepijake,etj"
+    },
+    {
+      "id": 12,
+      "code": "PB",
+      "label": "Paisje   Bujqesore",
+      "description": "Paisje   Bujqesore ,  Makineri   Bujqesore"
+    },
+    {
+      "id": 13,
+      "code": "BB",
+      "label": "Barna   Bujqesore",
+      "description": "Barna   Bujqesore"
+    },
+    {
+      "id": 14,
+      "code": "KB",
+      "label": "Karburante",
+      "description": "Karburante,Te   gjitha   llojet  e  Naftes   dhe   te  Benzines"
+    },
+    {
+      "id": 15,
+      "code": "EE",
+      "label": "Energji   Elektrike",
+      "description": "Energji   Elektrike"
+    },
+    {
+      "id": 16,
+      "code": "PSE",
+      "label": "Paisje  Speciale  Elektrike",
+      "description": "Paisje  Speciale  Elektrike"
+    },
+    {
+      "id": 17,
+      "code": "SM",
+      "label": "Sherbime   Medicionale",
+      "description": "Sherbime   Medicionale"
+    },
+    {
+      "id": 18,
+      "code": "SJ",
+      "label": "Sherbime   Juridike",
+      "description": "Sherbime   Juridike"
+    },
+    {
+      "id": 19,
+      "code": "ST",
+      "label": "Sherbime   Tjera",
+      "description": "Sherbime   Tjera"
+    },
+    {
+      "id": 20,
+      "code": "SK",
+      "label": "Sherbime   Kontabiliteti",
+      "description": "Sherbime   Kontabiliteti"
+    },
+    {
+      "id": 21,
+      "code": "SMK",
+      "label": "Sherbime   Mekanike",
+      "description": "Sherbime   Mekanike"
+    },
+    {
+      "id": 22,
+      "code": "STR",
+      "label": "Sherbime   Transporti",
+      "description": "Sherbime   Transporti"
+    },
+    {
+      "id": 23,
+      "code": "PI",
+      "label": "Paisje   Industriale",
+      "description": "Paisje   Industriale ,  Makineri"
+    },
+    {
+      "id": 24,
+      "code": "PT",
+      "label": "Paisje   Transporti",
+      "description": "Mjete   Transporti , Autobus,  Kamiona ,  Vetura"
+    },
+    {
+      "id": 25,
+      "code": "SEA",
+      "label": "Shërbimet   edukative   arsimore",
+      "description": "Shërbimet   edukative   arsimore"
+    },
+    {
+      "id": 26,
+      "code": "KS",
+      "label": "Klubet  sportive",
+      "description": "Klubet  sportive"
+    },
+    {
+      "id": 27,
+      "code": "MN",
+      "label": "Material  ndërtimor",
+      "description": "Tregtia  me  pakicë  e  materialit   ndërtimor"
+    },
+    {
+      "id": 28,
+      "code": "SHN",
+      "label": "Shërbimet   ndërtimore",
+      "description": "Shërbimet   ndërtimore"
+    },
+    {
+      "id": 29,
+      "code": "SDG",
+      "label": "Shtypi   dhe   dizajni   grafik",
+      "description": "Shtypi   dhe   dizajni   grafik"
+    },
+    {
+      "id": 30,
+      "code": "HT",
+      "label": "Hoteleria   dhe   Turizmi",
+      "description": "Hoteleria   dhe   Turizmi"
+    },
+    {
+      "id": 31,
+      "code": "SHB",
+      "label": "Shërbimet   Bankare",
+      "description": "Shërbimet   Bankare"
+    },
+    {
+      "id": 32,
+      "code": "STI",
+      "label": "Shërbimet  e TI",
+      "description": "Shërbimet  e TI"
+    },
+    {
+      "id": 33,
+      "code": "SHT",
+      "label": "Shërbime   të   Telekomunikimit",
+      "description": "Shërbime   të   Telekomunikimit"
+    },
+    {
+      "id": 34,
+      "code": "PBS",
+      "label": "Prodhimi   Bimor   dhe   Shtazor",
+      "description": "Tregtia  me  pakicë  e  luleve ,  bimëve ,  farërave ,  plehrave   artificialë ,  kafshëve   përkdhelëse   dhe   ushqimi   i   tyre ,  në   dyqane   të   specializuara"
+    },
+    {
+      "id": 35,
+      "code": "MPM",
+      "label": "Mishi   dhe   produkt   i  mishit",
+      "description": "Tregtia  me  pakicë  e mishit  dhe   produkteve   të  mishit  në   dyqane   të   specializuara"
+    },
+    {
+      "id": 36,
+      "code": "PM",
+      "label": "Mielli   dhe   produktet  e  miellit   si  Buka,  byreku ,  etj",
+      "description": "Mielli   dhe   produktet  e  miellit   si  Buka,  byreku …"
+    },
+    {
+      "id": 37,
+      "code": "PPD",
+      "label": "Prodhimi   i   produkteve   të   Drurit",
+      "description": "Prodhimi   i   produkteve   të   Drurit"
+    },
+    {
+      "id": 38,
+      "code": "PPH",
+      "label": "Prodhimi   i   produkteve   të   Hekurit",
+      "description": "Prodhimi   i   produkteve   të   Hekurit"
+    },
+    {
+      "id": 39,
+      "code": "PPP",
+      "label": "Prodhimi   i   produkteve   të   Plastikës",
+      "description": "Prodhimi   i   produkteve   të   Plastikës"
+    },
+    {
+      "id": 40,
+      "code": "PPA",
+      "label": "Prodhimi   i   produkteve   të   Aluminit",
+      "description": "Prodhimi   i   produkteve   të   Aluminit"
+    },
+    {
+      "id": 41,
+      "code": "PHN",
+      "label": "Pajisje   hidraulike   dhe   të   ngrohjes",
+      "description": "Pajisje   hidraulike   dhe   të   ngrohjes"
+    },
+    {
+      "id": 42,
+      "code": "SHH",
+      "label": "Shërbimet   hidraulike",
+      "description": "Shërbimet   hidraulike"
+    },
+    {
+      "id": 43,
+      "code": "SUA",
+      "label": "Sherbime   udhetimi ,  akomodimi",
+      "description": "Agjencionet  e  udhëtimeve ,  Sherbime   udhetimi ,  akomodimi"
+    },
+    {
+      "id": 44,
+      "code": "SHZ",
+      "label": "sherbime   te   zbukurimit",
+      "description": "Sallonet  e  floktarisë   dhe   trajtimet  e  tjera   të   bukurisë ,  ondulim ,  etj"
+    },
+    {
+      "id": 45,
+      "code": "PJA",
+      "label": "Pijet  jo  alkoolike",
+      "description": "Pijet  jo  alkoolike"
+    },
+    {
+      "id": 46,
+      "code": "PAL",
+      "label": "Pijet   alkoolike",
+      "description": "Pijet   alkoolike"
+    },
+    {
+      "id": 47,
+      "code": "DUH",
+      "label": "Duhani",
+      "description": "Duhani"
+    },
+    {
+      "id": 48,
+      "code": "SHM",
+      "label": "Sherbime   Marketingu",
+      "description": "Agjencitë   për   publicitet"
+    },
+    {
+      "id": 49,
+      "code": "PRO",
+      "label": "Prodhimtaria",
+      "description": "Prodhimtaria"
+    },
+    {
+      "id": 50,
+      "code": "SFV",
+      "label": "shpërndarja  e  filmave ,  videove   dhe   programeve   televizive",
+      "description": "Aktivitetet  e  shpërndarjes   së   filmave ,  videove   dhe   programeve   televizive"
+    },
+    {
+      "id": 51,
+      "code": "BSH",
+      "label": "Blegtoria   dhe   Shpezëtaria",
+      "description": "Blegtoria   dhe   Shpezëtaria"
+    },
+    {
+      "id": 52,
+      "code": "RPK",
+      "label": "Riparimi   i   pajisjeve   të   komunikimit",
+      "description": "Riparimi   i   pajisjeve   të   komunikimit"
+    },
+    {
+      "id": 53,
+      "code": "PTI",
+      "label": "PC,  Llaptop ,",
+      "description": "Paisje   Teknologjis  Informative"
+    }
+  ],
+  "source_sha256": "1045a55e2bab7d2a1f702305f8e6c90c59d6f51608004f23adc6c9f46d7ed35d",
+  "ambiguous_category_codes": {
+    "PM": [
+      8,
+      36
+    ]
+  }
+}

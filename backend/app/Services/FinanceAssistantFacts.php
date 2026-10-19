@@ -17,13 +17,22 @@ use Illuminate\Support\Str;
 /** Read-only finance evidence. No financial command is registered here. */
 class FinanceAssistantFacts
 {
-    public const TOOLS = ['get_accounting_control_summary', 'get_accounting_receivables', 'get_accounting_payables', 'get_month_close_blockers', 'get_financial_reconciliation', 'get_payment_allocation_review', 'get_posted_profit_comparison'];
+    public const TOOLS = ['get_vat_control_facts','get_fiscalization_facts','get_tax_mapping_gaps','get_accounting_control_summary', 'get_accounting_receivables', 'get_accounting_payables', 'get_month_close_blockers', 'get_financial_reconciliation', 'get_payment_allocation_review', 'get_posted_profit_comparison'];
 
     public function read(string $tool, array $input = []): array
     {
         $to = $input['to'] ?? CompanyClock::today()->toDateString();
         validator(['to' => $to, 'from' => $input['from'] ?? null], ['to' => 'required|date_format:Y-m-d', 'from' => 'nullable|date_format:Y-m-d|before_or_equal:to'])->validate();
         switch ($tool) {
+            case 'get_vat_control_facts':
+                $p=app(VatReportingService::class)->period(substr($to,0,7));
+                return array_intersect_key($p,array_flip(['period','rows','warnings','unmapped','reconciliation','ready_for_review','qualification']));
+            case 'get_fiscalization_facts':
+                $p=app(FiscalWorkspace::class)->summary();
+                return array_intersect_key($p,array_flip(['environment','counts','recent_failures','readiness','products_missing_tax']));
+            case 'get_tax_mapping_gaps':
+                return ['count'=>\App\Models\Product::whereNull('default_tax_code_id')->count(),'items'=>\App\Models\Product::whereNull('default_tax_code_id')->orderBy('id')->limit(10)->get(['id','name','sku'])->toArray(),'qualification'=>'Missing classifications require an accountant decision. Product names are not tax rules.'];
+
             case 'get_accounting_control_summary':
                 $data = app(FinancialControlService::class)->summary($input['from'] ?? null, $to);
 
@@ -90,10 +99,14 @@ class FinanceAssistantFacts
     {
         $q = app(AssistantLanguage::class)->normalize($question);
         $q = strtr($q, ['recievables' => 'receivables', 'receivbles' => 'receivables', 'suppllier' => 'supplier', 'alocation' => 'allocation', 'reconcilation' => 'reconciliation']);
+        if (preg_match('/(?:change|alter|submit|fiscalize|ndrysho|dorezo|fiskalizo).*?(?:tax|vat|rate|return|certificate|invoice|tvsh|tatim|norm|fatur|certifik)/',$q)) return 'finance_action_boundary';
         if (preg_match('/(?:^|can you |please |a mund |te lutem )(?:post|reverse|allocate|close|reconcile|pay|posto|anulo|aloko|mbyll|paguaj)\b.*(?:journal|payment|period|bank|supplier|ditar|pagese|periudh|furnitor)/', $q)) {
             return 'finance_action_boundary';
         }
         foreach ([
+            'finance_fiscal' => '/fiscali[sz]|fiskaliz/',
+            'finance_tax_mapping' => '/(?:product|produkt).*(?:tax|vat|tvsh|tatim|mapping)|missing.*tax.*map/',
+            'finance_vat' => '/\\bvat\\b|tvsh|tax.*(?:reconcil|clos)/',
             'finance_close' => '/month.?close|blocking.*clos|what.*block.*month|mbyll.*muaj|pengon.*mbyll|close.*(?:ready|block)/',
             'finance_reconciliation' => '/inventory.*(?:match|accounting|gl)|(?:ar|ap).*gl|subledger.*reconcil|reconcil.*difference|inventar.*(?:kontabil|perputh)|diferenc.*rakord/',
             'finance_allocation' => '/payment.*(?:allocat|unassigned)|unallocat.*payment|pages.*(?:alok|pacakt)/',
@@ -127,6 +140,7 @@ class FinanceAssistantFacts
         $limits = [];
         if ($intent !== 'finance_action_boundary') {
             $tool = match ($intent) {
+                'finance_vat'=>'get_vat_control_facts','finance_fiscal'=>'get_fiscalization_facts','finance_tax_mapping'=>'get_tax_mapping_gaps',
                 'finance_receivables','finance_receivables_compare' => 'get_accounting_receivables','finance_payables' => 'get_accounting_payables','finance_close' => 'get_month_close_blockers','finance_reconciliation' => 'get_financial_reconciliation','finance_allocation' => 'get_payment_allocation_review','finance_profit' => 'get_posted_profit_comparison',default => 'get_accounting_control_summary'
             };
             $runner = app(AssistantToolRunner::class);
@@ -137,8 +151,20 @@ class FinanceAssistantFacts
             $url = '/accounting?tab='.match ($intent) {
                 'finance_receivables','finance_allocation' => 'ar','finance_payables' => 'ap','finance_close' => 'periods','finance_reconciliation' => 'reconciliation','finance_profit' => 'reports',default => 'overview'
             };
+            if(in_array($intent,['finance_vat','finance_tax_mapping','finance_fiscal']))$url=$intent==='finance_fiscal'?'/fiscalization':'/tax';
             $metrics = [];
             switch ($intent) {
+                case 'finance_vat':
+                    $text=$data['reconciliation']['reconciled']?($sq?'TVSH përputhet me librin kryesor.':'VAT source totals reconcile with the General Ledger.'):($sq?'Ka diferenca TVSH/GL për shqyrtim.':'VAT/GL differences require review.');
+                    $metrics=[[$sq?'TVSH dalëse':'Output VAT',$data['reconciliation']['controls']['output_vat']['operational_total']],[$sq?'TVSH hyrëse':'Input VAT',$data['reconciliation']['controls']['input_vat']['operational_total']]];
+                    $limits[]=count($data['unmapped']).' unmapped treatment groups. '.count($data['warnings']).' period review notices. No return is submitted.';break;
+                case 'finance_fiscal':
+                    $text=($sq?'Fiskalizimi TEST: ':'TEST fiscalization: ').($data['counts']['failed']??0).' failed, '.($data['counts']['unknown']??0).' unknown. '.($sq?'Kërkohet shqyrtim njerëzor.':'Human review is required.');
+                    foreach($data['recent_failures'] as $r)$cards[]=['tool'=>$tool,'title'=>'#'.$r->coupon_no.' · '.$r->status,'url'=>'/fiscalization?receipt='.$r->id,'summary'=>$r->operator_message,'metrics'=>[]];
+                    $limits[]='ATK TEST interoperability: '.$data['readiness']['official_api_result'].'. Official certification: NO.';break;
+                case 'finance_tax_mapping':
+                    $text=$data['count'].($sq?' produkte pa kod tatimor.':' products have no default tax code.');
+                    foreach($data['items'] as $p)$cards[]=['tool'=>$tool,'title'=>$p['name'],'url'=>'/tax?tab=configuration','summary'=>$p['sku'],'metrics'=>[]];break;
                 case 'finance_receivables_compare':
                 case 'finance_receivables':$s = $data['summary'];
                     $text = ($sq ? 'Klientët na detyrohen ' : 'Customers owe us ').$format($s['total_outstanding']).'.';

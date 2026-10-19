@@ -26,6 +26,7 @@ export const pagePermissions = {
   invoices: ['invoices.manage'],
   finance: ['finance.view'],
   'money-accounts': ['financial_accounts.view'],
+  tax:['tax.view'], fiscalization:['fiscalization.view'],
   accounting: ['accounting.reports.view'],
   'system-integrity': ['system_integrity.view'],
   'warehouse-operations': ['transfers.view'],

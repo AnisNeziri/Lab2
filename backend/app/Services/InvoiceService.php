@@ -108,7 +108,7 @@ class InvoiceService
     {
         $this->assertInvoiceCompany($invoice);
         $invoice->load([
-            'customer', 'items.product:id,name,sku,unit,default_warehouse_id', 'items.product.units',
+            'customer', 'items.product:id,name,sku,unit,default_warehouse_id,category_id', 'items.product.units',
             'items.warehouse:id,name,code', 'items.location:id,name,code,path',
             'payments' => fn ($query) => $query->latest('payment_date')->latest('id'),
             'creator:id,name', 'issuer:id,name', 'voider:id,name', 'dailySale.outboundDispatch.order.intake',
@@ -319,13 +319,16 @@ class InvoiceService
                 'warehouse_id' => $item->warehouse_id,
                 'unit_price' => $item->unit_price,
                 'discount_percent' => $item->discount_percent,
-                'discount_amount' => $item->discount_amount,
+                'discount_amount' => $item->pricing_mode==='inclusive' ? $item->pricing_discount_amount : $item->discount_amount,
+                'tax_code_id' => $item->tax_code_id,
+                'pricing_mode' => $item->pricing_mode,
+                'sef_category_id' => $item->sef_category_id,
                 'vat_rate' => $item->vat_rate,
                 'tax_treatment' => $item->tax_treatment,
                 'tax_legal_reference' => $item->tax_legal_reference,
             ])->all();
             $invoice->items()->delete();
-            $this->syncItems($invoice, $draftItems, true);
+            $this->syncItems($invoice, $draftItems, true, $this->businessNow()->toDateString());
             $this->storeTotals($invoice);
             $invoice->refresh()->load('items');
             $this->validateTaxes($invoice, $profile, $buyer);
@@ -360,7 +363,7 @@ class InvoiceService
             if ($invoice->daily_sale_id && $invoice->dailySale?->outboundDispatch) {
                 $dispatch=$invoice->dailySale->outboundDispatch;
                 if ($dispatch->order->payment_type === 'cash') $invoice->update(['total_paid'=>$invoice->grand_total,'payment_status'=>'paid','status'=>'paid','paid_at'=>now()]);
-                if (Money::compare($invoice->vat_total,0)>0) app(AccountingService::class)->postMapped('sales','order_invoice_tax',$invoice->id,'order-invoice-tax:'.$invoice->id,$invoice->invoice_date->toDateString(),'Tax classification for '.$invoice->invoice_number,[['mapping'=>'sales_revenue','debit'=>$invoice->vat_total],['mapping'=>'output_vat','credit'=>$invoice->vat_total]],$invoice->currency);
+                if (Money::compare($invoice->vat_total,0)>0) app(AccountingService::class)->postMapped('sales','order_invoice_tax',$invoice->id,'order-invoice-tax:'.$invoice->id,$invoice->invoice_date->toDateString(),'Tax classification for '.$invoice->invoice_number,[['mapping'=>'sales_revenue','debit'=>$invoice->vat_total],...app(TaxCodeService::class)->outputLines($invoice)],$invoice->currency);
                 app(BusinessEventService::class)->record('order.invoice_created',$dispatch->order,$dispatch->order->order_number,['invoice_id'=>$invoice->id],'order-invoice:'.$invoice->id);
                 foreach (\App\Models\InventoryReturn::where('daily_sale_id', $invoice->daily_sale_id)->where('status', 'completed')->orderBy('id')->get() as $completedReturn) {
                     $this->creditOrderReturn($invoice, $completedReturn);
@@ -443,6 +446,7 @@ class InvoiceService
             foreach ($original->items as $item) {
                 $credit->items()->create($item->only([
                     'product_id', 'warehouse_id', 'location_id', 'trace_allocations', 'description', 'sku_snapshot', 'unit', 'conversion_mode', 'conversion_factor', 'quantity', 'base_quantity', 'unit_price',
+                    'tax_code_id', 'tax_snapshot', 'pricing_mode', 'pricing_discount_amount', 'sef_category_id',
                     'discount_percent', 'discount_amount', 'taxable_amount', 'vat_rate', 'vat_amount',
                     'line_total', 'tax_treatment', 'tax_legal_reference', 'unit_cost', 'cost_total',
                 ]));
@@ -500,7 +504,7 @@ class InvoiceService
                 $before=\App\Models\InventoryReturnItem::where('daily_sale_item_id',$item->daily_sale_item_id)->whereHas('inventoryReturn',fn($q)=>$q->where('status','completed')->where('id','<',$return->id))->sum('quantity');
                 $after=\Brick\Math\BigDecimal::of((string)$before)->plus((string)$item->quantity);
                 $part=function($amount)use($line,$before,$after){return Money::subtract(Money::multiply($amount,Money::divide($after,$line->base_quantity,9)),Money::multiply($amount,Money::divide($before,$line->base_quantity,9)));};
-                $row=$line->only(['product_id','description','sku_snapshot','unit','conversion_mode','conversion_factor','warehouse_id','location_id','unit_price','vat_rate','tax_treatment','tax_legal_reference','unit_cost']);
+                $row=$line->only(['tax_code_id','tax_snapshot','pricing_mode','pricing_discount_amount','sef_category_id','product_id','description','sku_snapshot','unit','conversion_mode','conversion_factor','warehouse_id','location_id','unit_price','vat_rate','tax_treatment','tax_legal_reference','unit_cost']);
                 $row['quantity']=Money::divide($item->quantity,$line->conversion_factor?:1,3);$row['base_quantity']=$item->quantity;
                 $row['discount_percent']='0.00';$row['discount_amount']='0.00';$row['line_total']=$part($line->line_total);$row['vat_amount']=$part($line->vat_amount);$row['taxable_amount']=Money::subtract($row['line_total'],$row['vat_amount']);$row['cost_total']=$line->cost_total===null?null:$part($line->cost_total);$rows[]=$row;
             }
@@ -510,14 +514,14 @@ class InvoiceService
                 'document_type'=>'credit_note','original_invoice_id'=>$original->id,'credit_reason'=>$reason,'invoice_number'=>$number,'status'=>'issued','payment_status'=>'credited','compliance_status'=>$original->compliance_status,'invoice_date'=>$at->toDateString(),'supply_date'=>$return->completed_at->toDateString(),'issued_at'=>$at,'issued_by'=>Auth::id(),'created_by'=>Auth::id(),'updated_by'=>Auth::id(),'sequence_year'=>$year,'sequence_number'=>$sequence,'notes'=>$return->reason,'retention_until'=>$at->copy()->addYears(6)->endOfYear()->toDateString()]);
             foreach($rows as $row)$credit->items()->create($row);
             $this->storeTotals($credit);$credit->refresh();$credit->update(['integrity_hash'=>$this->integrityHash($credit->fresh('items'))]);
-            if(Money::compare($credit->vat_total,0)>0)app(AccountingService::class)->postMapped('returns','order_invoice_tax',$credit->id,'order-return-tax:'.$credit->id,$at->toDateString(),$reason,[['mapping'=>'output_vat','debit'=>$credit->vat_total],['mapping'=>'sales_revenue','credit'=>$credit->vat_total]],$credit->currency);
+            if(Money::compare($credit->vat_total,0)>0)app(AccountingService::class)->postMapped('returns','order_invoice_tax',$credit->id,'order-return-tax:'.$credit->id,$at->toDateString(),$reason,[...app(TaxCodeService::class)->outputLines($credit,true),['mapping'=>'sales_revenue','credit'=>$credit->vat_total]],$credit->currency);
             app(BusinessEventService::class)->record('order.return_documented',$original->dailySale->outboundDispatch->order,$original->invoice_number,['invoice_id'=>$credit->id,'inventory_return_id'=>$return->id],'order-return-credit:'.$return->id);
             app(InvoiceArchiveService::class)->archive($credit->fresh());
             return $credit->fresh('items');
         });
     }
 
-    private function syncItems(Invoice $invoice, array $items, bool $lockProducts = false): void
+    private function syncItems(Invoice $invoice, array $items, bool $lockProducts = false, ?string $taxDate = null): void
     {
         $profile = InvoiceProfile::query()->first();
         $isVatRegistered = (bool) ($profile?->is_vat_registered ?? false);
@@ -556,7 +560,7 @@ class InvoiceService
             if ($priceValue === null) {
                 throw ValidationException::withMessages(['items' => ["Enter a unit price for {$description}."]]);
             }
-            $unitPrice = Money::normalize($priceValue);
+            $unitPrice = Money::normalizeDecimal($priceValue, 4);
             $gross = Money::multiply($unitPrice, $quantity);
             $discountPercent = Money::normalizeDecimal($input['discount_percent'] ?? '0', 2);
             $explicitDiscount = Money::normalize($input['discount_amount'] ?? '0');
@@ -573,14 +577,22 @@ class InvoiceService
                 throw ValidationException::withMessages(['items' => ["The discount for {$description} cannot exceed its line value."]]);
             }
             $taxable = Money::subtract($gross, $discount);
-            // Tax belongs to the legal sales document, not the inventory master.
-            // Product selection therefore never silently decides an invoice's VAT.
-            $treatment = (string) ($input['tax_treatment'] ?? ($isVatRegistered ? 'standard' : 'non_vat'));
-            $vatRate = Money::normalizeDecimal($input['vat_rate'] ?? ($treatment === 'standard' ? '18' : '0'), 2);
-            if ($treatment !== 'standard') {
-                $vatRate = '0.00';
+            $taxCodeId = $input['tax_code_id'] ?? $product?->default_tax_code_id;
+            $taxDate ??= $invoice->invoice_date->toDateString();
+            $taxes = app(TaxCodeService::class);
+            $taxes->assertRequired($taxCodeId, $taxDate);
+            $snapshot = $taxCodeId ? $taxes->resolve((int)$taxCodeId, $taxDate, 'sales') : null;
+            if ($product?->default_tax_code_id && (int)$taxCodeId !== (int)$product->default_tax_code_id
+                && !app(PermissionService::class)->roleHasPermission(Auth::user()->role,'tax.configure')) {
+                throw ValidationException::withMessages(['tax_code'=>'Overriding the assigned product tax rule requires accounting configuration permission.']);
             }
-            $vat = $treatment === 'standard' ? Money::product([$taxable, $vatRate, '0.01']) : '0.00';
+            $treatment = $snapshot ? $taxes->invoiceTreatment($snapshot) : (string)($input['tax_treatment'] ?? ($isVatRegistered ? 'standard' : 'non_vat'));
+            $vatRate = $snapshot['rate'] ?? Money::normalizeDecimal($input['vat_rate'] ?? ($treatment === 'standard' ? '18' : '0'), 2);
+            if ($treatment !== 'standard') $vatRate = '0.00';
+            $mode = $input['pricing_mode'] ?? 'exclusive';
+            $amounts = $taxes->amounts($unitPrice,$quantity,$discount,$vatRate,$mode);
+            $taxable = $amounts['net'];
+            $vat = $amounts['vat'];
             if ($sourceItems) {
                 $source=$sourceItems[$index];
                 if ((int)$source->product_id !== (int)$product?->id || Money::compareDecimal($source->quantity,$quantity)!==0 || $source->unit!==$resolvedUnit['unit']) throw ValidationException::withMessages(['items'=>['Change quantities or products through the original order, not its invoice.']]);
@@ -609,13 +621,16 @@ class InvoiceService
                 'base_quantity' => $resolvedUnit['base_quantity'],
                 'unit_price' => $unitPrice,
                 'discount_percent' => $discountPercent,
-                'discount_amount' => $discount,
+                'discount_amount' => $sourceItems ? $discount : $amounts['net_discount'],
+                'pricing_discount_amount' => $sourceItems ? '0.00' : $discount,
                 'taxable_amount' => $taxable,
+                'tax_code_id' => $taxCodeId, 'tax_snapshot' => $snapshot,
+                'pricing_mode' => $sourceItems ? 'exclusive' : $mode, 'sef_category_id' => $input['sef_category_id'] ?? null,
                 'vat_rate' => $vatRate,
                 'vat_amount' => $vat,
                 'line_total' => Money::add($taxable, $vat),
                 'tax_treatment' => $treatment,
-                'tax_legal_reference' => $input['tax_legal_reference'] ?? null,
+                'tax_legal_reference' => ($input['tax_legal_reference'] ?? null) ?: ($snapshot['legal_reference'] ?? null),
                 'unit_cost' => $unitCost,
                 'cost_total' => $costTotal,
             ]);
@@ -649,7 +664,7 @@ class InvoiceService
         foreach ($invoice->items as $item) {
             $treatment = $item->tax_treatment;
             $rate = (float) $item->vat_rate;
-            if ($treatment === 'standard' && ! in_array($rate, [8.0, 18.0], true)) {
+            if ($treatment === 'standard' && !$item->tax_snapshot && ! in_array($rate, [8.0, 18.0], true)) {
                 throw ValidationException::withMessages(['items' => ["{$item->description} must use Kosovo's 18% or 8% VAT rate, or a supported zero-tax treatment."]]);
             }
             if (in_array($treatment, ['zero_rated', 'exempt', 'reverse_charge'], true) && blank($item->tax_legal_reference)) {
@@ -987,6 +1002,9 @@ class InvoiceService
             ]))->values()->all(),
         ];
 
+        if ($invoice->items->contains(fn($item) => $item->tax_snapshot !== null || $item->pricing_mode !== null)) {
+            $payload['tax_evidence'] = $invoice->items->map(fn($item) => $item->only(['tax_code_id','tax_snapshot','pricing_mode','pricing_discount_amount','sef_category_id']))->values()->all();
+        }
         return hash('sha256', json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION));
     }
 

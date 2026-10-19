@@ -93,3 +93,8 @@ Artisan::command('pilot:prune', function () {
     $this->info('Selected-company pilot aggregate retention applied.');
 })->purpose('Retain 90 days of aggregate usage and 30 days of safe pilot incidents');
 Schedule::command('pilot:prune')->daily()->withoutOverlapping();
+
+Artisan::command('tax:setup', function () {
+    app(\Database\Seeders\RolePermissionSeeder::class)->run(preserveExisting: true);
+    $this->info('Tax/fiscal permissions installed; existing role grants and revocations preserved.');
+})->purpose('Install current tax/fiscal permissions without resetting customized roles');

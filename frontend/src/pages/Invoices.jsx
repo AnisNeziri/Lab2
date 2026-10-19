@@ -1,3 +1,4 @@
+import TaxCodePicker,{useTaxCodes} from '../components/finance/TaxCodePicker'
 import EntityDocuments from '../components/EntityDocuments'
 import {
   useCallback,
@@ -132,7 +133,7 @@ const emptyProfile = {
 
 const emptyItem = (profile, index = 0) => ({
   key: `invoice-line-${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`,
-  product_id: "",
+  product_id: "", tax_code_id:"",pricing_mode:"exclusive",sef_category_id:"",
   description: "",
   sku: "",
   unit: "pcs",
@@ -326,6 +327,7 @@ function invoiceFormFromRecord(invoice, profile) {
     issue_now: false,
     items: (invoice.items || []).map((item, index) => ({
       key: `invoice-line-existing-${item.id || index}`,
+      tax_code_id:item.tax_code_id||"",pricing_mode:item.pricing_mode||"exclusive",sef_category_id:item.sef_category_id||"",
       product_id: item.product_id ? String(item.product_id) : "",
       description: item.description || item.product?.name || "",
       sku: item.sku_snapshot || item.sku || item.product?.sku || "",
@@ -358,6 +360,7 @@ function lineAmounts(item) {
   )
     ? 0
     : Math.max(0, Number(item.vat_rate || 0));
+  if(item.pricing_mode==='inclusive'){const net=roundMoney(taxable/(1+vatRate/100));return {gross:roundMoney(gross/(1+vatRate/100)),discount:roundMoney(gross/(1+vatRate/100)-net),taxable:net,vat:roundMoney(taxable-net),total:taxable,vatRate}}
   const vat = roundMoney(taxable * (vatRate / 100));
   return { gross, discount, taxable, vat, total: roundMoney(taxable + vat), vatRate };
 }
@@ -593,6 +596,7 @@ function CompanyProfileModal({ open, profile, onClose, onSave, t }) {
 }
 
 function InvoiceEditor({ open, invoice, profile, products, customers, canSaveCustomer, onClose, onSaved, t, language }) {
+  const {codes:taxCodes,error:taxCodeError}=useTaxCodes();
   const [form, setForm] = useState(() => emptyInvoiceForm(profile));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -652,14 +656,16 @@ function InvoiceEditor({ open, invoice, profile, products, customers, canSaveCus
       updateLine(key, { product_id: "", sku: "", stock_available: null });
       return;
     }
-    const taxTreatment = validTaxTreatment(form.tax_treatment, profile);
+    const taxCode=taxCodes.find(c=>c.id===product.default_tax_code_id);
+    const taxTreatment = taxCode?.invoice_treatment||validTaxTreatment(form.tax_treatment, profile);
     updateLine(key, {
       product_id: String(product.id),
       description: product.name || "",
       sku: product.sku || "",
       unit: product.unit || "pcs",
       unit_price: String(Number(product.selling_price ?? product.price ?? 0)),
-      vat_rate: validVatRate(18, taxTreatment, profile),
+      tax_code_id:product.default_tax_code_id||"",
+      vat_rate: taxCode?.rate||validVatRate(18, taxTreatment, profile),
       tax_treatment: taxTreatment,
       legal_reference: "",
       stock_available: getInventoryQuantity(product, "available"),
@@ -798,6 +804,7 @@ function InvoiceEditor({ open, invoice, profile, products, customers, canSaveCus
       payment_terms: form.payment_terms.trim() || null,
       notes: form.notes.trim() || null,
       items: form.items.map((item) => ({
+        tax_code_id:item.tax_code_id?Number(item.tax_code_id):null,pricing_mode:item.pricing_mode||"exclusive",sef_category_id:item.sef_category_id?Number(item.sef_category_id):null,
         product_id: item.product_id ? Number(item.product_id) : null,
         description: item.description.trim(),
         unit: item.unit.trim() || "pcs",
@@ -1041,10 +1048,14 @@ function InvoiceEditor({ open, invoice, profile, products, customers, canSaveCus
                       </summary>
                       <p>{t("invoice.taxDetailsHint")}</p>
                       <div className="invoice-line-tax-grid">
+                        <TaxCodePicker codes={taxCodes} value={item.tax_code_id} date={form.issued_at} label={language==='sq'?'Kodi tatimor':'Tax code'} onChange={c=>updateLine(item.key,{tax_code_id:c?.id||'',vat_rate:c?.rate||0,tax_treatment:c?.invoice_treatment||item.tax_treatment,legal_reference:c?.legal_reference||''})}/>
+                        <label>{language==='sq'?'Çmimi':'Pricing'}<select value={item.pricing_mode||'exclusive'} onChange={e=>updateLine(item.key,{pricing_mode:e.target.value})}><option value="exclusive">{language==='sq'?'Pa TVSH':'Tax exclusive'}</option><option value="inclusive">{language==='sq'?'Me TVSH':'Tax inclusive'}</option></select></label>
+                        <label>{language==='sq'?'ID e kategorisë SEF (shërbim)':'SEF category ID (service)'}<input type="number" min="1" value={item.sef_category_id||''} onChange={e=>updateLine(item.key,{sef_category_id:e.target.value})}/></label>
+                        {taxCodeError&&<p role="alert">{taxCodeError}</p>}
                         <label>
                           {t("invoice.lineTaxTreatment")}
                           <select
-                            value={item.tax_treatment}
+                            disabled={Boolean(item.tax_code_id)} value={item.tax_treatment}
                             onChange={(e) => updateLine(item.key, {
                               tax_treatment: validTaxTreatment(e.target.value, profile),
                               vat_rate: validVatRate(item.vat_rate, validTaxTreatment(e.target.value, profile), profile),
@@ -1062,7 +1073,7 @@ function InvoiceEditor({ open, invoice, profile, products, customers, canSaveCus
                         </label>
                         <label>
                           {t("invoice.vatRate")}
-                          <select disabled={vatDisabled} value={vatDisabled ? "0" : item.vat_rate} onChange={(e) => updateLine(item.key, { vat_rate: e.target.value })}>
+                          <select disabled={vatDisabled||Boolean(item.tax_code_id)} value={vatDisabled ? "0" : item.vat_rate} onChange={(e) => updateLine(item.key, { vat_rate: e.target.value })}>
                             <option value="18">18%</option>
                             <option value="8">8%</option>
                           </select>
@@ -1426,7 +1437,7 @@ function InvoiceDetail({ invoice, profile, open, onClose, onEdit, onIssue, onPay
     <Modal open={open} title={invoice.invoice_number || t("invoice.draftInvoice")} description={buyer.name} onClose={onClose} drawer closeOnBackdrop>
       <div className="invoice-detail"><EntityDocuments entityType="invoice" entityId={invoice.id}/>
         {invoice.daily_sale?.outbound_dispatch?.order?.intake&&<p><Link to={`/order-hub?intake=${invoice.daily_sale.outbound_dispatch.order.intake.id}`}>{language==='sq'?'Porosia burimore':'Source order'} {invoice.daily_sale.outbound_dispatch.order.order_number}</Link> · {invoice.daily_sale.sale_number}</p>}
-        <div className="invoice-detail-status"><StatusPills invoice={invoice} t={t} /></div>
+        <div className="invoice-detail-status"><StatusPills invoice={invoice} t={t} /></div><Link to={"/fiscalization?invoice="+invoice.id}>{language==="sq"?"Gjendja / kuponi fiskal TEST":"Fiscalization status / TEST receipt"}</Link>
         {actionError ? <div className="invoice-alert is-error" role="alert"><AlertTriangle size={16} />{actionError}</div> : null}
         <div className="invoice-detail-parties">
           <article>

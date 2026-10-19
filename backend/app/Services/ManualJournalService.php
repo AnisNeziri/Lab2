@@ -24,6 +24,9 @@ class ManualJournalService
         $accounts = AccountingAccount::query()->get(['id', 'parent_id', 'code', 'name']);
         $controlled = AccountingPostingMapping::query()->whereIn('mapping_key',['cash','bank','accounts_receivable','customer_advances','accounts_payable','supplier_advances','inventory','sales_revenue','cost_of_goods_sold','goods_receipt_clearing','input_vat','output_vat'])->pluck('accounting_account_id')
             ->merge(FinancialAccount::query()->whereNotNull('accounting_account_id')->pluck('accounting_account_id'))->unique()->all();
+        $controlled=array_values(array_unique([...$controlled,
+            ...\App\Models\TaxCode::query()->whereNotNull('input_account_id')->pluck('input_account_id')->all(),
+            ...\App\Models\TaxCode::query()->whereNotNull('output_account_id')->pluck('output_account_id')->all()]));
         do {
             $old = count($controlled);
             $controlled = array_values(array_unique([...$controlled, ...$accounts->whereIn('parent_id', $controlled)->pluck('id')->all()]));

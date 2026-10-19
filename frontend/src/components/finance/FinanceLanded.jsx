@@ -144,6 +144,7 @@ export default function FinanceLanded() {
                   {c.shipment?.tracking_number || "—"} ·{" "}
                   <DateValue value={c.posted_at} /> · <Badge value={c.status} />
                 </p>
+                {c.source_expense_id&&<p><Link to={'/finance?expense='+c.source_expense_id}>{t('Source bill','Fatura burimore')} #{c.source_expense_id}</Link> · {t('Recoverable VAT excluded','TVSH e zbritshme e përjashtuar')}: <Amount value={c.tax_basis_snapshot?.deductible_vat_eur}/></p>}
                 <div className="fc-inline-totals">
                   <span>
                     {t("Goods value", "Vlera e mallrave")}{" "}

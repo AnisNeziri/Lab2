@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import TaxCodePicker,{useTaxCodes} from "./TaxCodePicker";
 import WorkspaceModal from "../WorkspaceModal";
 import * as api from "../../api/advancedOperations";
 import { recordExpensePayment } from "../../api/finance";
@@ -15,7 +16,9 @@ import {
 
 export default function FinanceBillForm({ original, onClose, onSaved }) {
   const { t, today, busy, run } = useFinance();
+  const {codes:taxCodes,error:taxCodeError}=useTaxCodes();
   const [form, setForm] = useState(() => ({
+    tax_code_id:original?.tax_code_id||"",
     supplier_id: original?.supplier_id || "",
     purchase_order_id: original?.purchase_order_id || "",
     vendor_name: original?.vendor_name || "",
@@ -99,7 +102,7 @@ export default function FinanceBillForm({ original, onClose, onSaved }) {
         Math.round(Number(l.quantity || 0) * Number(l.unit_price || 0) * 100),
       0,
     ) / 100;
-  const tax =
+  const tax = form.vat_treatment==='reverse_charge'?0:
     form.items.reduce(
       (sum, l) =>
         sum +
@@ -114,6 +117,7 @@ export default function FinanceBillForm({ original, onClose, onSaved }) {
     e.preventDefault();
     const p = {
       ...form,
+      tax_code_id:form.tax_code_id?Number(form.tax_code_id):null,
       supplier_id: Number(form.supplier_id),
       purchase_order_id: form.purchase_order_id
         ? Number(form.purchase_order_id)
@@ -137,7 +141,7 @@ export default function FinanceBillForm({ original, onClose, onSaved }) {
         quantity: l.quantity,
         unit: l.unit,
         unit_price: l.unit_price,
-        vat_rate: form.vat_rate,
+        vat_rate: form.vat_treatment==='reverse_charge'?0:form.vat_rate,
         product_id: l.product_id || null,
         purchase_order_item_id: l.purchase_order_item_id || null,
         goods_receipt_item_id: l.goods_receipt_item_id || null,
@@ -458,12 +462,14 @@ export default function FinanceBillForm({ original, onClose, onSaved }) {
         >
           {t("Add invoice line", "Shto rresht fature")}
         </button>
+        {taxCodeError&&<p role="alert">{taxCodeError}</p>}
+        <TaxCodePicker codes={taxCodes.filter(c=>c.purchase_treatment!=='import_vat')} value={form.tax_code_id} direction="purchases" date={form.invoice_date} label={t('Tax code','Kodi tatimor')} onChange={c=>{setDirty(true);setForm({...form,tax_code_id:c?.id||'',vat_rate:c?.rate||0,vat_treatment:c?.purchase_treatment||'non_vat',tax_legal_reference:c?.legal_reference||''})}}/>
         <div className="fc-form-grid">
           <Field
             label={t("Existing tax treatment", "Trajtimi tatimor ekzistues")}
           >
             <select
-              value={form.vat_treatment}
+              disabled={Boolean(form.tax_code_id)} value={form.vat_treatment}
               onChange={(e) => {
                 const value = e.target.value;
                 setDirty(true);

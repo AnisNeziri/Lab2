@@ -13,6 +13,8 @@ export const commandCatalog = [
   { id: 'add-product', label: 'Add Product', keywords: 'new register inventory', path: '/products?new=1', permission: 'products.manage' },
   { id: 'daily-sales', label: 'Record Daily Sale', keywords: 'sell sale book payment', path: '/daily-sales', permission: 'daily_sales.manage' },
   { id: 'stock-locator', label: 'Find Stock by Warehouse', keywords: 'locate warehouse bin availability', path: '/warehouse-operations', permission: 'transfers.view' },
+  {id:'tax',label:'Tax & VAT',keywords:'VAT tax tvsh tatimet return reconciliation',path:'/tax',permission:'tax.view'},
+  {id:'fiscalization',label:'Fiscalization',keywords:'SEF ATK fiskalizim receipt fiscal',path:'/fiscalization',permission:'fiscalization.view'},
   { id: 'finance', label: 'Open Finance Center', keywords: 'expenses invoices receivables money', path: '/finance', permission: 'finance.view' },
   {id:'inventory-intelligence',label:'Inventory Intelligence',keywords:'forecast demand stockout replenish model',path:'/inventory-intelligence',permission:'analytics.view'},
   {id:'analytics',label:'Open Analytics',keywords:'metrics data intelligence history',path:'/analytics',permission:'analytics.view'},

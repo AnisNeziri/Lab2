@@ -23,7 +23,7 @@ export default function FinanceJournals() {
   const [params, setParams] = useSearchParams();
   const [filters, setFilters] = useState({
     status: "",
-    reference: "",
+    reference: params.get("reference")||"",
     account_id: "",
     source_module: "",
     period_id: "",

@@ -21,6 +21,7 @@ class LandedCostRequest extends FormRequest
         $baseCurrency = CompanyCurrency::forCompanyId((int) $companyId);
 
         return [
+            'source_expense_id'=>['nullable','integer',Rule::exists('expenses','id')->where('company_id',$companyId)->whereNull('deleted_at')],
             'goods_receipt_id' => ['required', 'integer', Rule::exists('goods_receipts', 'id')->where('company_id', $companyId)],
             'shipment_id' => ['nullable', 'integer', Rule::exists('shipments', 'id')->where('company_id', $companyId)],
             'reference_number' => ['nullable', 'string', 'max:100'],

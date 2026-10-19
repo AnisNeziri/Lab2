@@ -10,6 +10,7 @@ class InvoiceProfile extends Model
     use BelongsToCompany;
 
     protected $fillable = [
+        'tax_codes_required_from',
         'company_id',
         'legal_name',
         'trade_name',

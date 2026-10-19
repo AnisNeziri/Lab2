@@ -188,6 +188,10 @@ class ExpenseService
             if ($expense->document_type === 'credit_note' && blank($expense->original_document_number)) {
                 throw ValidationException::withMessages(['original_document_number' => ['A credit note must reference the original vendor document.']]);
             }
+            if($expense->tax_code_id && !($expense->document_type==='credit_note'&&$expense->original_expense_id)) app(TaxCodeService::class)->resolve($expense->tax_code_id,$expense->invoice_date->toDateString(),'purchases');
+            if ($expense->vat_treatment === 'import_vat' && (!$expense->import_taxable_base || Money::compare($expense->net_amount,0)!==0)) {
+                throw ValidationException::withMessages(['import_taxable_base'=>'Correct this draft customs VAT assessment: enter the customs taxable base separately and zero goods net amount. Duties/freight belong to separate cost documents.']);
+            }
             $taxPoint = collect([$expense->invoice_date, $expense->received_date, $expense->supply_date])
                 ->filter()->map(fn ($value) => CarbonImmutable::parse($value))->sortDesc()->first();
             $expense->update([
@@ -209,7 +213,11 @@ class ExpenseService
     public function reverse(Expense $expense, string $reason): Expense
     {
         return DB::transaction(function () use ($expense, $reason) {
+            DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
             $expense = Expense::query()->lockForUpdate()->findOrFail($expense->id);
+            if (\App\Models\LandedCost::query()->where('source_expense_id',$expense->id)->whereIn('status',['draft','posted'])->exists()) {
+                throw ValidationException::withMessages(['expense'=>'Reverse or remove linked landed costs before reversing their source bill.']);
+            }
             if ($expense->status === 'reversed') {
                 return $this->find($expense);
             }
@@ -376,30 +384,57 @@ class ExpenseService
 
     private function prepare(array $data): array
     {
+        $taxes=app(TaxCodeService::class);
+        $original=null;
+        if(($data['document_type']??'')==='credit_note'&&!empty($data['original_expense_id'])) {
+            $original=Expense::query()->where('status','posted')->lockForUpdate()->findOrFail($data['original_expense_id']);
+            if(\App\Models\LandedCost::where('source_expense_id',$original->id)->whereIn('status',['draft','posted'])->exists())
+                throw ValidationException::withMessages(['credit_note'=>'Reverse or remove linked capitalization before crediting this bill.']);
+            $data['tax_code_id']=$original->tax_code_id;
+        }
+        if(!$original)$taxes->assertRequired($data['tax_code_id'] ?? null,$data['invoice_date']);
+        $snapshot=$original?$original->tax_snapshot:(!empty($data['tax_code_id']) ? $taxes->resolve((int)$data['tax_code_id'],$data['invoice_date'],'purchases') : null);
+        if($snapshot) {
+            $data['vat_rate']=$snapshot['rate'];
+            $data['vat_treatment']=match($snapshot['treatment']) {
+                'taxable'=>(\App\Support\Money::compareDecimal($snapshot['rate'],8)===0?'reduced':'standard'),
+                'exempt_without_credit','exempt_with_credit'=>'exempt','import'=>'import_vat',
+                'reverse_charge'=>'reverse_charge','out_of_scope'=>'out_of_scope','non_vat'=>'non_vat',
+                default=>throw \Illuminate\Validation\ValidationException::withMessages(['tax_code'=>'This rule is not applicable to purchases.']),
+            };
+            $data['tax_legal_reference']=($data['tax_legal_reference'] ?? null) ?: ($snapshot['legal_reference'] ?? null);
+        }
         $currency = strtoupper($data['currency'] ?? 'EUR');
         $rate = $currency === 'EUR' ? 1.0 : round((float) ($data['exchange_rate'] ?? 0), 6);
         if ($currency !== 'EUR' && ($rate <= 0 || empty($data['exchange_rate_date']) || blank($data['exchange_rate_source'] ?? null))) {
             throw ValidationException::withMessages(['exchange_rate' => ['Non-EUR expenses require a positive EUR conversion rate, rate date and source.']]);
         }
         if($currency!=='EUR'&&$data['exchange_rate_date']>$data['invoice_date'])throw ValidationException::withMessages(['exchange_rate_date'=>'A historical bill cannot use a later exchange-rate date.']);
-        $net = round((float) $data['net_amount'], 2);
-        $vat = round((float) $data['vat_amount'], 2);
+        $net = Money::normalize($data['net_amount']);
+        $vat = Money::normalize($data['vat_amount']);
         $vatRate = (float) $data['vat_rate'];
         $treatment = $data['vat_treatment'];
         if (($treatment === 'standard' && $vatRate !== 18.0) || ($treatment === 'reduced' && $vatRate !== 8.0)) {
             throw ValidationException::withMessages(['vat_rate' => ['Standard VAT uses 18%; reduced VAT uses 8%.']]);
         }
-        if (in_array($treatment, ['zero_rated', 'exempt', 'out_of_scope', 'non_vat'], true) && ($vatRate !== 0.0 || $vat !== 0.0)) {
+        if (in_array($treatment, ['zero_rated', 'exempt', 'out_of_scope', 'non_vat'], true) && ($vatRate !== 0.0 || Money::compare($vat,0)!==0)) {
             throw ValidationException::withMessages(['vat_amount' => ['This VAT treatment requires a zero rate and zero VAT amount.']]);
         }
         if ($treatment === 'reverse_charge' && ! in_array($vatRate, [8.0, 18.0], true)) {
             throw ValidationException::withMessages(['vat_rate' => ['Reverse charge requires the applicable 18% or 8% self-assessment rate.']]);
         }
-        if ($treatment === 'reverse_charge' && $vat !== 0.0) {
+        if ($treatment === 'reverse_charge' && Money::compare($vat,0)!==0) {
             throw ValidationException::withMessages(['vat_amount' => ['Supplier VAT must be zero for reverse charge; use the self-assessed VAT field.']]);
         }
+        $importBase = null;
+        if ($treatment === 'import_vat') {
+            $importBase=Money::normalize($data['import_taxable_base']??0);
+            if (Money::compare($importBase,0)<=0 || Money::compare($net,0)!==0) {
+                throw ValidationException::withMessages(['import_taxable_base'=>'A customs VAT assessment requires its taxable customs base and zero goods net amount. The payable is VAT only; record duties and goods separately.']);
+            }
+        }
         if (in_array($treatment, ['standard', 'reduced', 'import_vat'], true)) {
-            $expected = round($net * $vatRate / 100, 2);
+            $expected = Money::product([$importBase??$net,$vatRate,'0.01']);
             if (abs($vat - $expected) > 0.02) {
                 throw ValidationException::withMessages(['vat_amount' => ["VAT amount must match the {$vatRate}% rate (expected EUR/original {$expected})."]]);
             }
@@ -407,19 +442,19 @@ class ExpenseService
         if (in_array($treatment, ['exempt', 'reverse_charge'], true) && blank($data['tax_legal_reference'] ?? null)) {
             throw ValidationException::withMessages(['tax_legal_reference' => ['Enter the legal VAT basis for this treatment.']]);
         }
-        $selfAssessed = $treatment === 'reverse_charge' ? round($net * $vatRate / 100, 2) : 0.0;
+        $selfAssessed = $treatment === 'reverse_charge' ? Money::product([$net,$vatRate,'0.01']) : '0.00';
         if ($treatment === 'reverse_charge' && isset($data['self_assessed_vat_amount'])
             && abs((float) $data['self_assessed_vat_amount'] - $selfAssessed) > 0.02) {
             throw ValidationException::withMessages(['self_assessed_vat_amount' => ["Self-assessed VAT must match the {$vatRate}% rate (expected {$selfAssessed})."]]);
         }
         $claimableVat = $treatment === 'reverse_charge' ? $selfAssessed : $vat;
         $eligible = (bool) $data['input_vat_eligible'];
-        $deductible = $eligible ? round((float) ($data['deductible_vat_amount'] ?? $claimableVat), 2) : 0.0;
+        $deductible = $eligible ? Money::normalize($data['deductible_vat_amount'] ?? $claimableVat) : '0.00';
         if ($deductible > $claimableVat + 0.001) {
             throw ValidationException::withMessages(['deductible_vat_amount' => ['Deductible input VAT cannot exceed document VAT.']]);
         }
-        $nonDeductible = round($claimableVat - $deductible, 2);
-        $gross = round($net + $vat, 2);
+        $nonDeductible = Money::subtract($claimableVat,$deductible);
+        $gross = Money::add($net,$vat);
         $maximum = 9_000_000_000_000;
         if (max($net * $rate, $vat * $rate, $selfAssessed * $rate, $gross * $rate, $deductible * $rate, $nonDeductible * $rate) > $maximum) {
             throw ValidationException::withMessages(['exchange_rate' => ['Converted EUR totals exceed the supported accounting limit.']]);
@@ -447,15 +482,17 @@ class ExpenseService
             'vendor_name' => trim($data['vendor_name']), 'vendor_key' => $vendorKey,
             'document_number' => trim($data['document_number']),
             'document_number_normalized' => $this->normalizeDocumentNumber($data['document_number']),
+            'tax_code_id' => $data['tax_code_id'] ?? null, 'tax_snapshot' => $snapshot,
+            'import_taxable_base'=>$importBase,'import_taxable_base_eur'=>$importBase===null?null:Money::multiply($importBase,$rate),
             'net_amount' => $net, 'vat_rate' => $vatRate, 'vat_amount' => $vat,
             'self_assessed_vat_amount' => $selfAssessed,
             'gross_amount' => $gross, 'deductible_vat_amount' => $deductible,
             'non_deductible_vat_amount' => $nonDeductible,
-            'net_amount_eur' => round($net * $rate, 2), 'vat_amount_eur' => round($vat * $rate, 2),
-            'self_assessed_vat_amount_eur' => round($selfAssessed * $rate, 2),
-            'gross_amount_eur' => round($gross * $rate, 2),
-            'deductible_vat_amount_eur' => round($deductible * $rate, 2),
-            'non_deductible_vat_amount_eur' => round($nonDeductible * $rate, 2),
+            'net_amount_eur' => Money::multiply($net,$rate), 'vat_amount_eur' => Money::multiply($vat,$rate),
+            'self_assessed_vat_amount_eur' => Money::multiply($selfAssessed,$rate),
+            'gross_amount_eur' => Money::multiply($gross,$rate),
+            'deductible_vat_amount_eur' => Money::multiply($deductible,$rate),
+            'non_deductible_vat_amount_eur' => Money::multiply($nonDeductible,$rate),
         ];
     }
 

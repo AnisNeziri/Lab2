@@ -73,7 +73,7 @@ class OperationalAccountingService
         $revenue = Money::subtract($total, $vat);
         $lines = [['mapping' => 'accounts_receivable', 'debit' => $total]];
         if (Money::compare($revenue, '0') > 0) $lines[] = ['mapping' => 'sales_revenue', 'credit' => $revenue];
-        if (Money::compare($vat, '0') > 0) $lines[] = ['mapping' => 'output_vat', 'credit' => $vat];
+        if (Money::compare($vat, '0') > 0) $lines = [...$lines,...app(TaxCodeService::class)->outputLines($invoice)];
 
         return $this->accounting->postMapped(
             'sales', 'invoice', $invoice->id, 'invoice:'.$invoice->id,
@@ -189,7 +189,9 @@ class OperationalAccountingService
         $lines = [];
         if (Money::compare($inventory, '0') > 0) $lines[] = ['mapping' => 'inventory', 'debit' => $inventory];
         if (Money::compare($cogs, '0') > 0) $lines[] = ['mapping' => 'cost_of_goods_sold', 'debit' => $cogs];
-        $lines[] = ['mapping' => 'goods_receipt_clearing', 'credit' => $total];
+        $lines[] = $landedCost->source_expense_id
+            ? ['accounting_account_id'=>$landedCost->tax_basis_snapshot['credit_account_id'],'credit'=>$total,'description'=>'Capitalize source bill cost, excluding recoverable VAT']
+            : ['mapping' => 'goods_receipt_clearing', 'credit' => $total];
         $bookDelta = $landedCost->allocations()->get()->sum(fn ($allocation) =>
             Money::minor($allocation->inventory_value_after ?? 0) - Money::minor($allocation->inventory_value_before ?? 0));
         $carry = $bookDelta - Money::minor($inventory);

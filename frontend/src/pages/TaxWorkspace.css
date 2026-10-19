@@ -1,0 +1,196 @@
+.tax-workspace {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 24px;
+  color: var(--text-primary, #172434);
+}
+.tax-heading {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 18px;
+}
+.tax-heading > div {
+  flex: 1;
+}
+.tax-heading h1 {
+  font-size: 26px;
+  margin: 4px 0;
+}
+.tax-heading p {
+  margin: 6px 0;
+  color: var(--text-muted, #617185);
+}
+.tax-eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+.tax-tabs,
+.tax-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 14px 0;
+}
+.tax-workspace button,
+.tax-workspace input,
+.tax-workspace select {
+  border: 1px solid var(--border-color, #d6dde4);
+  border-radius: 6px;
+  background: var(--card-bg, #fff);
+  color: inherit;
+  padding: 8px 10px;
+  font: inherit;
+}
+.tax-workspace button {
+  cursor: pointer;
+  font-size: 13px;
+}
+.tax-workspace button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.tax-tabs .active {
+  border-color: #467095;
+  font-weight: 600;
+}
+.tax-workspace a {
+  color: var(--accent-color, #315f87);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.tax-panel {
+  border: 1px solid var(--border-color, #d6dde4);
+  background: var(--card-bg, #fff);
+  border-radius: 9px;
+  padding: 16px;
+  margin: 16px 0;
+  overflow: auto;
+}
+.tax-panel h2 {
+  font-size: 17px;
+  margin: 0 0 12px;
+}
+.tax-panel table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.tax-panel th {
+  text-align: left;
+  font-weight: 550;
+}
+.tax-panel td,
+.tax-panel th {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border-color, #e4e9ed);
+  vertical-align: top;
+}
+.tax-panel thead th {
+  color: var(--text-muted, #617185);
+  font-size: 12px;
+}
+.tax-panel .money {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.tax-panel small {
+  display: block;
+  font-weight: 400;
+  color: var(--text-muted, #617185);
+  margin-top: 4px;
+}
+.tax-caption {
+  font-size: 12px;
+  color: var(--text-muted, #617185);
+  line-height: 1.5;
+}
+.tax-notice {
+  padding: 12px;
+  background: var(--surface-soft, #edf2f6);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.tax-error {
+  padding: 12px;
+  border: 1px solid #b45b50;
+  border-radius: 6px;
+  color: var(--ui-danger, #a33f35);
+}
+.tax-status {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 650;
+  border: 1px solid var(--border-color, #ccd5df);
+  padding: 3px 7px;
+  border-radius: 5px;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+.tax-status-reconciled,
+.tax-status-fiscalized {
+  color: var(--ui-success, #28684d);
+}
+.tax-status-unknown,
+.tax-status-difference,
+.tax-status-failed {
+  color: var(--ui-danger, #a33f35);
+}
+.tax-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+.tax-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
+}
+.tax-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 12px;
+}
+.tax-kpis > div {
+  padding: 14px;
+  border: 1px solid var(--border-color, #d6dde4);
+  border-radius: 8px;
+}
+.tax-kpis strong {
+  display: block;
+  font-size: 23px;
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.tax-panel li {
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 4px 0;
+}
+.tax-evidence {
+  font-size: 11px;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+.tax-confirm {
+  border: 1px solid #b38a4b;
+  padding: 15px;
+  border-radius: 6px;
+  margin: 12px 0;
+}
+@media (max-width: 750px) {
+  .tax-workspace {
+    padding: 12px;
+  }
+  .tax-heading {
+    flex-wrap: wrap;
+  }
+  .tax-heading > div {
+    flex-basis: 100%;
+  }
+}
