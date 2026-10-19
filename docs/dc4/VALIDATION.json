@@ -1,0 +1,241 @@
+{
+  "implementation_head": "b96f88d035a8555b4c069573b66e84ad2c608b7d",
+  "base_head": "4290c6541c4988d82e367206b72da8face6d31b3",
+  "original_checkout_head": "07c66520187db1486f994e9527670b1e7dcbcd24",
+  "branch": "codex/dc4-workforce-payroll",
+  "checked_on": "2026-10-19",
+  "checks": {
+    "sqlite_regression": {
+      "status": "PASS",
+      "tests": 90,
+      "assertions": 781,
+      "seconds": 57.32,
+      "scope": [
+        "DC4WorkforcePayrollTest",
+        "DC2ControlCenterTest",
+        "DC2AccountingSafetyTest",
+        "DC2ManualJournalTest",
+        "DC2BankControlTest",
+        "DC3TaxControlTest",
+        "DocumentCenterTest",
+        "DC2FinanceAssistantTest",
+        "PortableBackupTest",
+        "InstallationBackupCertificationTest"
+      ]
+    },
+    "final_overlapping_assistant_slice": {
+      "status": "PASS",
+      "tests": 10,
+      "assertions": 232,
+      "seconds": 5.77,
+      "scope": [
+        "DC4WorkforcePayrollTest",
+        "DC2FinanceAssistantTest"
+      ],
+      "note": "After bounded summary projection and named/unpaid read-only assistant additions. Overlaps the regression run; counts are not added."
+    },
+    "mariadb_transactions": {
+      "status": "PASS",
+      "engine": "11.8.9-MariaDB",
+      "tests": 2,
+      "assertions": 66,
+      "seconds": 31.66,
+      "scope": [
+        "payroll advance/post/pay/close/idempotency/backup control journey",
+        "closed-period/reversal lineage"
+      ]
+    },
+    "final_overlapping_mariadb_read_slice": {
+      "status": "PASS",
+      "tests": 1,
+      "assertions": 22,
+      "seconds": 30.317,
+      "scope": "Closed-period/reversal plus final Albanian unpaid-payroll SQL and payroll summary answers; overlaps transaction coverage."
+    },
+    "mariadb_two_process_race": {
+      "engine": "11.8.9-MariaDB",
+      "parallel_post_workers": [
+        {
+          "operation": "post",
+          "id": 4,
+          "journal_entry_id": 11
+        },
+        {
+          "operation": "post",
+          "id": 4,
+          "journal_entry_id": 11
+        }
+      ],
+      "parallel_payment_workers": [
+        {
+          "operation": "pay",
+          "id": 5,
+          "journal_entry_id": 12
+        },
+        {
+          "operation": "pay",
+          "id": 5,
+          "journal_entry_id": 12
+        }
+      ],
+      "one_payroll_journal": true,
+      "one_salary_settlement": true,
+      "one_bank_movement": true,
+      "balanced": true,
+      "obligations_reconciled": true
+    },
+    "frontend": {
+      "status": "PASS",
+      "tests": 2,
+      "scope": "Separate navigation permissions, partial settlement display and month/year dates"
+    },
+    "production_build": {
+      "status": "PASS",
+      "seconds": 15.16,
+      "note": "Existing PDF/3D chunks exceed 500 kB; no build failure."
+    },
+    "browser": {
+      "status": "PASS",
+      "journeys": 1,
+      "seconds": 33.3,
+      "total_seconds_including_build": 56.4,
+      "scope": "UI employee and dated terms, approved bonus/advance repayment, calculate/review/approve/post, retry, salary settlement, EN/SQ payslip, liability settlements and close",
+      "screenshot": "output/dc4-payroll-browser.png",
+      "visual_review": "PASS",
+      "fixture": "Synthetic dc4-preview.sqlite; no production database or original e2e.sqlite reset"
+    },
+    "official_bn24_fixture": {
+      "source": "https://crmm.atk-ks.org/sq/Public/CalculatorDetail?id=21",
+      "download_sha256": "8a03268421b8183ea672599c9df7016132babe8d542661b13a6177aa02860950",
+      "method": "Executed published inline BN24 calculation functions with isolated input controls; no AIMS calculator code used.",
+      "inputs": {
+        "gross": "1000.00",
+        "employer": "primary",
+        "employee_pension_rate": "5",
+        "employer_pension_rate": "5"
+      },
+      "outputs": {
+        "employee_pension": "50.00",
+        "employer_pension": "50.00",
+        "taxable": "950.00",
+        "tax": "66.00",
+        "net": "884.00"
+      }
+    },
+    "upgrade_copy": {
+      "source": "C:\\Users\\anisi\\.codex\\worktrees\\pr2-performance-scale\\Lab2\\backend\\database\\e2e.sqlite",
+      "target": "C:\\Users\\anisi\\.codex\\worktrees\\pr2-performance-scale\\Lab2\\output\\dc4-upgrade.sqlite",
+      "method": "sqlite online backup → migrate --force → workforce:setup; no migrate:fresh",
+      "before": {
+        "journal_entries": {
+          "count": 11,
+          "sha256": "ab671c1e3b528db504e97554dc443e3412f70ff94ac15d0ea94fd783c5d8f2bd"
+        },
+        "journal_lines": {
+          "count": 24,
+          "sha256": "95cb1609a15d927747d3f0496326bb10570944c4bb99f3b46a16cf5c9432e21d"
+        },
+        "expenses": {
+          "count": 1,
+          "sha256": "e824a1eed46302d79e3f0ccaa5aefbbe904be88e37e4410b4ad7c54ad94cf593"
+        },
+        "invoices": {
+          "count": 5,
+          "sha256": "ddb60b4c250d98e45a620248f04a48580ffc439009c6b373ab5599dd764c3b8a"
+        },
+        "invoice_items": {
+          "count": 7,
+          "sha256": "573d61cc641979e52f5ca86f3ce102d1ffdf70b58823a32adcdb0fdaed038d78"
+        },
+        "financial_account_transactions": {
+          "count": 3,
+          "sha256": "fc0029a82f4fb98c81a73df24a04356160d1bc4819915c951bb49de39660775d"
+        },
+        "documents": {
+          "count": 3,
+          "sha256": "bf1086eceb4291171445b4d6d51a2d7cab5885f651a59d171f04f44d7f4ca00e"
+        }
+      },
+      "after": {
+        "journal_entries": {
+          "count": 11,
+          "sha256": "ab671c1e3b528db504e97554dc443e3412f70ff94ac15d0ea94fd783c5d8f2bd"
+        },
+        "journal_lines": {
+          "count": 24,
+          "sha256": "95cb1609a15d927747d3f0496326bb10570944c4bb99f3b46a16cf5c9432e21d"
+        },
+        "expenses": {
+          "count": 1,
+          "sha256": "e824a1eed46302d79e3f0ccaa5aefbbe904be88e37e4410b4ad7c54ad94cf593"
+        },
+        "invoices": {
+          "count": 5,
+          "sha256": "ddb60b4c250d98e45a620248f04a48580ffc439009c6b373ab5599dd764c3b8a"
+        },
+        "invoice_items": {
+          "count": 7,
+          "sha256": "573d61cc641979e52f5ca86f3ce102d1ffdf70b58823a32adcdb0fdaed038d78"
+        },
+        "financial_account_transactions": {
+          "count": 3,
+          "sha256": "fc0029a82f4fb98c81a73df24a04356160d1bc4819915c951bb49de39660775d"
+        },
+        "documents": {
+          "count": 3,
+          "sha256": "bf1086eceb4291171445b4d6d51a2d7cab5885f651a59d171f04f44d7f4ca00e"
+        }
+      },
+      "financial_history_unchanged": true
+    },
+    "small_read_probe": {
+      "summary": {
+        "queries": 9,
+        "bytes": 901,
+        "milliseconds": 20.69
+      },
+      "detail": {
+        "queries": 22,
+        "bytes": 7427,
+        "milliseconds": 17.45
+      },
+      "fixture": {
+        "employees": 1,
+        "qualification": "Small synthetic projection probe only; no scale extrapolation. Summary avoids payroll-line/private snapshot and Financial Intelligence payloads."
+      }
+    }
+  },
+  "explicit_flags": {
+    "historic_salary_terms_preserved": "YES",
+    "statutory_rules_effective_dated": "YES",
+    "gross_to_net_verified": "YES",
+    "employee_employer_pension_separated": "YES",
+    "employee_advances_reconciled": "YES",
+    "payroll_journal_balanced": "YES",
+    "payroll_retry_idempotent": "YES",
+    "salary_payment_does_not_repeat_expense": "YES",
+    "closed_period_protection": "YES",
+    "employee_privacy_verified": "YES",
+    "two_company_isolation_verified": "YES",
+    "payslips_en_sq": "YES",
+    "preparation_accrual_totals_reconcile_gl": "YES",
+    "automatic_edi_implemented_and_officially_verified": "NO",
+    "ready_for_live_controlled_payroll_pilot": "NO"
+  },
+  "limitations": [
+    "Independent accountant/company-policy validation is outstanding; synthetic parallel review is available.",
+    "No automatic EDI filing, certified EDI upload format, or live bank integration.",
+    "Partial calendar-day salary proration and explicit overtime/unpaid leave policies require company approval.",
+    "Statutory rounding boundaries, employment rights/minimum wage, pension age/residency/exemptions, benefits and final pay require legal/accountant review.",
+    "Hourly/daily paid leave, combined arrears/supplemental payroll and paid-payroll refunds/corrections are blocked or deferred.",
+    "Portable workforce identity/reference remapping is unsupported; use complete encrypted installation backup with application key preserved."
+  ],
+  "not_run": [
+    "PM3/large synthetic suites",
+    "Live bank submission",
+    "Automatic or official EDI filing",
+    "Customer database migration",
+    "Deployment/merge",
+    "DC5"
+  ]
+}
