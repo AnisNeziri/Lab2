@@ -1,0 +1,111 @@
+{
+  "phase": "PX1",
+  "base_commit": "ea883f5918aad2ae6095df87327d2f54b2a5c939",
+  "implementation_commit": "fd1e1f782938a5418867fcd1213cf8003b41e242",
+  "original_checkout": {
+    "path": "C:/Users/anisi/Lab2",
+    "head": "07c66520187db1486f994e9527670b1e7dcbcd24",
+    "clean_and_untouched": true
+  },
+  "authoritative_backend_changes": false,
+  "migrations_added": 0,
+  "tests": {
+    "frontend": {
+      "result": "PASS",
+      "tests": 38,
+      "command": "node --test tests/workspace-personalization.test.mjs tests/navigation.test.mjs tests/commandCatalog.test.mjs tests/order-presentation.test.mjs tests/product-maturity-session.test.mjs tests/px1-workflows.test.mjs tests/assistant-presentation.test.mjs src/pages/workforcePresentation.test.js",
+      "cwd": "frontend"
+    },
+    "backend": {
+      "result": "PASS",
+      "engine": "SQLite",
+      "tests": 27,
+      "assertions": 352,
+      "command": "php vendor/phpunit/phpunit/phpunit --filter \"OrderHubTest|DC4WorkforcePayrollTest\"",
+      "cwd": "backend"
+    },
+    "browser": {
+      "result": "PASS",
+      "journeys": 2,
+      "seconds": [
+        44.3,
+        45.5
+      ],
+      "engine": "Chromium",
+      "command": "node frontend/node_modules/@playwright/test/cli.js test --config frontend/playwright.px1.config.js",
+      "compiled_mode": "certification",
+      "viewports": [
+        "1920x1080",
+        "1366x768",
+        "768x1024",
+        "390x844"
+      ],
+      "combinations": [
+        "EN/light",
+        "SQ/dark"
+      ],
+      "roles": [
+        "admin/owner",
+        "manager",
+        "hr",
+        "staff"
+      ],
+      "seven_work_profiles": "Permission-filtered profile/navigation checks; not seven new backend roles"
+    },
+    "production_build": {
+      "result": "PASS",
+      "command": "node node_modules/vite/bin/vite.js build",
+      "cwd": "frontend",
+      "seconds": 24.2,
+      "remaining_warnings": [
+        "Existing PDF and 3D chunks exceed 500 kB"
+      ]
+    },
+    "mariadb": {
+      "result": "NOT RUN",
+      "reason": "No authoritative database, accounting, tenancy or concurrency logic changed in PX1."
+    }
+  },
+  "captures": [
+    {
+      "path": "output/px1-accounting-1366-en-light.png",
+      "sha256": "f3e499749d0a16d34be9e98bab1c16d10b5744c9f65c712e893ca2881361ba80"
+    },
+    {
+      "path": "output/px1-cargo-768-sq-dark.png",
+      "sha256": "3b2252aae0b75de68044c6d9c0ded257b7b5ed8018d5923cc248d2e98ffffbe7"
+    },
+    {
+      "path": "output/px1-customer-1920-en-light.png",
+      "sha256": "7924463104ac5fa1d6ac87fb31db659c04ea0224b1ad480fe7fece6c9f16c24d"
+    },
+    {
+      "path": "output/px1-order-1366-en-light.png",
+      "sha256": "799721930c0e69aa1ee142ff57a7b7b78c1f9f2c4bfa8959e4be3461b894696d"
+    },
+    {
+      "path": "output/px1-own-portal-390-sq-dark.png",
+      "sha256": "7934b4417eb45c5432f7f8076e436b553116e4ec464e460e68f0e04340c2a340"
+    },
+    {
+      "path": "output/px1-owner-1920-en-light.png",
+      "sha256": "45a3b73db6b60366f0ac4cdfca426cbac3e3ca47e597cb546f8f8bd1ce7feb51"
+    },
+    {
+      "path": "output/px1-payroll-390-sq-dark.png",
+      "sha256": "d5f8ba228ca5590c3e07b3fa8a6c087d2f436bd905f2f1e35e2c8d036f5134ae"
+    },
+    {
+      "path": "output/px1-supplier-1366-en-light.png",
+      "sha256": "b2487c2e61fc6bb4587863268eaadbf8587f47afc12f61233d85dc27abf4f328"
+    }
+  ],
+  "review_scope": "Representative core workflow review; not an exhaustive legacy screen or external usability certification.",
+  "integrity_boundaries": [
+    "Existing posting services and permissions unchanged",
+    "No live ATK, bank or payroll submission",
+    "No production data reset or migration",
+    "No merge or customer deployment",
+    "No next phase started"
+  ]
+}
