@@ -18,6 +18,7 @@ use App\Models\PayrollRun;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\FinancialIntegrityChecks;
 use App\Services\InstallationBackupService;
 use App\Services\PermissionService;
 use App\Services\Workforce\KosovoPayrollCalculator;
@@ -246,8 +247,13 @@ class DC4WorkforcePayrollTest extends TestCase
         $this->postJson('/api/workforce/employees/'.$employee.'/terms', $this->term('999', '2026-10-01'))->assertNotFound();
         $this->getJson('/api/payroll/summary')->assertOk()->assertJsonPath('active_employees', 0);
         $this->assertFalse(WorkforcePresence::exists());
-        Employee::create(['employee_number' => 'SECOND-COMPANY', 'name' => 'Second company employee', 'status' => 'draft', 'start_date' => '2026-01-01', 'payment_method' => 'cash']);
+        $secondEmployee = Employee::create(['employee_number' => 'SECOND-COMPANY', 'name' => 'Second company employee', 'status' => 'draft', 'start_date' => '2026-01-01', 'payment_method' => 'cash']);
         $this->assertTrue(WorkforcePresence::exists());
+        Auth::setUser(User::where('company_id', $this->apiCompany->id)->firstOrFail());
+        DB::table('payroll_lines')->where('payroll_run_id', $run)->update(['employee_id' => $secondEmployee->id]);
+        $companyLinks = collect(app(FinancialIntegrityChecks::class)->checks())->firstWhere('code', 'company_links');
+        $this->assertGreaterThan(0, $companyLinks['count']);
+        $this->assertSame('critical', $companyLinks['severity']);
     }
 
     public function test_leave_attendance_approvals_and_upgrade_permissions_are_preserved(): void
