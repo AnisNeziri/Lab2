@@ -5,14 +5,18 @@
 
 ---
 
+Current engineering baseline and next-cycle roadmap: [DR0 baseline report](docs/DR0_BASELINE_REPORT.md). Pilot preparation and release evidence: [PR3 report](docs/PR3_PILOT_REPORT.md). These reports distinguish fixture verification from real-company readiness.
+
+Controlled company opening: [DC1 completion report](docs/DC1_ONBOARDING_REPORT.md) and [operator guide](docs/dc1/ONBOARDING_GUIDE.md). DC1 uses reviewed staging, reconciliation, explicit approval, authoritative posting and an independently restored copy before locking. Verification uses synthetic data; no real-company cutover has been performed.
+
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Backend | Laravel 12 (PHP 8.2) |
+| Backend | Laravel 12; PHP >=8.2 (certified with bundled PHP 8.3.35) |
 | Frontend | React 19 + Vite 6 |
 | Styling | Tailwind CSS 3.4 + Custom CSS |
-| Database (SQL) | MySQL 8+ — 31 relational tables |
+| Database (SQL) | MariaDB web path; SQLite portable desktop path. Current schema is defined by migrations. |
 | Database (NoSQL) | Redis — Hash, Sorted Set, Set |
 | Real-time | Laravel Reverb + Laravel Echo (WebSockets) |
 | State Management | Zustand |
@@ -26,7 +30,7 @@
 
 ## Architecture
 
-Layered architecture with strict separation of concerns:
+Core operations use controllers, authoritative services and Eloquent models. Some established modules also use repositories; the diagram describes that pattern, not every module:
 
 ```
 HTTP Request
@@ -40,7 +44,7 @@ Repository       — database queries, isolated from business logic
 Eloquent Model   — relationships, casts, accessors
 ```
 
-Multi-tenancy: every record has `company_id`. The `BelongsToCompany` trait automatically scopes all queries to the authenticated user's company.
+Tenant business models use `company_id`. `BelongsToCompany` scopes queries when an authenticated company context exists and protects company assignment. Global metadata is separate; background jobs must explicitly establish company context. See DR0 for two-company checks and review limits.
 
 ---
 
@@ -56,7 +60,7 @@ Multi-tenancy: every record has `company_id`. The `BelongsToCompany` trait autom
 | WebSockets (Reverb + Echo) | Done — run `php artisan reverb:start` |
 | Zustand, lazy routes, Tailwind | Done |
 | Advanced search (5 lists) | products, categories, suppliers, invoices, stock movements |
-| Export / import (5 lists, CSV/JSON/Excel) | Reports page + `/api/export/{list}` |
+| Export / import | Generic import supports products, categories, suppliers and stock movements; dedicated product and Order Hub CSV flows have separate contracts. Pilot CSV preflight validates without posting. |
 | CMS (landing text only) | Site Content admin page |
 | Dynamic reports | Reports page |
 | Payments | Simulated gateway (local transaction records) |
@@ -66,7 +70,9 @@ Team tasks (not in code): invite `elton.boshnjaku@ubt-uni.net`, keep GitHub Proj
 
 ---
 
-## Database Tables (31 total)
+## Original lab schema overview
+
+The following 31-table list is the historical lab subset, not the current schema inventory. DR0 verified 181 tables (including framework metadata) after 118 migrations in its disposable SQLite fixture. Use migrations and the baseline report for current domains.
 
 ### Mandatory System Tables (10)
 | Table | Purpose |
@@ -96,7 +102,7 @@ Implemented via **Laravel Reverb** (WebSocket server) + **Laravel Echo** (fronte
 | `StockUpdated` | `private-company.{id}` | Stock movement recorded |
 | `LowStockDetected` | `private-company.{id}` | Product falls below min quantity |
 
-Frontend listens and updates Dashboard, 3D Map, and Notification Center live — **no polling**.
+Frontend listens for live updates. The app also has a visibility-aware 15-second refresh fallback; Reverb availability and the polling fallback are separate mechanisms.
 
 ---
 
@@ -142,7 +148,7 @@ Interactive Three.js 3D map showing 4 zones (16 shelves), live stock levels mapp
 
 - PHP 8.2+
 - Composer 2+
-- Node.js 18+ and pnpm (`npm i -g pnpm`)
+- Node.js 22.14.0 and npm 10.9.2 are the verified release toolchain; use the committed npm lockfiles.
 - MySQL 8+
 - Redis (Windows: [Memurai](https://www.memurai.com/) or WSL)
 - XAMPP / Laragon (optional, for local MySQL)
@@ -195,8 +201,8 @@ Reverb WebSocket server runs at: `ws://localhost:8080`
 
 ```bash
 cd frontend
-pnpm install
-pnpm run dev
+npm ci
+npm run dev
 ```
 
 Frontend runs at: `http://localhost:5173`
@@ -377,7 +383,7 @@ cd backend && php artisan test
 cd backend && php artisan migrate:fresh --seed
 
 # Production frontend build
-cd frontend && pnpm run build
+cd frontend && npm run build
 
 # Clear all Laravel caches
 cd backend && php artisan optimize:clear

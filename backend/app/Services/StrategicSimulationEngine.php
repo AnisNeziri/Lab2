@@ -11,15 +11,22 @@ final class StrategicSimulationEngine
 {
     public const VERSION = 'strategic-simulation-v12.1';
 
-    public function calculate(array $baseline, array $assumptions, bool $optimize = true): array
+    public function calculate(array $baseline, array $assumptions, bool $optimize = true, ?callable $cancelled = null): array
     {
         $started = microtime(true);
+        $active = static function () use ($cancelled): void {
+            if ($cancelled && $cancelled()) throw new \RuntimeException('Simulation cancelled.');
+        };
+        $active();
         $warnings = $baseline['limitations'] ?? [];
         $base = $this->world($baseline, [], $warnings);
         $world = $this->world($baseline, $assumptions, $warnings);
+        $active();
         $b = $this->project($base);
         $s = $this->project($world);
-        $alternatives = $optimize ? $this->responses($world, $warnings) : [];
+        $active();
+        $alternatives = $optimize ? $this->responses($world, $warnings, $cancelled) : [];
+        $active();
         $impact = ['stockout_exposures' => $s['summary']['stockout_exposures'] - $b['summary']['stockout_exposures'], 'below_target_scopes' => $s['summary']['below_target_scopes'] - $b['summary']['below_target_scopes'], 'money' => []];
         foreach (['purchase_requirement_by_currency', 'inventory_value_by_currency', 'required_inventory_capital_by_currency'] as $metric) {
             foreach (array_unique(array_merge(array_keys($b['summary'][$metric]), array_keys($s['summary'][$metric]))) as $c) {
@@ -393,7 +400,7 @@ final class StrategicSimulationEngine
         return $out;
     }
 
-    private function responses(array $world, array &$warnings): array
+    private function responses(array $world, array &$warnings, ?callable $cancelled = null): array
     {
         $short = $world;
         foreach ($short['rows'] as &$r) {
@@ -438,7 +445,7 @@ final class StrategicSimulationEngine
         if (collect($payload['groups'])->contains(fn ($g) => ! $g['candidates'])) {
             return [['key' => 'balanced', 'status' => 'INFEASIBLE', 'lines' => [], 'summary' => [], 'message' => 'No valid candidate meets declared constraints.']];
         }
-        $solved = app(LocalSupplyOptimizer::class)->solve($payload);
+        $solved = app(LocalSupplyOptimizer::class)->solve($payload, $cancelled);
         $candidates = collect($payload['groups'])->flatMap(fn ($g) => $g['candidates'])->keyBy('id');
         $out = [];
         foreach ($solved['plans'] as $a) {

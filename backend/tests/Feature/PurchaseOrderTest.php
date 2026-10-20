@@ -6,10 +6,17 @@ use App\Models\Category;
 use App\Models\Company;
 use App\Models\Expense;
 use App\Models\FinancialAccount;
+use App\Models\GoodsReceipt;
+use App\Models\LandedCost;
+use App\Models\Permission;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
+use App\Models\PurchaseOrderPayment;
+use App\Models\Role;
 use App\Models\Supplier;
+use App\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -17,6 +24,29 @@ use Tests\TestCase;
 class PurchaseOrderTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_contextual_corrections_link_to_existing_payment_receipt_and_landed_workflows(): void
+    {
+        [$supplier, $product] = $this->setupProcurement();
+        $created = $this->postJson('/api/purchase-orders', $this->payload($supplier, $product, 10, 10))->assertCreated();
+        $orderId = $created->json('id');
+        $this->postJson('/api/purchase-orders/'.$orderId.'/payments', $this->payment(20, 'context-payment'))->assertCreated();
+        $warehouse = Warehouse::create($this->tenantAttributes(['name' => 'Correction warehouse', 'code' => 'CORRECTION']));
+        $receipt = GoodsReceipt::create(['purchase_order_id' => $orderId, 'warehouse_id' => $warehouse->id, 'receipt_number' => 'GR-CORRECTION', 'received_at' => now(), 'status' => 'posted', 'idempotency_key' => (string) Str::uuid()]);
+        $receipt->items()->create(['purchase_order_item_id' => $created->json('items.0.id'), 'product_id' => $product->id, 'ordered_unit' => 'pcs', 'accepted_quantity' => 1, 'accepted_base_quantity' => 1, 'inventory_unit' => 'pcs', 'base_purchase_unit_cost' => 10]);
+        $cost = LandedCost::create(['goods_receipt_id' => $receipt->id, 'purchase_order_id' => $orderId, 'cost_type' => 'freight', 'amount' => 1, 'currency' => 'EUR', 'exchange_rate_to_base' => 1, 'base_currency_amount' => 1, 'allocation_method' => 'value', 'status' => 'posted', 'idempotency_key' => (string) Str::uuid()]);
+        $links = $this->getJson('/api/entity-context/purchase-order/'.$orderId)->assertOk()->json('corrections');
+        $this->assertSame(['supplier_payment', 'receipt_return', 'landed_cost'], array_column($links, 'kind'));
+        $this->assertSame('/operations-center?tab=landed&landed_cost='.$cost->id, $links[2]['url']);
+        $this->getJson('/api/entity-context/goods-receipt/'.$receipt->id)->assertOk()->assertJsonPath('corrections.0.kind', 'receipt_return');
+        $cost->update(['status' => 'reversed']);
+        $links = $this->getJson('/api/entity-context/purchase-order/'.$orderId)->assertOk()->json('corrections');
+        $this->assertNotContains('landed_cost', array_column($links, 'kind'));
+        $role = Role::where('slug', 'admin')->firstOrFail();
+        $role->permissions()->detach(Permission::whereIn('slug', ['purchase_orders.payments', 'returns.manage'])->pluck('id'));
+        Cache::forget('role_permissions:admin');
+        $this->getJson('/api/entity-context/purchase-order/'.$orderId)->assertOk()->assertJsonPath('corrections', []);
+    }
 
     public function test_order_totals_recalculate_when_items_are_edited(): void
     {
@@ -149,7 +179,7 @@ class PurchaseOrderTest extends TestCase
             'amount' => '61.00',
         ])->assertUnprocessable()->assertJsonValidationErrors('idempotency_key');
 
-        $payment = \App\Models\PurchaseOrderPayment::findOrFail($paymentId);
+        $payment = PurchaseOrderPayment::findOrFail($paymentId);
         $this->assertSame('60.00', $payment->allocated_amount);
         $this->assertSame('40.00', $payment->unallocated_amount);
         $this->assertSame('partially_allocated', $payment->allocation_status);

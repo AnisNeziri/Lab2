@@ -10,6 +10,8 @@ async function preferences(page, theme, language) {
   await page.reload()
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
   await expect(page.locator('html')).toHaveAttribute('lang', language)
+  // Preferences can hydrate before the lazy workspace mounts its keyboard handlers.
+  await expect(page.locator('.global-search-trigger')).toBeVisible()
 }
 
 test.afterEach(async ({ page }) => {
@@ -132,9 +134,13 @@ test('enabled warehouse maps render and layout navigation works in both language
     await page.goto('/warehouse-3d')
     await expect(page.locator('.warehouse-3d-page canvas')).toBeVisible()
     await expectNoDocumentOverflow(page)
-    await page.getByRole('button',{name:language==='en'?'Edit layout':'Ndrysho planimetrinë',exact:true}).click()
+    // Headless CI software-renders this 3D scene; trace/actionability round trips
+    // can consume the default 10s even when the real click navigates correctly.
+    await page.getByRole('button',{name:language==='en'?'Edit layout':'Ndrysho planimetrinë',exact:true}).click({timeout:30_000})
     await expect(page).toHaveURL(/\/warehouse-layout$/)
     await expect(page.getByRole('heading',{name:language==='en'?'Warehouse layout':'Planimetria e depos',exact:true})).toBeVisible()
+    await expect(page.locator('.warehouse-layout-page .product-form input[type="number"]').first()).toBeVisible({timeout:30_000})
+    await expect(page.locator('.warehouse-layout-page .page-error')).toHaveCount(0)
     await expectNoDocumentOverflow(page)
   }
   expect(failures).toEqual([])

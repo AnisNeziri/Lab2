@@ -11,13 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Reset admin password and ensure role is set
-        DB::table('users')
-            ->where('email', 'admin@enterprise.com')
-            ->update([
-                'password' => Hash::make('password'),
-                'role' => 'admin',
-            ]);
+        // Historical development repair. Never reset credentials in a schema
+        // upgrade, including when an installation crosses this old migration.
     }
 
     /**

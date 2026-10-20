@@ -15,6 +15,7 @@ export const requestInventoryRecount = (id, payload) => apiRequest(`/inventory-c
 export const submitInventoryCount = (id) => apiRequest(`/inventory-counts/${id}/submit`, { method: "POST" });
 export const approveInventoryCount = (id, reason) => apiRequest(`/inventory-counts/${id}/approve`, json("POST", { reason }));
 export const cancelInventoryCount = (id, reason) => apiRequest(`/inventory-counts/${id}/cancel`, json("POST", { reason }));
+export const deleteInventoryCountDraft = (id) => apiRequest(`/inventory-counts/${id}`, { method: "DELETE" });
 
 export const getReplenishment = (filters = {}) => apiRequest(buildApiUrl("/replenishment", filters));
 export const createReplenishmentDrafts = (payload) => apiRequest("/replenishment/draft-purchase-orders", json("POST", payload));
@@ -50,6 +51,8 @@ export const approveSupplierInvoice = (id, reason = null) => apiRequest(`/suppli
 export const allocateSupplierInvoicePayment = (id, payload) => apiRequest(`/supplier-invoices/${id}/allocate-payment`, json("POST", payload));
 
 export const getFinancialAccounts = () => apiRequest("/finance/accounts");
+export const getFinancialTransaction = id => apiRequest(`/finance/account-transactions/${id}`);
+export const getFinancialTransfer = id => apiRequest(`/finance/account-transfers/${id}`);
 export const getFinancialPostingAccounts = () => apiRequest("/finance/posting-accounts");
 export const createFinancialAccount = (payload) => apiRequest("/finance/accounts", json("POST", payload));
 export const updateFinancialAccount = (id, payload) => apiRequest(`/finance/accounts/${id}`, json("PUT", payload));
@@ -58,10 +61,16 @@ export const postFinancialTransaction = (id, payload) => apiRequest(`/finance/ac
 export const transferFinancialAccounts = (payload) => apiRequest("/finance/account-transfers", json("POST", payload));
 export const reverseFinancialTransaction = (id, reason) => apiRequest(`/finance/account-transactions/${id}/reverse`, json("POST", { reason }));
 
-export const getBankStatements = () => apiRequest("/finance/bank-statements");
-export const getBankStatement = (id) => apiRequest(`/finance/bank-statements/${id}`);
+export const getBankStatements = (p={}) => apiRequest(buildApiUrl('/finance/bank-statements',p));
+export const getBankStatement = (id,p={}) => apiRequest(buildApiUrl(`/finance/bank-statements/${id}`,p));
 export const importBankStatement = (formData) => apiRequest("/finance/bank-statements/import", { method: "POST", body: formData });
 export const getBankMatchSuggestions = (id) => apiRequest(`/finance/bank-statement-rows/${id}/suggestions`);
 export const reconcileBankRow = (id, transactionId) => apiRequest(`/finance/bank-statement-rows/${id}/reconcile`, json("POST", { transaction_id: transactionId }));
 export const ignoreBankRow = (id, reason) => apiRequest(`/finance/bank-statement-rows/${id}/ignore`, json("POST", { reason }));
 export const unmatchBankRow = (id, reason) => apiRequest(`/finance/bank-statement-rows/${id}/unmatch`, json("POST", { reason }));
+export const reconcileBankRows = (id, transaction_ids) => apiRequest(`/finance/bank-statement-rows/${id}/reconcile`, json('POST', {transaction_ids}));
+export const setBankStatementBalances = (id,p) => apiRequest(`/finance/bank-statements/${id}/balances`,json('PUT',p));
+export const completeBankStatement = id => apiRequest(`/finance/bank-statements/${id}/complete`,{method:'POST'});
+export const reopenBankStatement = (id,reason) => apiRequest(`/finance/bank-statements/${id}/reopen`,json('POST',{reason}));
+export const reviewBankDuplicate = (id,reason) => apiRequest(`/finance/bank-statement-rows/${id}/review-duplicate`,json('POST',{reason}));
+export const reverseSupplierAllocation = (id,p) => apiRequest(`/supplier-payment-allocation-requests/${id}/reverse`,json('POST',p));

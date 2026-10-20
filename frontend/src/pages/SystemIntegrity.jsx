@@ -31,6 +31,8 @@ export default function SystemIntegrity() {
         <div className="integrity-check-icon">{check.status === 'healthy' ? <CheckCircle2/> : <AlertTriangle/>}</div>
         <div><h2>{tx(check.label)}</h2><p>{tx(check.detail)}</p>
           {check.last_success_at && <p>{tx('Last successful run')}: {new Date(check.last_success_at).toLocaleString()}</p>}
+          {check.last_verified_backup_at && <p>{tx('Last verified backup')}: {new Date(check.last_verified_backup_at).toLocaleString()}</p>}
+          {check.last_backup_failure_at && <p>{tx('Last backup failure')}: {new Date(check.last_backup_failure_at).toLocaleString()}</p>}
           {check.last_observation_at && <p>{tx('Last observation')}: {new Date(check.last_observation_at).toLocaleString()}</p>}
           {check.error_code && <code>{check.error_code}</code>}
         </div><strong>{check.count}</strong>

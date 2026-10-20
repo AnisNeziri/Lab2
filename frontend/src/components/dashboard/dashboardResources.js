@@ -1,6 +1,6 @@
 // Shared reads, bounded concurrency and background refresh without clearing data.
 export function createDashboardResources(fetcher) {
-  const records = new Map(), queue = [], controllers = new Set()
+  const records = new Map(), queue = [], controllers = new Set(), healthListeners = new Set()
   let active = 0, disposed = false
   const pump = () => {
     while (!disposed && active < 4 && queue.length) {
@@ -10,13 +10,17 @@ export function createDashboardResources(fetcher) {
     }
   }
   const record = key => {
-    if (!records.has(key)) records.set(key, {state:{data:null,error:'',loading:false},listeners:new Set(),promise:null,at:0})
+    if (!records.has(key)) records.set(key, {state:{data:null,error:'',loading:false},listeners:new Set(),activeListeners:new Set(),promise:null,at:0})
     return records.get(key)
   }
-  const publish = r => r.listeners.forEach(fn => fn({...r.state}))
+  const publish = r => { r.listeners.forEach(fn => fn({...r.state}));healthListeners.forEach(fn=>fn(![...records.values()].some(row=>row.failures>=2))) }
   return {
     state: key => ({...record(key).state}),
-    subscribe(key, fn) { const r=record(key); r.listeners.add(fn); return () => r.listeners.delete(fn) },
+    subscribeHealth(fn){healthListeners.add(fn);return()=>healthListeners.delete(fn)},
+    subscribe(key, fn, active=true) {
+      const r=record(key);r.listeners.add(fn);if(active)r.activeListeners.add(fn)
+      return () => {r.listeners.delete(fn);r.activeListeners.delete(fn)}
+    },
     load(key, force=false) {
       if (disposed) return Promise.resolve(null)
       const r=record(key)
@@ -29,22 +33,23 @@ export function createDashboardResources(fetcher) {
           const controller=new AbortController(); controllers.add(controller)
           try {
             const data=await fetcher(key,{signal:controller.signal})
-            if (!disposed) { r.state={data,error:'',loading:false};r.at=Date.now();publish(r) }
+            if (!disposed) { r.failures=0;r.state={data,error:'',loading:false};r.at=Date.now();publish(r) }
             resolve(data)
           } catch(e) {
-            if (!disposed) { r.state={...r.state,error:e.message,loading:false};publish(r) }
+            if (!disposed) { r.failures=(r.failures||0)+1;r.state={...r.state,error:e.message,loading:false};publish(r) }
             resolve(null)
           } finally { controllers.delete(controller);r.promise=null }
         },
       }))
       pump();return r.promise
     },
-    refresh() { records.forEach((r,key) => { if(r.listeners.size) this.load(key,true) }) },
+    refresh() { records.forEach((r,key) => { if(r.activeListeners.size) this.load(key,true) }) },
     dispose() {
       disposed=true
       queue.splice(0).forEach(task=>task.cancel())
       controllers.forEach(controller=>controller.abort())
-      records.forEach(r=>r.listeners.clear())
+      records.forEach(r=>{r.listeners.clear();r.activeListeners.clear()})
+      healthListeners.clear()
     },
   }
 }

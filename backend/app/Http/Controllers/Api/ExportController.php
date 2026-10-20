@@ -37,7 +37,7 @@ class ExportController extends Controller
         $run = $this->backupRuns->start('export', $modules ? 'selected' : 'full', $modules);
         try {
             $response = $this->backups->export($modules, $passphrase);
-            $this->backupRuns->complete($run, strlen((string) $response->getContent()), 'checksum_created');
+            $this->backupRuns->complete($run, strlen((string) $response->getContent()), 'checksum_verified');
 
             return $response;
         } catch (\Throwable $error) {

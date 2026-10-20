@@ -6,6 +6,13 @@ use App\Exceptions\CustomerCreditBlockedException;
 use App\Models\ApprovalRequest;
 use App\Models\Customer;
 use App\Models\CustomerDebtTransaction;
+use App\Models\CustomerSettlementAllocation;
+use App\Models\FinancialAccountTransaction;
+use App\Models\OnboardingSession;
+use App\Models\OutboundDispatch;
+use App\Models\SalesOrder;
+use App\Services\Onboarding\OnboardingGuard;
+use App\Support\CompanyClock;
 use App\Support\CompanyCurrency;
 use App\Support\Money;
 use Carbon\CarbonImmutable;
@@ -24,6 +31,14 @@ class CustomerDebtService
         private readonly AccountingService $accounting,
     ) {}
 
+    // Fulfillment and stock posting lock company before customer. Payment
+    // postings insert company-referenced rows too; the inverse order caused
+    // a MariaDB deadlock in the PR2 dispatch/payment race.
+    private function lockCompany(): void
+    {
+        DB::table('companies')->where('id', Auth::user()->company_id)->lockForUpdate()->first();
+    }
+
     private const INCREASE_TYPES = ['debt_added', 'positive_adjustment', 'opening_balance'];
 
     public function addDebt(Customer $customer, array $data, string $type = 'debt_added'): CustomerDebtTransaction
@@ -33,6 +48,7 @@ class CustomerDebtService
         }
 
         return DB::transaction(function () use ($customer, $data, $type) {
+            $this->lockCompany();
             $locked = Customer::query()->lockForUpdate()->findOrFail($customer->id);
             $amount = Money::normalize($data['amount']);
             if (Money::compare($amount, '0.00') <= 0) {
@@ -111,19 +127,25 @@ class CustomerDebtService
     }
 
     /** Internal fulfillment boundary: the order lock and exact order credit approval remain authoritative. */
-    public function addFulfillmentDebt(\App\Models\SalesOrder $order, \App\Models\OutboundDispatch $dispatch): CustomerDebtTransaction
+    public function addFulfillmentDebt(SalesOrder $order, OutboundDispatch $dispatch): CustomerDebtTransaction
     {
-        return DB::transaction(function() use($order,$dispatch){
-            $locked=\App\Models\SalesOrder::query()->lockForUpdate()->findOrFail($order->id);
-            if($dispatch->sales_order_id!==$locked->id)throw ValidationException::withMessages(['dispatch'=>['Dispatch does not belong to this order.']]);
-            if($dispatch->customer_debt_transaction_id)return CustomerDebtTransaction::query()->findOrFail($dispatch->customer_debt_transaction_id);
+        return DB::transaction(function () use ($order, $dispatch) {
+            $this->lockCompany();
+            $locked = SalesOrder::query()->lockForUpdate()->findOrFail($order->id);
+            if ($dispatch->sales_order_id !== $locked->id) {
+                throw ValidationException::withMessages(['dispatch' => ['Dispatch does not belong to this order.']]);
+            }
+            if ($dispatch->customer_debt_transaction_id) {
+                return CustomerDebtTransaction::query()->findOrFail($dispatch->customer_debt_transaction_id);
+            }
             app(OutboundCreditService::class)->authorize($locked);
-            $customer=Customer::query()->lockForUpdate()->findOrFail($locked->customer_id);
-            $data=$this->applyPaymentTerms($customer,['amount'=>$dispatch->total_amount,'transaction_date'=>now()->toDateString(),'daily_sale_id'=>$dispatch->daily_sale_id,'source'=>'manual','reference_number'=>$dispatch->reference,'note'=>'Fulfilled order '.$locked->order_number,'idempotency_key'=>'fulfillment-debt-'.$dispatch->id,'metadata'=>['sales_order_id'=>$locked->id,'outbound_dispatch_id'=>$dispatch->id]]);
-            $transaction=$this->record($customer,$data,'debt_added',true);
+            $customer = Customer::query()->lockForUpdate()->findOrFail($locked->customer_id);
+            $data = $this->applyPaymentTerms($customer, ['amount' => $dispatch->total_amount, 'transaction_date' => CompanyClock::today()->toDateString(), 'daily_sale_id' => $dispatch->daily_sale_id, 'source' => 'manual', 'reference_number' => $dispatch->reference, 'note' => 'Fulfilled order '.$locked->order_number, 'idempotency_key' => 'fulfillment-debt-'.$dispatch->id, 'metadata' => ['sales_order_id' => $locked->id, 'outbound_dispatch_id' => $dispatch->id]]);
+            $transaction = $this->record($customer, $data, 'debt_added', true);
             $this->accounting->postCustomerDebt($transaction);
-            $locked->update(['committed_amount'=>Money::maximum('0',Money::subtract($locked->committed_amount,$dispatch->total_amount))]);
-            $dispatch->update(['customer_debt_transaction_id'=>$transaction->id]);
+            $locked->update(['committed_amount' => Money::maximum('0', Money::subtract($locked->committed_amount, $dispatch->total_amount))]);
+            $dispatch->update(['customer_debt_transaction_id' => $transaction->id]);
+
             return $transaction;
         });
     }
@@ -135,6 +157,7 @@ class CustomerDebtService
         }
 
         return DB::transaction(function () use ($customer, $data, $type) {
+            $this->lockCompany();
             $locked = Customer::query()->lockForUpdate()->findOrFail($customer->id);
             $amount = Money::normalize($data['amount']);
             $data = $this->applyPaymentTerms($locked, $data);
@@ -170,6 +193,7 @@ class CustomerDebtService
     public function recordPayment(Customer $customer, array $data): CustomerDebtTransaction
     {
         return DB::transaction(function () use ($customer, $data) {
+            $this->lockCompany();
             $transaction = $this->record($customer, $data, 'payment', false);
             if (! empty($data['financial_account_id']) && ! $transaction->financial_account_transaction_id) {
                 $ledger = $this->accounts->post((int) $data['financial_account_id'], [
@@ -190,6 +214,7 @@ class CustomerDebtService
                 'customer_id' => $customer->id, 'amount' => $transaction->amount,
                 'transaction_date' => $transaction->transaction_date?->toDateString(),
             ], "customer-payment:{$transaction->id}:received");
+
             return $transaction->fresh();
         });
     }
@@ -197,6 +222,7 @@ class CustomerDebtService
     public function reverse(CustomerDebtTransaction $transaction, string $reason): CustomerDebtTransaction
     {
         return DB::transaction(function () use ($transaction, $reason) {
+            $this->lockCompany();
             $customer = Customer::query()->lockForUpdate()->findOrFail($transaction->customer_id);
             $locked = CustomerDebtTransaction::query()
                 ->where('customer_id', $customer->id)
@@ -210,6 +236,7 @@ class CustomerDebtService
     public function correct(CustomerDebtTransaction $transaction, array $data): CustomerDebtTransaction
     {
         return DB::transaction(function () use ($transaction, $data) {
+            $this->lockCompany();
             $customer = Customer::query()->lockForUpdate()->findOrFail($transaction->customer_id);
             $locked = CustomerDebtTransaction::query()
                 ->where('customer_id', $customer->id)
@@ -235,19 +262,38 @@ class CustomerDebtService
                 ],
             ];
 
-            $corrected = $locked->type === 'payment'
-                ? $this->recordPayment($customer, $replacement)
-                : (in_array($locked->type, self::INCREASE_TYPES, true)
-                    ? $this->addDebt($customer, $replacement, $locked->type)
-                    : $this->record($customer, $replacement, $locked->type, false));
+            if ($locked->source === 'onboarding_opening' || data_get($locked->metadata, 'opening_position')) {
+                $corrected = $this->record($customer, $replacement, $locked->type, $locked->type === 'opening_balance', true);
+                app(AccountingService::class)->postCustomerDebt($corrected);
+            } else {
+                $corrected = $locked->type === 'payment'
+                    ? $this->recordPayment($customer, $replacement)
+                    : (in_array($locked->type, self::INCREASE_TYPES, true)
+                        ? $this->addDebt($customer, $replacement, $locked->type)
+                        : $this->record($customer, $replacement, $locked->type, false));
+            }
 
             return $corrected->load('user:id,name')->loadCount('reversals');
         });
     }
 
-    private function record(Customer $customer, array $data, string $type, bool $increase): CustomerDebtTransaction
+    public function recordOpening(OnboardingSession $session, Customer $customer, array $data, bool $advance = false): CustomerDebtTransaction
     {
-        return DB::transaction(function () use ($customer, $data, $type, $increase) {
+        app(OnboardingGuard::class)->assertOpening($session);
+
+        return DB::transaction(function () use ($customer, $data, $advance) {
+            $entry = $this->record($customer, $data, $advance ? 'opening_advance' : 'opening_balance', ! $advance, true);
+            app(AccountingService::class)->postCustomerDebt($entry);
+
+            return $entry;
+        });
+    }
+
+    private function record(Customer $customer, array $data, string $type, bool $increase, bool $opening = false, bool $openingReversal = false, ?CustomerDebtTransaction $reversing = null): CustomerDebtTransaction
+    {
+        return DB::transaction(function () use ($customer, $data, $type, $increase, $opening, $openingReversal, $reversing) {
+            $this->lockCompany();
+            app(OnboardingGuard::class)->assertOperational($data['transaction_date'] ?? null);
             $locked = Customer::query()->lockForUpdate()->findOrFail($customer->id);
             $amount = Money::normalize($data['amount']);
 
@@ -262,7 +308,7 @@ class CustomerDebtService
                     $same = (int) $existing->customer_id === (int) $locked->id
                         && $existing->type === $type
                         && Money::compare($existing->amount, $amount) === 0
-                        && $existing->transaction_date?->toDateString() === (string) ($data['transaction_date'] ?? now()->toDateString())
+                        && $existing->transaction_date?->toDateString() === (string) ($data['transaction_date'] ?? CompanyClock::today()->toDateString())
                         && ($existing->due_date?->toDateString() ?? '') === ($data['due_date'] ?? '')
                         && ($existing->payment_method ?? '') === ($data['payment_method'] ?? '')
                         && ($existing->reference_number ?? '') === ($data['reference_number'] ?? '')
@@ -280,12 +326,48 @@ class CustomerDebtService
                 }
             }
 
-            if ($increase) {
+            if ($increase && ! $opening && ! $openingReversal) {
                 $data = $this->applyPaymentTerms($locked, $data);
             }
             $before = Money::normalize($locked->current_debt);
             $creditBefore = Money::normalize($locked->current_credit ?? '0.00');
-            if ($increase) {
+            if ($reversing) {
+                if (Money::compare($reversing->balance_before, $reversing->balance_after) === 0 && Money::compare($reversing->credit_before, $reversing->credit_after) === 0) {
+                    throw ValidationException::withMessages(['transaction' => 'This legacy source has no reliable receivable/advance snapshot. Use an accountant-reviewed correction after reconciling its original position.']);
+                }
+                // Reverse exactly the original debt/advance deltas. Re-netting
+                // against today's unrelated debts would disagree with its GL.
+                $debtDelta = Money::subtract($reversing->balance_after, $reversing->balance_before);
+                $creditDelta = Money::subtract($reversing->credit_after, $reversing->credit_before);
+                $after = Money::subtract($before, $debtDelta);
+                $creditAfter = Money::subtract($creditBefore, $creditDelta);
+                if (Money::compare($creditAfter, 0) < 0) {
+                    throw ValidationException::withMessages(['transaction' => 'This advance was consumed. Reverse its downstream applications before reversing the original.']);
+                }
+                $settledCredit = '0.00';
+                if (Money::compare($debtDelta, 0) > 0) {
+                    $position = app(ReceivablePositionQueries::class)->rows(null, [$locked->id])->where('id', $reversing->id)->first();
+                    $open = Money::minimum($debtDelta, $position->outstanding_amount ?? 0);
+                    $settledCredit = Money::subtract($debtDelta, $open);
+                    $after = Money::subtract($before, $open);
+                    $creditAfter = Money::add($creditAfter, $settledCredit);
+                }
+                if (Money::compare($after, 0) < 0) {
+                    throw ValidationException::withMessages(['transaction' => 'Receivable attribution differs from the authoritative position; investigate before reversing.']);
+                }
+                $creditMetadata = ['exact_position_reversal' => true, 'settled_debt_credit' => $settledCredit];
+            } elseif ($openingReversal) {
+                if (Money::compare($increase ? $creditBefore : $before, $amount) < 0) {
+                    throw ValidationException::withMessages(['transaction' => 'This opening position has already been consumed. Reverse its settlements first or use a reviewed current-period adjustment.']);
+                }
+                $after = $increase ? $before : Money::subtract($before, $amount);
+                $creditAfter = $increase ? Money::subtract($creditBefore, $amount) : $creditBefore;
+                $creditMetadata = ['opening_reversal' => true];
+            } elseif ($opening) {
+                $after = $increase ? Money::add($before, $amount) : $before;
+                $creditAfter = $increase ? $creditBefore : Money::add($creditBefore, $amount);
+                $creditMetadata = ['opening_position' => true];
+            } elseif ($increase) {
                 $creditApplied = Money::minimum($amount, $creditBefore);
                 $after = Money::add($before, Money::subtract($amount, $creditApplied));
                 $creditAfter = Money::subtract($creditBefore, $creditApplied);
@@ -318,7 +400,7 @@ class CustomerDebtService
                 'balance_after' => $after,
                 'credit_before' => $creditBefore,
                 'credit_after' => $creditAfter,
-                'transaction_date' => $data['transaction_date'] ?? now()->toDateString(),
+                'transaction_date' => $data['transaction_date'] ?? CompanyClock::today()->toDateString(),
                 'due_date' => $data['due_date'] ?? null,
                 'payment_method' => $data['payment_method'] ?? null,
                 'reference_number' => $data['reference_number'] ?? null,
@@ -376,8 +458,8 @@ class CustomerDebtService
         }
 
         $transactionDate = CarbonImmutable::parse(
-            $data['transaction_date'] ?? now('Europe/Tirane'),
-            'Europe/Tirane',
+            $data['transaction_date'] ?? CompanyClock::now(),
+            CompanyClock::timezone(),
         );
         $data['due_date'] = $transactionDate
             ->addDays((int) $customer->payment_terms_days)
@@ -469,7 +551,7 @@ class CustomerDebtService
         $legacyMatch = (int) $existing->customer_id === (int) $customer->id
             && $existing->type === $type
             && Money::compare($existing->amount, $data['amount']) === 0
-            && $existing->transaction_date?->toDateString() === (string) ($data['transaction_date'] ?? now()->toDateString())
+            && $existing->transaction_date?->toDateString() === (string) ($data['transaction_date'] ?? CompanyClock::today()->toDateString())
             && (! array_key_exists('due_date', $data)
                 || ($existing->due_date?->toDateString() ?? '') === ($data['due_date'] ?? ''))
             && ($existing->payment_method ?? '') === ($data['payment_method'] ?? '')
@@ -497,24 +579,40 @@ class CustomerDebtService
             throw ValidationException::withMessages(['transaction' => ['This transaction has already been reversed or corrected.']]);
         }
 
+        if ($transaction->transaction_date->gt(CompanyClock::today())) {
+            throw ValidationException::withMessages(['transaction' => 'A future-dated entry requires a correction on or after its effective date.']);
+        }
+        if (CustomerSettlementAllocation::query()->whereNull('released_on')->where(fn ($q) => $q->where('debt_transaction_id', $transaction->id)->orWhere('settlement_transaction_id', $transaction->id))->exists()) {
+            throw ValidationException::withMessages(['transaction' => 'Release the explicit payment allocations first. Allocation history is retained.']);
+        }
         $increase = ! in_array($transaction->type, self::INCREASE_TYPES, true);
+        if($increase&&Money::compare($transaction->balance_before,$transaction->balance_after)>0&&app(ReceivablePositionQueries::class)->receiptHasReclassifiedFunding($transaction)){
+            throw ValidationException::withMessages(['transaction'=>'This receipt may fund a customer advance created by cancelling settled debt. Review the correction lineage before reversing it; a direct reversal would duplicate the receivable effect.']);
+        }
+        $openingPosition = $transaction->source === 'onboarding_opening' || (bool) data_get($transaction->metadata, 'opening_position');
         $reversal = $this->record($transaction->customer, [
             'amount' => $transaction->amount,
-            'transaction_date' => now('Europe/Tirane')->toDateString(),
+            'transaction_date' => CompanyClock::today()->toDateString(),
             'note' => $reason,
             'source' => 'reversal',
             'reversed_transaction_id' => $transaction->id,
             'idempotency_key' => 'debt-reversal-'.$transaction->id,
             'metadata' => ['reverses_transaction_id' => $transaction->id, 'reason' => $reason],
-        ], $increase ? 'positive_adjustment' : 'cancellation', $increase);
+        ], $increase ? ($openingPosition ? 'opening_advance_reversal' : 'positive_adjustment') : 'cancellation', $increase, false, $openingPosition, $transaction);
 
         if ($transaction->financial_account_transaction_id) {
-            $ledger = \App\Models\FinancialAccountTransaction::query()->find($transaction->financial_account_transaction_id);
+            $ledger = FinancialAccountTransaction::query()->find($transaction->financial_account_transaction_id);
             if ($ledger && $ledger->status === 'posted') {
                 $this->accounts->reverse($ledger, 'Customer debt transaction reversal: '.$reason);
             }
         }
-        $this->accounting->reverseSource('customer_credit', 'customer-debt:'.$transaction->id, now('Europe/Tirane')->toDateString(), $reason);
+        $this->accounting->reverseSource('customer_credit', 'customer-debt:'.$transaction->id, CompanyClock::today()->toDateString(), $reason);
+        $credit = Money::normalize(data_get($reversal->metadata, 'settled_debt_credit', 0));
+        if (Money::compare($credit, 0) > 0) {
+            $this->accounting->postMapped('customer_credit_reclassification', 'customer_debt_transaction', $reversal->id, 'customer-reversal-credit:'.$reversal->id, $reversal->transaction_date->toDateString(), 'Preserve settled funds as customer advance after reversal', [
+                ['mapping' => 'accounts_receivable', 'debit' => $credit], ['mapping' => 'customer_advances', 'credit' => $credit],
+            ], CompanyCurrency::forCompanyId($reversal->company_id), 1);
+        }
 
         return $reversal;
     }

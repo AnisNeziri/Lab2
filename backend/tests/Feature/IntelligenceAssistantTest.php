@@ -13,6 +13,61 @@ class IntelligenceAssistantTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_unexpected_simulation_errors_return_a_safe_bilingual_support_reference(): void
+    {
+        $this->login();
+        $secret = 'SQLSTATE private.customer@example.test /internal/database token=secret';
+        $this->mock(\App\Services\StrategicSimulationService::class, function ($mock) use ($secret) {
+            $mock->shouldReceive('authorize')->twice()->andThrow(new \RuntimeException($secret));
+        });
+        \Illuminate\Support\Facades\Log::spy();
+
+        foreach (['en', 'sq'] as $language) {
+            $reply = $this->ask('what if shipment late 10 days', ['language' => $language])->assertOk()->json();
+            $this->assertMatchesRegularExpression('/^AIMS-[a-f0-9]{16}$/', $reply['reference'] ?? '');
+            $this->assertStringContainsString($reply['reference'], $reply['text']);
+            $this->assertStringContainsString($language === 'sq' ? 'Provo përsëri' : 'Please try again', $reply['text']);
+            $this->assertStringNotContainsString($secret, json_encode($reply));
+            $this->assertTrue($reply['read_only']);
+        }
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('error')->twice()->with(
+            'AIMS request failed.',
+            \Mockery::on(fn ($metadata) => $metadata['http_status'] === 500
+                && $metadata['exception_type'] === 'RuntimeException'
+                && ! str_contains(json_encode($metadata), $secret))
+        );
+        $this->assertDatabaseCount('stock_movements', 0);
+        $this->assertDatabaseCount('journal_entries', 0);
+    }
+
+    public function test_simulation_validation_remains_actionable_and_permissions_remain_denied(): void
+    {
+        $this->login();
+        $this->mock(\App\Services\StrategicSimulationService::class, function ($mock) {
+            $mock->shouldReceive('authorize')->once()->andThrow(
+                \Illuminate\Validation\ValidationException::withMessages(['shipment' => 'Select a shipment first.'])
+            );
+        });
+        $this->ask('what if shipment late 10 days')->assertOk()->assertJsonPath('text', 'Select a shipment first.');
+        $this->mock(\App\Services\StrategicSimulationService::class, function ($mock) {
+            $mock->shouldReceive('authorize')->once()->andThrow(new \Symfony\Component\HttpKernel\Exception\HttpException(403));
+        });
+        $this->ask('what if shipment late 10 days')->assertForbidden();
+    }
+
+    public function test_missing_simulation_assumptions_keep_the_actionable_validation_message(): void
+    {
+        $this->login();
+        $this->ask('what if shipment late')->assertOk()
+            ->assertJsonPath('text', 'Specify the delay in days or weeks.')
+            ->assertJsonPath('state', 'needs_clarification');
+        Supplier::create(['name' => 'Duplicate']);
+        Supplier::create(['name' => 'Duplicate']);
+        $this->ask('what if supplier Duplicate late 2 days')->assertOk()
+            ->assertJsonPath('text', 'The source name is ambiguous. Select it in the scenario builder.')
+            ->assertJsonPath('state', 'needs_clarification');
+    }
+
     public function test_demo_business_questions_use_existing_evidence_tools_without_a_local_model(): void
     {
         $planner = app(AssistantPlanner::class);
@@ -97,7 +152,12 @@ class IntelligenceAssistantTest extends TestCase
     }
     public function test_draft_preview_explicit_confirmation_idempotency_and_no_stock_or_finance_writes():void{
         $this->login();$d=$this->decision();$counts=collect(['stock_movements','purchase_orders','journal_entries'])->mapWithKeys(fn($t)=>[$t=>DB::table($t)->count()])->all();
-        $r=$this->ask('Prepare the recommended option',['entity'=>['type'=>'decision','id'=>$d->id]])->assertOk()->assertJsonPath('action.confirmation_required',true)->json();$this->assertDatabaseCount('purchase_requests',0);
+        $planner = app(AssistantPlanner::class);
+        $this->assertNull($planner->plan('Prepare the recommended option')['term']);
+        $this->assertNull($planner->plan('Përgatit opsionin e rekomanduar')['term']);
+        $this->assertSame('Recommended option', $planner->plan('Prepare draft for "Recommended option"')['term']);
+        $context=$this->ask('Explain this record',['entity'=>['type'=>'decision','id'=>$d->id]])->assertOk()->json();
+        $r=$this->ask('Prepare the recommended option',['conversation_id'=>$context['conversation_id']])->assertOk()->assertJsonPath('action.confirmation_required',true)->json();$this->assertDatabaseCount('purchase_requests',0);
         $this->ask('yes',['conversation_id'=>$r['conversation_id']])->assertOk()->assertJsonPath('intent','confirmation_required');$this->assertDatabaseCount('purchase_requests',0);
         $this->postJson('/api/intelligence-assistant/confirm',['token'=>$r['action']['token']])->assertUnprocessable();
         $payload=['token'=>$r['action']['token'],'confirm'=>true];$created=$this->postJson('/api/intelligence-assistant/confirm',$payload)->assertOk()->assertJsonPath('draft_only',true)->json();

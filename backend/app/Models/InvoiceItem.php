@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class InvoiceItem extends Model
 {
     protected $fillable = [
+        'tax_code_id', 'tax_snapshot', 'pricing_mode', 'pricing_discount_amount', 'sef_category_id',
         'invoice_id',
         'product_id',
         'warehouse_id',
@@ -36,7 +37,7 @@ class InvoiceItem extends Model
     protected function casts(): array
     {
         return [
-            'invoice_id' => 'integer',
+            'pricing_discount_amount' => 'decimal:2', 'tax_snapshot' => 'array', 'tax_code_id' => 'integer',            'invoice_id' => 'integer',
             'product_id' => 'integer',
             'warehouse_id' => 'integer',
             'location_id' => 'integer',
@@ -54,6 +55,19 @@ class InvoiceItem extends Model
             'cost_total' => 'decimal:2',
             'line_total' => 'decimal:2',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (self $line) {
+            if ($line->invoice()->whereNotNull('issued_at')->exists()) throw \Illuminate\Validation\ValidationException::withMessages(['tax'=>'Issued tax lines cannot be deleted. Use a linked correction.']);
+        });
+        static::updating(function (self $line) {
+            if ($line->isDirty(['tax_code_id','tax_snapshot','pricing_mode','pricing_discount_amount','vat_rate','vat_amount','tax_treatment','tax_legal_reference','taxable_amount','line_total'])
+                && $line->invoice()->whereNotNull('issued_at')->exists()) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['tax'=>'Issued tax lines are immutable. Use a linked credit/correction document.']);
+            }
+        });
     }
 
     public function invoice(): BelongsTo

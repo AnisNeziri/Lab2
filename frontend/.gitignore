@@ -2,3 +2,6 @@ node_modules
 dist
 dist-ssr
 *.local
+
+# Isolated PX1 production-compiled browser review
+dist-px1/

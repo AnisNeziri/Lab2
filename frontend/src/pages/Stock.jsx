@@ -1,3 +1,4 @@
+import EvidencePagination from '../components/EvidencePagination'
 import { useUiText } from '../hooks/useUiText'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -9,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { getAllProducts } from '../api/products'
+import { getProducts } from '../api/products'
 import { formatQuantity, isMeterUnit } from '../utils/formatQuantity'
 import { getInventoryQuantity } from '../utils/inventoryQuantity'
 import { getInventoryProduct } from '../api/advancedOperations'
@@ -93,12 +94,29 @@ function Stock() {
  const tx = useUiText()
 
   const [products, setProducts] = useState([])
+  const [productSearch, setProductSearch] = useState('')
+  const productSearchRef = useRef('')
+  const productChoiceRequest = useRef(0)
+  const searchedProducts = useRef(false)
+  const selectedChoiceRef = useRef(null)
+  productSearchRef.current = productSearch
+  function acceptProductChoices(rows) {
+    const selected = selectedChoiceRef.current
+    setProducts(selected && !rows.some(row => row.id === selected.id) ? [selected, ...rows] : rows)
+  }
   const [warehouses, setWarehouses] = useState([])
   const [locations, setLocations] = useState([])
   const [inventoryDetail, setInventoryDetail] = useState(null)
   const [movements, setMovements] = useState([])
+  const [pagination, setPagination] = useState({})
+  const movementPageRef = useRef(1)
+  function acceptMovements(value) {
+    setMovements(Array.isArray(value) ? value : value.data || [])
+    setPagination(value.current_page ? { movements: value } : {})
+    movementPageRef.current = value.current_page || 1
+  }
   const [form, setForm] = useState(emptyForm)
-  const [filters, setFilters] = useState({ product_id: '', type: '' })
+  const [filters, setFilters] = useState({ product_id: '', type: '', from: '', to: '' })
   const [skuLookup, setSkuLookup] = useState('')
   const [lookupMessage, setLookupMessage] = useState('')
   const [loading, setLoading] = useState(true)
@@ -115,6 +133,7 @@ function Stock() {
     () => products.find((product) => String(product.id) === String(form.product_id)),
     [form.product_id, products],
   )
+  selectedChoiceRef.current = selectedProduct || selectedChoiceRef.current
   const activeLocations = useMemo(
     () => locations.filter((location) => String(location.warehouse_id) === String(form.warehouse_id) && location.is_active !== false),
     [form.warehouse_id, locations],
@@ -129,7 +148,7 @@ function Stock() {
   })).filter((lot) => lot.eligible_quantity > 0), [form.location_id, form.stock_state, form.warehouse_id, inventoryDetail])
 
   const loadMovements = useCallback(async (activeFilters = filtersRef.current) => {
-    const movementFilters = {}
+    const movementFilters = { page: movementPageRef.current, per_page: 50 }
     if (activeFilters.product_id) {
       movementFilters.product_id = Number(activeFilters.product_id)
     }
@@ -146,19 +165,17 @@ function Stock() {
         setLoading(true)
         setError('')
       }
-      const [productsList, movementsData, warehouseList] = await Promise.all([
-        getAllProducts(),
+      const [productsList, movementsData, warehouseList, locationList] = await Promise.all([
+        getProducts({ reference_only: true, search: productSearchRef.current, per_page: 50 }),
         loadMovements(activeFilters),
         getWarehouses(),
+        getWarehouseLocations(),
       ])
-      const locationLists = await Promise.all((warehouseList || [])
-        .filter((warehouse) => warehouse.is_active !== false)
-        .map((warehouse) => getWarehouseLocations(warehouse.id)))
       if (requestId !== dataRequestRef.current) return
-      setProducts(productsList)
-      setMovements(movementsData)
+      acceptProductChoices(productsList.data || productsList)
+      acceptMovements(movementsData)
       setWarehouses(warehouseList || [])
-      setLocations(locationLists.flatMap((value) => value?.data || value || []))
+      setLocations(locationList?.data || locationList || [])
     } catch {
       if (!silent && requestId === dataRequestRef.current) {
         setError('Could not load stock data.')
@@ -172,8 +189,20 @@ function Stock() {
     loadData()
     const refresh = () => loadData({ silent: true })
     window.addEventListener('database-refresh', refresh)
-    return () => window.removeEventListener('database-refresh', refresh)
+    return () => { dataRequestRef.current++; window.removeEventListener('database-refresh', refresh) }
   }, [loadData])
+
+  useEffect(() => {
+    if (!searchedProducts.current && !productSearch) return
+    searchedProducts.current = true
+    const request = ++productChoiceRequest.current
+    const timer = setTimeout(() => {
+      getProducts({ reference_only: true, search: productSearch, per_page: 50 })
+        .then(value => { if (request === productChoiceRequest.current) acceptProductChoices(value.data || []) })
+        .catch(() => { if (request === productChoiceRequest.current) setError('Could not search products.') })
+    }, 200)
+    return () => { clearTimeout(timer); productChoiceRequest.current++ }
+  }, [productSearch])
 
   useEffect(() => {
     let current = true
@@ -194,11 +223,12 @@ function Stock() {
 
   async function applyFilters(event) {
     event.preventDefault()
+    movementPageRef.current = 1
     try {
       setLoading(true)
       setError('')
       const movementsData = await loadMovements(filters)
-      setMovements(movementsData)
+      acceptMovements(movementsData)
     } catch {
       setError('Could not filter stock movements.')
     } finally {
@@ -207,11 +237,12 @@ function Stock() {
   }
 
   function clearFilters() {
-    const cleared = { product_id: '', type: '' }
+    movementPageRef.current = 1
+    const cleared = { product_id: '', type: '', from: '', to: '' }
     setFilters(cleared)
     setLoading(true)
     loadMovements(cleared)
-      .then((movementsData) => setMovements(movementsData))
+      .then((movementsData) => acceptMovements(movementsData))
       .catch(() => setError('Could not load stock movements.'))
       .finally(() => setLoading(false))
   }
@@ -266,6 +297,8 @@ function Stock() {
 
     try {
       const product = await lookupProductBySku(skuLookup.trim())
+      selectedChoiceRef.current = product
+      setProducts(current => current.some(row => row.id === product.id) ? current : [product, ...current])
       submissionKeyRef.current = null
       setForm((current) => ({
         ...current,
@@ -293,9 +326,11 @@ function Stock() {
       if (filters.type) {
         exportFilters.type = filters.type
       }
+      if (filters.from) exportFilters.from = filters.from
+      if (filters.to) exportFilters.to = filters.to
       await exportStockMovements(exportFilters)
-    } catch {
-      setError('Could not export stock movements.')
+    } catch (error) {
+      if (error.name !== 'AbortError') setError(error.message || 'Could not export stock movements.')
     } finally {
       setExporting(false)
     }
@@ -380,6 +415,10 @@ function Stock() {
   return (
     <main className="stock-page">
       <section className="card">
+        <label>{tx("Search products")}
+          <input type="search" value={productSearch} onChange={event => setProductSearch(event.target.value)}
+            placeholder="Name or SKU" aria-label="Search stock products" />
+        </label>
         <h1>{tx("Adjust stock")}</h1>
         <p className="card-description"> {tx("Record stock coming in or going out. On-hand and available balances update automatically.")} </p>
 
@@ -525,6 +564,8 @@ function Stock() {
         </div>
 
         <form className="filter-form" onSubmit={applyFilters}>
+          <label>{tx("From date")}<input type="date" name="from" value={filters.from} onChange={handleFilterChange} /></label>
+          <label>{tx("To date")}<input type="date" name="to" value={filters.to} min={filters.from || undefined} onChange={handleFilterChange} /></label>
           <label> {tx("Product")} <select name="product_id" value={filters.product_id} onChange={handleFilterChange}>
               <option value="">{tx("All products")}</option>
               {products.map((product) => (
@@ -660,6 +701,13 @@ function Stock() {
               ))}
             </tbody>
           </table>
+          <EvidencePagination pagination={pagination} page={movementPageRef.current}
+            onPage={async (page) => {
+              const requestId = ++dataRequestRef.current
+              movementPageRef.current = page
+              try { const value = await loadMovements(); if (requestId === dataRequestRef.current) acceptMovements(value) }
+              catch { if (requestId === dataRequestRef.current) setError('Could not load stock movements.') }
+            }} />
           </div>
         )}
       </section>

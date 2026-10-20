@@ -46,6 +46,16 @@ class DocumentService
     {
         $this->permit('documents.view');
         $q = Document::query()->where('company_id', Auth::user()->company_id);
+        // The additive DC4 migration creates workforce_scope before employees.
+        // Reuse that request-scoped schema marker; privacy predicates are still evaluated for each user.
+        if(\App\Services\Workforce\WorkforcePresence::schemaExists()) {
+            if(!$this->can('employees.documents')) $q->whereNull('workforce_scope');
+            if(!$this->can('employees.compensation')) $q->where(fn($q)=>$q->whereNull('workforce_scope')->orWhere('workforce_scope','!=','compensation'));
+            if(!$this->can('payroll.view')) $q->where(fn($q)=>$q->whereNull('workforce_scope')->orWhere('workforce_scope','!=','payroll'));
+        }
+        if(!$this->can('employees.documents')) $q->whereDoesntHave('links',fn($l)=>$l->whereIn('entity_type',['employee','employment-term']));
+        if(!$this->can('employees.compensation')) $q->whereDoesntHave('links',fn($l)=>$l->where('entity_type','employment-term'));
+        if(!$this->can('payroll.view')) $q->whereDoesntHave('links',fn($l)=>$l->where('entity_type','payroll-run'));
         if (! $this->can('documents.confidential')) {
             $q->whereNotIn('confidentiality', ['confidential', 'restricted']);
         } elseif (! $this->can('documents.manage')) {
@@ -250,6 +260,14 @@ return DocumentType::orderBy('name')->get();
     {
         $this->permit('documents.update_metadata');
         $this->entities->resolve($type, $id);
+        if(in_array($type,['employee','employment-term','payroll-run'],true)) {
+            $this->permit('employees.documents');
+            if(!in_array($d->confidentiality,['confidential','restricted'],true)) throw ValidationException::withMessages(['confidentiality'=>'HR/payroll supporting documents must be classified confidential or restricted before linking.']);
+            // Classification remains private even if a relationship is later removed.
+            $scope=$type==='payroll-run'?'payroll':($type==='employment-term'?'compensation':'hr');
+            $rank=['hr'=>1,'compensation'=>2,'payroll'=>3];
+            if(($rank[$scope]??0)>($rank[$d->workforce_scope]??0)) { $d->workforce_scope=$scope; $d->save(); }
+        }
         $link = DocumentLink::firstOrCreate(['document_id' => $d->id, 'entity_type' => $type, 'entity_id' => $id], ['linked_by' => Auth::id()]);
         if ($link->wasRecentlyCreated) {
             $this->event($d, 'linked', ['entity_type' => $type, 'entity_id' => $id]);
@@ -364,7 +382,12 @@ return ['status' => collect($rows)->contains('status', 'missing') ? 'incomplete'
                     continue;
                 }if (in_array($d->confidentiality, ['confidential','restricted']) && ! $this->permissions->roleHasPermission($u->role,'documents.confidential')) {
                     continue;
-                }Notification::create(['company_id' => $d->company_id, 'user_id' => $u->id, 'type' => 'document_review', 'title' => 'Document review / Shqyrtimi i dokumentit', 'message' => $d->title.' · '.$action, 'data' => ['document_id' => $d->id]]);
+                }
+                $privateTypes=$d->links()->whereIn('entity_type',['employee','employment-term','payroll-run'])->pluck('entity_type');
+                if($privateTypes->isNotEmpty()&&!$this->permissions->roleHasPermission($u->role,'employees.documents')) continue;
+                if($privateTypes->contains('employment-term')&&!$this->permissions->roleHasPermission($u->role,'employees.compensation')) continue;
+                if($privateTypes->contains('payroll-run')&&!$this->permissions->roleHasPermission($u->role,'payroll.view')) continue;
+                Notification::create(['company_id' => $d->company_id, 'user_id' => $u->id, 'type' => 'document_review', 'title' => 'Document review / Shqyrtimi i dokumentit', 'message' => $d->title.' · '.$action, 'data' => ['document_id' => $d->id]]);
             }
         }
     }

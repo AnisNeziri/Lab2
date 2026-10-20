@@ -248,7 +248,7 @@
 
 .finance-metrics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 0.85rem;
 }
 .finance-metrics.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -266,7 +266,7 @@
 .finance-metric-icon { display: grid; width: 40px; height: 40px; flex: 0 0 auto; place-items: center; border-radius: 12px; }
 .finance-metric > div { min-width: 0; }
 .finance-metric span:not(.finance-metric-icon) { display: block; color: var(--finance-muted); font-size: 0.75rem; font-weight: 700; line-height: 1.25; }
-.finance-metric strong { display: block; overflow: hidden; margin-top: 0.2rem; color: var(--finance-ink); font-size: clamp(1rem, 2vw, 1.32rem); text-overflow: ellipsis; white-space: nowrap; }
+.finance-metric strong { display: block; margin-top: 0.2rem; color: var(--finance-ink); font-size: clamp(1rem, 2vw, 1.32rem); white-space: normal; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .finance-metric small { display: block; margin-top: 0.2rem; color: var(--finance-muted); }
 .tone-green .finance-metric-icon { color: #047857; background: #d1fae5; }
 .tone-red .finance-metric-icon { color: #b91c1c; background: #fee2e2; }

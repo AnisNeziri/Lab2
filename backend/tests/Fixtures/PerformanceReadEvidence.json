@@ -1,0 +1,889 @@
+{
+  "finance": {
+    "as_of": "2026-10-07",
+    "cutoff": "2026-10-07T00:20:00+00:00",
+    "base_currency": "EUR",
+    "settings": {
+      "cash_coverage_confirmed": true,
+      "minimum_cash": {
+        "EUR": "10000.00"
+      }
+    },
+    "cash": {
+      "by_currency": {
+        "EUR": "186381.28"
+      },
+      "accounts": [
+        {
+          "id": 1,
+          "name": "Synthetic EUR Operating Bank",
+          "currency": "EUR",
+          "balance": "186381.28",
+          "url": "/money-accounts",
+          "evidence_type": "observed"
+        }
+      ],
+      "complete": true
+    },
+    "receivables": [
+      {
+        "expected_date": "2026-10-07",
+        "due_date_baseline": "2026-10-07",
+        "historical_date": "2026-10-08",
+        "risk": "ON_TRACK",
+        "confidence": "limited",
+        "timing_method": "due_date_baseline",
+        "qualification": "PERFORMANCE / TEST DATA; no predictive validity",
+        "key": "debt:418",
+        "customer_id": 8,
+        "customer": "Concentration Workshop 08 — synthetic furniture and upholstery trading",
+        "reference": "DSP-237-1",
+        "amount": "199.84",
+        "original_amount": "644.95",
+        "allocated_reduction": "445.11",
+        "obligation_date": "2026-09-16",
+        "currency": "EUR",
+        "due_date": "2026-10-07",
+        "source_type": "customer_ledger",
+        "source_id": 418,
+        "evidence_type": "scheduled",
+        "segment": "consistent_payer",
+        "samples": 20,
+        "url": "/customer-debts?customer=8"
+      }
+    ],
+    "customers": [
+      {
+        "id": 8,
+        "name": "Concentration Workshop 08 — synthetic furniture and upholstery trading",
+        "debt": "3657.95",
+        "advance": "0.00",
+        "currency": "EUR",
+        "history": {
+          "samples": [
+            {
+              "obligation_id": 12,
+              "due_date": "2026-08-03",
+              "paid_date": "2026-07-25",
+              "known_at": "2026-07-25T16:00:00+00:00",
+              "delay_days": -9
+            }
+          ],
+          "count": 20,
+          "eligible": false,
+          "median_delay": 1,
+          "spread_days": 4,
+          "segment": "consistent_payer",
+          "method": "historical_median"
+        },
+        "recorded_payments": [
+          {
+            "id": 34,
+            "amount": "276.63",
+            "payment_date": "2026-07-20",
+            "known_at": "2026-07-20T16:00:00+00:00"
+          }
+        ],
+        "ledger_outstanding": "3657.95",
+        "url": "/customer-debts?customer=8"
+      }
+    ],
+    "commitments": [
+      {
+        "key": "po:3",
+        "reference": "PO-2026-0003",
+        "amount": "1215.22",
+        "currency": "EUR",
+        "due_date": null,
+        "expected_date": null,
+        "source_type": "purchase_order",
+        "source_id": 3,
+        "supplier": "Anatolia Wholesale Supply [TEST]",
+        "purchase_order_id": 3,
+        "evidence_type": "scheduled",
+        "payment_basis": "fixed_date",
+        "url": "/purchase-orders?po=3",
+        "documented_terms": null
+      }
+    ],
+    "other_scheduled": [],
+    "potential": [
+      {
+        "stage": "purchase_request",
+        "id": 23,
+        "reference": "PR-2026-0023",
+        "amount": "131.10",
+        "currency": "EUR",
+        "status": "draft",
+        "included_in_forecast": false,
+        "url": "/procurement?request=23"
+      }
+    ],
+    "health": [
+      {
+        "code": "receivables_undated",
+        "message": "23 outstanding records have no reliable future date and are excluded from dated cash projections.",
+        "count": 23,
+        "url": "/customer-debts"
+      }
+    ],
+    "scenario_options": {
+      "products": [
+        {
+          "id": 7,
+          "name": "Decorative Trim 07",
+          "unit": "rolls",
+          "stock_status": "out",
+          "available_quantity": 0
+        }
+      ],
+      "suppliers": [
+        {
+          "id": 2,
+          "name": "Adriatic Technical Textiles [TEST]"
+        }
+      ]
+    },
+    "calculation_version": "finance-v7.1",
+    "payable_observations": [
+      {
+        "key": "expense:1",
+        "obligation_date": "2026-07-11",
+        "due_date": "2026-07-18",
+        "currency": "EUR",
+        "original_amount": "1800.00",
+        "remaining": "0.00",
+        "credits": [],
+        "payments": [
+          {
+            "id": 1,
+            "amount": "1800.00",
+            "payment_date": "2026-07-11",
+            "known_at": "2026-07-11T08:00:00+00:00"
+          }
+        ],
+        "deposit_allocations": []
+      }
+    ],
+    "inventory": {
+      "currency": "EUR",
+      "total": "94175.62",
+      "products": [
+        {
+          "id": 14,
+          "name": "Staple Wire 15",
+          "quantity": 3514,
+          "unit": "kg",
+          "value": "11526.14",
+          "excess_value": null,
+          "slow_moving_value": null,
+          "planned_purchase_despite_excess": false,
+          "url": "/inventory-intelligence?view=planning&product=14"
+        }
+      ],
+      "categories": {
+        "Upholstery Fabrics": "16186.46",
+        "Lining and Interfacing": "12331.95",
+        "Furniture Hardware": "16784.88",
+        "Foam and Accessories": "22940.21",
+        "Packing Materials": "25932.12"
+      },
+      "warehouses": {
+        "Prishtina Dispatch": "88693.63",
+        "Ferizaj Reserve": "4553.19",
+        "Prizren Trade Counter": "928.81"
+      },
+      "unvalued_products": 0,
+      "warehouse_qualification": "Quantity × existing weighted-average unit cost; product inventory_value remains the valuation authority. Unlocated inventory is not assigned to a warehouse.",
+      "qualification": "PERFORMANCE / TEST DATA; no predictive validity"
+    },
+    "landed_costs": [
+      {
+        "id": 1,
+        "reference": null,
+        "amount": "70.000000",
+        "currency": "EUR",
+        "classification": "allocated_accounting_cost",
+        "cash_included": false,
+        "qualification": "PERFORMANCE / TEST DATA; no predictive validity"
+      }
+    ],
+    "working_capital": {
+      "state": "partial",
+      "qualification": "PERFORMANCE / TEST DATA; no predictive validity",
+      "dso": null,
+      "dio": null,
+      "dpo": null,
+      "cash_conversion_cycle": null
+    },
+    "local_model": {
+      "state": "available",
+      "version": "financial-timing-v7.1",
+      "customers": {
+        "8": {
+          "samples": 20,
+          "eligible": false,
+          "median_delay_days": 1,
+          "method": "historical_median",
+          "range": null
+        },
+        "16": {
+          "samples": 13,
+          "eligible": false,
+          "median_delay_days": 6,
+          "method": "historical_median",
+          "range": null
+        },
+        "24": {
+          "samples": 4,
+          "eligible": false,
+          "median_delay_days": 5,
+          "method": "due_date_baseline",
+          "range": null
+        },
+        "5": {
+          "samples": 9,
+          "eligible": false,
+          "median_delay_days": 4,
+          "method": "historical_median",
+          "range": null
+        },
+        "13": {
+          "samples": 7,
+          "eligible": false,
+          "median_delay_days": 9,
+          "method": "historical_median",
+          "range": null
+        },
+        "21": {
+          "samples": 7,
+          "eligible": false,
+          "median_delay_days": -9,
+          "method": "historical_median",
+          "range": null
+        },
+        "1": {
+          "samples": 11,
+          "eligible": false,
+          "median_delay_days": 7,
+          "method": "historical_median",
+          "range": null
+        },
+        "9": {
+          "samples": 9,
+          "eligible": false,
+          "median_delay_days": -7,
+          "method": "historical_median",
+          "range": null
+        },
+        "17": {
+          "samples": 8,
+          "eligible": false,
+          "median_delay_days": 6,
+          "method": "historical_median",
+          "range": null
+        },
+        "4": {
+          "samples": 6,
+          "eligible": false,
+          "median_delay_days": 7.5,
+          "method": "historical_median",
+          "range": null
+        },
+        "12": {
+          "samples": 6,
+          "eligible": false,
+          "median_delay_days": 9,
+          "method": "historical_median",
+          "range": null
+        },
+        "20": {
+          "samples": 8,
+          "eligible": false,
+          "median_delay_days": -1,
+          "method": "historical_median",
+          "range": null
+        },
+        "6": {
+          "samples": 3,
+          "eligible": false,
+          "median_delay_days": -8,
+          "method": "due_date_baseline",
+          "range": null
+        },
+        "14": {
+          "samples": 9,
+          "eligible": false,
+          "median_delay_days": 0,
+          "method": "historical_median",
+          "range": null
+        },
+        "22": {
+          "samples": 5,
+          "eligible": false,
+          "median_delay_days": 8,
+          "method": "historical_median",
+          "range": null
+        },
+        "7": {
+          "samples": 0,
+          "eligible": false,
+          "median_delay_days": null,
+          "method": "due_date_baseline",
+          "range": null
+        },
+        "15": {
+          "samples": 0,
+          "eligible": false,
+          "median_delay_days": null,
+          "method": "due_date_baseline",
+          "range": null
+        },
+        "23": {
+          "samples": 2,
+          "eligible": false,
+          "median_delay_days": -2,
+          "method": "due_date_baseline",
+          "range": null
+        },
+        "3": {
+          "samples": 4,
+          "eligible": false,
+          "median_delay_days": -8.5,
+          "method": "due_date_baseline",
+          "range": null
+        },
+        "11": {
+          "samples": 3,
+          "eligible": false,
+          "median_delay_days": 0,
+          "method": "due_date_baseline",
+          "range": null
+        },
+        "19": {
+          "samples": 2,
+          "eligible": false,
+          "median_delay_days": 15,
+          "method": "due_date_baseline",
+          "range": null
+        },
+        "2": {
+          "samples": 6,
+          "eligible": false,
+          "median_delay_days": 1,
+          "method": "historical_median",
+          "range": null
+        },
+        "10": {
+          "samples": 6,
+          "eligible": false,
+          "median_delay_days": 6,
+          "method": "historical_median",
+          "range": null
+        },
+        "18": {
+          "samples": 2,
+          "eligible": false,
+          "median_delay_days": 3,
+          "method": "due_date_baseline",
+          "range": null
+        }
+      },
+      "qualification": "PERFORMANCE / TEST DATA; no predictive validity"
+    },
+    "totals": {
+      "EUR": {
+        "recorded_receivables": "54792.59",
+        "supplier_payables": "0.00",
+        "uninvoiced_po_commitments": "53692.22",
+        "customer_advances": "2613.54"
+      }
+    },
+    "confidence": "limited"
+  },
+  "customers": {
+    "calculation_version": "customer-sales-v8.1",
+    "as_of": "2026-10-07",
+    "history_from": "2023-10-08",
+    "currency": "EUR",
+    "canonical_baskets": 301,
+    "profiles": [
+      {
+        "id": 1,
+        "name": "Frequent Workshop 01 — synthetic furniture and upholstery trading",
+        "active": true,
+        "state": "INSUFFICIENT_DATA",
+        "first_purchase": "2026-07-13",
+        "last_purchase": "2026-10-02",
+        "purchase_count": 14,
+        "relationship_days": 86,
+        "summary": {
+          "revenue": "11614.62",
+          "sales_count": 14,
+          "average_sale": "829.62",
+          "gross_profit": "2955.70",
+          "gross_margin": 25.45,
+          "discounts": "0.00",
+          "return_value": "0.00",
+          "cost_coverage_percent": 100
+        },
+        "return_rate_percent": 0,
+        "cadence": {
+          "count": 14,
+          "interval_count": 13,
+          "median_days": 5,
+          "q25_days": 3,
+          "q75_days": 9,
+          "p90_days": 12,
+          "spread_days": 6,
+          "mad_days": 2,
+          "days_since_last": 5,
+          "eligible": false,
+          "irregular": true,
+          "baseline_window": null,
+          "challenger_window": null,
+          "window": null,
+          "state": "INSUFFICIENT_DATA",
+          "confidence": "INSUFFICIENT_DATA",
+          "qualification": "PERFORMANCE / TEST DATA; no predictive validity"
+        },
+        "trend": {
+          "state": "INSUFFICIENT_DATA",
+          "recent_sales": "11614.62",
+          "previous_sales": "0.00",
+          "recent_count": 14,
+          "previous_count": 0,
+          "change_percent": null,
+          "comparison": "previous_90_days",
+          "value_noise_tolerance": "0.00",
+          "count_tolerance": 1,
+          "supported": false
+        },
+        "seasonality": {
+          "supported": false,
+          "seasonal": false,
+          "active_months": [],
+          "off_season": false,
+          "qualification": "PERFORMANCE / TEST DATA; no predictive validity"
+        },
+        "products": [
+          {
+            "id": 6,
+            "name": "Staple Wire 06",
+            "unit": "kg",
+            "quantity": "486.000",
+            "sales": "2114.10",
+            "basket_count": 6
+          }
+        ],
+        "categories": [
+          {
+            "id": 1,
+            "name": "Upholstery Fabrics",
+            "sales": "3658.84"
+          }
+        ],
+        "recent_history": [
+          {
+            "key": "sale:288",
+            "known_at": "2026-10-02T11:00:00+00:00",
+            "date": "2026-10-02",
+            "customer_id": 1,
+            "value": "1310.98",
+            "products": {
+              "1": {
+                "id": 1,
+                "name": "Milano 01",
+                "unit": "m",
+                "quantity": 14.42,
+                "value": "94.16"
+              },
+              "12": {
+                "id": 12,
+                "name": "Foam Cushion 13",
+                "unit": "pcs",
+                "quantity": 16,
+                "value": "417.60"
+              },
+              "16": {
+                "id": 16,
+                "name": "Velvet Premium 17",
+                "unit": "m",
+                "quantity": 10.95,
+                "value": "190.53"
+              },
+              "19": {
+                "id": 19,
+                "name": "Door Handles 21",
+                "unit": "pcs",
+                "quantity": 8,
+                "value": "15.12"
+              },
+              "23": {
+                "id": 23,
+                "name": "Decorative Trim 25",
+                "unit": "rolls",
+                "quantity": 1,
+                "value": "166.75"
+              },
+              "26": {
+                "id": 26,
+                "name": "Lining Cotton 29",
+                "unit": "m",
+                "quantity": 13.08,
+                "value": "39.89"
+              },
+              "30": {
+                "id": 30,
+                "name": "Staple Wire 33",
+                "unit": "kg",
+                "quantity": 76,
+                "value": "330.60"
+              },
+              "33": {
+                "id": 33,
+                "name": "New Technical Textile 09",
+                "unit": "m",
+                "quantity": 5.55,
+                "value": "56.33"
+              }
+            },
+            "categories": {
+              "1": "Upholstery Fabrics",
+              "3": "Furniture Hardware",
+              "2": "Lining and Interfacing",
+              "5": "Packing Materials",
+              "4": "Foam and Accessories"
+            },
+            "url": "/daily-sales?date=2026-10-02"
+          }
+        ],
+        "diagnostic_dates": [
+          "2026-07-13"
+        ],
+        "limitations": [
+          "PERFORMANCE / TEST DATA; no predictive validity"
+        ],
+        "segment": "ESTABLISHED_BUYER",
+        "rfm": {
+          "recency_days": 5,
+          "median_interval_days": 5,
+          "recorded_net_sales": "11614.62",
+          "value_threshold": "15431.68",
+          "frequent_interval_threshold": 4
+        },
+        "financial_context": {
+          "state": "available",
+          "debt": "1724.53",
+          "advance": "0.00",
+          "exposure": "1724.53",
+          "overdue": "0.00",
+          "credit_status": "normal",
+          "payment_segment": "consistent_payer",
+          "completed_payments": 11,
+          "median_delay_days": 7,
+          "review_required": false,
+          "qualification": "PERFORMANCE / TEST DATA; no predictive validity"
+        }
+      }
+    ],
+    "opportunities": [
+      {
+        "key": "reorder:1:6:2026-09-30",
+        "kind": "REORDER_OPPORTUNITY",
+        "customer_id": 1,
+        "customer": "Frequent Workshop 01 — synthetic furniture and upholstery trading",
+        "product_id": 6,
+        "product": "Staple Wire 06",
+        "unit": "kg",
+        "anchor": "2026-09-30",
+        "window": {
+          "start": "2026-10-05",
+          "end": "2026-10-24"
+        },
+        "baseline_window": {
+          "start": "2026-10-05",
+          "end": "2026-10-24"
+        },
+        "challenger_window": {
+          "start": "2026-10-19",
+          "end": "2026-10-25"
+        },
+        "cadence": {
+          "count": 6,
+          "interval_count": 5,
+          "median_days": 22,
+          "q25_days": 5,
+          "q75_days": 24,
+          "p90_days": 24.6,
+          "spread_days": 19,
+          "mad_days": 3,
+          "days_since_last": 7,
+          "eligible": false,
+          "irregular": false,
+          "baseline_window": {
+            "start": "2026-10-05",
+            "end": "2026-10-24"
+          },
+          "challenger_window": {
+            "start": "2026-10-19",
+            "end": "2026-10-25"
+          },
+          "window": {
+            "start": "2026-10-05",
+            "end": "2026-10-24"
+          },
+          "state": "ACTIVE",
+          "confidence": "INSUFFICIENT_DATA",
+          "qualification": "PERFORMANCE / TEST DATA; no predictive validity"
+        },
+        "quantity_range": [
+          77
+        ],
+        "value_range": [
+          "334.95"
+        ],
+        "confidence": "INSUFFICIENT_DATA",
+        "drivers": [
+          "Personal product buying interval from 6 completed baskets."
+        ],
+        "inventory": {
+          "available_to_promise": 1314,
+          "incoming": 2560,
+          "committed": 0,
+          "incoming_schedule": [
+            {
+              "expected_at": "2026-10-07",
+              "quantity": 2560,
+              "purchase_order_id": 71
+            }
+          ],
+          "shipments": [
+            {
+              "shipment_id": 67,
+              "risk": "ON_TRACK",
+              "confidence": "INSUFFICIENT_DATA",
+              "eta": {
+                "carrier": null,
+                "operational": "2026-10-05",
+                "predicted": "2026-10-07",
+                "range_start": "2026-10-06",
+                "range_end": "2026-10-12",
+                "target": "warehouse",
+                "actual_port": "2026-10-05",
+                "actual_warehouse": null,
+                "source": "actual_port_arrival_plus_observed_inland_receiving",
+                "missed_estimate": null,
+                "baseline": "2026-10-07",
+                "baseline_source": "historical_route_median",
+                "confidence": "INSUFFICIENT_DATA",
+                "model_version": "route-median-v1:37ef02a89ce7",
+                "history_samples": 65,
+                "assumptions": [
+                  "schedule_not_statistical_confidence_interval"
+                ],
+                "limited_historical_evidence": false
+              },
+              "as_of": "2026-10-06T23:40:00+00:00"
+            }
+          ],
+          "constrained": false,
+          "qualification": "PERFORMANCE / TEST DATA; no predictive validity"
+        },
+        "decisions": [
+          "REORDER_OPPORTUNITY"
+        ]
+      }
+    ],
+    "observations": [
+      {
+        "key": "reorder:1:6:2026-09-30",
+        "kind": "REORDER_OPPORTUNITY",
+        "customer_id": 1,
+        "customer": "Frequent Workshop 01 — synthetic furniture and upholstery trading",
+        "product_id": 6,
+        "product": "Staple Wire 06",
+        "unit": "kg",
+        "anchor": "2026-09-30",
+        "window": {
+          "start": "2026-10-05",
+          "end": "2026-10-24"
+        },
+        "baseline_window": {
+          "start": "2026-10-05",
+          "end": "2026-10-24"
+        },
+        "challenger_window": {
+          "start": "2026-10-19",
+          "end": "2026-10-25"
+        },
+        "cadence": {
+          "count": 6,
+          "interval_count": 5,
+          "median_days": 22,
+          "q25_days": 5,
+          "q75_days": 24,
+          "p90_days": 24.6,
+          "spread_days": 19,
+          "mad_days": 3,
+          "days_since_last": 7,
+          "eligible": false,
+          "irregular": false,
+          "baseline_window": {
+            "start": "2026-10-05",
+            "end": "2026-10-24"
+          },
+          "challenger_window": {
+            "start": "2026-10-19",
+            "end": "2026-10-25"
+          },
+          "window": {
+            "start": "2026-10-05",
+            "end": "2026-10-24"
+          },
+          "state": "ACTIVE",
+          "confidence": "INSUFFICIENT_DATA",
+          "qualification": "PERFORMANCE / TEST DATA; no predictive validity"
+        },
+        "quantity_range": [
+          77
+        ],
+        "value_range": [
+          "334.95"
+        ],
+        "confidence": "INSUFFICIENT_DATA",
+        "drivers": [
+          "Personal product buying interval from 6 completed baskets."
+        ]
+      }
+    ],
+    "affinity": {
+      "products": [
+        {
+          "kind": "products",
+          "source_id": 1,
+          "target_id": 16,
+          "pair_baskets": 77,
+          "customer_count": 17,
+          "basket_count": 301,
+          "support": 0.2558,
+          "association_confidence": 1,
+          "lift": 3.909,
+          "source_name": "Milano 01",
+          "target_name": "Velvet Premium 17"
+        }
+      ],
+      "categories": []
+    },
+    "resource_trends": {
+      "products": [
+        {
+          "id": 22,
+          "name": "Staple Wire 24",
+          "basket_count": 77,
+          "trend": {
+            "state": "INSUFFICIENT_DATA",
+            "recent_sales": "26330.55",
+            "previous_sales": "304.50",
+            "recent_count": 76,
+            "previous_count": 1,
+            "change_percent": 8547.1,
+            "comparison": "previous_90_days",
+            "value_noise_tolerance": "0.00",
+            "count_tolerance": 1,
+            "supported": false
+          },
+          "seasonality": {
+            "supported": false,
+            "seasonal": false,
+            "active_months": [],
+            "off_season": false,
+            "qualification": "PERFORMANCE / TEST DATA; no predictive validity"
+          }
+        }
+      ],
+      "categories": [
+        {
+          "id": 1,
+          "name": "Upholstery Fabrics",
+          "basket_count": 274,
+          "trend": {
+            "state": "GROWING",
+            "recent_sales": "60190.33",
+            "previous_sales": "891.41",
+            "recent_count": 271,
+            "previous_count": 3,
+            "change_percent": 6652.3,
+            "comparison": "previous_90_days",
+            "value_noise_tolerance": "296.94",
+            "count_tolerance": 2,
+            "supported": false
+          },
+          "seasonality": {
+            "supported": false,
+            "seasonal": false,
+            "active_months": [],
+            "off_season": false,
+            "qualification": "PERFORMANCE / TEST DATA; no predictive validity"
+          }
+        }
+      ]
+    },
+    "concentration": {
+      "from": "2026-07-10",
+      "to": "2026-10-07",
+      "net_sales": "246620.79",
+      "groups": {
+        "customers": [
+          {
+            "id": 8,
+            "name": "Concentration Workshop 08 — synthetic furniture and upholstery trading",
+            "revenue": "28835.54",
+            "share_percent": 11.7
+          }
+        ],
+        "products": [
+          {
+            "id": 22,
+            "name": "Staple Wire 24",
+            "revenue": "26330.55",
+            "share_percent": 10.7
+          }
+        ],
+        "categories": [
+          {
+            "id": 1,
+            "name": "Upholstery Fabrics",
+            "revenue": "60190.33",
+            "share_percent": 24.4
+          }
+        ]
+      },
+      "top_shares": {
+        "1": 11.7,
+        "5": 39.6,
+        "10": 64.3
+      },
+      "qualification": "PERFORMANCE / TEST DATA; no predictive validity"
+    },
+    "health": [],
+    "local_model": {
+      "state": "available",
+      "algorithm": "personal_median_mad",
+      "customers": [
+        {
+          "id": 1,
+          "completed_intervals": 13,
+          "median_days": 5,
+          "mad_days": 2,
+          "eligible": false,
+          "qualification": "PERFORMANCE / TEST DATA; no predictive validity"
+        }
+      ],
+      "trained_model": false
+    },
+    "model": "interval_iqr_baseline",
+    "qualification": "PERFORMANCE / TEST DATA; no predictive validity"
+  },
+  "purpose": "PERFORMANCE / TEST DATA. Read-shape fixture only. No ML/evaluation or financial certification claim."
+}

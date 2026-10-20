@@ -2,8 +2,19 @@
 
 namespace App\Services;
 
-use App\Models\{AccountingException, AccountingRecoveryAttempt, DailySale, Expense, FinancialAccountTransaction, Invoice, JournalEntry, LandedCost, StockMovement};
-use Illuminate\Support\Facades\{Auth, DB};
+use App\Models\AccountingException;
+use App\Models\AccountingRecoveryAttempt;
+use App\Models\ActivityLog;
+use App\Models\Company;
+use App\Models\DailySale;
+use App\Models\Expense;
+use App\Models\FinancialAccountTransaction;
+use App\Models\Invoice;
+use App\Models\JournalEntry;
+use App\Models\LandedCost;
+use App\Models\StockMovement;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Throwable;
 
@@ -40,6 +51,7 @@ class AccountingRecoveryService
             ]);
             $this->accounting->resolveAccountingException($exception, 'Recovered by retry attempt #'.$attempt->id.'.');
             $this->audit($attempt);
+
             return $attempt->load(['journalEntry', 'user:id,name']);
         } catch (Throwable $error) {
             $attempt = AccountingRecoveryAttempt::create([
@@ -54,6 +66,35 @@ class AccountingRecoveryService
 
     private function repost(string $type, int $id, array $context): ?JournalEntry
     {
+        // A recovery may reconstruct a missing journal only for a finalized
+        // source. A crafted/stale exception must never post a draft or a reversal.
+        Company::whereKey(Auth::user()->company_id)->lockForUpdate()->firstOrFail();
+        $class = match ($type) {
+            'daily_sale' => DailySale::class, 'invoice' => Invoice::class,
+            'stock_movement' => StockMovement::class, 'landed_cost' => LandedCost::class,
+            'expense' => Expense::class, 'financial_account_transaction' => FinancialAccountTransaction::class,
+            default => throw ValidationException::withMessages(['exception' => 'This source requires a correction in its operational module.']),
+        };
+        $source = $class::query()->lockForUpdate()->findOrFail($id);
+        $eligible = match ($type) {
+            'daily_sale' => $source->status === 'finalized',
+            'invoice' => $source->document_type === 'invoice' && in_array($source->status, ['issued', 'partially_paid', 'paid'], true),
+            'landed_cost', 'expense' => $source->status === 'posted',
+            'financial_account_transaction' => $source->status === 'posted' && in_array($source->source_type, [null, 'manual'], true),
+            'stock_movement' => (bool) $source->affects_company_quantity && $source->cost_total !== null,
+        };
+        if (! $eligible) {
+            throw ValidationException::withMessages(['source' => 'Only a finalized source can recover its journal. Use the original document workflow for draft, reversed or source-owned payment records.']);
+        }
+
+        $prior = JournalEntry::query()->where('source_type', $type)->where('source_id', $id)->whereIn('status', ['posted', 'reversed'])->orderByDesc('id')->first();
+        if ($prior?->status === 'posted') {
+            return $prior;
+        }
+        if ($prior) {
+            throw ValidationException::withMessages(['source' => 'This source has reversed accounting history. Use its operational correction workflow rather than recovering a second posting.']);
+        }
+
         return match ($type) {
             'daily_sale' => $this->operations->postDailySale(DailySale::query()->findOrFail($id)),
             'invoice' => $this->operations->postInvoice(Invoice::query()->findOrFail($id)),
@@ -70,7 +111,7 @@ class AccountingRecoveryService
 
     private function audit(AccountingRecoveryAttempt $attempt): void
     {
-        \App\Models\ActivityLog::create([
+        ActivityLog::create([
             'company_id' => Auth::user()->company_id, 'user_id' => Auth::id(),
             'action' => 'accounting.exception_retry.'.$attempt->status,
             'entity' => 'AccountingException', 'entity_id' => $attempt->accounting_exception_id,

@@ -33,6 +33,8 @@ class ShipmentController extends Controller
     public function index(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
             'archived' => ['sometimes', 'boolean'],
             'saved' => ['sometimes', 'boolean'],
             'favorite' => ['sometimes', 'boolean'],
@@ -51,7 +53,7 @@ class ShipmentController extends Controller
                         ->whereNotIn('tracking_mode', ['manual', 'demo', 'disabled']);
                 });
             })
-            ->latest();
+            ->latest()->orderByDesc('id');
 
         if ($request->has('archived')) {
             $request->boolean('archived') ? $query->archived() : $query->active();
@@ -67,10 +69,13 @@ class ShipmentController extends Controller
             $query->favorites();
         }
 
-        $rows=$query->get();
+        $rows = isset($validated['page'])
+            ? $query->paginate($validated['per_page'] ?? 50, ['*'], 'page', $validated['page'])
+            : $query->limit(100)->get();
         // Reference-only PO relations must not calculate financial appends from
         // columns that were intentionally omitted from this logistics response.
-        $rows->each(fn(Shipment $s)=>$s->purchaseOrder?->setAppends([]));
+        ($rows instanceof \Illuminate\Pagination\LengthAwarePaginator ? $rows->getCollection() : $rows)
+            ->each(fn (Shipment $s) => $s->purchaseOrder?->setAppends([]));
         return response()->json($rows);
     }
 
@@ -143,14 +148,17 @@ class ShipmentController extends Controller
 
     public function show(Shipment $shipment): JsonResponse
     {
-        return response()->json($shipment->load([
+        $shipment->load([
             'purchaseOrder.supplier', 'purchaseOrder.items.product:id,name,sku,unit,weight_kg,volume_m3',
             'purchaseOrders.supplier', 'purchaseOrders.items.product:id,name,sku,unit,weight_kg,volume_m3',
             'warehouse', 'supplier', 'histories', 'containers.purchaseOrders',
             'containers.items.product:id,name,sku,unit,weight_kg,volume_m3', 'items.product:id,name,sku,unit,weight_kg,volume_m3',
             'items.purchaseOrderItem:id,purchase_order_id,product_id,description,unit,quantity,received_quantity',
             'documents' => fn ($query) => $query->with('uploader:id,name')->latest(),
-        ]));
+            'milestones',
+        ]);
+        $shipment->setAttribute('cargo',app(\App\Services\ShipmentCargoPresentation::class)->forShipment($shipment));
+        return response()->json($shipment);
     }
 
     public function refresh(Shipment $shipment): JsonResponse

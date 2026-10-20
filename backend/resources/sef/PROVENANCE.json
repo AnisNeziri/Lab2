@@ -1,0 +1,13 @@
+{
+  "source_url": "https://github.com/fiskalizimi/pos-csharp/blob/09401c83fac00bed4ef702103468792434aef44f/models.proto",
+  "source_commit": "09401c83fac00bed4ef702103468792434aef44f",
+  "source_schema_sha256": "fc42f76e353d23b575c989d186b05671a340f5845fc8304306bdfac05cf68efb",
+  "generator": "protoc36.2",
+  "runtime": "google/protobuf5.36.2",
+  "generation_only_changes": [
+    "php_namespace",
+    "php_metadata_namespace"
+  ],
+  "wire_fields_modified": false,
+  "generated_files": 8
+}

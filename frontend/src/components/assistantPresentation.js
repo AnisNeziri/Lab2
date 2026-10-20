@@ -3,6 +3,10 @@ import { workspaceGuides, intelligenceWorkflows, pageSteps } from '../config/wor
 
 export const normalizeQuestion = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 const aliases = {
+  payroll:['payroll','salary','salaries','pagat','paga','pagave'],
+  workforce:['employee','employment','human resources','punonjes','punonjës','personeli'],
+  tax:['vat','tvsh','tax','tatimet'],
+  fiscalization:['fiscalization','fiskalizim','fiscal receipt','sef'],
   'inventory-planning': ['replenishment', 'inventory planning', 'planifikim', 'sa te porosis'],
   'decision-center': ['decision center', 'qendra e vendimeve', 'alternatives'],
   'inventory-intelligence': ['forecast', 'parashikim', 'machine learning', 'model', 'intelligence'],

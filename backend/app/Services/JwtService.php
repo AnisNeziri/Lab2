@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\RefreshToken;
 use App\Models\User;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 
 class JwtService
 {
@@ -31,6 +32,7 @@ class JwtService
             'exp' => $now + $ttl,
             'role' => $user->role,
             'company_id' => $user->company_id,
+            'ver' => (int) $user->token_version,
         ]);
 
         $signature = $this->sign("{$header}.{$payload}");
@@ -65,9 +67,12 @@ class JwtService
             return null;
         }
 
+        $metadata = json_decode($this->decode($header));
+        if (($metadata->alg ?? null) !== 'HS256' || ($metadata->typ ?? null) !== 'JWT') return null;
         $data = json_decode($this->decode($payload));
 
-        if (! $data || ($data->exp ?? 0) < time()) {
+        if (! $data || ! is_int($data->sub ?? null) || ! is_int($data->ver ?? null) || ! is_int($data->exp ?? null) || ! is_int($data->iat ?? null)
+            || $data->exp <= time() || $data->iat > time() + 30 || ($data->iss ?? null) !== config('app.url')) {
             return null;
         }
 
@@ -76,9 +81,11 @@ class JwtService
 
     public function refresh(string $refreshToken): ?array
     {
+        return DB::transaction(function () use ($refreshToken) {
         $record = RefreshToken::where('token_hash', hash('sha256', $refreshToken))
             ->whereNull('revoked_at')
             ->where('expires_at', '>', now())
+            ->lockForUpdate()
             ->first();
 
         if (! $record) {
@@ -91,9 +98,10 @@ class JwtService
             return null;
         }
 
-        $record->update(['revoked_at' => now()]);
+        if (RefreshToken::whereKey($record->id)->whereNull('revoked_at')->update(['revoked_at' => now()]) !== 1) return null;
 
         return $this->issueTokens($user);
+        });
     }
 
     public function revokeUserTokens(User $user): void

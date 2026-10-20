@@ -25,7 +25,7 @@ class ReplenishmentService
 
     public function suggestions(array $filters = []): array
     {
-        $asOf = CarbonImmutable::parse($filters['as_of'] ?? now('Europe/Tirane')->toDateString(), 'Europe/Tirane')->startOfDay();
+        $asOf = CarbonImmutable::parse($filters['as_of'] ?? \App\Support\CompanyClock::today()->toDateString(), \App\Support\CompanyClock::timezone())->startOfDay();
         $products = Product::query()
             ->with(['warehouseStock', 'supplier:id,name', 'supplierCatalogue' => fn ($query) => $query->where('is_active', true)->with('supplier:id,name')])
             ->where('lifecycle_status', 'active')
@@ -55,6 +55,8 @@ class ReplenishmentService
         $includeOk = (bool) ($filters['include_ok'] ?? false);
         $suggestions = [];
 
+        $currencies = \App\Models\Company::whereIn('id', $products->pluck('company_id')->unique())
+            ->pluck('base_currency', 'id');
         foreach ($products as $product) {
             $historyDays = max(1, (int) ($filters['history_days'] ?? $product->replenishment_history_days ?? 90));
             $historyStart = $asOf->subDays($historyDays)->startOfDay();
@@ -85,7 +87,7 @@ class ReplenishmentService
                     'product_id' => $product->id,
                     'supplier_id' => $product->supplier_id,
                     'purchase_price' => $product->purchase_price,
-                    'currency' => CompanyCurrency::forCompanyId((int) $product->company_id),
+                    'currency' => CompanyCurrency::normalize($currencies[$product->company_id] ?? null),
                     'exchange_rate_to_base' => 1,
                     'pack_size' => 1,
                     'minimum_order_quantity' => 0,

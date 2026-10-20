@@ -14,6 +14,7 @@ class Product extends Model
     use BelongsToCompany, LogsActivity;
 
     protected $fillable = [
+        'default_tax_code_id',
         'company_id',
         'category_id',
         'supplier_id',
@@ -176,8 +177,21 @@ class Product extends Model
         return 'normal';
     }
 
+    /** Read projections only: totals are selected from the authoritative, tenant-scoped balances. */
+    public function scopeWithStockTotals($query)
+    {
+        $scope = fn ($stock) => $stock->whereColumn('warehouse_stock.company_id', 'products.company_id');
+        return $query->withCount(['warehouseStock as stock_balance_count' => $scope])
+            ->withSum(['warehouseStock as stock_available_total' => $scope], 'available_quantity');
+    }
+
     public function getAvailableQuantityAttribute(): float
     {
+        if (array_key_exists('stock_balance_count', $this->attributes)) {
+            return (int) $this->attributes['stock_balance_count'] > 0
+                ? round((float) $this->attributes['stock_available_total'], 3)
+                : round((float) $this->quantity, 3);
+        }
         if ($this->relationLoaded('warehouseStock')) {
             return $this->warehouseStock->isNotEmpty()
                 ? round((float) $this->warehouseStock->sum('available_quantity'), 3)
@@ -201,7 +215,7 @@ class Product extends Model
 
     protected $appends = ['stock_status', 'available_quantity'];
 
-    protected $hidden = ['image_data'];
+    protected $hidden = ['image_data', 'stock_balance_count', 'stock_available_total'];
 
     public function getImageUrlAttribute(): ?string
     {

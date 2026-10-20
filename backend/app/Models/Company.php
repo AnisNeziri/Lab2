@@ -15,6 +15,9 @@ class Company extends Model
         'name',
         'address',
         'base_currency',
+        'fiscal_year_start_month',
+        'timezone',
+        'operational_cutover_date',
         'accounting_start_date',
         'accounting_opening_finalized_at',
         'accounting_opening_journal_id',
@@ -26,6 +29,8 @@ class Company extends Model
     protected function casts(): array
     {
         return [
+            'fiscal_year_start_month' => 'integer',
+            'operational_cutover_date' => 'date',
             'accounting_start_date' => 'date',
             'accounting_opening_finalized_at' => 'datetime',
             'accounting_opening_journal_id' => 'integer',

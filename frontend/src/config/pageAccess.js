@@ -1,6 +1,8 @@
 // The same route-level permissions drive navigation and direct URL access.
 import { simulationPermissions } from '../pages/strategicSimulationPresentation.js'
 export const pagePermissions = {
+  workforce:['employees.view'],payroll:['payroll.view'],'my-workforce':['workforce.self'],
+  onboarding:['onboarding.view'],
   'strategic-simulation':simulationPermissions,
   'supply-optimizer':['analytics.finance'],
   'decision-learning':['analytics.view'],
@@ -25,6 +27,7 @@ export const pagePermissions = {
   invoices: ['invoices.manage'],
   finance: ['finance.view'],
   'money-accounts': ['financial_accounts.view'],
+  tax:['tax.view'], fiscalization:['fiscalization.view'],
   accounting: ['accounting.reports.view'],
   'system-integrity': ['system_integrity.view'],
   'warehouse-operations': ['transfers.view'],

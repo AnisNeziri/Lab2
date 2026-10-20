@@ -1,3 +1,4 @@
+import { businessError, businessFieldErrors } from '../utils/businessErrors.js'
 const API_BASE = window.__AIMS_API_BASE__ || '/api'
 
 let refreshPromise = null
@@ -107,10 +108,16 @@ export async function parseApiResponse(response, fallbackMessage) {
   }
 
   if (!response.ok) {
-    const error = new Error(payload?.message ?? fallbackMessage)
-    error.errors = payload?.errors
+    const validation = response.status === 422 ? Object.values(payload?.errors || {}).flat()[0] : null
+    const error = new Error(businessError(validation || payload?.message, businessError(fallbackMessage), document.documentElement.lang))
+    error.errors = businessFieldErrors(payload?.errors, document.documentElement.lang)
     error.code = payload?.code
+    error.status = response.status
     error.requestId = payload?.request_id || response.headers.get('x-request-id') || null
+    if (response.status >= 500 && /^AIMS-[a-f0-9]{16}$/.test(payload?.reference || '')) {
+      error.reference = payload.reference
+      error.message += ` — ${document.documentElement.lang === 'sq' ? 'Referenca' : 'Reference'} ${error.reference}`
+    }
     throw error
   }
 
@@ -146,7 +153,10 @@ export async function authenticatedFetch(pathOrUrl, options = {}) {
     return response
   }
 
-  return makeRequest()
+  return makeRequest().catch(error => {
+    if (error.name !== 'AbortError') error.message = businessError(error.message, undefined, document.documentElement.lang)
+    throw error
+  })
 }
 
 export async function apiRequest(path, options = {}, fallbackMessage = 'API request failed') {
@@ -178,5 +188,8 @@ export async function apiRequest(path, options = {}, fallbackMessage = 'API requ
     return parseApiResponse(response, fallbackMessage)
   }
 
-  return makeRequest()
+  return makeRequest().catch(error => {
+    error.message = businessError(error.message, undefined, document.documentElement.lang)
+    throw error
+  })
 }

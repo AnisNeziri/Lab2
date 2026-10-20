@@ -26,7 +26,7 @@ class CustomerController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $businessDate = now('Europe/Tirane')->toDateString();
+        $businessDate = \App\Support\CompanyClock::today()->toDateString();
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:255'],
             'status' => ['nullable', 'in:all,active,paid,credit,overdue'],
@@ -188,7 +188,7 @@ class CustomerController extends Controller
 
     public function summary(): JsonResponse
     {
-        $businessDate = now('Europe/Tirane')->toDateString();
+        $businessDate = \App\Support\CompanyClock::today()->toDateString();
         $overdue = Customer::query()
             ->where('current_debt', '>', 0)
             ->whereHas('debtTransactions', fn ($query) => $query

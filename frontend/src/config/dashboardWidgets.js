@@ -17,7 +17,7 @@ const inventory = ['dashboard.view','inventory.view'], sales = ['dashboard.view'
 const financial = ['analytics.finance','finance.view','financial_accounts.view']
 const commercial = ['analytics.view','customers.manage','daily_sales.manage']
 export const widgetCatalog = [
-  widget('today-sales',"Today's sales",'Shitjet e sotme','sales','/daily-sales',sales,'/daily-sales/summary',['small','medium']),
+  widget('today-sales','Daily sales','Shitjet ditore','sales','/daily-sales',sales,'/daily-sales/summary',['small','medium']),
   widget('sales-trend','Sales trend','Ecuria e shitjeve','sales','/daily-sales',sales,'sales-chart',['medium','large'],{settings:{period:'month'}}),
   widget('orders-overview','Orders overview','Përmbledhja e porosive','orders','/order-hub',['fulfillment.view'],'/order-hub/overview'),
   widget('recent-orders','Recent orders','Porositë e fundit','orders','/order-hub',['fulfillment.view'],'/order-hub?per_page=5'),
@@ -32,13 +32,13 @@ export const widgetCatalog = [
   widget('category-stock','Inventory by category','Inventari sipas kategorisë','inventory','/products',[...inventory,'analytics.finance'],'/dashboard'),
   widget('warehouse-stock','Stock by warehouse section','Stoku sipas seksionit të depos','inventory','/warehouse-operations',['inventory.view','transfers.view'],'/warehouse/sections/distribution'),
   widget('receivables','Outstanding customer debt','Borxhet e papaguara të klientëve','customers','/customer-debts',['debts.view'],'/customers/debts/summary',['small','medium']),
-  widget('customer-opportunities','Customer reorder opportunities','Mundësitë e riporositjes së klientëve','customers','/customer-sales-intelligence?view=opportunities',commercial,'/customer-sales-intelligence'),
+  widget('customer-opportunities','Customer reorder opportunities','Mundësitë e riporositjes së klientëve','customers','/customer-sales-intelligence?view=opportunities',commercial,'/customer-sales-intelligence?summary_only=1'),
   widget('supplier-reliability','Supplier reliability','Besueshmëria e furnitorit','suppliers','/suppliers',['supplier_performance.view'],'supplier-scorecard',['medium','large'],{settings:{supplier_id:''}}),
   widget('open-purchases','Recent purchase orders','Porositë e fundit të blerjes','purchasing','/purchase-orders',['purchase_orders.view'],'/purchase-orders?per_page=5'),
   widget('purchase-requests','Purchase requests','Kërkesat për blerje','purchasing','/procurement',['procurement.view'],'/purchase-requests?per_page=5'),
   widget('shipments','Active shipments','Dërgesat aktive','shipments','/shipments/my-shipments',['shipments.view'],'/shipments'),
   widget('shipment-risk','Shipment risk','Rreziku i dërgesave','shipments','/control-tower',['shipments.view','control_tower.view'],'/shipment-intelligence'),
-  widget('cash-outlook','Cash outlook','Perspektiva e parasë','finance','/financial-intelligence',financial,'/financial-intelligence?horizon=30'),
+  widget('cash-outlook','Cash outlook','Perspektiva e parasë','finance','/financial-intelligence',financial,'/financial-intelligence?horizon=30&summary_only=1'),
   widget('action-center','Action Center','Qendra e veprimeve','tasks','/action-center',['tasks.view'],'/action-center?view=mine&summary_only=1'),
   widget('automation-status','Automation status','Gjendja e automatizimit','tasks','/automation-studio',['automations.view'],'/automations'),
   widget('forecast-health','Forecast health','Gjendja e parashikimeve','intelligence','/inventory-intelligence',['analytics.view','inventory.view'],'/analytics/intelligence'),
@@ -52,9 +52,9 @@ export const allowedWidget = (w, permissions) => Boolean(w && w.permissions.ever
 export const availableWidgets = permissions => widgetCatalog.filter(w => allowedWidget(w,permissions))
 
 export function defaultDashboard(permissions, role = 'staff') {
-  const ids = role === 'staff'
-    ? ['today-sales','product-count','receivables','low-stock','orders-overview','warehouse-stock','action-center','shipments','purchase-requests','open-purchases','cash-outlook','stock-movements','quick-actions']
-    : ['inventory-value','stock-turnover','warehouse-sections','stock-alert-count','stock-movements','category-activity','warehouse-stock','sales-trend','quick-actions','activity','low-stock','today-sales','product-count','receivables','shipments','action-center','customer-opportunities','orders-overview']
+  const ids = role === 'hr' ? ['action-center','quick-actions'] : role === 'staff'
+    ? ['action-center','orders-overview','today-sales','low-stock','receivables','warehouse-stock','shipments','quick-actions']
+    : ['action-center','sales-trend','orders-overview','receivables','low-stock','open-purchases','shipments','cash-outlook','quick-actions']
   return normalizeDashboard({version:1,widgets:ids.map(id => ({id,size:widgetById[id].defaultSize,settings:widgetById[id].settings}))},permissions)
 }
 export function normalizeDashboard(layout, permissions) {

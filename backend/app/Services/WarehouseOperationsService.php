@@ -364,6 +364,7 @@ class WarehouseOperationsService
     public function dispatch(StockTransfer $transfer, string $idempotencyKey): StockTransfer
     {
         return DB::transaction(function () use ($transfer, $idempotencyKey) {
+            DB::table('companies')->where('id', Auth::user()->company_id)->sharedLock()->first();
             $transfer = StockTransfer::query()->lockForUpdate()->findOrFail($transfer->id);
             if ($transfer->status === 'in_transit' && $transfer->dispatch_idempotency_key === $idempotencyKey) {
                 return $this->findTransfer($transfer);
@@ -407,12 +408,13 @@ class WarehouseOperationsService
             ], "stock-transfer:{$transfer->id}:dispatched");
 
             return $this->findTransfer($transfer->fresh());
-        });
+        }, 3);
     }
 
     public function receive(StockTransfer $transfer, array $data): StockTransfer
     {
         return DB::transaction(function () use ($transfer, $data) {
+            DB::table('companies')->where('id', Auth::user()->company_id)->sharedLock()->first();
             $transfer = StockTransfer::query()->lockForUpdate()->findOrFail($transfer->id);
             $payloadHash = hash('sha256', json_encode($data['items'], JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION));
             $existingReceipt = DB::table('stock_transfer_receipts')
@@ -493,7 +495,7 @@ class WarehouseOperationsService
             ], "stock-transfer:{$transfer->id}:receipt:{$data['idempotency_key']}");
 
             return $this->findTransfer($transfer->fresh());
-        });
+        }, 3);
     }
 
     public function cancel(StockTransfer $transfer, string $reason): StockTransfer
@@ -760,7 +762,7 @@ class WarehouseOperationsService
 
     private function nextTransferNumber(int $companyId): string
     {
-        $prefix = 'TR-'.now('Europe/Tirane')->format('Y').'-';
+        $prefix = 'TR-'.\App\Support\CompanyClock::now()->format('Y').'-';
         $sequence = StockTransfer::withoutGlobalScopes()->where('company_id', $companyId)->where('transfer_number', 'like', $prefix.'%')->count() + 1;
         do {
             $number = $prefix.str_pad((string) $sequence++, 5, '0', STR_PAD_LEFT);

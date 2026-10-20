@@ -234,7 +234,7 @@ class InventoryReturnService
             if (! $return->financial_account_id) throw ValidationException::withMessages(['financial_account_id' => ['Choose the cash/bank account used for the refund.']]);
             $transaction = $this->accounts->post($return->financial_account_id, [
                 'type' => $return->type === 'customer' ? 'refund_out' : 'refund_in',
-                'amount' => $amount, 'transaction_date' => now()->toDateString(),
+                'amount' => $amount, 'transaction_date' => \App\Support\CompanyClock::today()->toDateString(),
                 'source_type' => 'inventory_return', 'source_id' => $return->id,
                 'counterparty' => $return->type === 'customer' ? $return->customer?->name : $return->supplier?->name,
                 'reference_number' => $return->reference_number, 'description' => $return->reason,
@@ -247,7 +247,7 @@ class InventoryReturnService
         if ($return->financial_resolution === 'debt_credit') {
             if ($return->type !== 'customer' || ! $return->customer) throw ValidationException::withMessages(['financial_resolution' => ['Debt credit is available only for a customer return.']]);
             $debtTransaction = $this->debts->recordPayment($return->customer, [
-                'amount' => $amount, 'transaction_date' => now()->toDateString(), 'source' => 'customer_return',
+                'amount' => $amount, 'transaction_date' => \App\Support\CompanyClock::today()->toDateString(), 'source' => 'customer_return',
                 'reference_number' => $return->return_number, 'note' => $return->reason,
                 'idempotency_key' => $return->idempotency_key.'-debt-credit',
                 'metadata' => ['inventory_return_id' => $return->id],
@@ -262,7 +262,7 @@ class InventoryReturnService
     {
         if ($return->type !== 'supplier') throw ValidationException::withMessages(['financial_resolution' => ['Supplier credit is available only for a supplier return.']]);
         $original = Expense::query()->where('purchase_order_id', $return->purchase_order_id)
-            ->where('supplier_id', $return->supplier_id)->where('status', 'posted')->latest('id')->first();
+            ->where('supplier_id', $return->supplier_id)->where('status', 'posted')->where('document_type','purchase_invoice')->lockForUpdate()->latest('id')->first();
         if (! $original) throw ValidationException::withMessages(['purchase_order_id' => ['Link a posted supplier invoice before issuing a supplier credit.']]);
         $gross = max(.01, $amount);
         $existingCredits = (float) $original->supplierCredits()->sum('gross_amount');
@@ -273,13 +273,14 @@ class InventoryReturnService
         $vat = round((float) $original->vat_amount * $ratio, 2);
         $net = round($gross - $vat, 2);
         $credit = $this->expenses->create([
+            'original_expense_id'=>$original->id,
             'vendor_name' => $original->vendor_name, 'vendor_business_number' => $original->vendor_business_number,
             'vendor_fiscal_number' => $original->vendor_fiscal_number, 'vendor_vat_number' => $original->vendor_vat_number,
             'document_type' => 'credit_note', 'document_number' => $return->reference_number ?: $return->return_number,
             'original_document_number' => $original->document_number, 'source_type' => $original->source_type,
             'asset_treatment' => $original->asset_treatment, 'category' => 'inventory',
             'description' => 'Supplier return '.$return->return_number, 'business_purpose' => null,
-            'invoice_date' => now()->toDateString(), 'received_date' => now()->toDateString(), 'supply_date' => now()->toDateString(),
+            'invoice_date' => \App\Support\CompanyClock::today()->toDateString(), 'received_date' => \App\Support\CompanyClock::today()->toDateString(), 'supply_date' => \App\Support\CompanyClock::today()->toDateString(),
             'due_date' => null, 'currency' => $original->currency, 'exchange_rate' => $original->exchange_rate,
             'exchange_rate_date' => $original->exchange_rate_date?->toDateString(), 'exchange_rate_source' => $original->exchange_rate_source,
             'net_amount' => $net, 'vat_rate' => $original->vat_rate, 'vat_amount' => $vat,

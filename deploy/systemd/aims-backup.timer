@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily AIMS encrypted backup (UTC)
+[Timer]
+OnCalendar=*-*-* 02:30:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+Unit=aims-backup.service
+[Install]
+WantedBy=timers.target

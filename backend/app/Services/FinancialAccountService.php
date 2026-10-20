@@ -38,9 +38,28 @@ class FinancialAccountService
             ->all();
     }
 
+    public function recordOpening(\App\Models\OnboardingSession $session, array $data, ?int $accountId = null): FinancialAccount
+    {
+        app(\App\Services\Onboarding\OnboardingGuard::class)->assertOpening($session);
+        return DB::transaction(function () use ($session, $data, $accountId) {
+            DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
+            $values = ['name' => $data['name'], 'type' => $data['type'], 'currency' => $session->currency, 'opening_balance' => $data['amount'], 'opening_date' => $session->cutover_date->toDateString(), 'is_active' => true];
+            if (!$accountId) return $this->createAccount($values);
+            $account = FinancialAccount::lockForUpdate()->findOrFail($accountId);
+            if ($account->transactions()->exists() || Money::compare($account->opening_balance, '0') !== 0) throw \Illuminate\Validation\ValidationException::withMessages(['account' => 'Use an unused zero-balance account for an opening position.']);
+            $account->update($values);
+            $this->accounting->ensureFinancialAccount($account);
+            $this->accounting->postFinancialOpening($account);
+            $this->audit('financial_account.opening', $account, null, ['session_id' => $session->id, 'amount' => $data['amount']]);
+            return $account->fresh();
+        });
+    }
+
     public function createAccount(array $data): FinancialAccount
     {
         return DB::transaction(function () use ($data) {
+            DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
+            app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational($data['opening_date'] ?? null);
             $account = FinancialAccount::create([
                 ...$data,
                 'company_id' => Auth::user()->company_id,
@@ -57,8 +76,15 @@ class FinancialAccountService
     public function updateAccount(FinancialAccount $account, array $data): FinancialAccount
     {
         return DB::transaction(function () use ($account, $data) {
+            DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
+            app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational();
             $locked = FinancialAccount::query()->lockForUpdate()->findOrFail($account->id);
             $old = $locked->toArray();
+            if (\App\Models\OnboardingRow::where('posted_entity_type', 'financial_accounts')->where('posted_entity_id', $locked->id)->whereNotNull('posted_at')->exists()) {
+                $changedAmount = array_key_exists('opening_balance', $data) && Money::compare($data['opening_balance'], $locked->opening_balance) !== 0;
+                $changedDate = array_key_exists('opening_date', $data) && substr((string) $data['opening_date'], 0, 10) !== $locked->opening_date?->toDateString();
+                if ($changedAmount || $changedDate) throw ValidationException::withMessages(['opening_balance' => 'This opening is part of approved onboarding. Record a dated money-account adjustment with a reason instead of rewriting the opening.']);
+            }
             if (array_key_exists('opening_balance', $data) && $locked->transactions()->exists()) {
                 unset($data['opening_balance'], $data['opening_date']);
             }
@@ -72,6 +98,7 @@ class FinancialAccountService
     public function transactions(FinancialAccount $account, array $filters): LengthAwarePaginator
     {
         $query = $account->transactions()->with('creator:id,name')->latest('transaction_date')->latest('id');
+        if(!app(PermissionService::class)->roleHasPermission(Auth::user()->role,'payroll.view')) $query->where(fn($q)=>$q->whereNull('source_type')->orWhereNotIn('source_type',['payroll_payment','employee_advance']));
         if (! empty($filters['from'])) $query->whereDate('transaction_date', '>=', $filters['from']);
         if (! empty($filters['to'])) $query->whereDate('transaction_date', '<=', $filters['to']);
         if (! empty($filters['type'])) $query->where('type', $filters['type']);
@@ -87,11 +114,14 @@ class FinancialAccountService
     public function post(FinancialAccount|int $account, array $data): FinancialAccountTransaction
     {
         return DB::transaction(function () use ($account, $data) {
+            DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
+            app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational($data['transaction_date'] ?? null);
             $accountId = $account instanceof FinancialAccount ? $account->id : $account;
             $locked = FinancialAccount::query()->lockForUpdate()->findOrFail($accountId);
             if (! $locked->is_active) {
                 throw ValidationException::withMessages(['financial_account_id' => ['The selected money account is inactive.']]);
             }
+
             $type = $data['type'];
             if (! in_array($type, [...self::INFLOW_TYPES, ...self::OUTFLOW_TYPES], true)) {
                 throw ValidationException::withMessages(['type' => ['The selected money movement type is invalid.']]);
@@ -122,6 +152,8 @@ class FinancialAccountService
                 throw ValidationException::withMessages(['description' => ['A reason is required for an account adjustment.']]);
             }
 
+            $this->accounting->assertDateOpen($data['transaction_date']);
+            if($locked->type==='bank'&&\App\Models\BankStatement::query()->where('financial_account_id',$locked->id)->where('reconciliation_status','completed')->whereDate('period_from','<=',$data['transaction_date'])->whereDate('period_to','>=',$data['transaction_date'])->exists())throw ValidationException::withMessages(['transaction_date'=>'This bank statement period is already reconciled. Reopen its reconciliation before adding a backdated bank movement.']);
             $transaction = FinancialAccountTransaction::create([
                 'company_id' => $locked->company_id,
                 'financial_account_id' => $locked->id,
@@ -157,6 +189,7 @@ class FinancialAccountService
     public function transfer(array $data): FinancialAccountTransfer
     {
         return DB::transaction(function () use ($data) {
+            DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
             if ((int) $data['source_account_id'] === (int) $data['destination_account_id']) {
                 throw ValidationException::withMessages(['destination_account_id' => ['Choose a different destination account.']]);
             }
@@ -170,6 +203,9 @@ class FinancialAccountService
             }
             if ($source->currency !== $destination->currency) {
                 throw ValidationException::withMessages(['destination_account_id' => ['Transfers currently require accounts with the same currency.']]);
+            }
+            if ($source->currency !== \App\Support\CompanyCurrency::forCompanyId($source->company_id)) {
+                throw ValidationException::withMessages(['currency'=>'This transfer workflow supports the company base currency. Foreign-currency carrying-value transfers are not yet supported.']);
             }
             $key = (string) ($data['idempotency_key'] ?? Str::uuid());
             $existing = FinancialAccountTransfer::query()->where('idempotency_key', $key)->first();
@@ -217,7 +253,9 @@ class FinancialAccountService
     public function reverse(FinancialAccountTransaction $transaction, string $reason): FinancialAccountTransaction
     {
         return DB::transaction(function () use ($transaction, $reason) {
+            DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
             $current = FinancialAccountTransaction::query()->findOrFail($transaction->id);
+            if(in_array($current->source_type,['payroll_payment','employee_advance'],true)) throw ValidationException::withMessages(['transaction'=>'Payroll owns this settlement. Use a reviewed workforce correction workflow; a generic bank reversal cannot change payroll balances.']);
             $ids = array_values(array_filter([$current->id, $current->related_transaction_id]));
             sort($ids);
             $lockedTransactions = FinancialAccountTransaction::query()
@@ -234,19 +272,23 @@ class FinancialAccountService
                     $targets->push($related);
                 }
             }
+            $targetIds=$targets->pluck('id');
+            $matched=\App\Models\BankStatementMatch::query()->whereIn('active_transaction_id',$targetIds)->lockForUpdate()->exists()
+                ||\App\Models\BankStatementRow::query()->whereIn('matched_transaction_id',$targetIds)->where('status','reconciled')->lockForUpdate()->exists();
+            if($matched)throw ValidationException::withMessages(['transaction'=>'Unmatch this bank activity and reopen its completed reconciliation before reversing the source.']);
             foreach ($targets->unique('id') as $target) {
                 if ($target->status !== 'posted') continue;
                 $old = $target->toArray();
                 $target->update([
-                    'status' => 'reversed', 'reversed_at' => now(), 'reversed_by' => Auth::id(),
+                    'status' => 'reversed', 'reversal_date' => \App\Support\CompanyClock::today()->toDateString(), 'reversed_at' => now(), 'reversed_by' => Auth::id(),
                     'reversal_reason' => trim($reason),
                 ]);
                 $this->audit('financial_transaction.reversed', $target, $old, $target->fresh()->toArray(), $reason);
             }
             if ($locked->source_type === 'financial_account_transfer') {
-                $this->accounting->reverseSource('banking', 'financial-transfer:'.$locked->source_id, now()->toDateString(), $reason);
+                $this->accounting->reverseSource('banking', 'financial-transfer:'.$locked->source_id, \App\Support\CompanyClock::today()->toDateString(), $reason);
             } elseif ($locked->journal_entry_id) {
-                $this->accounting->reverseSource('banking', 'financial-transaction:'.$locked->id, now()->toDateString(), $reason);
+                $this->accounting->reverseSource('banking', 'financial-transaction:'.$locked->id, \App\Support\CompanyClock::today()->toDateString(), $reason);
             }
 
             return $locked->fresh('account');
@@ -270,6 +312,9 @@ class FinancialAccountService
 
     private function audit(string $action, object $entity, mixed $old, mixed $new, ?string $reason = null): void
     {
+        if($entity instanceof FinancialAccountTransaction && in_array($entity->source_type,['employee_advance','payroll_payment'],true)) {
+            $old=null; $new=['source_type'=>$entity->source_type,'source_id'=>$entity->source_id,'status'=>$entity->status,'confidential_workforce'=>true];
+        }
         ActivityLog::create([
             'company_id' => Auth::user()->company_id, 'user_id' => Auth::id(),
             'action' => $action, 'entity' => class_basename($entity), 'entity_id' => $entity->id,

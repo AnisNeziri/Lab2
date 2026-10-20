@@ -36,6 +36,27 @@ class PurchaseOrderService
         private readonly OperationalAccountingService $operationalAccounting,
     ) {}
 
+    public function recordOpeningAdvance(\App\Models\OnboardingSession $session, \App\Models\Supplier $supplier, array $data): PurchaseOrderPayment
+    {
+        app(\App\Services\Onboarding\OnboardingGuard::class)->assertOpening($session);
+        abort_unless((int)$supplier->company_id===(int)$session->company_id,404);
+        return DB::transaction(function () use ($session, $supplier, $data) {
+            $key = 'onboarding:'.$session->id.':'.$data['row_id'];
+            if ($existing = PurchaseOrderPayment::where('idempotency_key', $key)->first()) return $existing;
+            $payment = PurchaseOrderPayment::create([
+                'company_id' => $session->company_id, 'supplier_id' => $supplier->id, 'onboarding_session_id' => $session->id,
+                'purchase_order_id' => null, 'user_id' => Auth::id(), 'amount' => $data['amount'], 'amount_eur' => $data['amount'],
+                'currency' => $session->currency, 'exchange_rate' => 1, 'status' => 'completed', 'payment_method' => 'opening',
+                'payment_date' => $session->cutover_date->toDateString(), 'paid_at' => now(), 'reference_number' => $data['reference'],
+                'idempotency_key' => $key, 'note' => 'Opening supplier advance; no cash movement. Source row '.$data['row_id'],
+            ]);
+            app(AccountingService::class)->postMapped('procurement','purchase_order_payment',$payment->id,'purchase-order-payment:'.$payment->id,$session->cutover_date->toDateString(),'Opening supplier advance',[
+                ['mapping' => 'supplier_advances', 'debit' => $data['amount']], ['mapping' => 'equity', 'credit' => $data['amount']],
+            ],$session->currency,1);
+            return $payment;
+        });
+    }
+
     public function list(array $filters): LengthAwarePaginator
     {
         $query = PurchaseOrder::query()->with(['supplier:id,name,phone,email', 'warehouse:id,name,code']);
@@ -58,7 +79,7 @@ class PurchaseOrderService
             $query->whereDate('due_at', $filters['due_at']);
         }
 
-        $businessDate = now('Europe/Tirane')->toDateString();
+        $businessDate = \App\Support\CompanyClock::today()->toDateString();
         match ($filters['payment_status'] ?? null) {
             'paid' => $query->whereColumn('total_paid', '>=', 'total_amount'),
             'partially_paid' => $query->where('total_paid', '>', 0)->whereColumn('total_paid', '<', 'total_amount')->where(fn ($q) => $q->whereNull('due_at')->orWhereDate('due_at', '>=', $businessDate)),
@@ -149,6 +170,9 @@ class PurchaseOrderService
     {
         return DB::transaction(function () use ($order, $data) {
             $order = PurchaseOrder::query()->lockForUpdate()->findOrFail($order->id);
+            abort_if(isset($data['revision']) && (int) $data['revision'] !== (int) $order->revision,
+                409, 'This purchase order changed in another session. Reload it and review the changes before saving.');
+            unset($data['revision']);
             if (in_array($order->status, ['completed', 'cancelled'], true)) {
                 throw ValidationException::withMessages(['status' => ['Completed or cancelled orders cannot have their products changed.']]);
             }
@@ -216,10 +240,14 @@ class PurchaseOrderService
     public function pay(PurchaseOrder $order, array $data): PurchaseOrder
     {
         return DB::transaction(function () use ($order, $data) {
+            DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
             $order = PurchaseOrder::query()->lockForUpdate()->findOrFail($order->id);
             if ($order->status === 'cancelled') {
                 throw ValidationException::withMessages(['status' => ['Cancelled orders cannot receive payments.']]);
             }
+            $base=CompanyCurrency::forCompanyId($order->company_id);
+            $paymentRate=$order->currency===$base?'1.000000':Money::normalizeDecimal($data['exchange_rate']??0,6);
+            if($order->currency!==$base&&(Money::compareDecimal($paymentRate,0)<=0||empty($data['exchange_rate_date'])||blank($data['exchange_rate_source']??null)||$data['exchange_rate_date']>$data['payment_date']))throw ValidationException::withMessages(['exchange_rate'=>'A foreign supplier payment requires its historical base-currency rate, rate date and source.']);
             $existing = PurchaseOrderPayment::where('company_id', $order->company_id)->where('idempotency_key', $data['idempotency_key'])->first();
             if ($existing) {
                 $requestedExpenseId = (int) ($data['expense_id'] ?? 0);
@@ -231,6 +259,9 @@ class PurchaseOrderService
                     && $existing->status === 'completed'
                     && Money::compare($existing->amount, $data['amount']) === 0
                     && $existing->payment_date?->toDateString() === (string) $data['payment_date']
+                    && Money::compareDecimal($existing->exchange_rate,$paymentRate)===0
+                    && ($existing->exchange_rate_date?->toDateString()??'')===($data['exchange_rate_date']??'')
+                    && ($existing->exchange_rate_source??'')===($data['exchange_rate_source']??'')
                     && $existing->payment_method === $data['payment_method']
                     && ($existing->reference_number ?? '') === ($data['reference_number'] ?? '')
                     && ($existing->note ?? '') === ($data['note'] ?? '')
@@ -259,8 +290,10 @@ class PurchaseOrderService
                 'user_id' => Auth::id(),
                 'amount' => $amount,
                 'currency' => $order->currency,
-                'exchange_rate' => $order->exchange_rate ?: 1,
-                'amount_eur' => Money::multiply($amount, $order->exchange_rate ?: 1),
+                'exchange_rate' => $paymentRate,
+                'exchange_rate_date'=>$order->currency===$base?null:$data['exchange_rate_date'],
+                'exchange_rate_source'=>$order->currency===$base?null:trim($data['exchange_rate_source']),
+                'amount_eur' => Money::multiply($amount, $paymentRate),
                 'status' => 'completed',
                 'payment_date' => $data['payment_date'],
                 'payment_method' => $data['payment_method'],
@@ -273,7 +306,7 @@ class PurchaseOrderService
             ]);
             if (! empty($data['financial_account_id'])) {
                 $ledger = $this->financialAccounts->post((int) $data['financial_account_id'], [
-                    'type' => 'outflow', 'amount' => Money::multiply($amount, $order->exchange_rate ?: 1),
+                    'type' => 'outflow', 'amount' => Money::multiply($amount, $paymentRate),
                     'transaction_date' => $data['payment_date'], 'source_type' => 'purchase_order_payment',
                     'source_id' => $payment->id, 'counterparty' => $order->supplier?->name,
                     'reference_number' => $data['reference_number'] ?? null,
@@ -304,9 +337,18 @@ class PurchaseOrderService
         });
     }
 
-    public function reversePayment(PurchaseOrderPayment $payment, string $reason): PurchaseOrder
+    public function reversePayment(PurchaseOrderPayment $payment, string $reason): PurchaseOrder|PurchaseOrderPayment
     {
         return DB::transaction(function () use ($payment, $reason) {
+            if($payment->onboarding_session_id && !$payment->purchase_order_id){
+                $payment=PurchaseOrderPayment::lockForUpdate()->findOrFail($payment->id);
+                app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational(\App\Support\CompanyClock::today()->toDateString());
+                if($payment->status==='reversed')return $payment;
+                if($payment->status!=='completed'||$payment->allocations()->exists())throw ValidationException::withMessages(['payment'=>'Reverse supplier allocations before reversing an opening advance.']);
+                app(AccountingService::class)->reverseSource('procurement','purchase-order-payment:'.$payment->id,\App\Support\CompanyClock::today()->toDateString(),trim($reason));
+                $payment->update(['status'=>'reversed','reversal_date'=>\App\Support\CompanyClock::today()->toDateString(),'reversed_at'=>now(),'reversed_by'=>Auth::id(),'reversal_reason'=>trim($reason)]);
+                return $payment->fresh();
+            }
             $order = PurchaseOrder::query()->lockForUpdate()->findOrFail($payment->purchase_order_id);
             $payment = PurchaseOrderPayment::query()
                 ->where('purchase_order_id', $order->id)
@@ -332,7 +374,7 @@ class PurchaseOrderService
                     ->where('expense_id', $allocation->expense_id)
                     ->where('status', 'completed')
                     ->update([
-                        'status' => 'reversed', 'reversed_at' => now(),
+                        'status' => 'reversed', 'reversal_date' => \App\Support\CompanyClock::today()->toDateString(), 'reversed_at' => now(),
                         'reversed_by' => Auth::id(), 'reversal_reason' => trim($reason),
                         'updated_at' => now(),
                     ]);
@@ -350,7 +392,7 @@ class PurchaseOrderService
             }
 
             $payment->update([
-                'status' => 'reversed', 'expense_id' => null, 'reversed_at' => now(),
+                'status' => 'reversed', 'expense_id' => null, 'reversal_date' => \App\Support\CompanyClock::today()->toDateString(), 'reversed_at' => now(),
                 'reversed_by' => Auth::id(), 'reversal_reason' => trim($reason),
             ]);
             if ($payment->financial_account_transaction_id) {
@@ -777,7 +819,7 @@ class PurchaseOrderService
 
     private function nextNumber(): string
     {
-        $prefix = 'PO-'.now('Europe/Tirane')->format('Y').'-';
+        $prefix = 'PO-'.\App\Support\CompanyClock::now()->format('Y').'-';
         $sequence = PurchaseOrder::query()->where('po_number', 'like', $prefix.'%')->count() + 1;
         do {
             $number = $prefix.str_pad((string) $sequence++, 4, '0', STR_PAD_LEFT);
@@ -812,7 +854,7 @@ class PurchaseOrderService
 
         return [
             'exchange_rate' => $rate,
-            'exchange_rate_date' => $data['exchange_rate_date'] ?? ($currency === $baseCurrency ? ($data['ordered_at'] ?? now()->toDateString()) : null),
+            'exchange_rate_date' => $data['exchange_rate_date'] ?? ($currency === $baseCurrency ? ($data['ordered_at'] ?? \App\Support\CompanyClock::today()->toDateString()) : null),
             'exchange_rate_source' => $data['exchange_rate_source'] ?? ($currency === $baseCurrency ? "{$baseCurrency} base currency" : null),
             // Legacy column name retained for backward compatibility; the
             // stored value is now the company's base-currency equivalent.
@@ -822,7 +864,7 @@ class PurchaseOrderService
 
     private function nextReceiptNumber(int $companyId): string
     {
-        $prefix = 'GR-'.now('Europe/Tirane')->format('Y').'-';
+        $prefix = 'GR-'.\App\Support\CompanyClock::now()->format('Y').'-';
         $sequence = GoodsReceipt::withoutGlobalScopes()->where('company_id', $companyId)->where('receipt_number', 'like', $prefix.'%')->count() + 1;
         do {
             $number = $prefix.str_pad((string) $sequence++, 5, '0', STR_PAD_LEFT);

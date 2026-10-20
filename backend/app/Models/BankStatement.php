@@ -13,15 +13,29 @@ class BankStatement extends Model
 
     protected $fillable = [
         'company_id', 'financial_account_id', 'file_name', 'file_hash', 'column_mapping',
-        'period_from', 'period_to', 'closing_balance', 'imported_by',
+        'period_from', 'period_to', 'closing_balance', 'imported_by', 'opening_balance', 'reconciliation_status', 'reconciled_at', 'reconciled_by', 'reconciliation_proof', 'reopened_by', 'reopened_at', 'reopen_reason',
     ];
 
     protected function casts(): array
     {
         return [
             'column_mapping' => 'array', 'period_from' => 'date:Y-m-d',
-            'period_to' => 'date:Y-m-d', 'closing_balance' => 'decimal:2',
+            'period_to' => 'date:Y-m-d', 'closing_balance' => 'decimal:2', 'opening_balance' => 'decimal:2', 'reconciled_at' => 'datetime', 'reconciliation_proof' => 'array', 'reopened_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::updating(function ($m) {
+            if ($m->getOriginal('reconciliation_status') === 'completed' && ($m->reconciliation_status !== 'open' || array_diff(array_keys($m->getDirty()), ['reconciliation_status', 'reopened_by', 'reopened_at', 'reopen_reason', 'updated_at']) || ! $m->reopened_by || ! $m->reopened_at || ! filled($m->reopen_reason))) {
+                throw new \LogicException('Completed reconciliation is immutable. Reopen it with permission and a reason first.');
+            }
+        });
+        static::deleting(function ($m) {
+            if ($m->reconciliation_status === 'completed') {
+                throw new \LogicException('Completed reconciliation history cannot be deleted.');
+            }
+        });
     }
 
     public function account(): BelongsTo

@@ -5,7 +5,17 @@ if(config('database.default')!=='sqlite'||basename(config('database.connections.
 use App\Models\{Company,User,Category,Product,Supplier,ProductSupplier,AnalyticsSnapshot};
 use Illuminate\Support\Facades\{Auth,Hash,DB};
 $user=User::where('email','optimizer-v11@enterprise.test')->first();
-if(($argv[1]??'')==='work'){\Illuminate\Support\Facades\Artisan::call('supply-optimizer:work',['--once'=>true]);echo \Illuminate\Support\Facades\Artisan::output();exit;}
+if(($argv[1]??'')==='work'){
+ if(!$user)throw new RuntimeException('Fixture absent.');
+ $plan=\App\Models\SupplyOptimizationPlan::withoutGlobalScopes()->where('company_id',$user->company_id)->findOrFail((int)($argv[2]??0));
+ // Earlier browser scenarios can leave another company's legitimate job ahead of this plan.
+ // Use the real worker, boundedly, until this fixture's requested plan has been processed.
+ for($attempt=0;$attempt<10&&in_array($plan->fresh()->status,['QUEUED','RUNNING'],true);$attempt++){
+  \Illuminate\Support\Facades\Artisan::call('supply-optimizer:work',['--once'=>true]);echo \Illuminate\Support\Facades\Artisan::output();
+ }
+ if(in_array($plan->fresh()->status,['QUEUED','RUNNING'],true))throw new RuntimeException('Requested fixture plan did not finish within ten real queue jobs.');
+ exit;
+}
 if(($argv[1]??'')==='verify'){
  if(!$user)throw new RuntimeException('Fixture absent.');Auth::setUser($user);echo json_encode(['purchase_requests'=>DB::table('purchase_requests')->where('company_id',$user->company_id)->count(),'transfers'=>DB::table('stock_transfers')->where('company_id',$user->company_id)->count(),'business'=>collect(['products','stock_movements','purchase_orders','journal_entries','financial_account_transactions'])->mapWithKeys(fn($t)=>[$t=>DB::table($t)->where('company_id',$user->company_id)->orderBy('id')->get()->toJson()])->all()]);exit;
 }

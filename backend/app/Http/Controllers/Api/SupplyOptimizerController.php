@@ -8,6 +8,7 @@ class SupplyOptimizerController extends Controller {
  public function options(){return response()->json($this->s->options());}
  public function index(Request $r){return response()->json($this->s->summary($r->query()));}
  public function show(int $id){return response()->json($this->s->get($id));}
+ public function cancel(int $id){return response()->json($this->s->cancel($id));}
  public function state(int $id){return response()->json($this->s->state($id));}
  public function store(Request $r){return response()->json($this->s->submit($r->all()),202);}
  public function simulate(Request $r,int $id){return response()->json($this->s->simulate($id,$r->all()),202);}

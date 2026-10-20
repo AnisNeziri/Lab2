@@ -144,6 +144,7 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Password updated successfully.',
             'user' => $this->authService->formatUser($user),
+            ...app(\App\Services\JwtService::class)->issueTokens($user),
         ]);
     }
 }

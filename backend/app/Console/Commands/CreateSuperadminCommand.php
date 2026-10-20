@@ -35,9 +35,13 @@ class CreateSuperadminCommand extends Command
             'role' => 'superadmin',
             'is_active' => true,
             'email_verified_at' => now(),
-            'must_change_password' => false,
+            'must_change_password' => true,
+            'api_token' => null,
+            'remember_token' => null,
             'temporary_password_consumed' => false,
+            'token_version' => (int) $user->token_version + 1,
         ])->save();
+        \App\Models\RefreshToken::where('user_id', $user->id)->delete();
 
         $role = Role::where('slug', 'superadmin')->firstOrFail();
         UserRole::updateOrCreate(['user_id' => $user->id, 'role_id' => $role->id], ['assigned_at' => now()]);

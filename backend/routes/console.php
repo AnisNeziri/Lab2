@@ -44,6 +44,8 @@
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
+Artisan::command('aims:heartbeat {queue=scheduler}', function () { app(\App\Services\ProductionReadinessService::class)->heartbeat($this->argument('queue')); });
+Schedule::command('aims:heartbeat scheduler')->everyMinute()->withoutOverlapping();
 
 Artisan::command('analytics:setup',function(){\App\Services\AnalyticsPermissions::install();$this->info('Analytics permissions installed.');});
 Artisan::command('analytics:capture',function(){$this->info(app(\App\Services\AnalyticsDataService::class)->scheduled().' analytics observations captured.');});
@@ -85,3 +87,19 @@ Artisan::command('documents:setup', function () {
     $this->info('Document permissions added; existing permissions preserved.');
 })->purpose('Enable Document Center without resetting existing role permissions');
 Artisan::command('documents:verify {company}',function(){ $this->line(json_encode(app(\App\Services\DocumentMaintenanceService::class)->verifyCompany((int)$this->argument('company')),JSON_PRETTY_PRINT)); });
+
+Artisan::command('pilot:prune', function () {
+    app(\App\Services\PilotTelemetryService::class)->prune();
+    $this->info('Selected-company pilot aggregate retention applied.');
+})->purpose('Retain 90 days of aggregate usage and 30 days of safe pilot incidents');
+Schedule::command('pilot:prune')->daily()->withoutOverlapping();
+
+Artisan::command('tax:setup', function () {
+    app(\Database\Seeders\RolePermissionSeeder::class)->run(preserveExisting: true);
+    $this->info('Tax/fiscal permissions installed; existing role grants and revocations preserved.');
+})->purpose('Install current tax/fiscal permissions without resetting customized roles');
+
+Artisan::command('workforce:setup', function () {
+    app(\Database\Seeders\RolePermissionSeeder::class)->run(preserveExisting: true);
+    $this->info('Workforce/payroll permissions installed; existing grants and revocations preserved. Initialize company payroll mappings explicitly in Payroll Configuration.');
+})->purpose('Install workforce permissions without resetting customized roles');

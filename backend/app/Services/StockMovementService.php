@@ -79,19 +79,23 @@ class StockMovementService
         private OperationalAccountingService $operationalAccounting,
     ) {}
 
-    public function list(array $filters): Collection
+    public function list(array $filters): Collection|\Illuminate\Pagination\LengthAwarePaginator
     {
         return $this->movements->list($filters);
     }
 
-    public function store(array $validated): StockMovement
+    public function store(array $validated, ?\App\Models\OnboardingSession $openingSession = null): StockMovement
     {
         $idempotencyKey = filled($validated['idempotency_key'] ?? null)
             ? trim((string) $validated['idempotency_key'])
             : null;
 
         try {
-            $movement = DB::transaction(function () use ($validated, $idempotencyKey) {
+            $movement = DB::transaction(function () use ($validated, $idempotencyKey, $openingSession) {
+                // Company numbering writers lock this parent first; acquire the FK lock before products.
+                DB::table('companies')->where('id', Auth::user()->company_id)->sharedLock()->first();
+                $businessDate=\Carbon\CarbonImmutable::parse($validated['occurred_at']??now(),'UTC')->setTimezone(\App\Support\CompanyClock::timezone())->toDateString();
+                app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational($businessDate);
                 $product = Product::query()->lockForUpdate()->findOrFail($validated['product_id']);
                 $this->unitConversions->assertPrecision((float) $validated['quantity'], $product->unit);
                 $requestedQuantity = round((float) $validated['quantity'], 3);
@@ -170,9 +174,15 @@ class StockMovementService
                         ->where('company_id', $product->company_id)
                         ->where('product_id', $product->id)
                         ->exists();
+                    $controlledOpening = false;
+                    if ($openingSession) {
+                        app(\App\Services\Onboarding\OnboardingGuard::class)->assertOpening($openingSession);
+                        $controlledOpening = ($validated['source_type'] ?? '') === 'onboarding_opening'
+                            && (int) ($validated['source_id'] ?? 0) === $openingSession->id
+                            && !StockMovement::where('product_id', $product->id)->where(fn($q) => $q->whereNull('source_type')->orWhere('source_type', '!=', 'onboarding_opening')->orWhere('source_id', '!=', $openingSession->id))->exists();
+                    }
                     if ($validated['type'] !== 'in'
-                        || $hasStockHistory
-                        || abs((float) $product->quantity) >= 0.0005
+                        || (!$controlledOpening && ($hasStockHistory || abs((float) $product->quantity) >= 0.0005))
                         || (($validated['affects_company_quantity'] ?? true) === false)) {
                         throw ValidationException::withMessages([
                             'movement_code' => [
@@ -366,7 +376,11 @@ class StockMovementService
             'traceLines.lot.product:id,name,sku,tracking_mode,near_expiry_days',
         ]);
 
-        if ($movement->wasRecentlyCreated) {
+        if ($openingSession && $movement->wasRecentlyCreated) {
+            $invalidate=fn()=>$this->redisStore->invalidateDashboardStats((int)$movement->company_id);
+            DB::transactionLevel()>0?DB::afterCommit($invalidate):$invalidate();
+        }
+        if ($movement->wasRecentlyCreated && !$openingSession) {
             $companyId = (int) $movement->company_id;
             $userName = Auth::user()?->name ?? 'System';
             $movementId = $movement->id;
@@ -427,6 +441,8 @@ class StockMovementService
     public function storeOutboundAllocated(array $data): Collection
     {
         return DB::transaction(function () use ($data): Collection {
+            // Company numbering writers lock this parent first; acquire the FK lock before products.
+            DB::table('companies')->where('id', Auth::user()->company_id)->sharedLock()->first();
             if (($data['type'] ?? 'out') !== 'out') {
                 throw ValidationException::withMessages(['type' => ['Allocated inventory movements must be outbound.']]);
             }
@@ -604,6 +620,8 @@ class StockMovementService
     public function transitionState(array $data): array
     {
         return DB::transaction(function () use ($data): array {
+            // Company numbering writers lock this parent first; acquire the FK lock before products.
+            DB::table('companies')->where('id', Auth::user()->company_id)->sharedLock()->first();
             $product = Product::query()->lockForUpdate()->findOrFail($data['product_id']);
             $fromState = (string) ($data['from_state'] ?? 'available');
             $toState = (string) ($data['to_state'] ?? 'reserved');
@@ -751,6 +769,10 @@ class StockMovementService
         }
 
         return DB::transaction(function () use ($product, $quantityBefore, $quantityAfter, $movementCode, $reason, $idempotencyKey, $occurredAt) {
+            DB::table('companies')->where('id', $product->company_id)->sharedLock()->first();
+            $timezone=\App\Models\Company::findOrFail($product->company_id)->timezone?:\App\Support\CompanyClock::timezone();
+            $date=\Carbon\CarbonImmutable::parse($occurredAt??now(),'UTC')->setTimezone($timezone)->toDateString();
+            app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational($date,(int)$product->company_id);
             $locked = Product::withoutGlobalScopes()->lockForUpdate()->findOrFail($product->id);
             $existing = StockMovement::withoutGlobalScopes()
                 ->where('company_id', $locked->company_id)

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './ShipmentMap.css'
+import { useTranslation } from '../hooks/useTranslation'
 
 const shipIcon = L.divIcon({
   className: 'shipment-ship-marker',
@@ -18,12 +19,19 @@ const portIcon = L.divIcon({
 })
 
 function validPoint(lat, lng) {
-  return Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))
+  return lat !== null && lat !== undefined && lat !== '' && lng !== null && lng !== undefined && lng !== ''
+    && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))
     && Number(lat) >= -90 && Number(lat) <= 90
     && Number(lng) >= -180 && Number(lng) <= 180
 }
 
 export default function ShipmentMap({ shipment }) {
+  const {language}=useTranslation(),sq=language==='sq'
+  const known=validPoint(shipment?.current_lat,shipment?.current_lng)
+  const updated=shipment?.position_updated_at
+  const source=shipment?.tracking_provider
+  const positionLabel=sq?'Pozicioni i fundit i verifikuar':'Last verified position'
+  const popup=text=>{const node=document.createElement('span');node.textContent=text;return node}
   const mapRef = useRef(null)
   const mapInstance = useRef(null)
   const layersRef = useRef({})
@@ -51,6 +59,8 @@ export default function ShipmentMap({ shipment }) {
     const map = mapInstance.current
     if (!map || !shipment) return
 
+    Object.values(layersRef.current).forEach((layer) => map.removeLayer(layer))
+    layersRef.current = {}
     if (!validPoint(shipment.origin_lat, shipment.origin_lng) || !validPoint(shipment.destination_lat, shipment.destination_lng)) return
 
     const origin = [Number(shipment.origin_lat), Number(shipment.origin_lng)]
@@ -63,12 +73,12 @@ export default function ShipmentMap({ shipment }) {
     layersRef.current = {}
 
     layersRef.current.origin = L.marker(origin, { icon: portIcon }).addTo(map)
-      .bindPopup(`Origin: ${shipment.origin_port}`)
+      .bindPopup(popup(`${sq?'Nisja':'Origin'}: ${shipment.origin_port}`))
     layersRef.current.destination = L.marker(destination, { icon: portIcon }).addTo(map)
-      .bindPopup(`Destination: ${shipment.destination_port}`)
+      .bindPopup(popup(`${sq?'Destinacioni':'Destination'}: ${shipment.destination_port}`))
     if (current) {
       layersRef.current.ship = L.marker(current, { icon: shipIcon }).addTo(map)
-        .bindPopup(shipment.vessel_name || 'Vessel')
+        .bindPopup(popup(`${positionLabel}: ${shipment.vessel_name||''} · ${updated|| (sq?'Koha e panjohur':'Time unknown')} · ${source||(sq?'Burimi i panjohur':'Source unknown')}`))
     }
 
     layersRef.current.route = L.polyline(current ? [origin, current, destination] : [origin, destination], {
@@ -80,7 +90,7 @@ export default function ShipmentMap({ shipment }) {
 
     const bounds = L.latLngBounds(current ? [origin, destination, current] : [origin, destination])
     map.fitBounds(bounds.pad(0.2))
-  }, [shipment])
+  }, [shipment,language])
 
-  return <div ref={mapRef} className="shipment-map" aria-label="Shipment tracking map" />
+  return <section><p role="status">{known?positionLabel:(sq?'Pozicioni aktual nuk është i disponueshëm.':'Current position unavailable.')}{known&&<> · {sq?'Përditësimi i fundit':'Last update'}: {updated?new Date(updated).toLocaleString(sq?'sq-AL':'en-GB'):(sq?'E panjohur':'Unknown')} · {sq?'Burimi':'Provider/source'}: {source||(sq?'I panjohur':'Unknown')}</>}</p><div ref={mapRef} className="shipment-map" aria-label={sq?'Harta e gjurmimit të dërgesës':'Shipment tracking map'} /></section>
 }

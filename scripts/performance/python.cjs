@@ -1,0 +1,6 @@
+const {spawn}=require('node:child_process'),fs=require('node:fs'),path=require('node:path')
+const root=path.resolve(__dirname,'../..'),python=process.env.AIMS_ML_PYTHON
+if(!python)throw Error('Explicit pinned local Python required')
+function probe(){return new Promise((resolve,reject)=>{const start=Date.now(),child=spawn(python,['-I',path.join(__dirname,'python_probe.py')],{env:{...process.env,OPENBLAS_NUM_THREADS:'1',OMP_NUM_THREADS:'1',MKL_NUM_THREADS:'1'},windowsHide:true,stdio:['ignore','pipe','pipe']});let out='',err='';child.stdout.on('data',b=>out+=b);child.stderr.on('data',b=>err+=b);child.on('exit',code=>{if(code)return reject(Error('Python probe failed '+err.slice(0,300)));resolve({...JSON.parse(out),wall_ms:Date.now()-start})})})}
+async function main(){const report={method:'Fresh isolated Python processes, capped BLAS threads, three single-process samples and three pairs. Own-process peak working set and CPU time; no ML accuracy claim.',single:[],pairs:[],status:'PASS'};for(let i=0;i<3;i++)report.single.push(await probe());for(let i=0;i<3;i++)report.pairs.push(await Promise.all([probe(),probe()]));fs.writeFileSync(path.join(root,'output/pr2-python-resources.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report))}
+main().catch(e=>{console.error(e.message);process.exitCode=1})

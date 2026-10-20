@@ -1,4 +1,55 @@
 <?php
+\Illuminate\Support\Facades\Route::middleware(['auth.token','password.changed','company.context',\App\Http\Middleware\ConfidentialWorkforceResponse::class,'throttle:120,1'])->group(function(){
+    $w=\App\Http\Controllers\Api\WorkforceController::class;
+    \Illuminate\Support\Facades\Route::get('/workforce/options',[$w,'options']);
+    \Illuminate\Support\Facades\Route::get('/workforce/employees',[$w,'index']);
+    \Illuminate\Support\Facades\Route::post('/workforce/employees',[$w,'store']);
+    \Illuminate\Support\Facades\Route::get('/workforce/employees/{id}',[$w,'show'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::put('/workforce/employees/{id}',[$w,'update'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::post('/workforce/employees/{id}/terms',[$w,'terms'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::put('/workforce/employees/{id}/private',[$w,'privateDetails'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::post('/workforce/employees/{id}/advances',[$w,'advance'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::post('/workforce/schedules',[$w,'schedule']);
+    \Illuminate\Support\Facades\Route::get('/workforce/records',[$w,'records']);
+    \Illuminate\Support\Facades\Route::post('/workforce/records',[$w,'record']);
+    \Illuminate\Support\Facades\Route::post('/workforce/records/{id}/decision',[$w,'decide'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::get('/workforce/self',[$w,'self']);
+    \Illuminate\Support\Facades\Route::get('/workforce/self/records',[$w,'records'])->name('workforce.self.records');
+    \Illuminate\Support\Facades\Route::post('/workforce/self/records',[$w,'record'])->name('workforce.self.record');
+    \Illuminate\Support\Facades\Route::post('/workforce/self/records/{id}/decision',[$w,'decide'])->name('workforce.self.decide')->whereNumber('id');
+    $p=\App\Http\Controllers\Api\PayrollController::class;
+    \Illuminate\Support\Facades\Route::get('/payroll/summary',[$p,'summary']);
+    \Illuminate\Support\Facades\Route::get('/payroll/configuration',[$p,'configuration']);
+    \Illuminate\Support\Facades\Route::post('/payroll/configuration/initialize',[$p,'initialize']);
+    \Illuminate\Support\Facades\Route::put('/payroll/configuration/mappings',[$p,'mappings']);
+    \Illuminate\Support\Facades\Route::post('/payroll/configuration/rules',[$p,'rule']);
+    \Illuminate\Support\Facades\Route::post('/payroll/estimate',[$p,'estimate']);
+    \Illuminate\Support\Facades\Route::get('/payroll/payslips/{id}',[$p,'payslip'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::get('/payroll',[$p,'index']);
+    \Illuminate\Support\Facades\Route::post('/payroll',[$p,'store']);
+    \Illuminate\Support\Facades\Route::get('/payroll/{id}',[$p,'show'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::get('/payroll/{id}/export',[$p,'export'])->whereNumber('id');
+    foreach(['calculate','approve','post','pay','close','reverse','correction'] as $method) \Illuminate\Support\Facades\Route::post('/payroll/{id}/'.$method,[$p,$method])->whereNumber('id');
+});
+\Illuminate\Support\Facades\Route::middleware(['auth.token','password.changed','company.context','throttle:120,1'])->prefix('onboarding')->group(function(){
+    $c=\App\Http\Controllers\Api\OnboardingController::class;
+    \Illuminate\Support\Facades\Route::get('/',[$c,'index']);
+    \Illuminate\Support\Facades\Route::post('/',[$c,'store']);
+    \Illuminate\Support\Facades\Route::get('/templates/{domain}',[$c,'template']);
+    \Illuminate\Support\Facades\Route::get('/{id}',[$c,'show'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::put('/{id}',[$c,'update'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::get('/{id}/rows',[$c,'rows'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::patch('/{id}/rows',[$c,'editRows'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::post('/{id}/sources',[$c,'upload'])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::put('/{id}/batches/{batch}/mapping',[$c,'mapping'])->whereNumber(['id','batch']);
+    \Illuminate\Support\Facades\Route::post('/{id}/batches/{batch}/resume',[$c,'resumeSource'])->whereNumber(['id','batch']);
+    \Illuminate\Support\Facades\Route::post('/{id}/batches/{batch}/exclude',[$c,'excludeSource'])->whereNumber(['id','batch']);
+    \Illuminate\Support\Facades\Route::get('/{id}/batches/{batch}/source',[$c,'source'])->whereNumber(['id','batch']);
+    foreach(['validate'=>'validateSource','review'=>'review','approve'=>'approve','post'=>'post','verify'=>'verify','lock'=>'lock','cancel'=>'cancel','backups'=>'backup','restore-verify'=>'restoreVerify'] as $path=>$method)
+        \Illuminate\Support\Facades\Route::post('/{id}/'.$path,[$c,$method])->whereNumber('id');
+    \Illuminate\Support\Facades\Route::get('/{id}/backups/{backup}',[$c,'backupDownload'])->whereNumber(['id','backup']);
+    \Illuminate\Support\Facades\Route::get('/{id}/evidence',[$c,'evidence'])->whereNumber('id');
+});
 \Illuminate\Support\Facades\Route::middleware(['auth.token','password.changed','company.context','throttle:120,1'])->prefix('strategic-simulation')->group(function(){
  $c=\App\Http\Controllers\Api\StrategicSimulationController::class;
  \Illuminate\Support\Facades\Route::get('/options',[$c,'options']);\Illuminate\Support\Facades\Route::get('/',[$c,'index']);\Illuminate\Support\Facades\Route::post('/',[$c,'store'])->middleware('throttle:10,1');\Illuminate\Support\Facades\Route::post('/compare',[$c,'compare']);
@@ -10,6 +61,7 @@ Route::middleware(['auth.token','password.changed','company.context','throttle:1
  Route::get('/options',[$c,'options']);Route::get('/',[$c,'index']);Route::post('/',[$c,'store'])->middleware('throttle:10,1');
  Route::get('/{id}',[$c,'show'])->whereNumber('id');Route::get('/{id}/explain',[$c,'explain'])->whereNumber('id');
  Route::get('/{id}/state',[$c,'state'])->whereNumber('id');
+ Route::post('/{id}/cancel',[$c,'cancel'])->whereNumber('id');
  Route::post('/{id}/simulate',[$c,'simulate'])->whereNumber('id')->middleware('throttle:10,1');
  Route::post('/{id}/stress',[$c,'stress'])->whereNumber('id');Route::post('/{id}/prepare',[$c,'prepare'])->whereNumber('id');
 });
@@ -84,6 +136,20 @@ use Illuminate\Support\Facades\Route;
 
 Broadcast::routes(['middleware' => ['auth.token']]);
 
+Route::prefix('pilot')->middleware(['auth.token','password.changed','company.context','throttle:60,1'])->group(function () {
+    $controller=\App\Http\Controllers\Api\PilotController::class;
+    Route::get('/context',[$controller,'context']);
+    Route::get('/',[$controller,'index']); Route::put('/plan',[$controller,'save']);
+    Route::post('/feedback',[$controller,'feedback'])->middleware('throttle:10,1');
+    Route::get('/feedback',[$controller,'feedbackList']); Route::patch('/feedback/{id}',[$controller,'triage'])->whereNumber('id');
+    Route::get('/evidence',[$controller,'evidenceList']); Route::post('/evidence',[$controller,'evidence'])->middleware('throttle:10,1');
+    Route::post('/evidence/{id}/review',[$controller,'review'])->whereNumber('id');
+    Route::post('/visit',[$controller,'visit']); Route::get('/incidents',[$controller,'incidents']);
+    Route::get('/reports',[$controller,'reports']); Route::post('/reports',[$controller,'snapshot'])->middleware('throttle:6,1');
+    Route::get('/reports/{id}',[$controller,'report'])->whereNumber('id');
+    Route::post('/imports/preflight',[$controller,'preflight'])->middleware('throttle:6,1');
+});
+
 Route::prefix('intelligence-assistant')->middleware(['auth.token','password.changed','company.context','throttle:30,1'])->group(function(){
     $c=\App\Http\Controllers\Api\IntelligenceAssistantController::class;
     Route::get('/status',[$c,'status']);Route::post('/ask',[$c,'ask']);Route::post('/feedback',[$c,'feedback']);
@@ -140,6 +206,7 @@ Route::get('/status', function () {
 });
 
 Route::get('/cms/published', [CmsController::class, 'published']);
+Route::get('/readiness', [\App\Http\Controllers\Api\ProductionController::class, 'readiness'])->middleware('throttle:6,1');
 Route::get('/cms/{slug}', [CmsController::class, 'show']);
 
 Route::middleware('throttle:auth')->group(function () {
@@ -157,6 +224,7 @@ Route::middleware('auth.token')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::post('/change-password', [AuthController::class, 'changePassword']);
     Route::get('/system/mode', [SystemController::class, 'mode']);
+    Route::get('/system/diagnostics', [\App\Http\Controllers\Api\ProductionController::class, 'diagnostics'])->middleware(['password.changed', 'company.context', 'role:admin', 'permission:system_integrity.view', 'throttle:6,1']);
 
     Route::middleware('password.changed')->group(function () {
         Route::middleware('company.context')->group(function () {
@@ -344,7 +412,8 @@ Route::middleware('auth.token')->group(function () {
             Route::post('/inventory-counts/{inventoryCount}/recount', [InventoryCountController::class, 'recount'])->middleware('permission:inventory.counts.manage');
             Route::post('/inventory-counts/{inventoryCount}/submit', [InventoryCountController::class, 'submit'])->middleware('permission:inventory.counts.manage');
             Route::post('/inventory-counts/{inventoryCount}/approve', [InventoryCountController::class, 'approve'])->middleware('permission:inventory.counts.approve');
-            Route::post('/inventory-counts/{inventoryCount}/cancel', [InventoryCountController::class, 'cancel'])->middleware('permission:inventory.counts.approve');
+            Route::post('/inventory-counts/{inventoryCount}/cancel', [InventoryCountController::class, 'cancel'])->middleware('permission:inventory.counts.manage');
+            Route::delete('/inventory-counts/{inventoryCount}', [InventoryCountController::class, 'destroy'])->middleware('permission:inventory.counts.manage');
 
             Route::get('/products/lookup', [ProductController::class, 'lookup']);
             Route::get('/products/export', [ProductController::class, 'export']);
@@ -383,6 +452,9 @@ Route::middleware('auth.token')->group(function () {
             Route::get('/purchase-requests/{purchaseRequest}', [ProcurementController::class, 'showRequest'])->middleware('permission:procurement.view');
             Route::put('/purchase-requests/{purchaseRequest}', [ProcurementController::class, 'updateRequest'])->middleware('permission:procurement.manage');
             Route::post('/purchase-requests/{purchaseRequest}/submit', [ProcurementController::class, 'submit'])->middleware('permission:procurement.manage');
+            Route::delete('/purchase-requests/{purchaseRequest}', [ProcurementController::class, 'deleteDraft'])->middleware('permission:procurement.manage');
+            Route::post('/purchase-requests/{purchaseRequest}/withdraw', [ProcurementController::class, 'withdraw'])->middleware('permission:procurement.manage');
+            Route::post('/rfqs/{rfq}/close', [ProcurementController::class, 'closeRfq'])->middleware('permission:procurement.manage');
             Route::post('/purchase-requests/{purchaseRequest}/rfqs', [ProcurementController::class, 'createRfq'])->middleware('permission:procurement.manage');
             Route::post('/rfqs/{rfq}/issue', [ProcurementController::class, 'issueRfq'])->middleware('permission:procurement.manage');
             Route::get('/rfqs/{rfq}/comparison', [ProcurementController::class, 'comparison'])->middleware('permission:procurement.view');
@@ -421,8 +493,19 @@ Route::middleware('auth.token')->group(function () {
             Route::put('/quality/score-weights', [QualityController::class, 'scoreWeights'])->middleware('permission:quality.templates.manage');
             Route::prefix('accounting')->group(function () {
                 Route::post('/initialize', [AccountingController::class, 'initialize'])->middleware('permission:accounting.settings.manage');
+                Route::get('/ap/aging', [AccountingController::class, 'payableAging'])->middleware('permission:finance.view');
+                Route::get('/ap/suppliers/{supplier}/workbench', [AccountingController::class, 'supplierWorkbench'])->middleware('permission:supplier_invoices.view');
+                Route::get('/ap/suppliers/{supplier}/statement', [AccountingController::class, 'supplierStatement'])->middleware('permission:finance.view');
+                Route::get('/ar/customers/{customer}/statement', [AccountingController::class, 'customerStatement'])->middleware('permission:debts.view');
+                Route::get('/ar/customers/{customer}/settlements', [AccountingController::class, 'arSettlements'])->middleware('permission:debts.view');
+                Route::post('/ar/payments/{transaction}/allocate', [AccountingController::class, 'allocateCustomerPayment'])->middleware(['permission:debts.view', 'permission:accounting.ar.allocate']);
+                Route::post('/ar/allocations/{allocation}/release', [AccountingController::class, 'releaseCustomerAllocation'])->middleware(['permission:debts.view', 'permission:accounting.ar.allocate']);
+                Route::get('/control-center', [AccountingController::class, 'controlCenter'])->middleware('permission:accounting.reports.view');
+                Route::get('/exports/{report}', [AccountingController::class, 'export'])->middleware('permission:accounting.reports.view');
+                Route::get('/parties', [AccountingController::class, 'parties'])->middleware('permission:accounting.reports.view');
                 Route::get('/overview', [AccountingController::class, 'overview'])->middleware('permission:accounting.reports.view');
                 Route::get('/accounts', [AccountingController::class, 'accounts'])->middleware('permission:accounting.journal.view');
+                Route::get('/accounts/{account}/activity', [AccountingController::class, 'accountActivity'])->middleware('permission:accounting.journal.view');
                 Route::post('/accounts', [AccountingController::class, 'storeAccount'])->middleware('permission:accounting.accounts.manage');
                 Route::put('/accounts/{account}', [AccountingController::class, 'updateAccount'])->middleware('permission:accounting.accounts.manage');
                 Route::delete('/accounts/{account}', [AccountingController::class, 'archiveAccount'])->middleware('permission:accounting.accounts.manage');
@@ -434,9 +517,12 @@ Route::middleware('auth.token')->group(function () {
                 Route::post('/periods', [AccountingController::class, 'storePeriod'])->middleware('permission:accounting.periods.manage');
                 Route::put('/periods/{period}/status', [AccountingController::class, 'periodStatus'])->middleware('permission:accounting.periods.manage');
                 Route::get('/periods/{period}/readiness', [AccountingController::class, 'periodReadiness'])->middleware('permission:accounting.periods.manage');
+                Route::get('/source-journals', [AccountingController::class, 'sourceJournals'])->middleware('permission:accounting.journal.view');
                 Route::get('/journals', [AccountingController::class, 'journals'])->middleware('permission:accounting.journal.view');
                 Route::post('/journals', [AccountingController::class, 'storeJournal'])->middleware('permission:accounting.journal.create');
                 Route::get('/journals/{journal}', [AccountingController::class, 'journal'])->middleware('permission:accounting.journal.view');
+                Route::put('/journals/{journal}', [AccountingController::class, 'updateJournal'])->middleware('permission:accounting.journal.create');
+                Route::post('/journals/{journal}/correct', [AccountingController::class, 'correctJournal'])->middleware(['permission:accounting.journal.create','permission:accounting.journal.reverse']);
                 Route::post('/journals/{journal}/post', [AccountingController::class, 'postJournal'])->middleware('permission:accounting.journal.post');
                 Route::post('/journals/{journal}/reverse', [AccountingController::class, 'reverseJournal'])->middleware('permission:accounting.journal.reverse');
                 Route::get('/trial-balance', [AccountingController::class, 'trialBalance'])->middleware('permission:accounting.reports.view');
@@ -444,6 +530,7 @@ Route::middleware('auth.token')->group(function () {
                 Route::get('/balance-sheet', [AccountingController::class, 'balanceSheet'])->middleware('permission:accounting.reports.view');
                 Route::get('/cash-flow', [AccountingController::class, 'cashFlow'])->middleware('permission:accounting.reports.view');
                 Route::get('/integrity', [AccountingController::class, 'integrity'])->middleware('permission:accounting.integrity.view');
+                Route::get('/exceptions', [AccountingController::class, 'exceptions'])->middleware('permission:accounting.integrity.view');
                 Route::get('/reconciliation', [AccountingController::class, 'reconciliation'])->middleware('permission:accounting.integrity.view');
                 Route::post('/exceptions/{exception}/retry', [AccountingController::class, 'retryException'])->middleware('permission:accounting.integrity.retry');
                 Route::get('/opening', [AccountingController::class, 'openingSetup'])->middleware('permission:accounting.settings.manage');
@@ -557,15 +644,40 @@ Route::middleware('auth.token')->group(function () {
             Route::get('/finance/expenses/{expense}/attachment', [ExpenseController::class, 'downloadAttachment'])->middleware('permission:finance.view');
             Route::delete('/finance/expenses/{expense}/attachment', [ExpenseController::class, 'deleteAttachment'])->middleware('permission:expenses.manage');
 
+            Route::post('/supplier-payment-allocation-requests/{allocationRequest}/reverse', [SupplierInvoiceController::class, 'reverseAllocation'])->whereNumber('allocationRequest')->middleware(['permission:supplier_invoices.manage','permission:purchase_orders.payments']);
             Route::get('/supplier-invoices', [SupplierInvoiceController::class, 'index'])->middleware('permission:supplier_invoices.view');
             Route::post('/supplier-invoices', [SupplierInvoiceController::class, 'store'])->middleware('permission:supplier_invoices.manage');
             Route::get('/supplier-invoices/{supplierInvoice}', [SupplierInvoiceController::class, 'show'])->middleware('permission:supplier_invoices.view');
             Route::put('/supplier-invoices/{supplierInvoice}', [SupplierInvoiceController::class, 'update'])->middleware('permission:supplier_invoices.manage');
             Route::post('/supplier-invoices/{supplierInvoice}/recalculate', [SupplierInvoiceController::class, 'recalculate'])->middleware('permission:supplier_invoices.manage');
             Route::post('/supplier-invoices/{supplierInvoice}/allocate-payment', [SupplierInvoiceController::class, 'allocatePayment'])->middleware('permission:supplier_invoices.manage');
-            Route::post('/supplier-invoices/{supplierInvoice}/approve', [SupplierInvoiceController::class, 'approve'])->middleware('permission:supplier_invoices.approve');
+            Route::post('/supplier-invoices/{supplierInvoice}/approve', [SupplierInvoiceController::class, 'approve'])->middleware(['permission:supplier_invoices.approve','permission:supplier_invoices.post']);
+
+            Route::get('/fiscalization', [\App\Http\Controllers\Api\FiscalizationController::class,'summary'])->middleware('permission:fiscalization.view');
+            Route::get('/fiscalization/invoices', [\App\Http\Controllers\Api\FiscalizationController::class,'candidates'])->middleware('permission:fiscalization.view');
+            Route::get('/fiscalization/mappings', [\App\Http\Controllers\Api\FiscalizationController::class,'mappings'])->middleware('permission:fiscalization.view');
+            Route::put('/fiscalization/configuration', [\App\Http\Controllers\Api\FiscalizationController::class,'configure'])->middleware('permission:fiscalization.configure');
+            Route::put('/fiscalization/mappings', [\App\Http\Controllers\Api\FiscalizationController::class,'saveMapping'])->middleware('permission:fiscalization.configure');
+            Route::get('/fiscalization/receipts/{fiscalReceipt}', [\App\Http\Controllers\Api\FiscalizationController::class,'show'])->middleware('permission:fiscalization.view');
+            Route::post('/fiscalization/invoices/{invoice}/prepare', [\App\Http\Controllers\Api\FiscalizationController::class,'prepare'])->middleware('permission:fiscalization.prepare');
+            Route::post('/fiscalization/receipts/{fiscalReceipt}/submit', [\App\Http\Controllers\Api\FiscalizationController::class,'submit'])->middleware('permission:fiscalization.submit');
+            Route::post('/fiscalization/receipts/{fiscalReceipt}/review', [\App\Http\Controllers\Api\FiscalizationController::class,'review'])->middleware('permission:fiscalization.prepare');
+            Route::get('/tax/vat-period', [\App\Http\Controllers\Api\VatReportingController::class, 'period'])->middleware('permission:tax.view');
+            Route::get('/tax/vat-reconciliation', [\App\Http\Controllers\Api\VatReportingController::class, 'reconciliation'])->middleware('permission:tax.view');
+            Route::get('/tax/vat-documents', [\App\Http\Controllers\Api\VatReportingController::class, 'documents'])->middleware('permission:tax.view');
+            Route::get('/tax/vat-export', [\App\Http\Controllers\Api\VatReportingController::class, 'export'])->middleware(['permission:tax.view','permission:finance.export']);
+            Route::get('/tax/available-codes', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'available']);
+            Route::get('/tax/configuration', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'index'])->middleware('permission:tax.view');
+            Route::post('/tax/configuration/initialize', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'initialize'])->middleware('permission:tax.configure');
+            Route::post('/tax/codes', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'store'])->middleware('permission:tax.configure');
+            Route::put('/tax/codes/{taxCode}', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'update'])->middleware('permission:tax.configure');
+            Route::post('/tax/codes/{taxCode}/retire', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'retire'])->middleware('permission:tax.configure');
+            Route::put('/tax/products/{product}', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'product'])->middleware('permission:tax.configure');
+            Route::put('/tax/configuration/policy', [\App\Http\Controllers\Api\TaxConfigurationController::class, 'policy'])->middleware('permission:tax.configure');
 
             Route::get('/finance/accounts', [FinancialAccountController::class, 'index'])->middleware('permission:financial_accounts.view');
+            Route::get('/finance/account-transactions/{transaction}', [FinancialAccountController::class, 'transaction'])->middleware('permission:financial_accounts.view');
+            Route::get('/finance/account-transfers/{transfer}', [FinancialAccountController::class, 'transferRecord'])->middleware('permission:financial_accounts.view');
             Route::get('/finance/posting-accounts', [FinancialAccountController::class, 'postingAccounts'])->middleware('permission:financial_accounts.adjust');
             Route::post('/finance/accounts', [FinancialAccountController::class, 'store'])->middleware('permission:financial_accounts.manage');
             Route::put('/finance/accounts/{financialAccount}', [FinancialAccountController::class, 'update'])->middleware('permission:financial_accounts.manage');
@@ -576,6 +688,10 @@ Route::middleware('auth.token')->group(function () {
             Route::get('/finance/bank-statements', [BankReconciliationController::class, 'index'])->middleware('permission:bank_reconciliation.view');
             Route::post('/finance/bank-statements/import', [BankReconciliationController::class, 'import'])->middleware('permission:bank_reconciliation.manage');
             Route::get('/finance/bank-statements/{bankStatement}', [BankReconciliationController::class, 'show'])->middleware('permission:bank_reconciliation.view');
+            Route::put('/finance/bank-statements/{bankStatement}/balances', [BankReconciliationController::class, 'balances'])->middleware('permission:bank_reconciliation.confirm');
+            Route::post('/finance/bank-statements/{bankStatement}/complete', [BankReconciliationController::class, 'complete'])->middleware('permission:bank_reconciliation.complete');
+            Route::post('/finance/bank-statements/{bankStatement}/reopen', [BankReconciliationController::class, 'reopen'])->middleware('permission:bank_reconciliation.reopen');
+            Route::post('/finance/bank-statement-rows/{row}/review-duplicate', [BankReconciliationController::class, 'reviewDuplicate'])->middleware('permission:bank_reconciliation.confirm');
             Route::get('/finance/bank-statement-rows/{row}/suggestions', [BankReconciliationController::class, 'suggestions'])->middleware('permission:bank_reconciliation.view');
             Route::post('/finance/bank-statement-rows/{row}/reconcile', [BankReconciliationController::class, 'reconcile'])->middleware('permission:bank_reconciliation.confirm');
             Route::post('/finance/bank-statement-rows/{row}/ignore', [BankReconciliationController::class, 'ignore'])->middleware('permission:bank_reconciliation.confirm');

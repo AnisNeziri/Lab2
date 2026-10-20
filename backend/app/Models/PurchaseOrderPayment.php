@@ -12,13 +12,13 @@ class PurchaseOrderPayment extends Model
 {
     use BelongsToCompany;
 
-    protected $fillable = ['company_id', 'purchase_order_id', 'expense_id', 'user_id', 'amount', 'currency', 'exchange_rate', 'amount_eur', 'status', 'payment_date', 'payment_method', 'reference_number', 'idempotency_key', 'note', 'paid_at', 'reversed_at', 'reversed_by', 'reversal_reason', 'financial_account_id', 'financial_account_transaction_id'];
+    protected $fillable = ['company_id', 'purchase_order_id', 'supplier_id', 'onboarding_session_id', 'expense_id', 'user_id', 'amount', 'currency', 'exchange_rate', 'exchange_rate_date', 'exchange_rate_source', 'amount_eur', 'status', 'payment_date', 'payment_method', 'reference_number', 'idempotency_key', 'note', 'paid_at', 'reversal_date', 'reversed_at', 'reversed_by', 'reversal_reason', 'financial_account_id', 'financial_account_transaction_id'];
 
     protected $appends = ['allocated_amount', 'unallocated_amount', 'allocation_status'];
 
     protected function casts(): array
     {
-        return ['amount' => 'decimal:2', 'exchange_rate' => 'decimal:6', 'amount_eur' => 'decimal:2', 'payment_date' => 'date:Y-m-d', 'paid_at' => 'datetime', 'reversed_at' => 'datetime'];
+        return ['amount' => 'decimal:2', 'exchange_rate' => 'decimal:6', 'exchange_rate_date'=>'date:Y-m-d', 'amount_eur' => 'decimal:2', 'payment_date' => 'date:Y-m-d', 'paid_at' => 'datetime', 'reversal_date' => 'date:Y-m-d', 'reversed_at' => 'datetime'];
     }
 
     public function purchaseOrder(): BelongsTo

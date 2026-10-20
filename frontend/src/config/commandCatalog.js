@@ -4,6 +4,9 @@ import { en } from '../locales/en.js'
 import { sq } from '../locales/sq.js'
 
 export const commandCatalog = [
+  {id:'payroll',label:'Payroll',keywords:'salary salaries wage paga pagat pagave',path:'/payroll',permission:'payroll.view'},
+  {id:'workforce',label:'Employees & employment',keywords:'employee staff HR punonjes punonjës personeli',path:'/workforce',permission:'employees.view'},
+  {id:'month-close',label:'Month close',keywords:'accounting close reconciliation mbyllja mujore rakordim',path:'/accounting?tab=periods',permission:'accounting.periods.manage',anyPermission:['accounting.reports.view']},
   { id:'supply-optimizer', label:'Open Supply Optimizer', keywords:'supply optimize purchasing plan constraints furnizim optimizim', path:'/supply-optimizer', permission:'analytics.view' },
   { id:'strategic-simulation', label:'Open Strategic Simulation', keywords:'what if scenario stress simulation twin skenar simulim strategjik', path:'/strategic-simulation', permission:'analytics.view' },
   { id:'inventory-planning', label:'Open Inventory Planning', keywords:'replenish plan quantity buy inventory planifikim blerje', path:'/inventory-intelligence?view=planning', permission:'analytics.view' },
@@ -13,6 +16,8 @@ export const commandCatalog = [
   { id: 'add-product', label: 'Add Product', keywords: 'new register inventory', path: '/products?new=1', permission: 'products.manage' },
   { id: 'daily-sales', label: 'Record Daily Sale', keywords: 'sell sale book payment', path: '/daily-sales', permission: 'daily_sales.manage' },
   { id: 'stock-locator', label: 'Find Stock by Warehouse', keywords: 'locate warehouse bin availability', path: '/warehouse-operations', permission: 'transfers.view' },
+  {id:'tax',label:'Tax & VAT',keywords:'VAT tax tvsh tatimet return reconciliation',path:'/tax',permission:'tax.view'},
+  {id:'fiscalization',label:'Fiscalization',keywords:'SEF ATK fiskalizim receipt fiscal',path:'/fiscalization',permission:'fiscalization.view'},
   { id: 'finance', label: 'Open Finance Center', keywords: 'expenses invoices receivables money', path: '/finance', permission: 'finance.view' },
   {id:'inventory-intelligence',label:'Inventory Intelligence',keywords:'forecast demand stockout replenish model',path:'/inventory-intelligence',permission:'analytics.view'},
   {id:'analytics',label:'Open Analytics',keywords:'metrics data intelligence history',path:'/analytics',permission:'analytics.view'},
@@ -42,7 +47,7 @@ export const commandCatalog = [
   { id: 'approvals', label: 'Open Pending Approvals', keywords: 'approve reject request', path: '/procurement?view=approvals', permission: 'approvals.view' },
   { id: 'debts', label: 'Open Customer Debts', keywords: 'credit receivables borxhet', path: '/customer-debts', permission: 'debts.view' },
   { id: 'control-tower', label: 'Open Control Tower', keywords: 'shipments imports exceptions', path: '/control-tower', permission: 'control_tower.view' },
-  { id: 'accounting-exceptions', label: 'Open Accounting Exceptions', keywords: 'integrity journal reconciliation', path: '/accounting?tab=integrity', permission: 'accounting.integrity.view' },
+  { id: 'accounting-exceptions', label: 'Open Accounting Exceptions', keywords: 'integrity journal reconciliation', path: '/accounting?tab=reconciliation', permission: 'accounting.integrity.view' },
   { id: 'system-integrity', label: 'Open System Integrity', keywords: 'health diagnostics jobs integrations', path: '/system-integrity', permission: 'system_integrity.view' },
 ]
 
@@ -56,6 +61,8 @@ export function permittedCommands(permissions = []) {
 }
 
 export const commandLabelsSq = {
+  payroll:'Pagat',workforce:'Punonjësit dhe punësimi','month-close':'Mbyllja mujore',
+  tax:'Tatimet dhe TVSH',fiscalization:'Fiskalizimi',
   'strategic-simulation':'Hap simulimin strategjik', 'supply-optimizer':'Hap optimizuesin e furnizimit', 'inventory-planning':'Hap planifikimin e inventarit', 'decision-center':'Rishiko vendimet',
   'financial-intelligence': 'Hap inteligjencën financiare',
   'customer-sales-intelligence': 'Hap inteligjencën e klientëve dhe shitjeve',

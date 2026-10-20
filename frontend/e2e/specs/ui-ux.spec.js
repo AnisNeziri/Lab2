@@ -4,27 +4,30 @@ import { expectNoDocumentOverflow } from '../helpers/layout.mjs'
 
 const routes = ['/dashboard', '/products', '/stock', '/warehouse-operations', '/operations-center', '/warehouse-mobile', '/order-hub', '/fulfillment', '/daily-sales', '/customer-debts', '/suppliers', '/purchase-orders', '/procurement', '/quality', '/invoices', '/finance', '/money-accounts', '/accounting', '/shipments/my-shipments', '/control-tower', '/inventory-intelligence', '/action-center', '/automation-studio', '/documents', '/reports']
 
-test('workspace visual and responsive review', async ({ page }, testInfo) => {
+for (const review of [
+  { name: 'laptop light English', width: 1366, height: 768, theme: 'light', language: 'en' },
+  { name: 'laptop dark Albanian', width: 1366, height: 768, theme: 'dark', language: 'sq' },
+  { name: 'mobile dark Albanian', width: 390, height: 844, theme: 'dark', language: 'sq' },
+]) test(`workspace visual and responsive review: ${review.name}`, async ({ page }, testInfo) => {
   test.setTimeout(240_000)
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
+  await page.setViewportSize({ width: review.width, height: review.height })
   await login(page)
-  for (const theme of ['light', 'dark']) {
-    for (const route of routes) {
-      await page.goto(route)
-      await page.waitForLoadState('networkidle')
-      await page.evaluate(async theme => { const {useSettingsStore} = await import('/src/store/settingsStore.js'); useSettingsStore.getState().applyPreferences({theme, language: theme === 'dark' ? 'sq' : 'en'}) }, theme)
-      await expect(page.locator('.main-content')).toBeVisible()
-      await expectNoDocumentOverflow(page)
-      if (['/dashboard', '/products', '/finance', '/inventory-intelligence', '/suppliers', '/warehouse-mobile'].includes(route)) {
-        await page.screenshot({ path: testInfo.outputPath(`${route.slice(1)}-${theme}.png`) })
-      }
-    }
-  }
-  await page.setViewportSize({ width: 390, height: 844 })
+  // Isolate each viewport/theme so one long session cannot consume every case's budget.
   for (const route of routes) {
     await page.goto(route)
+    await page.waitForLoadState('networkidle')
+    await page.evaluate(({ theme, language }) => {
+      window.__aimsCertification.useSettingsStore.getState().applyPreferences({ theme, language })
+    }, { theme: review.theme, language: review.language })
+    await expect(page.locator('html')).toHaveAttribute('data-theme', review.theme)
+    await expect(page.locator('html')).toHaveAttribute('lang', review.language)
+    await expect(page.locator('.main-content')).toBeVisible()
     await expectNoDocumentOverflow(page)
+    if (['/dashboard', '/products', '/finance', '/inventory-intelligence', '/suppliers', '/warehouse-mobile'].includes(route)) {
+      await page.screenshot({ path: testInfo.outputPath(`${route.slice(1)}-${review.theme}.png`) })
+    }
   }
   expect(errors).toEqual([])
 })

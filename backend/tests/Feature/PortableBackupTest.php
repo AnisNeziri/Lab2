@@ -24,6 +24,80 @@ class PortableBackupTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_dc2_bank_ownership_documents_and_historical_completion_proof_restore_together():void
+    {
+        $this->actingAsApiUser();Auth::setUser(User::where('company_id',$this->apiCompany->id)->firstOrFail());
+        app(\App\Services\AccountingService::class)->initialize();
+        $bank=app(\App\Services\FinancialAccountService::class)->createAccount(['name'=>'Restored bank','type'=>'bank','currency'=>'EUR','opening_balance'=>100,'opening_date'=>'2026-09-01']);
+        $tx=app(\App\Services\FinancialAccountService::class)->post($bank,['type'=>'inflow','amount'=>75,'transaction_date'=>'2026-09-15','counter_accounting_account_id'=>\App\Models\AccountingAccount::where('code','3000')->firstOrFail()->id,'idempotency_key'=>'bank-restore-source']);
+        $service=app(\App\Services\BankReconciliationService::class);
+        $statement=$service->import($bank,UploadedFile::fake()->createWithContent('bank-evidence.csv',"Date,Amount,Balance\n2026-09-15,75.00,175.00\n"),['date'=>'Date','amount'=>'Amount','balance'=>'Balance']);
+        $service->reconcile($statement->rows->sole(),$tx);$service->complete($statement);
+        $contents=$this->postJson('/api/backup/export',['modules'=>['finance','documents'],'passphrase'=>'dc2-bank-test-only-passphrase'])->assertOk()->getContent();$target=$this->switchToNewCompany();
+        $this->post('/api/backup/import',['file'=>UploadedFile::fake()->createWithContent('dc2-bank.json',$contents),'mode'=>'merge','passphrase'=>'dc2-bank-test-only-passphrase'])->assertOk();
+        $restored=DB::table('bank_statements')->where('company_id',$target->id)->first();
+        $this->assertSame('open',$restored->reconciliation_status);$this->assertTrue(json_decode($restored->reconciliation_proof,true)['historical']);
+        $match=DB::table('bank_statement_matches')->where('company_id',$target->id)->first();
+        $this->assertSame($target->id,DB::table('financial_account_transactions')->where('id',$match->active_transaction_id)->value('company_id'));
+        $this->assertDatabaseHas('document_links',['company_id'=>$target->id,'entity_type'=>'bank-statement','entity_id'=>$restored->id]);
+        $this->getJson('/api/finance/bank-statements/'.$restored->id)->assertOk()->assertJsonPath('balance_control.ready_to_complete',true)->assertJsonPath('balance_control.difference','0.00');
+        $this->postJson('/api/finance/bank-statements/'.$restored->id.'/complete')->assertOk();
+    }
+
+    public function test_dc2_customer_allocations_restore_with_remapped_links_and_non_replayable_historical_requests(): void
+    {
+        $this->actingAsApiUser();
+        Auth::setUser(User::where('company_id',$this->apiCompany->id)->firstOrFail());
+        app(\App\Services\AccountingService::class)->initialize();
+        $customer=\App\Models\Customer::create($this->tenantAttributes(['name'=>'Allocated customer','current_debt'=>0,'current_credit'=>0]));
+        $service=app(\App\Services\CustomerDebtService::class);
+        $debt=$service->addDebt($customer,['amount'=>100,'transaction_date'=>'2026-09-01','idempotency_key'=>'backup-debt']);
+        $payment=$service->recordPayment($customer,['amount'=>40,'transaction_date'=>'2026-09-02','payment_method'=>'cash','idempotency_key'=>'backup-payment']);
+        app(\App\Services\CustomerSettlementService::class)->allocate($payment,['idempotency_key'=>'backup-allocation','allocation_date'=>'2026-09-03','reason'=>'Reviewed allocation for backup.','allocations'=>[['debt_transaction_id'=>$debt->id,'amount'=>40]]]);
+        $fingerprint=DB::table('customer_allocation_requests')->value('fingerprint');
+        $contents=$this->plainBackup($this->apiCompany,['customer_debts','finance']);
+        $target=$this->switchToNewCompany();
+        $this->post('/api/backup/import',['file'=>UploadedFile::fake()->createWithContent('dc2-allocations.json',$contents),'mode'=>'merge'])->assertOk();
+        $restored=DB::table('customer_settlement_allocations')->where('company_id',$target->id)->first();
+        $this->assertNotNull($restored);
+        foreach(['settlement_transaction_id','debt_transaction_id'] as $key)$this->assertSame($target->id,DB::table('customer_debt_transactions')->where('id',$restored->{$key})->value('company_id'));
+        $request=DB::table('customer_allocation_requests')->where('company_id',$target->id)->first();
+        $this->assertSame([$restored->id],json_decode($request->result,true));
+        $this->assertNotSame($fingerprint,$request->fingerprint);
+        $this->post('/api/backup/import',['file'=>UploadedFile::fake()->createWithContent('dc2-allocations-again.json',$contents),'mode'=>'merge'])->assertUnprocessable();
+        $this->assertSame(1,DB::table('customer_settlement_allocations')->where('company_id',$target->id)->count());
+    }
+
+    public function test_pre_onboarding_full_archive_restores_and_clears_new_cutover_markers(): void
+    {
+        $this->actingAsApiUser();
+        $source = $this->apiCompany;
+        $this->makeProduct($source, 'PRE-DC1', 'Previous full archive');
+        $modules = array_values(array_diff(array_keys(PortableBackupService::MODULES), ['onboarding']));
+        $archive = json_decode($this->plainBackup($source, $modules), true, 512, JSON_THROW_ON_ERROR);
+        unset($archive['manifest']['onboarding_contract'], $archive['manifest']['company']['operational_cutover_date']);
+        $contents = $this->resignArchive($archive);
+        $target = $this->switchToNewCompany();
+        $target->update(['operational_cutover_date' => '2026-01-01']);
+        \App\Models\OnboardingSession::create(['company_id' => $target->id, 'public_id' => (string) Str::uuid(), 'name' => 'Superseded destination draft', 'expected_totals' => [], 'source_period' => 'Synthetic', 'cutover_date' => '2026-01-01', 'timezone' => 'UTC', 'currency' => 'EUR', 'status' => 'draft', 'stage' => 'company', 'revision' => 0]);
+        $this->post('/api/backup/import', ['file' => UploadedFile::fake()->createWithContent('pre-onboarding.json', $contents), 'mode' => 'replace', 'confirm_replace' => '1'])->assertOk()->assertJsonCount(1, 'warnings');
+        $this->assertDatabaseHas('products', ['company_id' => $target->id, 'sku' => 'PRE-DC1']);
+        $this->assertNull($target->fresh()->operational_cutover_date);
+        $this->assertSame(0, \App\Models\OnboardingSession::where('company_id', $target->id)->count());
+    }
+
+    public function test_current_archive_without_onboarding_is_selective_and_cannot_replace_company(): void
+    {
+        $this->actingAsApiUser();
+        $source = $this->apiCompany;
+        $modules = array_values(array_diff(array_keys(PortableBackupService::MODULES), ['onboarding']));
+        $contents = $this->plainBackup($source, $modules);
+        $target = $this->switchToNewCompany();
+        $this->makeProduct($target, 'KEEP-DC1', 'Preserved destination');
+        $this->post('/api/backup/import', ['file' => UploadedFile::fake()->createWithContent('current-selective.json', $contents), 'mode' => 'replace', 'confirm_replace' => '1'])->assertUnprocessable();
+        $this->assertDatabaseHas('products', ['company_id' => $target->id, 'sku' => 'KEEP-DC1']);
+    }
+
     public function test_customer_sales_history_restores_archived_without_promoting_or_replaying_predictions(): void
     {
         $this->actingAsApiUser();$source=$this->apiCompany;
@@ -120,7 +194,7 @@ class PortableBackupTest extends TestCase
 
         $completed = BackupRun::query()->where('operation', 'export')->latest('id')->firstOrFail();
         $this->assertSame('completed', $completed->status);
-        $this->assertSame('checksum_created', $completed->verification_result);
+        $this->assertSame('checksum_verified', $completed->verification_result);
         $this->assertGreaterThan(0, $completed->size_bytes);
         $this->assertSame(['products'], $completed->modules);
 

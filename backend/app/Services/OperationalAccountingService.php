@@ -54,11 +54,14 @@ class OperationalAccountingService
             ->where('source_type', 'daily_sale')->where('source_id', $sale->id)
             ->where('status', 'posted')->latest('id')->first();
 
-        return $entry ? $this->accounting->reverse($entry, now()->toDateString(), $reason) : null;
+        return $entry ? $this->accounting->reverse($entry, \App\Support\CompanyClock::today()->toDateString(), $reason) : null;
     }
 
     public function postInvoice(Invoice $invoice): ?JournalEntry
     {
+        if (($invoice->currency ?: 'EUR') !== CompanyCurrency::forCompanyId($invoice->company_id)) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['currency'=>'Customer invoice accounting requires the company base currency. Historical foreign-currency invoice valuation is not yet supported.']);
+        }
         if ($invoice->daily_sale_id && JournalEntry::query()->where('source_module', 'sales')
             ->where('source_type', 'daily_sale')->where('source_id', $invoice->daily_sale_id)
             ->whereIn('status', ['posted', 'reversed'])->exists()) {
@@ -70,7 +73,7 @@ class OperationalAccountingService
         $revenue = Money::subtract($total, $vat);
         $lines = [['mapping' => 'accounts_receivable', 'debit' => $total]];
         if (Money::compare($revenue, '0') > 0) $lines[] = ['mapping' => 'sales_revenue', 'credit' => $revenue];
-        if (Money::compare($vat, '0') > 0) $lines[] = ['mapping' => 'output_vat', 'credit' => $vat];
+        if (Money::compare($vat, '0') > 0) $lines = [...$lines,...app(TaxCodeService::class)->outputLines($invoice)];
 
         return $this->accounting->postMapped(
             'sales', 'invoice', $invoice->id, 'invoice:'.$invoice->id,
@@ -163,7 +166,9 @@ class OperationalAccountingService
 
         $lines = array_values(array_filter($lines, fn ($line) => Money::minor($line['debit'] ?? 0) > 0 || Money::minor($line['credit'] ?? 0) > 0));
 
-        $date = ($movement->occurred_at ?: $movement->created_at)->toDateString();
+        $date = $movement->source_type === 'onboarding_opening'
+            ? data_get($movement->metadata, 'opening_date', $movement->occurred_at->toDateString())
+            : ($movement->occurred_at ?: $movement->created_at)->toDateString();
         $entry = $this->accounting->postMapped(
             'inventory', 'stock_movement', $movement->id, 'stock-movement:'.$movement->id,
             $date, 'Inventory '.$movement->movement_code.' · movement #'.$movement->id,
@@ -184,7 +189,9 @@ class OperationalAccountingService
         $lines = [];
         if (Money::compare($inventory, '0') > 0) $lines[] = ['mapping' => 'inventory', 'debit' => $inventory];
         if (Money::compare($cogs, '0') > 0) $lines[] = ['mapping' => 'cost_of_goods_sold', 'debit' => $cogs];
-        $lines[] = ['mapping' => 'goods_receipt_clearing', 'credit' => $total];
+        $lines[] = $landedCost->source_expense_id
+            ? ['accounting_account_id'=>$landedCost->tax_basis_snapshot['credit_account_id'],'credit'=>$total,'description'=>'Capitalize source bill cost, excluding recoverable VAT']
+            : ['mapping' => 'goods_receipt_clearing', 'credit' => $total];
         $bookDelta = $landedCost->allocations()->get()->sum(fn ($allocation) =>
             Money::minor($allocation->inventory_value_after ?? 0) - Money::minor($allocation->inventory_value_before ?? 0));
         $carry = $bookDelta - Money::minor($inventory);
@@ -197,7 +204,7 @@ class OperationalAccountingService
         $entry = $this->accounting->postMapped(
             'landed_cost', 'landed_cost', $landedCost->id, 'landed-cost:'.$landedCost->id,
             $landedCost->posted_at->toDateString(), 'Landed cost '.$landedCost->reference_number,
-            $lines, $landedCost->currency, $landedCost->exchange_rate_to_base,
+            $lines, $landedCost->currency, $landedCost->exchange_rate_to_base, ['date'=>$landedCost->exchange_rate_date,'source'=>'Manual authorized rate'],
         );
         app(BusinessEventService::class)->record('landed_cost.accounting_posted', $landedCost, $landedCost->reference_number, [
             'journal_entry_id' => $entry->id, 'inventory_amount' => $inventory, 'cogs_amount' => $cogs,
@@ -241,24 +248,24 @@ class OperationalAccountingService
             [
                 ['mapping' => 'supplier_advances', 'debit' => $amount],
                 $this->settlementLine($payment->financial_account_id, $this->cashMapping($payment->payment_method), 'credit', $amount),
-            ], $payment->currency, $payment->exchange_rate,
+            ], $payment->currency, $payment->exchange_rate, ['date'=>$payment->exchange_rate_date,'source'=>$payment->exchange_rate_source],
         );
         $this->linkFinancialTransaction($payment->financial_account_transaction_id, $entry);
         return $entry;
     }
 
-    public function postSupplierAdvanceApplication(SupplierInvoicePaymentAllocation $allocation, string $sourceKey): JournalEntry
+    public function postSupplierAdvanceApplication(SupplierInvoicePaymentAllocation $allocation, string $sourceKey, mixed $increment): JournalEntry
     {
-        $allocation->loadMissing(['payment', 'expense']);
-        $baseAmount = Money::multiply($allocation->amount, $allocation->payment->exchange_rate ?: 1);
-        return $this->accounting->postMapped(
-            'supplier_accounting', 'supplier_payment_allocation', $allocation->id, $sourceKey,
-            $allocation->allocated_at->toDateString(), 'Apply supplier advance to '.$allocation->expense->document_number,
-            [
-                ['mapping' => 'accounts_payable', 'debit' => $baseAmount],
-                ['mapping' => 'supplier_advances', 'credit' => $baseAmount],
-            ], $allocation->payment->currency, $allocation->payment->exchange_rate,
-        );
+        $allocation->loadMissing(['payment','expense']);
+        $advance=Money::multiply($increment,$allocation->payment->exchange_rate?:1);
+        $payable=Money::multiply($increment,$allocation->expense->exchange_rate?:1);
+        $lines=[['mapping'=>'accounts_payable','debit'=>$payable],['mapping'=>'supplier_advances','credit'=>$advance]];
+        $difference=Money::subtract($advance,$payable);
+        if(Money::compare($difference,0)>0)$lines[]=['mapping'=>'fx_loss','debit'=>$difference];
+        elseif(Money::compare($difference,0)<0)$lines[]=['mapping'=>'fx_gain','credit'=>Money::subtract(0,$difference)];
+        return $this->accounting->postMapped('supplier_accounting','supplier_payment_allocation',$allocation->id,$sourceKey,
+              \App\Support\CompanyClock::today()->toDateString(),'Apply supplier advance to '.$allocation->expense->document_number,
+            $lines,$allocation->payment->currency,$allocation->payment->exchange_rate,['date'=>$allocation->payment->exchange_rate_date,'source'=>$allocation->payment->exchange_rate_source]);
     }
 
     public function postInventoryReturnRefund(InventoryReturn $return): JournalEntry
@@ -269,7 +276,7 @@ class OperationalAccountingService
         $customerReturn = $return->type === 'customer';
         $entry = $this->accounting->postMapped(
             'returns', 'inventory_return', $return->id, 'inventory-return-refund:'.$return->id,
-            now()->toDateString(), ($customerReturn ? 'Customer refund ' : 'Supplier refund ').$return->return_number,
+            \App\Support\CompanyClock::today()->toDateString(), ($customerReturn ? 'Customer refund ' : 'Supplier refund ').$return->return_number,
             $customerReturn
                 ? [['mapping' => 'sales_revenue', 'debit' => $amount], ['accounting_account_id' => $cashAccount->id, 'credit' => $amount]]
                 : [['accounting_account_id' => $cashAccount->id, 'debit' => $amount], ['mapping' => 'supplier_advances', 'credit' => $amount]],
@@ -281,7 +288,7 @@ class OperationalAccountingService
 
     public function reverseSource(string $module, string $key, string $reason): ?JournalEntry
     {
-        return $this->accounting->reverseSource($module, $key, now()->toDateString(), $reason);
+        return $this->accounting->reverseSource($module, $key, \App\Support\CompanyClock::today()->toDateString(), $reason);
     }
 
     private function settlementLine(?int $financialAccountId, string $mapping, string $side, string $amount): array

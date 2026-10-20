@@ -27,6 +27,9 @@ import SearchField from '../components/SearchField'
 import ActiveFilters from '../components/ActiveFilters'
 import PageHeader from '../components/PageHeader'
 import RowActions from '../components/RowActions'
+import { useSessionState } from '../hooks/useSessionState'
+import FormFieldErrors from '../components/FormFieldErrors'
+import { businessMoney } from '../utils/businessFormat'
 
 const emptyForm = {
   category_id: '',
@@ -82,7 +85,7 @@ function Products() {
   const deleting = useRef(new Set())
   const pendingSave = useRef(false)
   const baseCurrency = useSettingsStore(state => state.base_currency) || 'EUR'
-  const currency = value => new Intl.NumberFormat(language === 'sq' ? 'sq-AL' : 'en-GB', { style: 'currency', currency: baseCurrency }).format(Number(value || 0))
+  const currency = value => businessMoney(value, baseCurrency, language)
   const userRole = useAuthStore((state) => state.role)
   const canManage = useAuthStore(state => state.permissions.includes('products.manage'))
   const [products, setProducts] = useState([])
@@ -92,19 +95,20 @@ function Products() {
   const [warehouseSections, setWarehouseSections] = useState([])
   const [warehouses, setWarehouses] = useState([])
   const [form, setForm] = useState(emptyForm)
-  const [search, setSearch] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('')
-  const [supplierFilter, setSupplierFilter] = useState('')
-  const [lowStockOnly, setLowStockOnly] = useState(false)
-  const [lifecycleFilter, setLifecycleFilter] = useState('')
-  const [sortBy, setSortBy] = useState('name')
-  const [sortDirection, setSortDirection] = useState('asc')
-  const [page, setPage] = useState(1)
+  const [search, setSearch] = useSessionState('products.search', '')
+  const [categoryFilter, setCategoryFilter] = useSessionState('products.category', '')
+  const [supplierFilter, setSupplierFilter] = useSessionState('products.supplier', '')
+  const [lowStockOnly, setLowStockOnly] = useSessionState('products.low', false)
+  const [lifecycleFilter, setLifecycleFilter] = useSessionState('products.lifecycle', '')
+  const [sortBy, setSortBy] = useSessionState('products.sort', 'name')
+  const [sortDirection, setSortDirection] = useSessionState('products.direction', 'asc')
+  const [page, setPage] = useSessionState('products.page', 1)
   const [editingId, setEditingId] = useState(null)
   const [viewProductId, setViewProductId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
+  const [fieldErrors,setFieldErrors]=useState({}),productFormRef=useRef(null)
   const formSectionRef = useRef(null)
   const productsRequestRef = useRef(0)
   const [productSuccess, setProductSuccess] = useState(null)
@@ -150,7 +154,7 @@ function Products() {
       })
     } catch {
       if (!silent && requestId === productsRequestRef.current) {
-        setError('Could not load products. Make sure the API is running.')
+        setError(ui('Could not load products. Try again.'))
       }
     } finally {
       if (requestId === productsRequestRef.current) setLoading(false)
@@ -168,7 +172,7 @@ function Products() {
         if (primary) setForm((current) => current.default_warehouse_id ? current : { ...current, default_warehouse_id: String(primary.id) })
       }).catch(() => []),
     ]).catch(() => {
-      setError('Could not load categories or suppliers. Make sure the API is running.')
+      setError(ui('Could not load categories or suppliers. Try again.'))
     })
   }, [])
 
@@ -186,9 +190,12 @@ function Products() {
     }
   }
 
+  const filtersKey = JSON.stringify([search, categoryFilter, supplierFilter, lifecycleFilter, lowStockOnly, sortBy, sortDirection])
+  const previousFilters = useRef(filtersKey)
   useEffect(() => {
-    setPage(1)
-  }, [search, categoryFilter, supplierFilter, lifecycleFilter, lowStockOnly, sortBy, sortDirection])
+    if (previousFilters.current !== filtersKey) setPage(1)
+    previousFilters.current = filtersKey
+  }, [filtersKey])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -379,6 +386,7 @@ function Products() {
     event.preventDefault()
     if (pendingSave.current) return
     setFormError('')
+    setFieldErrors({})
     const creating = !editingId
     const openingQuantity = Number(form.quantity || 0)
     const openingTraceAllocations = []
@@ -522,6 +530,7 @@ function Products() {
       if (imageWarning) setError(imageWarning)
     } catch (err) {
       if (err.errors) {
+        setFieldErrors(err.errors)
         const messages = Object.values(err.errors).flat().join(' ')
         setFormError(messages)
       } else {
@@ -591,7 +600,7 @@ function Products() {
 
       {formOpen && canManage && <section className="card product-form-card" ref={formSectionRef}>
         <h2>{ui(editingId ? 'Edit product' : 'Add product')}</h2>
-        <form className="product-form" onSubmit={handleSubmit} onInvalidCapture={event => { const details = event.target.closest('details'); if (details) details.open = true }}>
+        <form ref={productFormRef} className="product-form" onSubmit={handleSubmit} onInvalidCapture={event => { const details = event.target.closest('details'); if (details) details.open = true }}>
           <label>
             {ui("Category")}
             <select name="category_id" value={form.category_id} onChange={handleChange} required>
@@ -618,6 +627,7 @@ function Products() {
 
           <label>
             {ui("Name")}
+            <FormFieldErrors formRef={productFormRef} errors={fieldErrors}/>
             <input name="name" value={form.name} onChange={handleChange} required />
           </label>
 

@@ -15,7 +15,9 @@ class ProductRepository implements ProductRepositoryInterface
         $sort = $filters['sort'] ?? 'name';
         $direction = $filters['direction'] ?? 'asc';
 
-        $query = Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])->orderBy($sort, $direction);
+        $query = !empty($filters['reference_only'])
+            ? Product::query()->select(['products.id','company_id','name','sku','barcode','unit','quantity','min_quantity','high_stock_threshold','default_warehouse_id','tracking_mode','expiration_controlled','default_shelf_life_days','shelf_life_basis'])->withStockTotals()->orderBy($sort,$direction)
+            : Product::withStockTotals()->with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])->orderBy($sort, $direction);
 
         if (! empty($filters['lifecycle_status'])) {
             $query->where('lifecycle_status', $filters['lifecycle_status']);
@@ -71,7 +73,7 @@ class ProductRepository implements ProductRepositoryInterface
 
     public function allWithRelations(): Collection
     {
-        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])
+        return Product::withStockTotals()->with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])
             ->where('lifecycle_status', '!=', 'archived')
             ->orderBy('name')
             ->get();
@@ -81,7 +83,7 @@ class ProductRepository implements ProductRepositoryInterface
     {
         $barcodeIdentity = BarcodeIdentity::normalize($sku);
 
-        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])
+        return Product::withStockTotals()->with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])
             ->where('lifecycle_status', '!=', 'archived')
             ->where(fn ($query) => $query
                 ->where('sku', $sku)
@@ -95,7 +97,7 @@ class ProductRepository implements ProductRepositoryInterface
 
     public function findById(int $id): ?Product
     {
-        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])->find($id);
+        return Product::withStockTotals()->with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])->find($id);
     }
 
     public function create(array $data): Product
@@ -121,7 +123,7 @@ class ProductRepository implements ProductRepositoryInterface
 
     public function byLocationCode(string $locationCode, int $companyId): Collection
     {
-        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])
+        return Product::withStockTotals()->with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])
             ->where('company_id', $companyId)
             ->where('lifecycle_status', '!=', 'archived')
             ->where('location_code', $locationCode)
@@ -133,7 +135,7 @@ class ProductRepository implements ProductRepositoryInterface
     {
         $barcodeIdentity = BarcodeIdentity::normalize($term);
 
-        return Product::with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])
+        return Product::withStockTotals()->with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])
             ->where('lifecycle_status', '!=', 'archived')
             ->where(function ($query) use ($term, $barcodeIdentity) {
                 $query->where('name', 'like', "%{$term}%")

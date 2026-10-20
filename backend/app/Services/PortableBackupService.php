@@ -16,6 +16,9 @@ use Symfony\Component\HttpFoundation\Response;
 
 class PortableBackupService
 {
+    /** Schema metadata only; no company records or balances are cached here. */
+    private array $foreignKeyRelations = [];
+    private array $foreignKeySchemasLoaded = [];
     public const FORMAT = 'aims-portable-backup';
 
     public const VERSION = 1;
@@ -32,12 +35,13 @@ class PortableBackupService
      * never portable business data and are therefore not part of any module.
      */
     public const MODULES = [
+        'onboarding' => ['onboarding_sessions','onboarding_batches','onboarding_rows','onboarding_events'],
         'analytics' => ['supply_optimization_plans','decision_learning_records','customer_sales_snapshots','customer_intelligence_policies','enterprise_decisions','inventory_planning_policies','analytics_snapshots', 'analytics_issues', 'analytics_datasets', 'analytics_dataset_rows', 'analytics_predictions', 'inventory_forecast_models', 'inventory_recommendations','inventory_model_decisions','inventory_intelligence_alerts','supplier_delivery_risks'],
         'automations'=>['automations','automation_versions','automation_executions','operational_tasks','business_events'],
         'order_hub'=>['order_channels','order_channel_mappings','order_intakes','order_hub_presets','sales_orders','sales_order_items','pick_waves','pick_tasks','outbound_allocations','outbound_dispatches','outbound_packages','outbound_package_items','outbound_returns','outbound_actions'],
         'documents'=>['document_types','document_settings','documents','document_versions','document_links','document_requirements','approval_requests','approval_decisions','business_events'],
         'fulfillment' => ['sales_orders','sales_order_items','pick_waves','pick_tasks','outbound_allocations','outbound_dispatches','outbound_packages','outbound_package_items','outbound_returns','outbound_actions'],
-        'company' => [],
+        'company' => ['pilot_profiles','pilot_feedback','pilot_evidence','pilot_reports'],
         'categories' => ['categories'],
         'suppliers' => ['suppliers'],
         'products' => [
@@ -65,7 +69,7 @@ class PortableBackupService
             'supplier_quotes', 'supplier_quote_items', 'procurement_awards',
         ],
         'daily_sales' => ['daily_sales_days', 'daily_sales', 'daily_sale_items'],
-        'customer_debts' => ['customer_debts', 'customer_debt_entries', 'customers', 'customer_debt_transactions'],
+        'customer_debts' => ['customer_debts', 'customer_debt_entries', 'customers', 'customer_debt_transactions', 'customer_settlement_allocations', 'customer_allocation_requests'],
         'finance' => [
             'financial_intelligence_snapshots','financial_intelligence_observations','financial_intelligence_policies',
             'accounting_accounts', 'accounting_periods', 'accounting_posting_mappings',
@@ -78,7 +82,7 @@ class PortableBackupService
             'landed_cost_accounting_entries',
             'financial_accounts', 'financial_account_transactions',
             'financial_account_transfers', 'bank_statements', 'bank_statement_rows',
-            'bank_reconciliation_events',
+            'bank_reconciliation_events', 'bank_statement_matches',
         ],
         'shipments' => [
             'shipments', 'shipment_histories', 'shipment_containers',
@@ -98,6 +102,7 @@ class PortableBackupService
     private const TABLE_ORDER = [
         'document_types','document_settings','documents','document_versions','document_requirements',
         'users',
+        'onboarding_sessions','onboarding_batches',
         'approval_rules', 'approval_requests', 'approval_decisions',
         'quality_inspection_templates', 'quality_checklist_items', 'quality_defect_categories', 'supplier_score_settings',
         'categories', 'suppliers', 'warehouses', 'warehouse_sections', 'warehouse_locations',
@@ -111,6 +116,7 @@ class PortableBackupService
         'journal_entries', 'journal_lines', 'accounting_exceptions', 'accounting_recovery_attempts',
         'financial_accounts', 'invoice_profiles', 'invoice_sequences', 'invoices', 'invoice_items', 'payment_transactions',
         'expenses', 'expense_payments', 'customer_debt_entries', 'customer_debt_transactions',
+        'customer_settlement_allocations', 'customer_allocation_requests',
         'purchase_orders', 'purchase_order_items', 'purchase_order_payments', 'purchase_order_changes', 'procurement_awards',
         'supplier_invoice_payment_allocations',
         'supplier_payment_allocation_requests',
@@ -129,11 +135,13 @@ class PortableBackupService
         'customer_sales_snapshots','customer_intelligence_policies','decision_learning_records','supply_optimization_plans',
         'financial_intelligence_snapshots','financial_intelligence_observations','financial_intelligence_policies',
         'financial_account_transfers', 'financial_account_transactions',
-        'bank_statements', 'bank_statement_rows', 'bank_reconciliation_events',
+        'bank_statements', 'bank_statement_rows', 'bank_reconciliation_events', 'bank_statement_matches',
         'sales_orders','sales_order_items','pick_waves','pick_tasks','outbound_allocations','outbound_dispatches','outbound_packages','outbound_package_items','outbound_returns','outbound_actions',
         'order_channels','order_channel_mappings','order_intakes','order_hub_presets',
         'document_links',
         'automations','automation_versions','automation_executions','operational_tasks',
+        'pilot_profiles','pilot_feedback','pilot_evidence','pilot_reports',
+        'onboarding_rows','onboarding_events',
     ];
 
     /** Child tables that do not carry company_id are owned through this parent. */
@@ -158,6 +166,8 @@ class PortableBackupService
     ];
 
     private const IDENTITY_COLUMNS = [
+        'pilot_profiles'=>['company_id'],
+        'pilot_reports'=>['company_id','fingerprint'],
         'decision_learning_records'=>['company_id','record_key'],
         'customer_sales_snapshots'=>['company_id','fingerprint'],
         'customer_intelligence_policies'=>['company_id','version'],
@@ -268,6 +278,9 @@ class PortableBackupService
         abort_unless($user?->company_id, 403, 'Select an explicit company context before creating a backup.');
 
         $modules = $this->normalizeModules($requestedModules);
+        if(Schema::hasTable('employees') && \App\Models\Employee::query()->exists() && ($requestedModules===null || in_array('finance',$modules,true) || in_array('documents',$modules,true))) {
+            throw ValidationException::withMessages(['modules'=>'This company contains confidential workforce/payroll history. Use a complete encrypted installation backup. Portable payroll snapshot/identity remapping is not supported; this export cannot silently omit those records.']);
+        }
         $company = Company::query()->findOrFail($user->company_id);
         $coreTables = $this->tablesForModules($modules);
         $rawData = [];
@@ -305,14 +318,22 @@ class PortableBackupService
 
         $manifest = [
             'modules' => $modules,
+            'onboarding_contract' => \App\Services\Onboarding\OnboardingSchema::CONTRACT,
             'module_tables' => collect(self::MODULES)->only($modules)->all(),
             'tables' => $tables,
             'counts' => collect($data)->map(fn (array $rows) => count($rows))->all(),
             'company' => [
                 'name' => $company->name,
                 'address' => $company->address,
+                'base_currency' => $company->base_currency,
+                'timezone' => $company->timezone,
+                'operational_cutover_date' => $company->operational_cutover_date?->toDateString(),
+                'accounting_start_date' => $company->accounting_start_date?->toDateString(),
+                'accounting_opening_finalized_at' => $company->accounting_opening_finalized_at?->toDateTimeString(),
             ],
-            'app_version' => (string) config('app.version', '1.0.0'),
+            'app_version' => \App\Support\Release::version(),
+            'database_engine' => DB::connection()->getDriverName(),
+            'verification' => 'authenticated_and_checksums_verified',
             'database_schema' => 'AIMS-'.self::VERSION,
         ];
         $payload = ['data' => $data, 'encodings' => $encodings];
@@ -338,6 +359,7 @@ class PortableBackupService
             $json = $this->encryptArchive($json, $passphrase);
         }
 
+        $this->verifyContents($json, $passphrase);
         return response($json, 200, [
             'Content-Type' => $passphrase === null
                 ? 'application/vnd.aims.backup+json'
@@ -386,6 +408,11 @@ class PortableBackupService
         if (array_diff($modules, $availableModules)) {
             throw ValidationException::withMessages(['modules' => 'The backup does not contain every selected module.']);
         }
+        $missingModules = array_values(array_diff(array_keys(self::MODULES), $modules));
+        $legacyOnboarding = $mode === 'replace' && !isset($archive['manifest']['onboarding_contract'])
+            && in_array('onboarding', $missingModules, true) && !in_array('onboarding', $availableModules, true)
+            && array_diff($missingModules, ['onboarding', 'analytics']) === [];
+        if ($legacyOnboarding) $modules[] = 'onboarding';
         $legacyFull = $mode === 'replace'
             && array_values(array_diff(array_keys(self::MODULES), $modules)) === ['analytics']
             && !in_array('analytics', $availableModules, true);
@@ -413,13 +440,14 @@ class PortableBackupService
         $documentKeys=app(DocumentBackupService::class)->restoreFiles($activeData['document_versions']??[],$archive['payload']['document_files']??[],$companyId);
         foreach($activeData['document_versions']??[] as $i=>$v){$activeData['document_versions'][$i]['storage_key']=$documentKeys[$v['storage_key']];$activeData['document_versions'][$i]['provider']='local';}
         $warnings = $legacyFull ? ['This older full backup contains no Analytics history. Existing Analytics history was cleared with the confirmed full replacement; new observations will start with the next capture.'] : [];
+        if ($legacyOnboarding) $warnings[] = 'This older full backup predates controlled onboarding. Opening staging and cutover markers were cleared with the confirmed full replacement.';
         $imported = [];
         $restoresWarehouseStock = array_key_exists('warehouse_stock', $activeData);
 
         try {
         DB::transaction(function () use (
             $archive, $modules, $mode, $coreTables, $activeData, $companyId, $user,
-            $restoresWarehouseStock, &$warnings, &$imported
+            $restoresWarehouseStock, $legacyOnboarding, &$warnings, &$imported
         ) {
             // Serialize every restore for this tenant. This protects merge
             // safety checks and the full delete/remap/import sequence from a
@@ -435,9 +463,11 @@ class PortableBackupService
 
             if (in_array('company', $modules, true)) {
                 $companyData = $archive['manifest']['company'] ?? [];
+                if ($legacyOnboarding) $companyData['operational_cutover_date'] = null;
                 Company::query()->whereKey($companyId)->update([
                     'name' => Str::limit(trim((string) $companyData['name']), 255, ''),
                     'address' => trim((string) ($companyData['address'] ?? '')),
+                    ...validator($companyData, ['base_currency'=>'sometimes|nullable|string|size:3','timezone'=>'sometimes|nullable|timezone','operational_cutover_date'=>'sometimes|nullable|date_format:Y-m-d','accounting_start_date'=>'sometimes|nullable|date_format:Y-m-d','accounting_opening_finalized_at'=>'sometimes|nullable|date'])->validate(),
                 ]);
             }
 
@@ -530,6 +560,19 @@ class PortableBackupService
                 }
             }
 
+            $prefixTables=['daily-sale'=>'daily_sales','invoice'=>'invoices','invoice-payment'=>'payment_transactions','customer-debt'=>'customer_debt_transactions','expense'=>'expenses','expense-payment'=>'expense_payments',
+                'purchase-order-payment'=>'purchase_order_payments','stock-movement'=>'stock_movements','landed-cost'=>'landed_costs','landed-reversal-adjustment'=>'landed_costs','supplier-allocation'=>'supplier_payment_allocation_requests',
+                'financial-transaction'=>'financial_account_transactions','financial-transfer'=>'financial_account_transfers','financial-opening'=>'financial_accounts','reversal'=>'journal_entries','order-invoice-tax'=>'invoices','order-return-tax'=>'invoices'];
+            foreach($activeData['journal_entries']??[] as $original){
+                $targetId=$idMap['journal_entries'][(string)$original['id']]??null;if(!$targetId)continue;
+                $key=$original['source_key']??'';
+                if(preg_match('/^([a-z-]+):(\\d+)(.*)$/D',$key,$m)){
+                    $mapped=$m[1]==='company-opening'?$companyId:($idMap[$prefixTables[$m[1]]??''][(string)$m[2]]??null);
+                    if($mapped)DB::table('journal_entries')->where('company_id',$companyId)->where('id',$targetId)->update(['source_key'=>$m[1].':'.$mapped.$m[3]]);
+                }
+                if(str_starts_with((string)DB::table('journal_entries')->where('company_id',$companyId)->where('id',$targetId)->value('source_type'),'archived:'))\App\Models\ActivityLog::create(['company_id'=>$companyId,'user_id'=>$user->id,'action'=>'accounting.restored_source_unresolved','entity'=>'JournalEntry','entity_id'=>$targetId,'description'=>'Historical source is unresolved after restore; accountant review required.','old_value'=>['source_type'=>$original['source_type'],'source_id'=>$original['source_id'],'source_key'=>$key]]);
+            }
+
             foreach (array_values($idMap['invoices'] ?? []) as $invoiceId) {
                 $invoice = Invoice::withoutGlobalScopes()
                     ->where('company_id', $companyId)
@@ -571,6 +614,29 @@ class PortableBackupService
             'imported' => $imported,
             'warnings' => array_values(array_unique($warnings)),
         ];
+    }
+
+    public function verifyContents(string $contents, ?string $passphrase = null): array
+    {
+        try {
+            $archive = json_decode($contents, true, 512, JSON_THROW_ON_ERROR);
+            if (($archive['format'] ?? '') === self::ENCRYPTED_FORMAT) {
+                if ($passphrase === null) throw new \RuntimeException();
+                $archive = json_decode($this->decryptArchive($archive, $passphrase), true, 512, JSON_THROW_ON_ERROR);
+            }
+            $this->validateArchive($archive);
+            $total = 0;
+            foreach ($archive['payload']['data']['document_versions'] ?? [] as $version) {
+                $entry = $archive['payload']['document_files'][$version['storage_key']] ?? null;
+                $bytes = $entry ? base64_decode($entry['bytes'] ?? '', true) : false;
+                if ($bytes === false || strlen($bytes) !== (int) $version['size'] || ! hash_equals($version['checksum'], hash('sha256', $bytes))) throw new \RuntimeException();
+                $total += strlen($bytes);
+                if ($total > DocumentBackupService::MAX_BYTES) throw new \RuntimeException();
+            }
+            return ['created_at' => $archive['created_at'], 'manifest' => $archive['manifest'], 'verification' => 'checksum_verified'];
+        } catch (\Throwable) {
+            throw ValidationException::withMessages(['file' => 'Backup verification failed. Check the passphrase, archive integrity and compatible AIMS version.']);
+        }
     }
 
     private function normalizeModules(?array $modules): array
@@ -709,9 +775,33 @@ class PortableBackupService
         return [$data, $encodings];
     }
 
+    private function schemaRelations(string $table):array
+    {
+        $connection=DB::connection();
+        $prefix=$connection->getName().':'.$connection->getDatabaseName().':';
+        $key=$prefix.$table;
+        if($connection->getDriverName()==='mysql'){
+            if(!isset($this->foreignKeySchemasLoaded[$prefix])){
+                // One dictionary read instead of a referential-constraints join
+                // per table and restored row. Only relationship metadata is read.
+                $keys=DB::table('information_schema.KEY_COLUMN_USAGE')->where('TABLE_SCHEMA',$connection->getDatabaseName())->whereNotNull('REFERENCED_TABLE_NAME')
+                    ->selectRaw('TABLE_NAME as table_name,CONSTRAINT_NAME as constraint_name,COLUMN_NAME as column_name,REFERENCED_TABLE_NAME as foreign_table,REFERENCED_COLUMN_NAME as foreign_column')
+                    ->orderBy('TABLE_NAME')->orderBy('CONSTRAINT_NAME')->orderBy('ORDINAL_POSITION')->get()->groupBy(fn($r)=>$r->table_name.':'.$r->constraint_name);
+                foreach($keys as $parts){$first=$parts->first();$this->foreignKeyRelations[$prefix.$first->table_name][]=['columns'=>$parts->pluck('column_name')->all(),'foreign_table'=>$first->foreign_table,'foreign_columns'=>$parts->pluck('foreign_column')->all()];}
+                $this->foreignKeySchemasLoaded[$prefix]=true;
+            }
+            $relations=$this->foreignKeyRelations[$key]??[];
+        }else{
+            if(isset($this->foreignKeyRelations[$key]))return $this->foreignKeyRelations[$key];
+            $relations=Schema::getForeignKeys($table);
+        }
+        if(in_array($table,['financial_account_transactions','bank_statement_rows'],true)&&!collect($relations)->contains(fn($r)=>($r['columns'][0]??null)==='journal_entry_id'))$relations[]=['columns'=>['journal_entry_id'],'foreign_table'=>'journal_entries'];
+        return $this->foreignKeyRelations[$key]=$relations;
+    }
+
     private function portableRelations(string $table): array
     {
-        $relations = Schema::getForeignKeys($table);
+        $relations = $this->schemaRelations($table);
         if ($table === 'analytics_snapshots') {
             foreach (['product' => 'products', 'inventory' => 'products', 'customer' => 'customers', 'supplier' => 'suppliers','supplier_intelligence'=>'suppliers'] as $type => $target) {
                 $relations[] = ['columns' => ['entity_id'], 'foreign_table' => $target, 'entity_type' => $type];
@@ -749,6 +839,7 @@ class PortableBackupService
         }
 
         $allowedTables = array_fill_keys(array_unique(array_merge(...array_values(self::MODULES))), true);
+        \App\Support\Release::assertBackupCompatible((string) ($archive['manifest']['app_version'] ?? '1.0.0'));
         $modules = $archive['manifest']['modules'] ?? null;
         if (! is_array($modules) || $modules === [] || array_diff($modules, array_keys(self::MODULES)) !== []) {
             throw ValidationException::withMessages(['file' => 'The backup module manifest is invalid.']);
@@ -926,8 +1017,67 @@ class PortableBackupService
     ): array {
         $sourceId = $row['id'] ?? null;
         unset($row['id']);
-        $columns = collect(Schema::getColumns($table))->pluck('name')->flip();
+        $columns = collect(Schema::getColumns($table))->reject(fn (array $column) => $column['generation'] !== null)->pluck('name')->flip();
         $row = array_intersect_key($row, $columns->all());
+        if($table==='bank_statement_rows')$row['source_fingerprint']=null;
+        if($table==='accounting_periods'&&!empty($row['close_snapshot'])){
+            $proof=json_decode((string)$row['close_snapshot'],true,512,JSON_THROW_ON_ERROR);
+            $proof['historical']=true;$proof['archive_reason']='Original installation close evidence. Embedded identifiers and fingerprint remain historical; reopening and closing again regenerates company-local proof.';
+            $row['close_snapshot']=json_encode($proof,JSON_THROW_ON_ERROR);
+        }
+        if($table==='bank_statements'&&!empty($row['reconciliation_proof'])){
+            $proof=json_decode((string)$row['reconciliation_proof'],true,512,JSON_THROW_ON_ERROR);
+            $proof['historical']=true;$proof['archive_reason']='Restored evidence requires company-local balance review before completion.';
+            $row['reconciliation_proof']=json_encode($proof,JSON_THROW_ON_ERROR);$row['reconciliation_status']='open';
+        }
+        if ($table === 'customer_allocation_requests') {
+            $ids = json_decode((string) $row['result'], true, 512, JSON_THROW_ON_ERROR);
+            $row['result'] = json_encode(array_map(function ($id) use ($idMap) {
+                $mapped = $idMap['customer_settlement_allocations'][(string) $id] ?? null;
+                if (! $mapped) {
+                    throw ValidationException::withMessages(['file' => 'A customer allocation audit link could not be restored.']);
+                }
+
+                return $mapped;
+            }, $ids), JSON_THROW_ON_ERROR);
+            // Preserved historical request is not replayable with installation-specific IDs.
+            $row['fingerprint'] = hash('sha256', 'restored:'.$companyId.':'.$row['fingerprint']);
+        }
+        if ($table === 'onboarding_sessions') {
+            // Backup artifacts are installation-private and deliberately non-recursive.
+            $row['pre_backup_id'] = null; $row['post_backup_id'] = null;
+            $row['restore_verification'] = json_encode(['passed'=>false,'historical'=>true]);
+            $review=json_decode((string)($row['review']??'{}'),true)?:[];
+            $review['restored_read_only']=!empty($row['posted_at']);
+            $review['historical_approval_fingerprint']=$row['approved_fingerprint']??null;
+            $row['review']=json_encode($review);
+            $row['review_fingerprint']=null;$row['approved_fingerprint']=null;
+            $row['approved_at']=null;$row['approved_by']=null;$row['reviewed_at']=null;$row['reviewed_by']=null;
+            $row['locked_at']=null;$row['locked_by']=null;
+            if(!empty($row['posted_at']))$row['status']='posted';
+        }
+        if ($table === 'onboarding_rows') {
+            $domainTable = ['products'=>'products','customers'=>'customers','suppliers'=>'suppliers','warehouses'=>'warehouses','locations'=>'warehouse_locations','cash_bank'=>'financial_accounts'][$row['domain']] ?? null;
+            if ($domainTable && !empty($row['match_id'])) $row['match_id'] = $idMap[$domainTable][(string)$row['match_id']] ?? null;
+            if (!empty($row['posted_entity_id'])) {
+                $allowed = ['products','customers','suppliers','warehouses','warehouse_locations','financial_accounts','stock_movements','customer_debt_transactions','expenses','purchase_order_payments'];
+                if (!in_array($row['posted_entity_type'], $allowed, true) || !isset($idMap[$row['posted_entity_type']][(string)$row['posted_entity_id']])) throw ValidationException::withMessages(['file'=>'An opening source link could not be restored.']);
+                $row['posted_entity_id'] = $idMap[$row['posted_entity_type']][(string)$row['posted_entity_id']];
+                $result = json_decode((string)$row['posting_result'],true) ?: [];
+                $result['entity_id'] = $row['posted_entity_id']; $result['restored'] = true;
+                $row['posting_result'] = json_encode($result);
+            }
+        }
+        if ($table==='pilot_profiles') {
+            // A portable restore never enrolls this installation or restores consent.
+            $row['status']='draft'; $row['telemetry_enabled']=false; $row['source_attestation']=null;
+            $row['participants']='[]'; $row['cutover_date']=null;
+            \Illuminate\Support\Facades\Cache::forget('pilot-profile:'.$companyId);
+        }
+        if (in_array($table,['pilot_evidence','pilot_reports'])) $row['is_historical']=true;
+        if ($table==='pilot_evidence') { $row['reviewed_by']=null; $row['reviewed_at']=null; $row['entity_type']=null; $row['entity_id']=null; }
+        if ($table==='pilot_feedback') { $row['entity_type']=null; $row['entity_id']=null; }
+        if ($table==='pilot_reports') $row['fingerprint']=hash('sha256',$companyId.':restored:'.$row['fingerprint']);
         // Restored definitions require review and explicit re-enabling. Never
         // replay stale jobs or captured action results into another installation.
         if ($table==='automations') { $row['enabled']=false; $row['event_cursor']=0; }
@@ -1055,7 +1205,7 @@ class PortableBackupService
             if ($table==='automations') $definition=$actions; else $definition['actions']=$actions;
             $row[$column]=json_encode($definition);
         }
-        foreach (Schema::getForeignKeys($table) as $foreign) {
+        foreach ($this->schemaRelations($table) as $foreign) {
             $column = $foreign['columns'][0] ?? null;
             $foreignTable = $foreign['foreign_table'] ?? null;
             if (! $column || ! $foreignTable || ! array_key_exists($column, $row) || $row[$column] === null) {
@@ -1084,6 +1234,16 @@ class PortableBackupService
             }
         }
 
+        if($table==='journal_entries'&&!empty($row['source_id'])){
+            $type=$row['source_type']??'';$definition=AccountingJournalExperience::SOURCES[$type]??null;
+            if(!$definition&&str_starts_with($type,'App\\Models\\'))foreach(AccountingJournalExperience::SOURCES as $canonical=>$candidate)if('App\\Models\\'.$candidate[0]===$type){$definition=$candidate;$row['source_type']=$canonical;break;}
+            if($type==='company')$row['source_id']=$companyId;
+            elseif($definition){$class='App\\Models\\'.$definition[0];$sourceTable=(new $class)->getTable();$old=(string)$row['source_id'];
+                if(isset($idMap[$sourceTable][$old]))$row['source_id']=$idMap[$sourceTable][$old];
+                elseif(in_array($sourceTable,$importTables,true)){$deferred['source_id']=[$sourceTable,$old];$row['source_id']=null;}
+                else{$row['source_id']=null;$row['source_type']='archived:'.substr($type,0,80);}
+            }else{$row['source_id']=null;$row['source_type']='archived:'.substr($type,0,80);}
+        }
         if ($table === 'stock_movements' && array_key_exists('source_id', $row) && $row['source_id'] !== null) {
             $sourceTable = match ($row['source_type'] ?? null) {
                 'sales_order' => 'sales_orders',
@@ -1095,6 +1255,7 @@ class PortableBackupService
                 'inventory_count' => 'inventory_count_sessions',
                 'bin_transfer' => 'stock_movements',
                 'inventory_return' => 'inventory_returns',
+                'onboarding_opening' => 'onboarding_sessions',
                 default => null,
             };
             $oldSourceId = (string) $row['source_id'];
@@ -1320,7 +1481,7 @@ class PortableBackupService
             $keys = filled($values['idempotency_key'] ?? null) ? ['company_id', 'idempotency_key'] : [];
         } elseif ($table === 'purchase_order_payments') {
             $keys = filled($values['idempotency_key'] ?? null) ? ['company_id', 'idempotency_key'] : [];
-        } elseif ($table === 'supplier_payment_allocation_requests') {
+        } elseif (in_array($table, ['supplier_payment_allocation_requests', 'customer_allocation_requests'], true)) {
             $keys = filled($values['idempotency_key'] ?? null) ? ['company_id', 'idempotency_key'] : [];
         } elseif ($table === 'landed_costs') {
             $keys = filled($values['idempotency_key'] ?? null) ? ['company_id', 'idempotency_key'] : [];
@@ -1474,6 +1635,10 @@ class PortableBackupService
             }
         }
 
+        if (! empty($data['customer_settlement_allocations']) && DB::table('customer_settlement_allocations')->where('company_id', $companyId)->exists()) {
+            throw ValidationException::withMessages(['mode' => 'Customer allocation history requires a complete Replace restore when allocation history already exists.']);
+        }
+        if(!empty($data['bank_statement_matches'])&&DB::table('bank_statement_matches')->where('company_id',$companyId)->exists())throw ValidationException::withMessages(['mode'=>'Bank match history requires a complete Replace restore when match history already exists.']);
         $unsafeLedgers = [
             'stock_movements' => 'idempotency_key',
             'customer_debt_transactions' => 'idempotency_key',
@@ -1481,6 +1646,7 @@ class PortableBackupService
             'purchase_order_payments' => 'idempotency_key',
             'expense_payments' => 'idempotency_key',
             'supplier_payment_allocation_requests' => 'idempotency_key',
+            'customer_allocation_requests' => 'idempotency_key',
         ];
         foreach ($unsafeLedgers as $table => $key) {
             $containsUnkeyedRows = collect($data[$table] ?? [])->contains(fn (array $row) => ! filled($row[$key] ?? null));

@@ -14,6 +14,7 @@ class Expense extends Model
     use BelongsToCompany, SoftDeletes;
 
     protected $fillable = [
+        'tax_code_id', 'tax_snapshot', 'import_taxable_base', 'import_taxable_base_eur',
         'document_version_id', 'company_id', 'vendor_name', 'vendor_business_number', 'vendor_fiscal_number',
         'vendor_vat_number', 'vendor_key', 'document_type', 'document_number',
         'document_number_normalized', 'original_document_number', 'source_type',
@@ -22,7 +23,7 @@ class Expense extends Model
         'gross_amount', 'vat_treatment', 'input_vat_eligible', 'deductible_vat_amount',
         'non_deductible_vat_amount', 'net_amount_eur', 'vat_amount_eur', 'self_assessed_vat_amount_eur', 'gross_amount_eur',
         'deductible_vat_amount_eur', 'non_deductible_vat_amount_eur', 'tax_legal_reference',
-        'notes', 'status', 'vat_period', 'posted_at', 'posted_by', 'reversed_at',
+        'notes', 'status', 'vat_period', 'posted_at', 'posted_by', 'reversal_date', 'reversed_at',
         'reversed_by', 'reversal_reason', 'retention_until', 'proof_filename', 'proof_mime',
         'proof_size', 'proof_sha256', 'proof_data', 'created_by', 'updated_by',
         'supplier_id', 'purchase_order_id', 'original_expense_id', 'match_status', 'match_summary',
@@ -36,7 +37,8 @@ class Expense extends Model
     protected function casts(): array
     {
         return [
-            'company_id' => 'integer', 'input_vat_eligible' => 'boolean',
+            'import_taxable_base'=>'decimal:2','import_taxable_base_eur'=>'decimal:2',
+            'tax_snapshot' => 'array', 'tax_code_id' => 'integer',            'company_id' => 'integer', 'input_vat_eligible' => 'boolean',
             'exchange_rate' => 'decimal:6', 'net_amount' => 'decimal:2', 'vat_rate' => 'decimal:2',
             'vat_amount' => 'decimal:2', 'self_assessed_vat_amount' => 'decimal:2', 'gross_amount' => 'decimal:2',
             'deductible_vat_amount' => 'decimal:2', 'non_deductible_vat_amount' => 'decimal:2',
@@ -44,9 +46,18 @@ class Expense extends Model
             'gross_amount_eur' => 'decimal:2', 'deductible_vat_amount_eur' => 'decimal:2',
             'non_deductible_vat_amount_eur' => 'decimal:2', 'invoice_date' => 'date',
             'received_date' => 'date', 'supply_date' => 'date', 'due_date' => 'date', 'exchange_rate_date' => 'date', 'posted_at' => 'datetime',
-            'reversed_at' => 'datetime', 'retention_until' => 'date', 'proof_size' => 'integer',
+            'reversal_date' => 'date:Y-m-d', 'reversed_at' => 'datetime', 'retention_until' => 'date', 'proof_size' => 'integer',
             'match_summary' => 'array', 'approved_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::updating(function (self $expense) {
+            if ($expense->getOriginal('status') !== 'draft' && $expense->isDirty(['company_id','document_type','document_number','source_type','asset_treatment','original_expense_id','original_document_number','currency','exchange_rate','invoice_date','received_date','supply_date','import_taxable_base','import_taxable_base_eur','tax_code_id','tax_snapshot','net_amount','vat_rate','vat_amount','deductible_vat_amount','non_deductible_vat_amount','vat_treatment','vat_period','gross_amount','net_amount_eur','vat_amount_eur','gross_amount_eur','deductible_vat_amount_eur','non_deductible_vat_amount_eur','self_assessed_vat_amount','self_assessed_vat_amount_eur','input_vat_eligible','tax_legal_reference'])) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['tax'=>'Posted purchase tax evidence is immutable. Use a source-owned correction.']);
+            }
+        });
     }
 
     public function payments(): HasMany

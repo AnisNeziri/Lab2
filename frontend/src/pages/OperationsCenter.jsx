@@ -1,4 +1,6 @@
 import { useUiText } from '../hooks/useUiText'
+import {getExpenses} from '../api/finance'
+import WorkspaceModal from '../components/WorkspaceModal'
 import { collectPages } from '../lib/collectPages'
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import EntityDocuments from "../components/EntityDocuments";
@@ -10,11 +12,11 @@ import { getCustomerDebts } from "../api/customerDebts";
 import { getPurchaseOrder, getPurchaseOrders } from "../api/purchaseOrders";
 import { getGoodsReceipt, getGoodsReceipts, getWarehouseLocations, getWarehouses } from "../api/warehouseOperations";
 import {
-  allocateSupplierInvoicePayment, approveSupplierInvoice, cancelInventoryCount, createInventoryCount, createInventoryReturn, createLandedCost,
+  allocateSupplierInvoicePayment, approveSupplierInvoice, cancelInventoryCount, deleteInventoryCountDraft, createInventoryCount, createInventoryReturn, createLandedCost,
   createProductSupplier, createReplenishmentDrafts, createSupplierInvoice, getBinInventory,
   deactivateProductSupplier, deleteInventoryReturn, deleteLandedCost, getExpiringInventory, getFinancialAccounts,
   getInventoryCount, getInventoryCounts, getInventoryReturn, getInventoryReturns, getInventoryReturnSources,
-  getLandedCosts, getProductSupplierHistory, getProductSuppliers, getReplenishment, getSupplierInvoice, getSupplierInvoices,
+  getLandedCost, getLandedCosts, getProductSupplierHistory, getProductSuppliers, getReplenishment, getSupplierInvoice, getSupplierInvoices,
   getSupplierPerformance, moveBinStock, postLandedCost, recalculateSupplierInvoice, reverseLandedCost,
   recordInventoryCount, requestInventoryRecount, submitInventoryCount, approveInventoryCount,
   transitionInventoryReturn, updateInventoryReturn, updateProductSupplier, updateSupplierInvoice,
@@ -79,10 +81,10 @@ export default function OperationsCenter() {
     if (!loaders[tab] || !can(tabPermissions[tab])) return;
     const version = ++requestVersion.current;
     setBusy(true); setNotice("");
-    try { const result = await loaders[tab](); if (version === requestVersion.current) { setData(rows(result)); setFailed(false); } }
+    try { const result = await loaders[tab](); const loaded=rows(result); const costId=Number(pageParams.get('landed_cost')); if(tab==='landed'&&costId){const cost=loaded.find(item=>item.id===costId)||await getLandedCost(costId);if(!loaded.some(item=>item.id===cost.id))loaded.unshift(cost);if(version===requestVersion.current)setLandedReverseId(cost.status==='posted'?String(cost.id):'')} if (version === requestVersion.current) { setData(loaded); setFailed(false); } }
     catch (error) { if (version === requestVersion.current) { setNotice(err(error, t.error)); setFailed(true); } }
     finally { if (version === requestVersion.current) setBusy(false); }
-  }, [loaders, tab, t.error, can]);
+  }, [loaders, tab, t.error, can, pageParams]);
 
   useEffect(() => { loadMeta().catch((error) => { setNotice(err(error, t.error)); setFailed(true); }); }, [loadMeta, t.error]);
   useEffect(() => { setData([]); reload(); return () => { requestVersion.current += 1; }; }, [reload]);
@@ -143,12 +145,29 @@ function Locator({ data, meta, run, t, can }) {
 
 function Counts({ data, meta, run, t, can }) {
  const tx = useUiText()
+  const user=useAuthStore(s=>s.user),[deleting,setDeleting]=useState(false),[countNotice,setCountNotice]=useState(''),[deleteBusy,setDeleteBusy]=useState(false),deleteLock=useRef(false)
 
   const [form, setForm] = useState({ warehouse_id: "", location_id: "", product_ids: [], stock_states: ["available"], notes: "" });
   const [selected, setSelected] = useState(null);
   const [values, setValues] = useState({});
   const [recountItems, setRecountItems] = useState([]);
   const [reason, setReason] = useState("");
+  const deleteDraft = () => {
+    if (deleteLock.current) return;
+    deleteLock.current = true;
+    setDeleteBusy(true);
+    run(async () => {
+      try {
+        await deleteInventoryCountDraft(selected.id);
+        setSelected(null);
+        setDeleting(false);
+        setCountNotice(label(t, 'Stock-count draft deleted.', 'Drafti i numërimit u fshi.'));
+      } finally {
+        deleteLock.current = false;
+        setDeleteBusy(false);
+      }
+    });
+  };
   const open = async (id) => {
     const session = await getInventoryCount(id);
     setSelected(session);
@@ -176,6 +195,7 @@ function Counts({ data, meta, run, t, can }) {
     </aside>
     <div className="ops-panel">
       <h2>{selected?.count_number || t.counts}</h2>
+      {countNotice&&<p role="status">{countNotice}</p>}
       {selected ? <>
         <p className="ops-summary">{t.countSnapshot}: {selected.snapshot_at || selected.frozen_at ? new Date(selected.snapshot_at || selected.frozen_at).toLocaleString() : "—"} · {t.countScope}: {(selected.stock_states || []).join(", ")}</p>
         <p className="ops-summary"><small>{t.countSnapshotHint}</small></p>
@@ -192,9 +212,11 @@ function Counts({ data, meta, run, t, can }) {
           {active && <button className="secondary" onClick={() => refreshAfter(() => submitInventoryCount(selected.id))}>{tx("Submit")}</button>}
           {can("inventory.counts.manage") && recountItems.length > 0 && !["approved", "cancelled"].includes(selected.status) && <button className="secondary" disabled={reason.trim().length < 3} onClick={() => refreshAfter(() => requestInventoryRecount(selected.id, { item_ids: recountItems, reason }))}>{tx("Request recount")}</button>}
           {can("inventory.counts.approve") && selected.status === "submitted" && <button disabled={reason.trim().length < 3} onClick={() => refreshAfter(() => approveInventoryCount(selected.id, reason))}>{tx("Approve & adjust")}</button>}
-          {can("inventory.counts.approve") && !["approved", "cancelled"].includes(selected.status) && <button className="danger" disabled={reason.trim().length < 3} onClick={() => refreshAfter(() => cancelInventoryCount(selected.id, reason))}>{tx("Cancel")}</button>}
+          {(can("inventory.counts.approve")||selected.status==='in_progress'&&selected.created_by===user?.id&&!selected.submitted_at) && !["approved", "cancelled"].includes(selected.status) && <button className="danger" disabled={reason.trim().length < 3} onClick={() => refreshAfter(async() => {await cancelInventoryCount(selected.id, reason);setCountNotice(label(t,'Stock-count request cancelled.','Kërkesa e numërimit u anulua.'))})}>{label(t,'Cancel request','Anulo kërkesën')}</button>}
+          {selected.status==='in_progress'&&!selected.submitted_at&&(can('inventory.counts.approve')||selected.created_by===user?.id)&&!(selected.items||[]).some(i=>i.counted_quantity!==null||i.adjustment_movement_id||i.entries?.length)&&<button className="danger" onClick={()=>setDeleting(true)}>{label(t,'Delete Draft','Fshi draftin')}</button>}
         </div>
         <details className="ops-history"><summary>{label(t, "Count and recount history", "Historia e numërimit")}</summary>{(selected.items || []).flatMap((item) => (item.entries || []).map((entry) => <article key={entry.id}><strong>{item.product?.name} {tx("· round")} {entry.count_round} · {entry.entry_type}</strong><span>{entry.counted_quantity ?? "—"} · {entry.user?.name || "—"} · {entry.entered_at ? new Date(entry.entered_at).toLocaleString() : "—"}</span>{entry.notes && <p>{entry.notes}</p>}</article>))}</details>
+        {deleting&&<WorkspaceModal title={label(t,'Delete stock-count draft?','Të fshihet drafti i numërimit?')} onClose={()=>setDeleting(false)} busy={deleteBusy} closeOnBackdrop={false}><p>{label(t,'This unused draft has not produced any stock movement or approved count. This cannot be undone.','Ky draft i papërdorur nuk ka krijuar lëvizje stoku ose numërim të miratuar. Kjo nuk mund të zhbëhet.')}</p><div className="workspace-actions"><button disabled={deleteBusy} onClick={()=>setDeleting(false)}>{tx('Cancel')}</button><button className="danger" disabled={deleteBusy} onClick={deleteDraft}>{label(t,'Delete Draft','Fshi draftin')}</button></div></WorkspaceModal>}
       </> : <p>{t.empty}</p>}
     </div>
   </section>;
@@ -259,9 +281,12 @@ function CatalogueInsights({ performance, history, baseCurrency }) {
 }
 
 function LandedCosts({ data, meta, run, t, can, baseCurrency }) {
+  const [sourceParams]=useSearchParams();
  const tx = useUiText()
 
-  const [form, setForm] = useState({ goods_receipt_id: "", cost_type: "freight", amount: "", currency: baseCurrency, exchange_rate_to_base: 1, exchange_rate_date: new Date().toISOString().slice(0, 10), allocation_method: "value", reference_number: "", description: "" });
+  const [sourceBills,setSourceBills]=useState([]),[sourceBillError,setSourceBillError]=useState("");
+  useEffect(()=>{let alive=true;if(can('finance.view'))getExpenses({status:'posted',per_page:50}).then(d=>alive&&setSourceBills(d.data||[])).catch(e=>alive&&setSourceBillError(e.message));return()=>{alive=false}},[]);
+  const [form, setForm] = useState({ source_expense_id:"", goods_receipt_id: sourceParams.get('receipt')||"", cost_type: "freight", amount: "", currency: baseCurrency, exchange_rate_to_base: 1, exchange_rate_date: new Date().toISOString().slice(0, 10), allocation_method: "value", reference_number: "", description: "" });
   const [receipt, setReceipt] = useState(null);
   const [receiptBusy, setReceiptBusy] = useState(false);
   const [selectedItems, setSelectedItems] = useState([]);
@@ -286,13 +311,13 @@ function LandedCosts({ data, meta, run, t, can, baseCurrency }) {
   const manualComplete = selectedItems.length > 0 && selectedItems.every((id) => +manualAmounts[id] > 0) && Math.abs(manualTotal - (+form.amount || 0)) <= 0.005;
   const submit = (event) => {
     event.preventDefault();
-    const payload = { ...form, goods_receipt_id: +form.goods_receipt_id, amount: +form.amount, exchange_rate_to_base: form.currency === baseCurrency ? 1 : +form.exchange_rate_to_base, exchange_rate_date: form.currency === baseCurrency ? null : form.exchange_rate_date, idempotency_key: uuid() };
+    const payload = { ...form, source_expense_id:form.source_expense_id?Number(form.source_expense_id):null, goods_receipt_id: +form.goods_receipt_id, amount: +form.amount, exchange_rate_to_base: form.currency === baseCurrency ? 1 : +form.exchange_rate_to_base, exchange_rate_date: form.currency === baseCurrency ? null : form.exchange_rate_date, idempotency_key: uuid() };
     if (form.allocation_method === "manual") payload.allocations = selectedItems.map((id) => ({ goods_receipt_item_id: +id, amount: +manualAmounts[id] || 0 }));
     else payload.goods_receipt_item_ids = selectedItems.map(Number);
     run(() => createLandedCost(payload));
   };
 
-  return <section className="ops-layout"><aside className="ops-panel"><h2>{tx("Allocate import cost")}</h2><form onSubmit={submit}><Field label={tx("Goods receipt")}><select required value={form.goods_receipt_id} onChange={(e) => setForm({ ...form, goods_receipt_id: e.target.value })}><option value="">{meta.receipts.length ? tx("Select a goods receipt") : tx("No received purchase orders available")}</option>{meta.receipts.map((r) => <option key={r.id} value={r.id}>{r.receipt_number} · {r.purchase_order?.po_number || ""}</option>)}</select>{!meta.receipts.length && <small className="ops-field-hint">{tx("Receive products from a purchase order first, then allocate freight, customs or other import costs here.")}</small>}</Field><Field label={tx("Cost type")}><select value={form.cost_type} onChange={(e) => setForm({ ...form, cost_type: e.target.value })}>{["freight", "customs", "insurance", "port", "forwarding", "inland_transport", "handling", "other"].map((v) => <option key={v}>{v.replaceAll("_", " ")}</option>)}</select></Field><div className="ops-form-grid"><Field label={tx("Amount")}><input required type="number" min="0.01" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field><Field label={tx("Currency")}><select value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value, exchange_rate_to_base: e.target.value === baseCurrency ? 1 : form.exchange_rate_to_base })}>{[...new Set([baseCurrency, "EUR", "USD", "ALL", "GBP", "CHF", "CNY"])].map((currency) => <option key={currency}>{currency}</option>)}</select></Field>{form.currency !== baseCurrency && <><Field label={`Rate to ${baseCurrency}`}><input required type="number" min="0.00000001" step="0.00000001" value={form.exchange_rate_to_base} onChange={(e) => setForm({ ...form, exchange_rate_to_base: e.target.value })} /></Field><Field label={tx("Rate date")}><input required type="date" value={form.exchange_rate_date} onChange={(e) => setForm({ ...form, exchange_rate_date: e.target.value })} /></Field></>}<Field label={tx("Allocation")}><select value={form.allocation_method} onChange={(e) => setForm({ ...form, allocation_method: e.target.value })}>{["quantity", "value", "weight", "volume", "manual"].map((v) => <option key={v}>{v}</option>)}</select></Field></div>{receiptBusy && <small>{tx("Loading receipt lines…")}</small>}{receiptItems.length > 0 && <fieldset className="ops-allocation-lines"><legend>{label(t, "Receipt lines", "Rreshtat e pranimit")}</legend>{receiptItems.map((item) => { const quantity = +(item.accepted_base_quantity ?? item.accepted_quantity ?? 0) + +(item.damaged_base_quantity ?? item.damaged_quantity ?? 0); return <label key={item.id} className="ops-allocation-line"><input type="checkbox" checked={selectedItems.includes(item.id)} onChange={(e) => setSelectedItems(e.target.checked ? [...selectedItems, item.id] : selectedItems.filter((id) => id !== item.id))} /><span><strong>{item.product?.name || item.purchase_order_item?.description}</strong><small>{quantity} {item.product?.unit || item.purchase_order_item?.unit}</small></span>{form.allocation_method === "manual" && selectedItems.includes(item.id) && <input aria-label={`Amount for ${item.product?.name || item.id}`} required type="number" min="0.01" step="0.01" value={manualAmounts[item.id] || ""} onChange={(e) => setManualAmounts({ ...manualAmounts, [item.id]: e.target.value })} />}</label>; })}{form.allocation_method === "manual" && <p className={!manualComplete ? "ops-total is-invalid" : "ops-total"}>{tx("Allocated:")} {manualTotal.toFixed(2)} / {(+form.amount || 0).toFixed(2)} {form.currency}</p>}</fieldset>}<Field label={tx("Reference")}><input value={form.reference_number} onChange={(e) => setForm({ ...form, reference_number: e.target.value })} /></Field><Field label={tx("Description")}><textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field><button disabled={!selectedItems.length || (form.allocation_method === "manual" && !manualComplete)}>{t.create}</button></form></aside><div className="ops-panel"><h2>{t.landed}</h2><div className="ops-card-list">{data.map((item) => <article className="ops-card" key={item.id}><div><strong>{(item.cost_type || "other").replaceAll("_", " ")} · {item.base_currency_amount} {item.base_currency || baseCurrency}</strong><span>{item.goods_receipt?.receipt_number} · {item.amount} {item.currency} @ {item.exchange_rate_to_base} · {item.allocation_method} · {item.status}</span>{item.status === "posted" && <small>{tx("Inventory / Inventari:")} {Number(item.inventory_adjustment_total || 0).toFixed(2)} {item.base_currency || baseCurrency} {tx("· COGS:")} {Number(item.cogs_adjustment_total || 0).toFixed(2)} {item.base_currency || baseCurrency}</small>}</div>{can("landed_costs.manage") && item.status === "draft" && <div className="ops-actions"><button onClick={() => run(() => postLandedCost(item.id))}>{tx("Post allocation")}</button><button className="danger" onClick={() => { if (window.confirm("Delete this draft landed cost?")) run(() => deleteLandedCost(item.id)); }}>{tx("Delete draft")}</button></div>}</article>)}</div></div></section>;
+  return <section className="ops-layout"><aside className="ops-panel"><h2>{tx("Allocate import cost")}</h2>{sourceBillError&&<p role="alert">{sourceBillError}</p>}<form onSubmit={submit}><Field label={tx("Source posted bill (optional)")}><select value={form.source_expense_id} onChange={e=>{const bill=sourceBills.find(b=>String(b.id)===e.target.value);setForm({...form,source_expense_id:e.target.value,...(bill?{currency:bill.currency,exchange_rate_to_base:bill.exchange_rate,exchange_rate_date:String(bill.exchange_rate_date||'').slice(0,10)}:{})})}}><option value="">—</option>{sourceBills.filter(b=>b.document_type!=='credit_note').map(b=><option key={b.id} value={b.id}>{b.document_number} · {b.vendor_name} · {b.gross_amount_eur} EUR</option>)}</select><small>{tx("Recoverable VAT is excluded. Linked costs reclassify the bill cost and cannot exceed its remaining capitalizable amount.")}</small></Field><Field label={tx("Goods receipt")}><select required value={form.goods_receipt_id} onChange={(e) => setForm({ ...form, goods_receipt_id: e.target.value })}><option value="">{meta.receipts.length ? tx("Select a goods receipt") : tx("No received purchase orders available")}</option>{meta.receipts.map((r) => <option key={r.id} value={r.id}>{r.receipt_number} · {r.purchase_order?.po_number || ""}</option>)}</select>{!meta.receipts.length && <small className="ops-field-hint">{tx("Receive products from a purchase order first, then allocate freight, customs or other import costs here.")}</small>}</Field><Field label={tx("Cost type")}><select value={form.cost_type} onChange={(e) => setForm({ ...form, cost_type: e.target.value })}>{["freight", "customs", "insurance", "port", "forwarding", "inland_transport", "handling", "other"].map((v) => <option key={v}>{v.replaceAll("_", " ")}</option>)}</select></Field><div className="ops-form-grid"><Field label={tx("Amount")}><input required type="number" min="0.01" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field><Field label={tx("Currency")}><select value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value, exchange_rate_to_base: e.target.value === baseCurrency ? 1 : form.exchange_rate_to_base })}>{[...new Set([baseCurrency, "EUR", "USD", "ALL", "GBP", "CHF", "CNY"])].map((currency) => <option key={currency}>{currency}</option>)}</select></Field>{form.currency !== baseCurrency && <><Field label={`Rate to ${baseCurrency}`}><input required type="number" min="0.00000001" step="0.00000001" value={form.exchange_rate_to_base} onChange={(e) => setForm({ ...form, exchange_rate_to_base: e.target.value })} /></Field><Field label={tx("Rate date")}><input required type="date" value={form.exchange_rate_date} onChange={(e) => setForm({ ...form, exchange_rate_date: e.target.value })} /></Field></>}<Field label={tx("Allocation")}><select value={form.allocation_method} onChange={(e) => setForm({ ...form, allocation_method: e.target.value })}>{["quantity", "value", "weight", "volume", "manual"].map((v) => <option key={v}>{v}</option>)}</select></Field></div>{receiptBusy && <small>{tx("Loading receipt lines…")}</small>}{receiptItems.length > 0 && <fieldset className="ops-allocation-lines"><legend>{label(t, "Receipt lines", "Rreshtat e pranimit")}</legend>{receiptItems.map((item) => { const quantity = +(item.accepted_base_quantity ?? item.accepted_quantity ?? 0) + +(item.damaged_base_quantity ?? item.damaged_quantity ?? 0); return <label key={item.id} className="ops-allocation-line"><input type="checkbox" checked={selectedItems.includes(item.id)} onChange={(e) => setSelectedItems(e.target.checked ? [...selectedItems, item.id] : selectedItems.filter((id) => id !== item.id))} /><span><strong>{item.product?.name || item.purchase_order_item?.description}</strong><small>{quantity} {item.product?.unit || item.purchase_order_item?.unit}</small></span>{form.allocation_method === "manual" && selectedItems.includes(item.id) && <input aria-label={`Amount for ${item.product?.name || item.id}`} required type="number" min="0.01" step="0.01" value={manualAmounts[item.id] || ""} onChange={(e) => setManualAmounts({ ...manualAmounts, [item.id]: e.target.value })} />}</label>; })}{form.allocation_method === "manual" && <p className={!manualComplete ? "ops-total is-invalid" : "ops-total"}>{tx("Allocated:")} {manualTotal.toFixed(2)} / {(+form.amount || 0).toFixed(2)} {form.currency}</p>}</fieldset>}<Field label={tx("Reference")}><input value={form.reference_number} onChange={(e) => setForm({ ...form, reference_number: e.target.value })} /></Field><Field label={tx("Description")}><textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field><button disabled={!selectedItems.length || (form.allocation_method === "manual" && !manualComplete)}>{t.create}</button></form></aside><div className="ops-panel"><h2>{t.landed}</h2><div className="ops-card-list">{data.map((item) => <article className="ops-card" key={item.id}><div><strong>{(item.cost_type || "other").replaceAll("_", " ")} · {item.base_currency_amount} {item.base_currency || baseCurrency}</strong><span>{item.goods_receipt?.receipt_number} · {item.amount} {item.currency} @ {item.exchange_rate_to_base} · {item.allocation_method} · {item.status}</span>{item.status === "posted" && <small>{tx("Inventory / Inventari:")} {Number(item.inventory_adjustment_total || 0).toFixed(2)} {item.base_currency || baseCurrency} {tx("· COGS:")} {Number(item.cogs_adjustment_total || 0).toFixed(2)} {item.base_currency || baseCurrency}</small>}</div>{can("landed_costs.manage") && item.status === "draft" && <div className="ops-actions"><button onClick={() => run(() => postLandedCost(item.id))}>{tx("Post allocation")}</button><button className="danger" onClick={() => { if (window.confirm("Delete this draft landed cost?")) run(() => deleteLandedCost(item.id)); }}>{tx("Delete draft")}</button></div>}</article>)}</div></div></section>;
 }
 
 function Returns({ data, meta, run, t, can, baseCurrency }) {
@@ -305,7 +330,7 @@ function Returns({ data, meta, run, t, can, baseCurrency }) {
   }, [documentParams]);
   const idempotencyKeyRef = useRef(uuid());
   const blankItem = () => ({ product_id: "", source_item_id: "", warehouse_id: "", location_id: "", quantity: "", condition: "sellable", notes: "", lot_number: "", serial_numbers: "", supplier_batch: "", manufactured_at: "", expiry_at: "" });
-  const blankForm = () => ({ type: "customer", customer_id: "", supplier_id: "", source_id: "", financial_resolution: "none", financial_amount: "", financial_account_id: "", payment_method: "cash", reference_number: "", reason: "", notes: "", items: [blankItem()] });
+  const blankForm = () => ({ type: documentParams.has('receipt')?"supplier":"customer", customer_id: "", supplier_id: "", source_id: documentParams.get('receipt')||"", financial_resolution: "none", financial_amount: "", financial_account_id: "", payment_method: "cash", reference_number: "", reason: "", notes: "", items: [blankItem()] });
   const [form, setForm] = useState(blankForm);
   const [sources, setSources] = useState({ sales: [], receipts: [] });
   const [selected, setSelected] = useState(null);
@@ -322,6 +347,7 @@ function Returns({ data, meta, run, t, can, baseCurrency }) {
 
   const sourceRecords = form.type === "customer" ? sources.sales : sources.receipts;
   const source = sourceRecords.find((record) => String(record.id) === String(form.source_id));
+  useEffect(()=>{if(documentParams.has('receipt')&&source&&!form.supplier_id&&form.type==='supplier')setForm(current=>({...current,supplier_id:String(source.purchase_order?.supplier_id||source.supplier_id||'')}))},[source,form.supplier_id,form.type,documentParams]);
   const updateLine = (index, values) => setForm((current) => ({ ...current, items: current.items.map((line, lineIndex) => lineIndex === index ? { ...line, ...values } : line) }));
   const serials = (line) => [...new Set(String(line.serial_numbers || "").split(/[\n,;]+/).map((value) => value.trim()).filter(Boolean))];
   const sourceItems = source?.items || [];

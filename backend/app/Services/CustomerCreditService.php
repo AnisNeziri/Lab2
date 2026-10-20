@@ -3,85 +3,52 @@
 namespace App\Services;
 
 use App\Models\Customer;
+use App\Models\SalesOrder;
+use App\Support\CompanyClock;
 use App\Support\Money;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 
 class CustomerCreditService
 {
     /** Shared oldest-due-first allocation used by exposure and order payment state. */
-    public function obligations(Customer $customer): \Illuminate\Support\Collection
+    public function obligations(Customer $customer): Collection
     {
-        $debts = $customer->debtTransactions()
-            ->whereIn('type', ['debt_added', 'opening_balance', 'positive_adjustment'])
-            ->whereNull('reversed_transaction_id')
-            ->whereDoesntHave('reversals')
-            // Obligations with a real due date are allocated first. Null due
-            // dates must not consume payments ahead of an overdue obligation.
-            ->orderByRaw('CASE WHEN due_date IS NULL THEN 1 ELSE 0 END')
-            ->orderBy('due_date')
-            ->orderBy('transaction_date')
-            ->orderBy('id')
-            ->get();
+        return app(ReceivablePositionQueries::class)->obligations($customer);
+    }
 
-        $payments = $customer->debtTransactions()
-            ->whereIn('type', ['payment', 'negative_adjustment', 'return', 'cancellation'])
-            ->whereNull('reversed_transaction_id')
-            ->whereDoesntHave('reversals')
-            ->sum('amount');
+    /** Read-only Action Center projection; same oldest-due-first allocation as obligations(). */
+    public function overdueForCustomers(Collection $customers): array
+    {
+        if ($customers->isEmpty()) {
+            return [];
+        }
+        $ids = $customers->filter(fn ($c) => (int) $c->company_id === (int) auth()->user()->company_id)->pluck('id')->all();
+        if (! $ids) {
+            return [];
+        }
+        $groups = app(ReceivablePositionQueries::class)->agingForCustomers($ids);
+        $out = [];
+        foreach ($ids as $id) {
+            $r = $groups->get($id);
+            $amount = Money::add($r?->days_1_30 ?? 0, $r?->days_31_60 ?? 0, $r?->days_61_90 ?? 0, $r?->days_90_plus ?? 0);
+            $out[$id] = ['overdue' => $amount, 'oldest_overdue_date' => Money::compare($amount, 0) > 0 ? substr((string) $r->oldest_due, 0, 10) : null];
+        }
 
-        $unallocatedPayments = Money::normalize($payments);
-        return $debts->map(function($debt)use(&$unallocatedPayments){
-            $allocated=Money::minimum($debt->amount,$unallocatedPayments);
-            $debt->setAttribute('outstanding_amount',Money::subtract($debt->amount,$allocated));
-            $unallocatedPayments=Money::subtract($unallocatedPayments,$allocated);
-            return $debt;
-        });
+        return $out;
     }
 
     public function exposure(Customer $customer): array
     {
-        $today = now('Europe/Tirane')->startOfDay();
-        $debts=$this->obligations($customer);
-        $buckets = [
-            'current' => '0.00',
-            '1_30' => '0.00',
-            '31_60' => '0.00',
-            '61_90' => '0.00',
-            '90_plus' => '0.00',
-        ];
-        $oldestOverdue = null;
-
-        foreach ($debts as $debt) {
-            $openAmount = $debt->outstanding_amount;
-
-            if (Money::compare($openAmount, '0.00') <= 0) {
-                continue;
-            }
-
-            $daysOverdue = $debt->due_date
-                ? $debt->due_date->diffInDays($today, false)
-                : 0;
-            $bucket = match (true) {
-                $daysOverdue <= 0 => 'current',
-                $daysOverdue <= 30 => '1_30',
-                $daysOverdue <= 60 => '31_60',
-                $daysOverdue <= 90 => '61_90',
-                default => '90_plus',
-            };
-            $buckets[$bucket] = Money::add($buckets[$bucket], $openAmount);
-
-            if ($daysOverdue > 0 && (! $oldestOverdue || $debt->due_date->lt($oldestOverdue))) {
-                $oldestOverdue = $debt->due_date;
-            }
-        }
-
-        $overdue = Money::add(
-            $buckets['1_30'],
-            $buckets['31_60'],
-            $buckets['61_90'],
-            $buckets['90_plus'],
-        );
-        $committed = \App\Models\SalesOrder::query()->where('customer_id',$customer->id)->sum('committed_amount');
-        $exposure = Money::add(Money::subtract($customer->current_debt, $customer->current_credit),$committed);
+        $today = CompanyClock::now()->startOfDay();
+        $r = app(ReceivablePositionQueries::class)->agingForCustomers([$customer->id])->get($customer->id);
+        $buckets = ['current' => Money::normalize($r?->current ?? 0), '1_30' => Money::normalize($r?->days_1_30 ?? 0),
+            '31_60' => Money::normalize($r?->days_31_60 ?? 0), '61_90' => Money::normalize($r?->days_61_90 ?? 0),
+            '90_plus' => Money::normalize($r?->days_90_plus ?? 0), 'unknown_due' => Money::normalize($r?->unknown_due ?? 0)];
+        $overdue = Money::add($buckets['1_30'], $buckets['31_60'], $buckets['61_90'], $buckets['90_plus']);
+        $oldestOverdue = Money::compare($overdue, 0) > 0 && $r?->oldest_due ? CarbonImmutable::parse($r->oldest_due) : null;
+        $committed = SalesOrder::query()->where('customer_id', $customer->id)->sum('committed_amount');
+        $exposure = Money::add(Money::subtract($customer->current_debt, $customer->current_credit), $committed);
         $limit = $customer->credit_limit === null
             ? null
             : Money::normalize($customer->credit_limit);

@@ -8,6 +8,19 @@ use Illuminate\Support\Facades\Schema;
 class DocumentEntityRegistry
 {
     public const TYPES = [
+        'employee'=>['Employee','employees','employees.documents','employee_number','/workforce?employee='],
+        'employment-term'=>['EmploymentTerm','employment_terms','employees.compensation','id','/workforce?term='],
+        'payroll-run'=>['PayrollRun','payroll_runs','payroll.view','id','/payroll?run='],
+        'daily-sale' => ['DailySale','daily_sales','daily_sales.manage','sale_number','/daily-sales?sale='],
+        'customer-transaction' => ['CustomerDebtTransaction','customer_debt_transactions','debts.view','reference_number','/customer-debts?transaction='],
+        'supplier-payment' => ['PurchaseOrderPayment','purchase_order_payments','purchase_orders.view','reference_number','/purchase-orders?payment='],
+        'supplier-allocation' => ['SupplierInvoicePaymentAllocation','supplier_invoice_payment_allocations','supplier_invoices.view','id','/accounting?tab=ap&allocation='],
+        'landed-cost' => ['LandedCost','landed_costs','landed_costs.manage','reference_number','/operations-center?tab=landed&landed_cost='],
+        'stock-movement' => ['StockMovement','stock_movements','inventory.view','reason','/stock?movement='],
+        'financial-transfer' => ['FinancialAccountTransfer','financial_account_transfers','financial_accounts.view','reference_number','/accounting?tab=bank&transfer='],
+        'bank-statement' => ['BankStatement','bank_statements','bank_reconciliation.view','file_name','/accounting?tab=bank&statement='],
+        'financial-account' => ['FinancialAccount','financial_accounts','financial_accounts.view','name','/accounting?tab=bank&account='],
+        'financial-transaction' => ['FinancialAccountTransaction','financial_account_transactions','financial_accounts.view','reference_number','/accounting?tab=bank&transaction='],
         'product' => ['Product', 'products', 'products.manage', 'name', '/products?product='],
         'customer' => ['Customer', 'customers', 'customers.manage', 'name', '/customer-debts?customer='],
         'supplier' => ['Supplier', 'suppliers', 'suppliers.manage', 'name', '/suppliers?supplier='],
@@ -38,7 +51,9 @@ class DocumentEntityRegistry
         }
         $class = 'App\\Models\\'.$model;
 
-        return $class::withoutGlobalScopes()->where('company_id', Auth::user()->company_id)->findOrFail($id);
+        $record=$class::withoutGlobalScopes()->where('company_id', Auth::user()->company_id)->findOrFail($id);
+        if($authorize && $type==='journal' && ($record->source_module==='payroll' || $record->reversalOf?->source_module==='payroll')) abort_unless(app(PermissionService::class)->roleHasPermission(Auth::user()->role,'payroll.view'),403);
+        return $record;
     }
 
     public function describe(string $type, int $id): array
@@ -46,7 +61,9 @@ class DocumentEntityRegistry
         $entity = $this->resolve($type, $id);
         $config = self::TYPES[$type];
         $url = $config[4].$id;
-        if (in_array($type, ['delivery', 'outbound-return'])) {
+        if ($type==='employment-term') {
+            $url='/workforce?employee='.$entity->employee_id;
+        } elseif (in_array($type, ['delivery', 'outbound-return'])) {
             $url = '/fulfillment?order='.$entity->sales_order_id;
         } elseif ($type === 'container') {
             $url = '/control-tower/'.$entity->shipment_id;

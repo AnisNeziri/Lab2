@@ -8,6 +8,14 @@ use App\Services\{FinancialIntelligenceService,FinancialIntelligenceScenario,Fin
 
 class FinancialIntelligenceTest extends TestCase {
  use RefreshDatabase;
+ public function test_dashboard_summary_preserves_authoritative_cash_and_default_response():void {
+  $this->setupCompany();$this->cash('100.10');$this->refresh();
+  $full=$this->getJson('/api/financial-intelligence?horizon=30')->assertOk()->json();
+  $summary=$this->getJson('/api/financial-intelligence?horizon=30&summary_only=1')->assertOk()->json();
+  $this->assertSame($full['id'],$summary['id']);$this->assertSame($full['forecast']['currencies']['EUR']['expected_closing_cash'],$summary['forecast']['currencies']['EUR']['expected_closing_cash']);
+  $this->assertArrayHasKey('evidence',$full);$this->assertArrayNotHasKey('evidence',$summary);$this->assertArrayNotHasKey('timeline',$summary['forecast']['currencies']['EUR']);
+  $this->getJson('/api/financial-intelligence?summary_only=bad')->assertStatus(422);
+ }
  private function setupCompany():void {
   $this->actingAsApiUser();$this->getJson('/api/me')->assertOk();AnalyticsPermissions::install();$this->travelTo(now()->setDate(2026,10,4)->setTime(12,0));
   app()->instance(LocalFinancialTimingProvider::class,new class {public function analyze(array $c):array{return ['state'=>'test_local_adapter','customers'=>[]];}});

@@ -12,7 +12,7 @@ class LandedCost extends Model
     use BelongsToCompany;
 
     protected $fillable = [
-        'company_id', 'goods_receipt_id', 'purchase_order_id', 'shipment_id',
+        'source_expense_id','tax_basis_snapshot','company_id', 'goods_receipt_id', 'purchase_order_id', 'shipment_id',
         'reference_number', 'cost_type', 'description', 'amount', 'currency',
         'base_currency', 'exchange_rate_to_base', 'exchange_rate_date', 'base_currency_amount', 'allocation_method',
         'status', 'idempotency_key', 'notes', 'created_by', 'posted_by', 'posted_at',
@@ -22,7 +22,7 @@ class LandedCost extends Model
     protected function casts(): array
     {
         return [
-            'amount' => 'decimal:6',
+            'tax_basis_snapshot'=>'array','amount' => 'decimal:6',
             'exchange_rate_to_base' => 'decimal:8',
             'exchange_rate_date' => 'date:Y-m-d',
             'base_currency_amount' => 'decimal:6',

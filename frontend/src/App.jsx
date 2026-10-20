@@ -14,7 +14,7 @@ import VerifyEmail from "./pages/VerifyEmail";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import ChangePassword from "./pages/ChangePassword";
-import AppLayout from "./components/AppLayout";
+const AppLayout = lazy(() => import("./components/AppLayout"));
 import { useAuthStore } from "./store/authStore";
 import { useSettingsStore } from "./store/settingsStore";
 import { logout } from "./api/login";
@@ -27,6 +27,10 @@ import { useTranslation } from "./hooks/useTranslation";
 import "./App.css";
 import './styles/EnterpriseUI.css';
 import './styles/ProductMaturity.css';
+import './styles/ProductMaturityExtra.css';
+import { useLightweightMenus } from './hooks/useLightweightMenus';
+import { refreshHealth } from './lib/refreshHealth';
+import './hooks/useUnsavedNavigation';
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Products = lazy(() => import("./pages/Products"));
@@ -55,8 +59,15 @@ const FinanceCenter = lazy(() => import("./pages/FinanceCenter"));
 const MobileWarehouse = lazy(() => import("./pages/MobileWarehouse"));
 const OperationsCenter = lazy(() => import("./pages/OperationsCenter"));
 const MoneyAccounts = lazy(() => import("./pages/MoneyAccounts"));
+const TaxWorkspace = lazy(() => import("./pages/TaxWorkspace"));
+const WorkforceCenter = lazy(() => import("./pages/WorkforceCenter"));
+const PayrollCenter = lazy(() => import("./pages/PayrollCenter"));
+const FiscalizationCenter = lazy(() => import("./pages/FiscalizationCenter"));
 const AccountingCore = lazy(() => import("./pages/AccountingCore"));
 const SystemIntegrity = lazy(() => import("./pages/SystemIntegrity"));
+const CompanyPilot = lazy(() => import("./pages/CompanyPilot"));
+const CompanyOnboarding = lazy(() => import("./pages/CompanyOnboarding"));
+const PilotEvidence = lazy(() => import("./pages/PilotEvidence"));
 const AutomationStudio = lazy(() => import("./pages/AutomationStudio"));
 const Analytics = lazy(() => import("./pages/Analytics"));
 const InventoryIntelligence = lazy(() => import("./pages/InventoryIntelligence"));
@@ -126,6 +137,7 @@ function ProtectedRoute({ children, adminOnly = false, allowedRoles = null }) {
 }
 
 function RoleAppGate({ children }) {
+  useLightweightMenus();
   const role = useAuthStore((state) => state.role);
   const location = useLocation();
 
@@ -147,13 +159,15 @@ function RealtimeProvider({ children }) {
 
   useEffect(() => {
     if (!isAuthenticated || mustChangePassword || !token || !user?.company_id) {
+      refreshHealth.stop();
       disconnectEcho();
       return undefined;
     }
 
+    let alive = true;
     getNotifications()
-      .then((data) => setNotifications(data.notifications || []))
-      .catch(() => setNotifications([]));
+      .then((data) => {if(alive){setNotifications(data.notifications || []);refreshHealth.report(true)}})
+      .catch(() => {if(alive)refreshHealth.report(false)});
 
     // Electron already owns the local backend and intentionally uses file
     // cache + database polling. Do not create a Reverb socket that cannot
@@ -168,13 +182,17 @@ function RealtimeProvider({ children }) {
       refreshInFlight = true;
       try {
         const data = await getNotifications();
+        if (!alive) return;
         setNotifications(data.notifications || []);
+        refreshHealth.report(true);
       } catch {
+        if (alive) refreshHealth.report(false);
         // A temporary network/database failure must not clear the current UI.
       } finally {
         refreshInFlight = false;
       }
 
+      if (!alive) return;
       window.dispatchEvent(
         new CustomEvent("database-refresh", {
           detail: { source: "background-poll", silent: true },
@@ -188,6 +206,8 @@ function RealtimeProvider({ children }) {
     document.addEventListener("visibilitychange", handleVisibilityChange);
     if (!echo) {
       return () => {
+        alive = false;
+        refreshHealth.stop();
         document.removeEventListener("visibilitychange", handleVisibilityChange);
         window.clearInterval(poll);
       };
@@ -214,6 +234,8 @@ function RealtimeProvider({ children }) {
     });
 
     return () => {
+      alive = false;
+      refreshHealth.stop();
       channel.stopListening(".notification.created");
       channel.stopListening(".dashboard.updated");
       channel.stopListening(".stock.updated");
@@ -424,7 +446,9 @@ function AppRoutes() {
         <Route
           path="/change-password"
           element={
-            !isAuthenticated ? (
+            !authReady ? (
+              <PageLoader />
+            ) : !isAuthenticated ? (
               <Navigate to="/login" replace />
             ) : (
               <ChangePassword
@@ -441,7 +465,7 @@ function AppRoutes() {
               <RoleAppGate>
                 <PreferencesProvider>
                   <RealtimeProvider>
-                    <AppLayout />
+                    <Suspense fallback={<PageLoader />}><AppLayout /></Suspense>
                   </RealtimeProvider>
                 </PreferencesProvider>
               </RoleAppGate>
@@ -517,8 +541,16 @@ function AppRoutes() {
               </PermissionRoute>
             }
           />
+          <Route path="/tax" element={<PermissionRoute permission="tax.view"><Suspense fallback={<PageLoader />}><TaxWorkspace /></Suspense></PermissionRoute>} />
+          <Route path="/workforce" element={<PermissionRoute permission="employees.view"><Suspense fallback={<PageLoader />}><WorkforceCenter /></Suspense></PermissionRoute>} />
+          <Route path="/my-workforce" element={<PermissionRoute permission="workforce.self"><Suspense fallback={<PageLoader />}><WorkforceCenter self /></Suspense></PermissionRoute>} />
+          <Route path="/payroll" element={<PermissionRoute permission="payroll.view"><Suspense fallback={<PageLoader />}><PayrollCenter /></Suspense></PermissionRoute>} />
+          <Route path="/fiscalization" element={<PermissionRoute permission="fiscalization.view"><Suspense fallback={<PageLoader />}><FiscalizationCenter /></Suspense></PermissionRoute>} />
           <Route path="/accounting" element={<PermissionRoute permission="accounting.reports.view"><Suspense fallback={<PageLoader />}><AccountingCore /></Suspense></PermissionRoute>} />
           <Route path="/system-integrity" element={<PermissionRoute permission="system_integrity.view"><Suspense fallback={<PageLoader />}><SystemIntegrity /></Suspense></PermissionRoute>} />
+          <Route path="/pilot" element={<ProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoader />}><CompanyPilot /></Suspense></ProtectedRoute>} />
+          <Route path="/onboarding" element={<ProtectedRoute><Suspense fallback={<PageLoader />}><CompanyOnboarding /></Suspense></ProtectedRoute>} />
+          <Route path="/pilot-evidence" element={<Suspense fallback={<PageLoader />}><PilotEvidence /></Suspense>} />
           <Route path="/automation-studio" element={<PermissionRoute permission="automations.view"><Suspense fallback={<PageLoader />}><AutomationStudio /></Suspense></PermissionRoute>} />
           <Route path="/analytics" element={<PermissionRoute permission="analytics.view"><Suspense fallback={<PageLoader />}><Analytics /></Suspense></PermissionRoute>} />
           <Route path="/inventory-intelligence" element={<PermissionRoute permission="analytics.view"><Suspense fallback={<PageLoader />}><InventoryIntelligence /></Suspense></PermissionRoute>} />

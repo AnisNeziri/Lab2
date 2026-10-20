@@ -43,26 +43,39 @@ class LandedCostService
 
     public function find(LandedCost $landedCost): LandedCost
     {
-        return $landedCost->load([
+        $landedCost->load([
             'goodsReceipt:id,receipt_number,purchase_order_id', 'purchaseOrder:id,po_number,supplier_id,total_amount,total_paid,due_at,status',
             'shipment:id,tracking_number', 'creator:id,name', 'poster:id,name',
             'allocations.goodsReceiptItem:id,goods_receipt_id,product_id,accepted_base_quantity,damaged_base_quantity,base_purchase_unit_cost,landed_cost_allocated,final_inventory_unit_cost',
             'allocations.product:id,name,sku,unit',
             'allocations.accountingEntry.poster:id,name',
         ]);
+        $goods = GoodsReceiptItem::query()->where('goods_receipt_id', $landedCost->goods_receipt_id)
+            ->selectRaw('COALESCE(SUM((accepted_base_quantity+damaged_base_quantity)*base_purchase_unit_cost),0) goods_value')->value('goods_value');
+        $costs = LandedCost::query()->where('goods_receipt_id', $landedCost->goods_receipt_id)->where('status', 'posted')
+            ->selectRaw('cost_type,COALESCE(SUM(base_currency_amount),0) amount')->groupBy('cost_type')->get();
+        $landed = round((float) $costs->sum('amount'), 2);
+        $landedCost->setAttribute('accounting_presentation', [
+            'base_currency' => $landedCost->base_currency, 'goods_value' => \App\Support\Money::normalize($goods),
+            'posted_costs' => $costs, 'posted_landed_cost_total' => \App\Support\Money::normalize($landed),
+            'total_receipt_basis' => \App\Support\Money::normalize((float) $goods + $landed),
+            'qualification' => 'Receipt goods at original purchase-cost basis plus currently posted landed costs. This is receipt cost evidence; remaining inventory and consumed COGS are shown separately in the allocation posting.',
+        ]);
+        return $landedCost;
     }
 
     public function createDraft(array $data): LandedCost
     {
         return DB::transaction(function () use ($data) {
             $companyId = (int) Auth::user()->company_id;
+            DB::table('companies')->where('id',$companyId)->lockForUpdate()->first();
             $baseCurrency = CompanyCurrency::forCompanyId($companyId);
             $existing = LandedCost::withoutGlobalScopes()
                 ->where('company_id', $companyId)
                 ->where('idempotency_key', $data['idempotency_key'])
                 ->first();
             if ($existing) {
-                $sameRequest = (int) $existing->goods_receipt_id === (int) $data['goods_receipt_id']
+                $sameRequest = (int)$existing->source_expense_id === (int)($data['source_expense_id']??0) && (int) $existing->goods_receipt_id === (int) $data['goods_receipt_id']
                     && $existing->cost_type === $data['cost_type']
                     && $existing->allocation_method === $data['allocation_method']
                     && strtoupper((string) $existing->currency) === strtoupper((string) $data['currency'])
@@ -89,11 +102,27 @@ class LandedCostService
                 throw ValidationException::withMessages(['amount' => ['The converted landed cost must be greater than zero.']]);
             }
 
+            $taxBasis = null;
+            if (!empty($data['source_expense_id'])) {
+                $source=\App\Models\Expense::query()->lockForUpdate()->findOrFail($data['source_expense_id']);
+                if ($source->status!=='posted' || $source->document_type==='credit_note' || $source->supplierCredits()->exists())
+                    throw ValidationException::withMessages(['source_expense_id'=>'Use a posted bill without active supplier credit notes.']);
+                if (strtoupper($source->currency)!==strtoupper($data['currency']) || abs((float)$source->exchange_rate-$rate)>0.00000001)
+                    throw ValidationException::withMessages(['source_expense_id'=>'Use the source bill currency and historical exchange rate.']);
+                $cost=\App\Support\Money::subtract(\App\Support\Money::add($source->gross_amount_eur,$source->self_assessed_vat_amount_eur),$source->deductible_vat_amount_eur);
+                $reserved=LandedCost::query()->where('source_expense_id',$source->id)->whereIn('status',['draft','posted'])->sum('base_currency_amount');
+                if (\App\Support\Money::compare(\App\Support\Money::add($reserved,$baseAmount),$cost)>0)
+                    throw ValidationException::withMessages(['amount'=>'Landed cost exceeds the source cost after excluding recoverable VAT and existing allocations.']);
+                $mapping=$source->category==='inventory'&&$source->purchase_order_id?'goods_receipt_clearing':'operating_expense';
+                $account=\App\Models\AccountingPostingMapping::query()->where('mapping_key',$mapping)->value('accounting_account_id');
+                $taxBasis=['source_expense_id'=>$source->id,'gross_eur'=>$source->gross_amount_eur,'self_assessed_vat_eur'=>$source->self_assessed_vat_amount_eur,'deductible_vat_eur'=>$source->deductible_vat_amount_eur,'capitalizable_eur'=>$cost,'credit_account_id'=>$account];
+            }
             $items = $this->targetItems($receipt, $data, $method);
             $weights = $this->allocationWeights($items, $method, $data, $amount);
             $amounts = $this->allocateRounded($baseAmount, $weights);
 
             $landedCost = LandedCost::create([
+                'source_expense_id'=>$data['source_expense_id']??null,'tax_basis_snapshot'=>$taxBasis,
                 'company_id' => $companyId,
                 'goods_receipt_id' => $receipt->id,
                 'purchase_order_id' => $receipt->purchase_order_id,
@@ -105,7 +134,7 @@ class LandedCostService
                 'currency' => strtoupper($data['currency']),
                 'base_currency' => $baseCurrency,
                 'exchange_rate_to_base' => $rate,
-                'exchange_rate_date' => $data['exchange_rate_date'] ?? (strtoupper($data['currency']) === $baseCurrency ? now()->toDateString() : null),
+                'exchange_rate_date' => $data['exchange_rate_date'] ?? (strtoupper($data['currency']) === $baseCurrency ? \App\Support\CompanyClock::today()->toDateString() : null),
                 'base_currency_amount' => $baseAmount,
                 'allocation_method' => $method,
                 'status' => 'draft',
@@ -142,6 +171,7 @@ class LandedCostService
     public function post(LandedCost $landedCost): LandedCost
     {
         return DB::transaction(function () use ($landedCost) {
+            DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
             $landedCost = LandedCost::query()->lockForUpdate()->findOrFail($landedCost->id);
             if ($landedCost->status === 'posted') {
                 return $this->find($landedCost);
@@ -150,6 +180,10 @@ class LandedCostService
                 throw ValidationException::withMessages(['status' => ['Only a draft landed cost can be posted.']]);
             }
 
+            if ($landedCost->source_expense_id) {
+                $source=\App\Models\Expense::query()->lockForUpdate()->findOrFail($landedCost->source_expense_id);
+                if($source->status!=='posted' || $source->supplierCredits()->exists())throw ValidationException::withMessages(['source_expense_id'=>'The linked bill is no longer eligible for capitalization. Review its corrections.']);
+            }
             $allocations = $landedCost->allocations()->orderBy('id')->lockForUpdate()->get();
             $allocatedTotal = round((float) $allocations->sum(fn ($allocation) => (float) $allocation->allocated_amount), 2);
             if (abs($allocatedTotal - round((float) $landedCost->base_currency_amount, 2)) > 0.000001) {
@@ -242,6 +276,7 @@ class LandedCostService
     public function reverse(LandedCost $landedCost, string $reason): LandedCost
     {
         return DB::transaction(function () use ($landedCost, $reason) {
+            DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
             $locked = LandedCost::query()->lockForUpdate()->findOrFail($landedCost->id);
             if ($locked->status === 'reversed') {
                 return $this->find($locked);
@@ -261,7 +296,8 @@ class LandedCostService
                 $product = Product::query()->lockForUpdate()->findOrFail($allocation->product_id);
                 $split = $this->recognitionSplit($receiptItem, $product, (float) $allocation->allocated_amount);
                 $inventoryAmount = (float) $split['inventory_adjustment_amount'];
-                $this->costing->applyLandedCostAdjustment($product, -$inventoryAmount);
+                $valuation=$this->costing->applyLandedCostAdjustment($product, -$inventoryAmount);
+                $entry->update(['reversal_date'=>\App\Support\CompanyClock::today()->toDateString(),'reversal_inventory_value_before'=>$valuation['inventory_value_before'],'reversal_inventory_value_after'=>$valuation['inventory_value_after']]);
 
                 $remainingLanded = round(max(0, (float) $receiptItem->landed_cost_allocated - (float) $allocation->allocated_amount), 6);
                 $quantity = $this->inventoryQuantity($receiptItem);
@@ -276,7 +312,7 @@ class LandedCostService
                 $currentInventory += $inventoryAmount;
             }
 
-            $date = now()->toDateString();
+            $date = \App\Support\CompanyClock::today()->toDateString();
             $this->operationalAccounting->reverseLandedCost(
                 $locked, $reason, $date, (string) round($currentInventory - $originalInventory, 6),
             );

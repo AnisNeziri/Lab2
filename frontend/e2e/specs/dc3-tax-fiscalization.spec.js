@@ -1,0 +1,35 @@
+import {test,expect} from '@playwright/test'
+import path from 'node:path'
+async function request(page,route,body,method='POST'){
+ const r=await page.evaluate(async({route,body,method})=>{const r=await fetch('/api'+route,{method,headers:{Authorization:'Bearer '+localStorage.getItem('api_token'),Accept:'application/json','Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});return {status:r.status,data:await r.json()}},{route,body,method})
+ expect(r.status,JSON.stringify(r.data)).toBeLessThan(300);return r.data
+}
+test('DC3 VAT source → posted GL → missing mapping → signed ready receipt; official transport remains disabled',async({page})=>{
+ test.setTimeout(120000)
+ const errors=[];page.on('pageerror',e=>errors.push(e.message))
+ await page.goto('/login')
+ await page.getByLabel('Email address').fill('dc3-tax@e2e.example')
+ await page.getByLabel('Password',{exact:true}).fill('dc3-local-test-secret')
+ await page.getByRole('button',{name:'Enter workspace'}).click();await expect(page).toHaveURL(/dashboard$/)
+ const rules=await request(page,'/tax/available-codes',undefined,'GET'),code=rules.codes.find(c=>c.code==='KS18')
+ const draft=await request(page,'/invoices',{invoice_date:new Date().toISOString().slice(0,10),supply_date:new Date().toISOString().slice(0,10),buyer:{legal_name:'DC3 Browser Buyer',business_registration_number:'812222222',address:'Buyer test street',country_code:'XK'},items:[{description:'Browser taxable service',unit:'pcs',quantity:1,unit_price:118,pricing_mode:'inclusive',tax_code_id:code.id,sef_category_id:1}]})
+ expect(draft.taxable_total).toBe('100.00');expect(draft.vat_total).toBe('18.00')
+ const invoice=await request(page,'/invoices/'+draft.id+'/issue')
+ await request(page,'/payments',{invoice_id:invoice.id,amount:118,payment_method:'cash',idempotency_key:crypto.randomUUID()})
+ await page.goto('/fiscalization');await expect(page.getByRole('heading',{name:'Fiscalization',exact:true})).toBeVisible()
+ await page.getByRole('button',{name:'Prepare signed TEST receipt',exact:true}).first().click()
+ await expect(page.getByRole('alert')).toContainText('measurement-unit mapping')
+ await request(page,'/fiscalization/mappings',{kind:'unit',local_key:'pcs',official_id:1},'PUT')
+ await page.getByRole('button',{name:'Prepare signed TEST receipt',exact:true}).first().click()
+ await expect(page.getByRole('heading',{name:/Fiscal receipt #1/})).toBeVisible()
+ await expect(page.getByRole('button',{name:'Review TEST submission',exact:true})).toBeDisabled()
+ await expect(page.getByText('NOT TESTED',{exact:true})).toBeVisible()
+ const receipt=await request(page,'/fiscalization/invoices',undefined,'GET');expect(receipt.data[0].receipt.status).toBe('ready')
+ const period=invoice.invoice_date.slice(0,7)
+ await page.goto('/tax?period='+period)
+ await expect(page.getByRole('heading',{name:'VAT ↔ General Ledger',exact:true})).toBeVisible()
+ await expect(page.getByRole('row').filter({has:page.getByRole('rowheader',{name:'Output VAT',exact:true})})).toContainText('€18.00')
+ await expect(page.getByText('RECONCILED',{exact:true})).toHaveCount(2)
+ await page.screenshot({path:path.resolve('../output/dc3-tax-browser.png'),fullPage:true})
+ expect(errors).toEqual([])
+})

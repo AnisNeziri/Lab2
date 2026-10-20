@@ -43,10 +43,10 @@ test('custom builder, translations, themes, widths, and staff boundary',async({p
   }
   await page.getByRole('button',{name:'Save disabled draft'}).click()
   await expect(page.getByRole('heading',{name:'Custom stock warning'})).toBeVisible()
-  await page.evaluate(async()=>{const {useSettingsStore}=await import('/src/store/settingsStore.js');useSettingsStore.getState().applyPreferences({theme:'dark',language:'sq'})})
+  await page.evaluate(async()=>{const {useSettingsStore}=window.__aimsCertification;useSettingsStore.getState().applyPreferences({theme:'dark',language:'sq'})})
   await expect(page.getByRole('heading',{name:'Studio e automatizimit',exact:true})).toBeVisible()
   await page.screenshot({path:'test-results/automation-dark.png',fullPage:true})
-  await page.evaluate(async()=>{const {useSettingsStore}=await import('/src/store/settingsStore.js');useSettingsStore.getState().applyPreferences({theme:'light',language:'en'})})
+  await page.evaluate(async()=>{const {useSettingsStore}=window.__aimsCertification;useSettingsStore.getState().applyPreferences({theme:'light',language:'en'})})
   await page.goto('/action-center')
   await page.getByRole('button',{name:'New task'}).click()
   await page.getByLabel('Title',{exact:true}).fill('Manual check')

@@ -8,6 +8,13 @@ use App\Services\{AnalyticsPermissions,CustomerSalesMath,CustomerSalesIntelligen
 
 class CustomerSalesIntelligenceTest extends TestCase {
  use RefreshDatabase;
+ public function test_dashboard_summary_keeps_opportunity_identity_without_loading_profiles_in_response():void {
+  $this->setupCompany();$c=Customer::create(['name'=>'Buyer']);$p=$this->product();$this->history($c,$p,24);$this->refresh();
+  $full=$this->getJson('/api/customer-sales-intelligence')->assertOk()->json();$summary=$this->getJson('/api/customer-sales-intelligence?summary_only=1')->assertOk()->json();
+  $this->assertSame($full['id'],$summary['id']);$this->assertArrayHasKey('profiles',$full['evidence']);$this->assertArrayNotHasKey('profiles',$summary['evidence']);
+  $this->assertLessThanOrEqual(4,count($summary['evidence']['opportunities']));$this->assertSame($full['evidence']['opportunities'][0]['key'],$summary['evidence']['opportunities'][0]['key']);
+  $this->getJson('/api/customer-sales-intelligence?summary_only=bad')->assertStatus(422);
+ }
  private function setupCompany():void {$this->actingAsApiUser();$this->getJson('/api/me')->assertOk();AnalyticsPermissions::install();$this->travelTo(now()->setDate(2026,10,5)->setTime(12,0));app()->instance(LocalCustomerSalesProvider::class,new class{public function analyze(array $p):array{return ['state'=>'available','trained_model'=>false];}});}
  private function product(string $name='Fabric A',string $unit='m',int $stock=10000):Product {return Product::create(['name'=>$name,'sku'=>'V8-'.Product::count(),'unit'=>$unit,'quantity'=>$stock,'min_quantity'=>50,'category_id'=>Category::firstOrCreate(['name'=>'Fabrics'])->id,'price'=>3,'selling_price'=>3,'purchase_price'=>2]);}
  private function sale(?Customer $c,int $days,array $items):DailySale {$s=DailySale::create(['sale_number'=>'V8-'.DailySale::count(),'sale_date'=>today()->subDays($days),'status'=>'finalized','inventory_applied_at'=>today()->subDays($days)->addHours(12),'customer_id'=>$c?->id,'customer_name'=>$c?->name,'total_amount'=>6000,'total_quantity'=>2000,'paid_amount'=>6000,'created_by'=>Auth::id()]);foreach($items as $i=>$line){[$p,$qty]=$line;$s->items()->create(['line_number'=>$i+1,'product_id'=>$p->id,'product_name'=>$p->name,'unit'=>$p->unit,'quantity'=>$qty,'base_quantity'=>$qty,'unit_price'=>3,'line_total'=>$qty*3,'cost_total'=>$qty*2]);}return $s;}

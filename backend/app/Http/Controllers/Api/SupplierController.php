@@ -18,6 +18,11 @@ class SupplierController extends Controller
         return response()->json($this->suppliers->allWithProductCount());
     }
 
+    public function show(\App\Models\Supplier $supplier): JsonResponse
+    {
+        return response()->json($supplier->loadCount('products'));
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([

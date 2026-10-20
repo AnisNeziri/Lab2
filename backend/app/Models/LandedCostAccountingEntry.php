@@ -16,11 +16,13 @@ class LandedCostAccountingEntry extends Model
         'remaining_quantity_at_post', 'quantity_recognized_in_cogs',
         'inventory_adjustment_amount', 'cogs_adjustment_amount',
         'calculation_method', 'calculation_evidence', 'posted_by', 'posted_at',
+        'reversal_date', 'reversal_inventory_value_before', 'reversal_inventory_value_after',
     ];
 
     protected function casts(): array
     {
         return [
+            'reversal_date' => 'date', 'reversal_inventory_value_before' => 'decimal:6', 'reversal_inventory_value_after' => 'decimal:6',
             'receipt_quantity' => 'decimal:3',
             'remaining_quantity_at_post' => 'decimal:3',
             'quantity_recognized_in_cogs' => 'decimal:3',

@@ -113,7 +113,7 @@ class AuthTest extends TestCase
             ->assertForbidden()
             ->assertJsonPath('code', 'PASSWORD_CHANGE_REQUIRED');
 
-        $this->withHeader('Authorization', 'Bearer forced-change-token')
+        $changed = $this->withHeader('Authorization', 'Bearer forced-change-token')
             ->postJson('/api/change-password', [
                 'password' => 'newpassword123',
                 'password_confirmation' => 'newpassword123',
@@ -125,7 +125,9 @@ class AuthTest extends TestCase
 
         $this->withHeader('Authorization', 'Bearer forced-change-token')
             ->getJson('/api/dashboard')
-            ->assertOk();
+            ->assertUnauthorized();
+        $this->withHeader('Authorization', 'Bearer '.$changed->json('access_token'))
+            ->getJson('/api/dashboard')->assertOk();
     }
 
     public function test_admin_can_update_user_role(): void

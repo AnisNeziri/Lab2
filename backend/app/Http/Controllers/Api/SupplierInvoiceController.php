@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\SupplierInvoiceRequest;
 use App\Models\Expense;
 use App\Services\SupplierInvoiceMatchingService;
+use App\Services\SupplierPaymentAllocationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -21,17 +22,34 @@ class SupplierInvoiceController extends Controller
             'match_status' => ['nullable', 'in:unmatched,partially_matched,matched,exception,approved'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
+
         return response()->json($this->matching->list($filters));
     }
 
-    public function show(Expense $supplierInvoice): JsonResponse { return response()->json($this->matching->show($supplierInvoice)); }
-    public function store(SupplierInvoiceRequest $request): JsonResponse { return response()->json($this->matching->create($request->validated()), 201); }
-    public function update(SupplierInvoiceRequest $request, Expense $supplierInvoice): JsonResponse { return response()->json($this->matching->update($supplierInvoice, $request->validated())); }
-    public function recalculate(Expense $supplierInvoice): JsonResponse { return response()->json($this->matching->recalculate($supplierInvoice)); }
+    public function show(Expense $supplierInvoice): JsonResponse
+    {
+        return response()->json($this->matching->show($supplierInvoice));
+    }
+
+    public function store(SupplierInvoiceRequest $request): JsonResponse
+    {
+        return response()->json($this->matching->create($request->validated()), 201);
+    }
+
+    public function update(SupplierInvoiceRequest $request, Expense $supplierInvoice): JsonResponse
+    {
+        return response()->json($this->matching->update($supplierInvoice, $request->validated()));
+    }
+
+    public function recalculate(Expense $supplierInvoice): JsonResponse
+    {
+        return response()->json($this->matching->recalculate($supplierInvoice));
+    }
 
     public function approve(Request $request, Expense $supplierInvoice): JsonResponse
     {
         $data = $request->validate(['reason' => ['nullable', 'string', 'min:3', 'max:2000']]);
+
         return response()->json($this->matching->approve($supplierInvoice, $data['reason'] ?? null));
     }
 
@@ -54,5 +72,13 @@ class SupplierInvoiceController extends Controller
             $data['reason'] ?? null,
             $data['idempotency_key'],
         ));
+    }
+
+    public function reverseAllocation(Request $request, int $allocationRequest): JsonResponse
+    {
+        $d = $request->validate(['reversal_date' => 'required|date', 'reason' => 'required|string|min:10|max:1000']);
+        $expense = app(SupplierPaymentAllocationService::class)->reverseAllocation($allocationRequest, $d['reversal_date'], $d['reason']);
+
+        return response()->json($this->matching->show($expense));
     }
 }

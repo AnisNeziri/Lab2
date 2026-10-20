@@ -48,7 +48,7 @@ class DeliverBusinessEventWebhooks implements ShouldQueue
             ['webhook_endpoint_id' => $endpoint->id, 'business_event_id' => $event->id],
             ['company_id' => $event->company_id, 'status' => 'pending'],
         );
-        if ($delivery->status === 'delivered') {
+        if ($delivery->status === 'delivered' || $delivery->attempts >= $this->tries) {
             return;
         }
 
@@ -86,7 +86,7 @@ class DeliverBusinessEventWebhooks implements ShouldQueue
             ]);
             $endpoint->update(['last_success_at' => now(), 'last_error' => null]);
         } catch (Throwable $exception) {
-            $message = mb_substr($exception->getMessage(), 0, 2000);
+            $message = 'Webhook delivery failed. Verify endpoint availability and signing configuration.';
             $delivery->update([
                 'status' => 'failed', 'attempts' => $attempts, 'last_error' => $message,
                 'last_attempt_at' => now(),

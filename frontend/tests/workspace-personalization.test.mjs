@@ -19,9 +19,12 @@ test('registry is unique, permission-aware and provides bounded sizes and role d
   assert.equal(availableWidgets(inventory).some(w=>w.id==='cash-outlook'||w.id==='inventory-value'),false)
   assert.equal(availableWidgets([]).length,0)
   const owner=defaultDashboard(all,'admin').widgets.map(w=>w.id)
-  for(const id of ['today-sales','orders-overview','low-stock','receivables','shipments','action-center']) assert.ok(owner.includes(id),id)
+  for(const id of ['sales-trend','orders-overview','low-stock','receivables','shipments','action-center']) assert.ok(owner.includes(id),id)
   assert.ok(owner.indexOf('sales-trend')<owner.indexOf('orders-overview'))
-  for(const id of ['stock-turnover','warehouse-sections','stock-alert-count','stock-movements','category-activity','warehouse-stock','quick-actions','activity'])assert.ok(owner.includes(id),id)
+  assert.equal(owner[0],'action-center')
+  assert.ok(owner.length<=9)
+  assert.ok(owner.includes('cash-outlook'))
+  assert.deepEqual(defaultDashboard(all,'hr').widgets.map(w=>w.id),['action-center','quick-actions'])
   assert.ok(defaultDashboard(inventory,'staff').widgets.some(w=>w.id==='warehouse-stock'))
 })
 
@@ -98,4 +101,17 @@ test('unmount settles queued reads and aborts active reads without publishing la
   client.subscribe('/0',()=>published++);client.dispose()
   assert.deepEqual(await Promise.all(requests),[null,null,null,null,null,null])
   assert.equal(published,0);assert.equal(await client.load('/new'),null)
+})
+
+test('offscreen subscribers receive completed reads without starting or refreshing hidden widgets',async()=>{
+  const calls=[],states=[];let finish
+  const client=createDashboardResources(key=>{calls.push(key);return new Promise(resolve=>{finish=resolve})})
+  const stop=client.subscribe('/slow',s=>states.push(s),false)
+  client.subscribe('/unseen',()=>{},false)
+  assert.equal(calls.length,0)
+  const request=client.load('/slow');finish({value:7});await request
+  assert.equal(states.at(-1).data.value,7)
+  client.refresh();await new Promise(resolve=>setImmediate(resolve))
+  assert.deepEqual(calls,['/slow'])
+  stop();client.dispose()
 })

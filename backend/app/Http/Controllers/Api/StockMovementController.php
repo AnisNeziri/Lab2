@@ -19,6 +19,10 @@ class StockMovementController extends Controller
     public function index(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
             'product_id' => ['nullable', 'integer', 'exists:products,id'],
             'type' => ['nullable', 'in:in,out'],
             'movement_code' => ['nullable', Rule::in(StockMovementService::MOVEMENT_CODES)],
@@ -33,6 +37,10 @@ class StockMovementController extends Controller
     public function export(Request $request)
     {
         $validated = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
             'product_id' => ['nullable', 'integer', 'exists:products,id'],
             'type' => ['nullable', 'in:in,out'],
             'movement_code' => ['nullable', Rule::in(StockMovementService::MOVEMENT_CODES)],

@@ -139,7 +139,7 @@ class DailySaleService
             $this->operationalAccounting->postDailySale($sale->fresh('items'));
 
             return $sale->fresh(['items.product', 'creator:id,name']);
-        });
+        }, 3);
     }
 
     public function update(DailySale $sale, array $data): DailySale
@@ -263,7 +263,7 @@ class DailySaleService
     public function todaySummary(?string $date = null): array
     {
         $companyId = Auth::user()->company_id;
-        $targetDate = $date ?? now()->toDateString();
+        $targetDate = $date ?? \App\Support\CompanyClock::today()->toDateString();
 
         $allSales = DailySale::where('company_id', $companyId)
             ->whereDate('sale_date', $targetDate)

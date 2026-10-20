@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, Plus, RefreshCw, ShieldAlert, WalletCards } from "lucide-react";
 import {
   createCustomer,
@@ -18,16 +18,15 @@ import { getFinancialAccounts } from "../api/advancedOperations";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAuthStore } from "../store/authStore";
 import EntityContext from "../components/EntityContext";
+import { BusinessFacts } from "../components/WorkflowSummary";
+import RowActions from "../components/RowActions";
 import CustomerSalesSummary from "../components/CustomerSalesSummary";
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { useSessionState } from '../hooks/useSessionState';
+import { businessDate, businessMoney } from '../utils/businessFormat';
 import "./CustomerDebts.css";
 
-const euro = (value) =>
-  new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(
-    Number(value || 0),
-  );
 const today = () => new Date().toISOString().slice(0, 10);
-const dateOnly = (value) => (value ? String(value).slice(0, 10) : "—");
 const hasValue = (value) => value !== null && value !== undefined && value !== "";
 const percent = (value) => hasValue(value) ? `${Number(value).toFixed(1)}%` : "—";
 const firstError = (errors, field) => {
@@ -94,6 +93,9 @@ const reportState = (row) => {
 
 export default function CustomerDebts() {
   const { t, language } = useTranslation();
+  const [detailParams, setDetailParams] = useSearchParams();
+  const euro = value => businessMoney(value, 'EUR', language);
+  const dateOnly = value => businessDate(value, language);
   const permissions = useAuthStore((state) => state.permissions);
   const canManageCustomers = permissions.includes("customers.manage");
   const canCreateDebt = permissions.includes("debts.create");
@@ -102,12 +104,13 @@ export default function CustomerDebts() {
   const canExportDebt = permissions.includes("debts.export");
   const [rows, setRows] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
-  const [sort, setSort] = useState("debt_desc");
-  const [minDebt, setMinDebt] = useState("");
-  const [maxDebt, setMaxDebt] = useState("");
-  const [page, setPage] = useState(1);
+  const detailRequest = useRef(0);
+  const [search, setSearch] = useSessionState('customers.search', "");
+  const [status, setStatus] = useSessionState('customers.status', "all");
+  const [sort, setSort] = useSessionState('customers.sort', "debt_desc");
+  const [minDebt, setMinDebt] = useSessionState('customers.minimum', "");
+  const [maxDebt, setMaxDebt] = useSessionState('customers.maximum', "");
+  const [page, setPage] = useSessionState('customers.page', 1);
   const [pagination, setPagination] = useState({
     current_page: 1,
     last_page: 1,
@@ -164,10 +167,14 @@ export default function CustomerDebts() {
     [page, search, status, sort, minDebt, maxDebt, selected?.id, t],
   );
 
+  const filterKey = JSON.stringify([search, status, sort, minDebt, maxDebt]);
+  const previousFilters = useRef(filterKey);
   useEffect(() => {
-    setPage(1);
-    load(1);
-  }, [search, status, sort, minDebt, maxDebt]);
+    const changed = previousFilters.current !== filterKey;
+    previousFilters.current = filterKey;
+    if (changed) setPage(1);
+    load(changed ? 1 : page);
+  }, [filterKey]);
 
   useEffect(() => {
     const refresh = () => load(page, true, false);
@@ -265,25 +272,37 @@ export default function CustomerDebts() {
     };
   };
 
-  const open = async (id) => {
+  const loadCustomer = async (id) => {
+    const ticket = ++detailRequest.current;
     setLoading(true);
     try {
       setCorrection(null);
-      setSelected(await getCustomerDebt(id));
+      const customer = await getCustomerDebt(id);
+      if (ticket !== detailRequest.current) return;
+      setSelected(customer);
       setMode("");
       clearCreditBlock();
       setError("");
     } catch (e) {
-      setError(e.message);
+      if (ticket === detailRequest.current) setError(e.message);
     } finally {
-      setLoading(false);
+      if (ticket === detailRequest.current) setLoading(false);
     }
   };
 
+  const open = id => setDetailParams(current => { const next = new URLSearchParams(current); next.set('customer', id); return next; });
+  const backToCustomers = () => {
+    detailRequest.current++;
+    setLoading(false);
+    setSelected(null); setMode(''); setCorrection(null); clearCreditBlock();
+    setDetailParams(current => { const next = new URLSearchParams(current); next.delete('customer'); return next; });
+  };
   useEffect(() => {
-    const requestedCustomer = Number(new URLSearchParams(window.location.search).get("customer"));
-    if (Number.isInteger(requestedCustomer) && requestedCustomer > 0) open(requestedCustomer);
-  }, []);
+    const requestedCustomer = Number(detailParams.get('customer'));
+    if (Number.isInteger(requestedCustomer) && requestedCustomer > 0) loadCustomer(requestedCustomer);
+    else { detailRequest.current++; setSelected(null); setMode(''); setLoading(false); }
+    return () => { detailRequest.current++; };
+  }, [detailParams.get('customer')]);
 
   const begin = (nextMode) => {
     setCorrection(null);
@@ -489,11 +508,7 @@ export default function CustomerDebts() {
     setError("");
     try {
       await deleteCustomerDebtSheet(customer.id);
-      if (selected?.id === customer.id) {
-        setSelected(null);
-        setCorrection(null);
-        setMode("");
-      }
+      if (selected?.id === customer.id) backToCustomers();
       setMessage(t("debts.deleted"));
       await load(page, false);
     } catch (e) {
@@ -527,8 +542,7 @@ export default function CustomerDebts() {
               className="secondary"
               onClick={() => {
                 setShowCreditReport((current) => !current);
-                setSelected(null);
-                setMode("");
+                backToCustomers();
                 clearCreditBlock();
               }}
             >
@@ -1016,57 +1030,26 @@ export default function CustomerDebts() {
               <small>{selected.notes || ""}</small>
             </div>
             <div className="table-actions">
-              {canCreateDebt && (
-                <button onClick={() => begin("debt")}>
-                  {t("debts.addDebt")}
-                </button>
-              )}
-              {canRecordPayment && (
-                <button
-                  onClick={() => begin("payment")}
-                  disabled={Number(selected.current_debt) <= 0}
-                >
-                  {t("debts.recordPayment")}
-                </button>
-              )}
-              {canManageCustomers && (
-                <button className="secondary" onClick={() => begin("edit")}>
-                  {t("debts.editCustomer")}
-                </button>
-              )}
-              {canExportDebt && (
-                <button
-                  className="secondary"
-                  onClick={() => downloadDebtStatement(selected.id)}
-                >
-                  {t("debts.export")}
-                </button>
-              )}
-              <button className="secondary" onClick={() => window.print()}>
-                {t("debts.print")}
-              </button>
-              {canManageCustomers && (
-                <button
-                  className="danger"
-                  disabled={busy}
-                  onClick={() => removeSheet(selected)}
-                >
-                  {t("debts.deleteSheet")}
-                </button>
-              )}
-              <button
-                className="secondary"
-                onClick={() => {
-                  setSelected(null);
-                  setMode("");
-                  setCorrection(null);
-                  clearCreditBlock();
-                }}
-              >
-                {t("debts.back")}
-              </button>
+              {canRecordPayment && Number(selected.current_debt)>0 && <button disabled={busy} onClick={()=>begin("payment")}>{t("debts.recordPayment")}</button>}
+              <RowActions label={selected.name} actions={[
+                canCreateDebt && {label:t("debts.addDebt"),onClick:()=>begin("debt")},
+                canManageCustomers && {label:t("debts.editCustomer"),onClick:()=>begin("edit")},
+                canExportDebt && {label:t("debts.export"),onClick:()=>downloadDebtStatement(selected.id)},
+                {label:t("debts.print"),onClick:()=>window.print()},
+                canManageCustomers && {label:t("debts.deleteSheet"),danger:true,disabled:busy,onClick:()=>removeSheet(selected)},
+              ]}/>
+              <button className="secondary" onClick={backToCustomers}>{t("debts.back")}</button>
             </div>
           </div>
+          <BusinessFacts label={language==='sq'?'Gjendja financiare e klientit':'Customer financial position'} facts={[
+            {label:t("debts.currentDebt"),value:euro(selectedCredit.current_debt)},
+            {label:t("debts.overdue"),value:euro(selectedCredit.overdue)},
+            {label:t("debts.advance"),value:euro(selectedCredit.advance)},
+          ]}/>
+          <nav className="workspace-actions" aria-label={language==='sq'?'Regjistrimet e klientit':'Customer records'}>
+            {permissions.includes('fulfillment.view') && <Link to={'/order-hub?customer='+selected.id}>{language==='sq'?'Porositë e klientit':'Customer orders'}</Link>}
+            {permissions.includes('accounting.reports.view') && <Link to={'/accounting?tab=ar&customer='+selected.id}>{language==='sq'?'Pasqyra dhe alokimi':'Statement & allocation'}</Link>}
+          </nav>
           <section className="credit-policy-strip">
             <div>
               <small>{t("debts.creditLimit")}</small>
@@ -1089,7 +1072,7 @@ export default function CustomerDebts() {
           </section>
           <EntityContext entityType="customer" entityId={selected.id} />
           <CustomerSalesSummary customerId={selected.id} />
-          {permissions.includes('fulfillment.view')&&<Link to={`/order-hub?customer=${selected.id}`}>{language==='sq'?'Porositë e klientit':'Customer orders'}</Link>}
+
           {correction && (
             <section className="inline-editor">
               <div className="section-header">

@@ -36,7 +36,7 @@ class AutomationScheduler
             $source=app(AutomationRegistry::class)->source($task->source_type,(int)$task->source_id);
             if (!$source) return;
             $resolved=match($rule->trigger) {
-                'document.expiring'=>$source->status==='archived' || ($source->expiry_date && $source->expiry_date->gt(today()->addDays(30))),
+                'document.expiring'=>$source->status==='archived' || ($source->expiry_date && $source->expiry_date->gt(\App\Support\CompanyClock::today()->addDays(30))),
                 'customer.payment_overdue'=>(float)app(CustomerCreditService::class)->exposure($source)['overdue']<=0,
                 'integration.failed'=>!in_array($source->health_state,['error','degraded'],true),
                 'shipment.delayed'=>(bool)$source->arrival_date || $source->status==='delivered',
@@ -59,7 +59,7 @@ class AutomationScheduler
         }
         // Repeated sweeps on the same day reuse the existing business event.
         $emit=function($source,array $metadata=[])use($rule){
-            app(BusinessEventService::class)->record($rule->trigger,$source,$source->name ?: $source->reference ?: $source->po_number ?: '#'.$source->id,$metadata,'automation-observation:'.$rule->trigger.':'.$source->id.':'.today()->toDateString());
+            app(BusinessEventService::class)->record($rule->trigger,$source,$source->name ?: $source->reference ?: $source->po_number ?: '#'.$source->id,$metadata,'automation-observation:'.$rule->trigger.':'.$source->id.':'.\App\Support\CompanyClock::today()->toDateString());
         };
         switch ($rule->trigger) {
             case 'inventory.low_stock': case 'inventory.stockout':
@@ -67,13 +67,13 @@ class AutomationScheduler
             case 'customer.payment_overdue': case 'customer.credit_warning':
                 Customer::query()->chunkById(100,function($customers)use($rule,$emit){foreach($customers as $c){$s=app(CustomerCreditService::class)->exposure($c);if($rule->trigger==='customer.payment_overdue'?(float)$s['overdue']>0:($s['utilization_percent'] ?? 0)>=90)$emit($c,$s);}}); break;
             case 'purchase_order.overdue':
-                PurchaseOrder::whereNotIn('status',['completed','received','cancelled'])->where('expected_at','<',today())->each(fn($x)=>$emit($x)); break;
+                PurchaseOrder::whereNotIn('status',['completed','received','cancelled'])->where('expected_at','<',\App\Support\CompanyClock::today())->each(fn($x)=>$emit($x)); break;
             case 'shipment.delayed':
                 Shipment::whereNull('arrival_date')->whereNotIn('status',['delivered','cancelled'])->where('eta','<',now())->each(fn($x)=>$emit($x)); break;
             case 'shipment.eta_changed':
                 Shipment::whereNotNull('previous_eta')->whereColumn('eta','!=','previous_eta')->each(fn($x)=>$emit($x,['eta'=>$x->eta?->toIso8601String(),'previous'=>['eta'=>$x->previous_eta?->toIso8601String()]])); break;
             case 'document.expiring':
-                Document::where('status','!=','archived')->whereNotNull('expiry_date')->where('expiry_date','<=',today()->addDays(30))->each(fn($x)=>$emit($x)); break;
+                Document::where('status','!=','archived')->whereNotNull('expiry_date')->where('expiry_date','<=',\App\Support\CompanyClock::today()->addDays(30))->each(fn($x)=>$emit($x)); break;
             case 'integration.failed':
                 IntegrationProvider::where('enabled',true)->whereIn('health_state',['error','degraded'])->each(fn($x)=>$emit($x)); break;
             case 'task.overdue':

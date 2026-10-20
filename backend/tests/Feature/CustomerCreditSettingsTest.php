@@ -63,7 +63,7 @@ class CustomerCreditSettingsTest extends TestCase
             ['50.00', '2026-05-24', 'd100'],
         ] as [$amount, $due, $key]) {
             $payload = $this->debt($amount, $key);
-            $payload['transaction_date'] = CarbonImmutable::parse($due)->subDay()->toDateString();
+            $payload['transaction_date'] = CarbonImmutable::parse($due)->subDay()->min(CarbonImmutable::parse('2026-09-01'))->toDateString();
             $payload['due_date'] = $due;
             $this->postJson("/api/customers/{$customer->id}/debts", $payload)->assertCreated();
         }
@@ -138,7 +138,7 @@ class CustomerCreditSettingsTest extends TestCase
 
         $this->getJson("/api/customers/{$customer->id}")
             ->assertOk()
-            ->assertJsonPath('credit_summary.aging.current', '30.00')
+            ->assertJsonPath('credit_summary.aging.unknown_due', '30.00')
             ->assertJsonPath('credit_summary.aging.31_60', '20.00');
 
         $this->postJson("/api/debt-transactions/{$overdue->json('id')}/reverse", [
@@ -147,9 +147,10 @@ class CustomerCreditSettingsTest extends TestCase
 
         $this->getJson("/api/customers/{$customer->id}")
             ->assertOk()
-            ->assertJsonPath('credit_summary.aging.current', '10.00')
+            ->assertJsonPath('credit_summary.aging.unknown_due', '30.00')
             ->assertJsonPath('credit_summary.aging.31_60', '0.00')
-            ->assertJsonPath('credit_summary.overdue', '0.00');
+            ->assertJsonPath('credit_summary.overdue', '0.00')
+            ->assertJsonPath('credit_summary.advance', '20.00');
     }
 
     public function test_debt_increase_correction_cannot_bypass_credit_control_and_rolls_back_atomically(): void

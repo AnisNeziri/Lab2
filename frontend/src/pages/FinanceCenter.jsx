@@ -1,4 +1,9 @@
+import TaxCodePicker,{useTaxCodes} from '../components/finance/TaxCodePicker'
 import EntityDocuments from '../components/EntityDocuments'
+import {businessDate,businessMoney} from '../utils/businessFormat'
+import {financeWarning} from '../utils/financePresentation'
+import { useDialog } from '../hooks/useDialog'
+import { useUnsavedNavigation } from '../hooks/useUnsavedNavigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -177,6 +182,7 @@ const emptyExpense = () => ({
   vendor_name: "",
   vendor_business_number: "",
   vendor_fiscal_number: "",
+  tax_code_id:"",import_taxable_base:"",
   vendor_vat_number: "",
   document_type: "purchase_invoice",
   document_number: "",
@@ -216,44 +222,22 @@ function expenseToForm(expense) {
 }
 
 function ExpenseModal({ open, expense, onClose, onSaved, t }) {
+  const {codes:taxCodes,error:taxCodeError}=useTaxCodes();
   const [form, setForm] = useState(emptyExpense);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const dialogRef = useRef(null);
-  const restoreFocusRef = useRef(null);
-  const busyRef = useRef(false);
-
-  useEffect(() => { busyRef.current = busy; }, [busy]);
+  const {language}=useTranslation();
+  const dirty=JSON.stringify(form)!==JSON.stringify(expense?expenseToForm(expense):emptyExpense());
+  const discardMessage=language==='sq'?'Të hidhen poshtë ndryshimet e paruajtura?':'Discard unsaved changes?';
+  const close=()=>{if(busy)return;if(dirty&&!window.confirm(discardMessage))return;onClose()};
+  const dialogRef=useDialog(close,busy,open);
+  useUnsavedNavigation(open&&dirty,discardMessage);
 
   useEffect(() => {
     if (!open) return;
     setForm(expense ? expenseToForm(expense) : emptyExpense());
     setError("");
   }, [open, expense]);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    restoreFocusRef.current = document.activeElement;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.setTimeout(() => dialogRef.current?.querySelector("input, select, textarea, button")?.focus(), 0);
-    const keydown = (event) => {
-      if (event.key === "Escape" && !busyRef.current) onClose();
-      if (event.key !== "Tab" || !dialogRef.current) return;
-      const focusable = [...dialogRef.current.querySelectorAll("button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex='-1'])")];
-      if (!focusable.length) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    };
-    document.addEventListener("keydown", keydown);
-    return () => {
-      document.body.style.overflow = previous;
-      document.removeEventListener("keydown", keydown);
-      restoreFocusRef.current?.focus?.();
-    };
-  }, [open, onClose]);
 
   if (!open) return null;
   const change = (field, value) => setForm((current) => ({ ...current, [field]: value }));
@@ -265,8 +249,9 @@ function ExpenseModal({ open, expense, onClose, onSaved, t }) {
       : treatmentHasVat
         ? (Number(form.vat_rate) === 8 ? 8 : 18)
         : 0;
-  const netAmount = Number(form.net_amount || 0);
-  const calculatedVat = Math.round((netAmount * effectiveVatRate / 100 + Number.EPSILON) * 100) / 100;
+  const netAmount = form.vat_treatment==="import_vat"?0:Number(form.net_amount || 0);
+  const assessmentBase=form.vat_treatment==="import_vat"?Number(form.import_taxable_base||0):netAmount;
+  const calculatedVat = Math.round((assessmentBase * effectiveVatRate / 100 + Number.EPSILON) * 100) / 100;
   const selfAssessedVat = form.vat_treatment === "reverse_charge" ? calculatedVat : 0;
   const vatAmount = form.vat_treatment === "reverse_charge" ? 0 : calculatedVat;
   const claimableVat = form.vat_treatment === "reverse_charge" ? selfAssessedVat : vatAmount;
@@ -279,7 +264,7 @@ function ExpenseModal({ open, expense, onClose, onSaved, t }) {
 
   const submit = async (event) => {
     event.preventDefault();
-    if (!form.invoice_date || !form.vendor_name.trim() || !form.description.trim() || !(netAmount > 0)) {
+    if (!form.invoice_date || !form.vendor_name.trim() || !form.description.trim() || !(assessmentBase > 0)) {
       setError(t("finance.expenseRequired"));
       return;
     }
@@ -290,7 +275,7 @@ function ExpenseModal({ open, expense, onClose, onSaved, t }) {
       const payload = {
         ...fields,
         vat_rate: effectiveVatRate,
-        net_amount: netAmount,
+        net_amount: netAmount,tax_code_id:form.tax_code_id?Number(form.tax_code_id):null,import_taxable_base:form.vat_treatment==="import_vat"?assessmentBase:null,
         vat_amount: vatAmount,
         self_assessed_vat_amount: selfAssessedVat,
         input_vat_eligible: Boolean(form.input_vat_eligible),
@@ -316,11 +301,11 @@ function ExpenseModal({ open, expense, onClose, onSaved, t }) {
   };
 
   return createPortal(
-    <div className="finance-modal-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
+    <div className="finance-modal-layer" role="presentation">
       <section ref={dialogRef} className="finance-modal" role="dialog" aria-modal="true" aria-labelledby="finance-expense-title" tabIndex="-1">
         <header>
           <div><span className="finance-eyebrow">{t("finance.expenseBook")}</span><h2 id="finance-expense-title">{expense ? t("finance.editExpense") : t("finance.newExpense")}</h2><p>{t("finance.expenseHint")}</p></div>
-          <button type="button" className="icon-button" onClick={onClose} disabled={busy} aria-label={t("common.cancel")}><X size={20} /></button>
+          <button type="button" className="icon-button" onClick={close} disabled={busy} aria-label={t("common.cancel")}><X size={20} /></button>
         </header>
         <EntityDocuments entityType="expense" entityId={expense?.id}/>
         <form onSubmit={submit}>
@@ -336,7 +321,9 @@ function ExpenseModal({ open, expense, onClose, onSaved, t }) {
               <label><span>{t("finance.documentType")}</span><select value={form.document_type} onChange={(event) => change("document_type", event.target.value)}><option value="purchase_invoice">{t("finance.documentType.purchase_invoice")}</option><option value="fiscal_receipt">{t("finance.documentType.fiscal_receipt")}</option><option value="credit_note">{t("finance.documentType.credit_note")}</option><option value="customs_document">{t("finance.documentType.customs_document")}</option><option value="other">{t("finance.other")}</option></select></label>
               <label><span>{t("finance.invoiceNumber")} *</span><input required value={form.document_number} onChange={(event) => change("document_number", event.target.value)} /></label>
               <label><span>{t("finance.description")} *</span><input required value={form.description} onChange={(event) => change("description", event.target.value)} /></label>
-              <label><span>{t("finance.netAmount")} *</span><input type="number" min="0.01" step="0.01" required value={form.net_amount} onChange={(event) => change("net_amount", event.target.value)} /></label>
+              {form.vat_treatment==='import_vat'?<label>{language==='sq'?'Baza doganore (vetëm vlerësimi i TVSH)':'Customs taxable base (VAT-only assessment)'}<input required type="number" min="0.01" step="0.01" value={form.import_taxable_base} onChange={e=>change('import_taxable_base',e.target.value)}/></label>:<label><span>{t("finance.netAmount")} *</span><input type="number" min="0.01" step="0.01" required value={form.net_amount} onChange={(event) => change("net_amount", event.target.value)} /></label>}
+              <TaxCodePicker codes={taxCodes} value={form.tax_code_id} direction="purchases" date={form.invoice_date} label={language==='sq'?'Kodi tatimor':'Tax code'} onChange={c=>setForm(v=>({...v,tax_code_id:c?.id||'',vat_rate:c?.rate||0,vat_treatment:c?.purchase_treatment||v.vat_treatment,tax_legal_reference:c?.legal_reference||v.tax_legal_reference,...(c?.purchase_treatment==='import_vat'?{document_type:'customs_document',source_type:'import',net_amount:0}:{})}))}/>
+              {taxCodeError&&<p role="alert">{taxCodeError}</p>}
               <label><span>{t("finance.correctionReference")}</span><input value={form.original_document_number} onChange={(event) => change("original_document_number", event.target.value)} /></label>
             </div>
             <dl className="finance-amount-preview"><div><dt>{t("finance.netAmount")}</dt><dd>{netAmount.toFixed(2)} {form.currency}</dd></div><div><dt>{t("finance.supplierVat")}</dt><dd>{vatAmount.toFixed(2)} {form.currency}</dd></div>{form.vat_treatment === "reverse_charge" ? <div className="is-self-assessed"><dt>{t("finance.selfAssessedVat")}</dt><dd>{selfAssessedVat.toFixed(2)} {form.currency}</dd></div> : null}<div><dt>{t("finance.deductibleInputVat")}</dt><dd>{deductibleVat.toFixed(2)} {form.currency}</dd></div><div><dt>{t("finance.supplierPayable")}</dt><dd>{grossAmount.toFixed(2)} {form.currency}{form.currency !== "EUR" && exchangeRate > 0 ? <small> ≈ {grossEur.toFixed(2)} EUR</small> : null}</dd></div></dl>
@@ -378,7 +365,7 @@ function ExpenseModal({ open, expense, onClose, onSaved, t }) {
               <label><span>{t("finance.notes")}</span><textarea rows="3" value={form.notes} onChange={(event) => change("notes", event.target.value)} /></label>
             </div>
           </fieldset>
-          <footer><button type="button" className="secondary" onClick={onClose} disabled={busy}>{t("common.cancel")}</button><button type="submit" disabled={busy}>{busy ? <LoaderCircle className="is-spinning" size={16} /> : null}{expense ? t("finance.saveChanges") : t("finance.saveExpense")}</button></footer>
+          <footer><button type="button" className="secondary" onClick={close} disabled={busy}>{t("common.cancel")}</button><button type="submit" disabled={busy}>{busy ? <LoaderCircle className="is-spinning" size={16} /> : null}{expense ? t("finance.saveChanges") : t("finance.saveExpense")}</button></footer>
         </form>
       </section>
     </div>,
@@ -536,15 +523,9 @@ export default function FinanceCenter() {
     return () => { active = false; };
   }, [linkedExpenseId]);
 
-  const money = useCallback((value) => {
-    if (value === null || value === undefined || value === "") return "—";
-    return new Intl.NumberFormat(language === "sq" ? "sq-AL" : "en-IE", { style: "currency", currency: "EUR" }).format(Number(value));
-  }, [language]);
-  const formatMoney = useCallback((value, currency = "EUR") => {
-    if (value === null || value === undefined || value === "") return "—";
-    return new Intl.NumberFormat(language === "sq" ? "sq-AL" : "en-IE", { style: "currency", currency: currency || "EUR" }).format(Number(value));
-  }, [language]);
-  const date = useCallback((value) => value ? new Intl.DateTimeFormat(language === "sq" ? "sq-AL" : "en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${String(value).slice(0, 10)}T12:00:00`)) : "—", [language]);
+  const money = useCallback(value => businessMoney(value,"EUR",language),[language]);
+  const formatMoney = useCallback((value,currency="EUR") => businessMoney(value,currency,language),[language]);
+  const date = useCallback(value => businessDate(value,language),[language]);
 
   const params = useMemo(() => ({ ...period, ...(tab === "expenses" ? { page: expensePage, per_page: 20, search: appliedSearch, status: expenseStatus, category: expenseCategory, payment_status: expensePaymentStatus } : {}) }), [period, tab, expensePage, appliedSearch, expenseStatus, expenseCategory, expensePaymentStatus]);
 
@@ -683,7 +664,7 @@ export default function FinanceCenter() {
         {qualityWarnings.length ? (
           <section className="finance-quality-panel" aria-label={t("finance.dataQualityTitle")}>
             <strong><AlertTriangle size={17} />{t("finance.dataQualityTitle")}</strong>
-            <div>{qualityWarnings.map((warning, index) => <span key={warning.code || warning.type || index}>{warning.message || warning.label || String(warning)}</span>)}</div>
+            <div>{qualityWarnings.map((warning, index) => <span key={warning.code || warning.type || index}>{financeWarning(warning,overview,language)}</span>)}</div>
           </section>
         ) : null}
         <div className="finance-overview-grid finance-overview-single">
