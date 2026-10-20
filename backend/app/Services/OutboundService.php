@@ -36,11 +36,14 @@ class OutboundService
     public function detail(SalesOrder $order): array
     {
         $order->load(['customer','items.product.units','allocations.item.product','allocations.warehouse','allocations.location','allocations.lot','tasks.assignee','packages.items','dispatches.packages.items','returns']);
-        $snapshots=app(InventorySnapshotService::class)->forProducts($order->items->pluck('product')->unique('id'),$order->requested_delivery_date?->toDateString());
+        $snapshots=app(InventorySnapshotService::class)->forProducts($order->items->pluck('product')->unique('id'),$order->requested_delivery_date?->toDateString(), $order->warehouse_id);
         foreach($order->items->groupBy('product_id') as $productId=>$lines){
             $needed=$this->sub($this->sum($lines,'base_quantity'),$this->add($this->sum($lines,'dispatched_quantity'),$this->sum($lines,'reserved_quantity')));
             $snapshot=$snapshots[$productId];
             $snapshot['expected_availability_date']=app(InventorySnapshotService::class)->expectedAvailabilityDate($snapshot,$needed,$order->confirmed_at?$needed:0);
+            $otherDemand = max(0, $snapshot['committed_outgoing'] - ($order->confirmed_at ? (float) $needed : 0));
+            $snapshot['incoming_coverage'] = (float) $needed > 0 && $snapshot['available'] + $snapshot['incoming'] - $otherDemand >= (float) $needed;
+            $snapshot['coverage_is_estimate'] = true;
             $snapshots[$productId]=$snapshot;
         }
         return [...$order->toArray(),'availability'=>$snapshots,'credit'=>app(OutboundCreditService::class)->context($order),
@@ -68,6 +71,37 @@ class OutboundService
         });
     }
 
+    /** Explicit warehouse action; receipt/quality completion never bypasses credit authorization. */
+    public function reserveWaiting(array $data): array
+    {
+        return DB::transaction(function () use ($data) {
+            DB::table('companies')->where('id', Auth::user()->company_id)->lockForUpdate()->first();
+            $fingerprint = RequestFingerprint::make($data, ['idempotency_key']);
+            $run = DB::table('inventory_reservation_runs')->where('company_id', Auth::user()->company_id)->where('idempotency_key', $data['idempotency_key'])->first();
+            if ($run) {
+                if (! hash_equals($run->fingerprint, $fingerprint)) $this->fail('This reservation run key was used with different filters.');
+                return json_decode($run->result, true, flags: JSON_THROW_ON_ERROR);
+            }
+            $orders = SalesOrder::query()->whereNotNull('confirmed_at')->whereNotIn('status', ['cancelled', 'delivered'])
+                ->whereHas('items', fn ($q) => $q->whereRaw('base_quantity > reserved_quantity + dispatched_quantity'))
+                ->when($data['product_id'] ?? null, fn ($q, $id) => $q->whereHas('items', fn ($i) => $i->where('product_id', $id)))
+                ->orderBy('priority')->orderBy('order_date')->orderBy('id')->limit(50)->get();
+            $results = [];
+            foreach ($orders as $order) {
+                try {
+                    $this->action($order, 'reserve', ['idempotency_key' => $data['idempotency_key'].':'.$order->id], false);
+                    $results[] = ['order_id' => $order->id, 'status' => 'reviewed'];
+                } catch (ValidationException $e) {
+                    $results[] = ['order_id' => $order->id, 'status' => 'blocked', 'errors' => $e->errors()];
+                }
+            }
+            $result = ['policy' => 'Priority, order date, order ID. At most 50 waiting orders per explicit action. Credit and stock controls remain mandatory.', 'orders' => $results];
+            DB::table('inventory_reservation_runs')->insert(['company_id' => Auth::user()->company_id, 'idempotency_key' => $data['idempotency_key'],
+                'fingerprint' => $fingerprint, 'result' => json_encode($result, JSON_THROW_ON_ERROR), 'created_at' => now(), 'updated_at' => now()]);
+            return $result;
+        }, 3);
+    }
+
     private function replaceItems(SalesOrder $order,array $lines): void
     {
         if(!$lines)$this->fail('Add at least one product.');
@@ -89,14 +123,14 @@ class OutboundService
         $order->update(['total_amount'=>$total]);
     }
 
-    public function action(SalesOrder $order,string $action,array $data): array
+    public function action(SalesOrder $order,string $action,array $data, bool $withDetail = true): array
     {
-        return DB::transaction(function()use($order,$action,$data){
+        return DB::transaction(function()use($order,$action,$data,$withDetail){
             DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
             $order=SalesOrder::query()->lockForUpdate()->findOrFail($order->id);
             $key=$data['idempotency_key']; $fp=RequestFingerprint::make(['order'=>$order->id,'action'=>$action,...$data],['idempotency_key']);
             $old=DB::table('outbound_actions')->where('company_id',$order->company_id)->where('idempotency_key',$key)->first();
-            if($old){if($old->fingerprint!==$fp)$this->fail('This request key belongs to a different action.'); return $this->detail($order);}
+            if($old){if($old->fingerprint!==$fp)$this->fail('This request key belongs to a different action.'); return $withDetail ? $this->detail($order) : [];}
             if($order->status==='cancelled')$this->fail('This order is cancelled.');
             match($action){
                 'edit'=>$this->edit($order,$data), 'confirm'=>$this->confirm($order),
@@ -110,7 +144,7 @@ class OutboundService
             };
             $this->sync($order);
             DB::table('outbound_actions')->insert(['company_id'=>$order->company_id,'sales_order_id'=>$order->id,'action'=>$action,'idempotency_key'=>$key,'fingerprint'=>$fp,'created_at'=>now(),'updated_at'=>now()]);
-            return $this->detail($order->fresh());
+            return $withDetail ? $this->detail($order->fresh()) : [];
         }, 3);
     }
 

@@ -364,6 +364,8 @@ class WarehouseOperationsService
     public function dispatch(StockTransfer $transfer, string $idempotencyKey): StockTransfer
     {
         return DB::transaction(function () use ($transfer, $idempotencyKey) {
+            // Company before source/product: consistent with reservations and receipts.
+            DB::table('companies')->where('id', Auth::user()->company_id)->sharedLock()->first();
             DB::table('companies')->where('id', Auth::user()->company_id)->sharedLock()->first();
             $transfer = StockTransfer::query()->lockForUpdate()->findOrFail($transfer->id);
             if ($transfer->status === 'in_transit' && $transfer->dispatch_idempotency_key === $idempotencyKey) {
@@ -414,6 +416,8 @@ class WarehouseOperationsService
     public function receive(StockTransfer $transfer, array $data): StockTransfer
     {
         return DB::transaction(function () use ($transfer, $data) {
+            // Company before source/product: consistent with reservations and receipts.
+            DB::table('companies')->where('id', Auth::user()->company_id)->sharedLock()->first();
             DB::table('companies')->where('id', Auth::user()->company_id)->sharedLock()->first();
             $transfer = StockTransfer::query()->lockForUpdate()->findOrFail($transfer->id);
             $payloadHash = hash('sha256', json_encode($data['items'], JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION));
@@ -501,6 +505,8 @@ class WarehouseOperationsService
     public function cancel(StockTransfer $transfer, string $reason): StockTransfer
     {
         return DB::transaction(function () use ($transfer, $reason) {
+            // Company before source/product: consistent with reservations and receipts.
+            DB::table('companies')->where('id', Auth::user()->company_id)->sharedLock()->first();
             $transfer = StockTransfer::query()->lockForUpdate()->findOrFail($transfer->id);
             if ($transfer->status === 'received' || $transfer->status === 'partially_received') {
                 throw ValidationException::withMessages(['status' => ['A received transfer cannot be cancelled. Create a return transfer instead.']]);

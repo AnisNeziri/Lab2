@@ -8,6 +8,9 @@ use Illuminate\Http\Request;
 class FulfillmentController extends Controller
 {
     public function __construct(private readonly OutboundService $service){}
+    public function reserveWaiting(Request $r) {
+        return response()->json($this->service->reserveWaiting($r->validate(['idempotency_key'=>'required|uuid', 'product_id'=>['nullable','integer', \Illuminate\Validation\Rule::exists('products','id')->where('company_id',$r->user()->company_id)]])));
+    }
     public function index(Request $r){return response()->json($this->service->orders($r->only(['search','status','view','wave','customer_id','product_id','warehouse_id','per_page'])));}
     public function show(SalesOrder $salesOrder){return response()->json($this->service->detail($salesOrder));}
     public function store(Request $r){return response()->json($this->service->detail($this->service->create($r->validate($this->orderRules()))),201);}

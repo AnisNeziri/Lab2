@@ -56,6 +56,8 @@ class InventoryCountService
     public function create(array $data): InventoryCountSession
     {
         return DB::transaction(function () use ($data): InventoryCountSession {
+            // Company before source/product: consistent with reservations and receipts.
+            DB::table('companies')->where('id', Auth::user()->company_id)->lockForUpdate()->first();
             $companyId = (int) Auth::user()->company_id;
             $warehouse = Warehouse::query()->where('is_active', true)->findOrFail($data['warehouse_id']);
             $locationId = isset($data['location_id']) ? (int) $data['location_id'] : null;
@@ -234,6 +236,8 @@ class InventoryCountService
     public function requestRecount(InventoryCountSession $session, array $itemIds, string $reason): InventoryCountSession
     {
         return DB::transaction(function () use ($session, $itemIds, $reason): InventoryCountSession {
+            // Company before source/product: consistent with reservations and receipts.
+            DB::table('companies')->where('id', Auth::user()->company_id)->lockForUpdate()->first();
             $session = InventoryCountSession::query()->lockForUpdate()->findOrFail($session->id);
             if (! in_array($session->status, ['in_progress', 'submitted', 'recount_required'], true)) {
                 throw ValidationException::withMessages(['status' => ['This count can no longer be sent for recount.']]);
@@ -358,6 +362,8 @@ class InventoryCountService
     public function approve(InventoryCountSession $session, string $reason): InventoryCountSession
     {
         return DB::transaction(function () use ($session, $reason): InventoryCountSession {
+            // Company before source/product: consistent with reservations and receipts.
+            DB::table('companies')->where('id', Auth::user()->company_id)->lockForUpdate()->first();
             $session = InventoryCountSession::query()->lockForUpdate()->findOrFail($session->id);
             if ($session->status !== 'submitted') {
                 throw ValidationException::withMessages(['status' => ['Only a submitted count can be approved.']]);

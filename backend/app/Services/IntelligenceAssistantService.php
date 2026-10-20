@@ -174,7 +174,7 @@ final class IntelligenceAssistantService
             }
             if(!$needEntity(['product','customer','supplier','shipment','decision','task','purchase_order','sales_order','warehouse'])) {
                 $type=$entity['type'];$tool=match($type){'product'=>$intent==='movements'?'get_stock_movements':($intent==='forecast'?'get_demand_forecast':($intent==='compare'?'get_supplier_options':($intent==='explain'?'get_inventory_plan':'get_product_availability'))),'customer'=>$intent==='record'?'get_customer':'get_customer_intelligence','supplier'=>$intent==='explain'?'get_supplier_performance':'get_supplier','shipment'=>'get_shipment_intelligence','decision'=>$intent==='compare'?'compare_decision_alternatives':'get_decision','task'=>'get_task','purchase_order'=>'get_purchase_order','sales_order'=>'get_sales_order','warehouse'=>'get_warehouse_stock'};
-                $read($tool,[$type.'_id'=>$entity['id']]);
+                $read($tool,[$type.'_id'=>$entity['id'], ...($tool === 'get_product_availability' && !empty($plan['warehouse_term']) ? ['warehouse_term'=>$plan['warehouse_term']] : [])]);
                 if($intent==='explain'&&$type==='decision')$read('get_decision_changes',['decision_id'=>$entity['id']]);
             }
         }elseif(in_array($intent,['scenario','scenario_cash'])) {

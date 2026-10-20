@@ -14,6 +14,7 @@ import { useDialog } from '../hooks/useDialog'
 import { useUiText } from '../hooks/useUiText'
 import { useSettingsStore } from '../store/settingsStore'
 import ProductInsight from './ProductInsight'
+import { InventoryPosition } from './InventoryPosition'
 import {businessDate,businessMoney} from '../utils/businessFormat'
 import {canOpenPage} from '../config/pageAccess'
 
@@ -31,16 +32,23 @@ function ProductDetail({ productId, onClose }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [refreshFailed, setRefreshFailed] = useState(false)
   const [imageFailed, setImageFailed] = useState(false)
 
   useEffect(() => {
-    let active = true
+    let active = true, sequence = 0
     setImageFailed(false); setLoading(true); setError('')
-    getProductDetail(productId)
-      .then((detail) => { if (active) setData(detail) })
-      .catch(cause => { if (active) setError(cause.message || ui('Could not load product details.')) })
-      .finally(() => { if (active) setLoading(false) })
-    return () => { active = false }
+    const load = (silent = false) => {
+      const request = ++sequence
+      return getProductDetail(productId)
+        .then(detail => { if (active && request === sequence) { setData(detail); setRefreshFailed(false) } })
+        .catch(cause => { if (active && request === sequence) { if (silent) setRefreshFailed(true); else setError(cause.message || ui('Could not load product details.')) } })
+        .finally(() => { if (active && request === sequence) setLoading(false) })
+    }
+    void load()
+    const refresh = () => { if (!document.hidden) void load(true) }
+    window.addEventListener('database-refresh', refresh); window.addEventListener('stock-refresh', refresh)
+    return () => { active = false; window.removeEventListener('database-refresh', refresh); window.removeEventListener('stock-refresh', refresh) }
   }, [productId, revision, ui])
 
   const product = data?.product
@@ -57,18 +65,20 @@ function ProductDetail({ productId, onClose }) {
       {loading && <div className="product-detail-state"><Package size={30} /><p>{ui("Loading product details…")}</p></div>}
       {error && <div className="product-detail-state is-error"><p role="alert">{error}</p><button type="button" onClick={() => setRevision(value => value + 1)}>{ui('Try again')}</button><button type="button" className="secondary" onClick={onClose}>{ui("Close")}</button></div>}
       {!loading && !error && product && stock && <div className="modal-body product-detail-body">
+        {refreshFailed && <p role="status">{language === 'sq' ? 'Detajet nuk mund të përditësoheshin. Shfaqen të dhënat e fundit të regjistruara.' : 'Could not refresh product details. Last recorded data is shown.'}</p>}
         <AskAimsButton type="product" id={productId} onBeforeOpen={onClose}/>
         <nav className="product-context-links" aria-label={language==='sq'?'Hapat vijues':'Next steps'}>{[[`/warehouse-operations?product=${productId}`,'Find storage location','Gjej vendndodhjen'],[`/order-hub?product=${productId}`,'Related orders','Porositë e lidhura'],[`/inventory-intelligence?view=planning&product=${productId}`,'Stock planning','Planifikimi i stokut'],...(product.supplier_id?[[`/suppliers?supplier=${product.supplier_id}`,'Supplier','Furnitori']]:[])].filter(([path])=>canOpenPage(path,permissions)).map(([path,en,sq])=><Link key={path} to={path} onClick={onClose}>{language==='sq'?sq:en} →</Link>)}</nav>
         <section className="product-detail-overview">
           <div className="product-detail-image-wrap">{product.image_url && !imageFailed ? <img className="product-detail-image" src={product.image_url} alt={product.name} onError={() => setImageFailed(true)} /> : <div className="product-detail-image-empty"><ImageOff size={34} /><span>{ui("No product image")}</span></div>}</div>
           <div className="product-detail-identity"><div className="product-detail-title-row"><div><h3>{product.name}</h3><p>{product.category?.name || ui('Uncategorised')} · {product.supplier?.name || ui('No supplier')}</p></div><span className={`product-lifecycle product-lifecycle-${product.lifecycle_status || 'active'}`}>{t(`productMaster.${product.lifecycle_status || 'active'}`)}</span></div><div className="product-detail-identifiers"><span><small>SKU</small><strong>{product.sku || '—'}</strong></span><span><small>{t('productMaster.primaryBarcode')}</small><strong>{product.barcode || '—'}</strong></span><span><small>{ui("Unit")}</small><strong>{product.unit || 'pcs'}</strong></span></div>{product.description ? <p className="product-detail-description">{product.description}</p> : null}</div>
         </section>
-        <section className="product-detail-stock-grid">
+        {!permissions.includes('inventory.view') && <section className="product-detail-stock-grid">
           <article className={`is-primary stock-${status?.key || 'normal'}`}><span>{ui("Available to sell")}</span><strong>{formatQuantity(stock.available, product.unit,language)}</strong><small>{product.unit || 'pcs'} · {ui(status?.label || 'Stock')}</small></article>
           <article><span>{t('productUnits.onHand')}</span><strong>{formatQuantity(stock.onHand, product.unit,language)}</strong><small>{product.unit || 'pcs'}</small></article>
           <article><span>{t('productUnits.reserved')}</span><strong>{formatQuantity(stock.reserved, product.unit,language)}</strong><small>{product.unit || 'pcs'}</small></article>
           <article><span>{t('productUnits.incoming')}</span><strong>{formatQuantity(stock.incoming, product.unit,language)}</strong><small>{ui('Projected')}: {formatQuantity(stock.projected, product.unit,language)}</small></article>
-        </section>
+        </section>}
+        {permissions.includes('inventory.view') && <InventoryPosition productId={productId} />}
         <ProductInsight productId={productId} onOpen={onClose}/>
         <div className="product-detail-columns">
           <section className="product-detail-section"><h3>{ui("Product information")}</h3><dl className="detail-list"><dt>{t('productMaster.brand')}</dt><dd>{product.brand || '—'}</dd><dt>{ui("Purchase price")}</dt><dd>{money(product.purchase_price)}</dd><dt>{ui("Selling price")}</dt><dd>{money(product.selling_price ?? product.price)}</dd><dt>{ui("Margin per unit")}</dt><dd>{margin == null ? '—' : money(margin)}</dd><dt>{ui("Minimum quantity")}</dt><dd>{formatQuantity(product.min_quantity, product.unit,language)}</dd><dt>{ui("High stock at")}</dt><dd>{Number(product.high_stock_threshold) > 0 ? formatQuantity(product.high_stock_threshold, product.unit,language) : ui('Automatic')}</dd><dt>{ui("Warehouse section")}</dt><dd>{product.location_code || '—'}</dd><dt>{t('productTracking.mode')}</dt><dd>{t(trackingLabelKeys[product.tracking_mode || 'none'])}</dd></dl></section>

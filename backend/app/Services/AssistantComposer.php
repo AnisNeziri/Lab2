@@ -60,7 +60,7 @@ final class AssistantComposer
                 if($name==='get_sales_order')$title=$row['order_number']??$title;
                 if(!is_scalar($title))$title=$name;
                 $rowurl=$row['url']??$url;
-                if($name==='get_product_availability')$rowurl='/products?product='.($row['product']['id']??'');
+                if($name==='get_product_availability')$rowurl='/warehouse-operations?product='.($row['product']['id']??'');
                 if($name==='get_customer_intelligence'||$name==='get_at_risk_customers')$rowurl='/customer-sales-intelligence?customer='.($row['id']??'');
                 if($name==='get_supplier_options')$rowurl='/suppliers?supplier='.($row['supplier_id']??'');
                 if($name==='get_purchase_order')$rowurl='/purchase-orders?po='.($row['id']??'');
@@ -87,6 +87,11 @@ final class AssistantComposer
     private function metrics(array $row,bool $sq):array
     {
         $labels=[
+            'position.physical'=>['Physical','Fizik'], 'position.available'=>['Available to sell','Për shitje'],
+            'position.reserved'=>['Reserved (not picking)','Rezervuar (pa mbledhje)'], 'position.allocated'=>['Allocated / picking','Alokuar / mbledhje'],
+            'position.quality_hold'=>['Quality hold','Në kontroll cilësie'], 'position.incoming'=>['Incoming (includes transit)','Në ardhje (përfshin transportin)'],
+            'position.in_transit'=>['Of incoming: in transit','Nga ardhjet: në transport'], 'position.backordered'=>['Backordered','Në pritje stoku'],
+            'position.projected_available'=>['Projected after demand','E parashikuar pas kërkesës'],
             'summary.commitment'=>['New purchasing commitment','Angazhimi i ri i blerjeve'],'summary.products_analyzed'=>['Scopes analyzed','Shtrirjet e analizuara'],'summary.purchase_lines'=>['Purchase lines','Rreshta blerjeje'],'summary.transfer_lines'=>['Transfer lines','Rreshta transferimi'],'summary.unresolved_scopes'=>['Unresolved scopes','Shtrirje të pazgjidhura'],'summary.stockout_days'=>['Projected shortage days','Ditë mungese të parashikuara'],'purchase_quantity'=>['Purchase quantity','Sasia e blerjes'],'transfer_quantity'=>['Transfer quantity','Sasia e transferimit'],'projected_need'=>['Projected need','Nevoja e parashikuar'],'unmet_target'=>['Preferred-target gap','Mungesa ndaj objektivit'],
             'summary.evaluated'=>['Completed observed decision windows','Periudha vendimesh të vëzhguara'],'summary.waiting'=>['Waiting for genuine outcomes','Në pritje të rezultateve reale'],'summary.prediction_evaluations'=>['Prediction evaluations (separate)','Vlerësime parashikimi (veçmas)'],'data_sufficiency.required'=>['Minimum independent samples for review','Mostrat minimale për rishikim'],'production.version'=>['Production champion','Politika aktive'],'median_quantity_change_percent'=>['Median human quantity change %','Ndryshimi median i sasisë %'],'modified_samples'=>['Completed modified windows','Periudha të ndryshuara të përfunduara'],'independent_samples'=>['Independent observations','Vëzhgime të pavarura'],'comparison.independent_samples'=>['Independent paired scenarios','Skenarë të çiftuar të pavarur'],'comparison.minimum_samples'=>['Minimum samples','Mostrat minimale'],'comparison.eligible_for_human_review'=>['Eligible for explicit human review','Lejohet rishikim i shprehur'],'data.response.recommended_quantity'=>['Recommended quantity','Sasia e rekomanduar'],'data.response.chosen_quantity'=>['Chosen quantity','Sasia e zgjedhur'],'data.scorecard.stockout_days'=>['Observed stockout days','Ditët e mungesës së vëzhguar'],'data.scorecard.excess_mean_quantity'=>['Mean observed excess','Teprica mesatare e vëzhguar'],
             'product.quantity'=>['On hand','Në stok'],'product.available_quantity'=>['Available to sell','Për shitje'],'plan.stock.available_to_promise'=>['Available to promise','Në dispozicion'],'plan.base_quantity'=>['Recommended quantity','Sasia e rekomanduar'],'plan.stockout_date'=>['Stockout date','Data e mungesës'],'plan.expected_arrival'=>['Expected arrival','Mbërritja e pritshme'],

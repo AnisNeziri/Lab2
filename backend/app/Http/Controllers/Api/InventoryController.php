@@ -26,6 +26,40 @@ class InventoryController extends Controller
         private readonly BinTransferService $binTransfers,
     ) {}
 
+    public function control(Request $request): JsonResponse
+    {
+        $companyId = $request->user()->company_id;
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('company_id', $companyId)],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $page = Product::query()->select('id', 'company_id', 'name', 'sku', 'unit', 'quantity', 'min_quantity')
+            ->when($filters['search'] ?? null, fn ($q, $s) => $q->where(fn ($q) => $q->where('name', 'like', "%{$s}%")->orWhere('sku', 'like', "%{$s}%")))
+            ->orderBy('name')->orderBy('id')->paginate($filters['per_page'] ?? 25);
+        $snapshots = $this->snapshots->forProducts($page->getCollection(), null, $filters['warehouse_id'] ?? null);
+        $today = \App\Support\CompanyClock::today()->toDateString();
+        $page->setCollection($page->getCollection()->map(function ($product) use ($snapshots, $today) {
+            $snapshot = $snapshots[$product->id]; $position = $this->snapshots->position($snapshot); $attention = [];
+            if (abs($position['difference']) >= 0.0005 || $position['available'] < 0 || $position['reserved'] < 0) $attention[] = 'integrity_difference';
+            if ($position['available'] <= 0) $attention[] = 'out_of_stock';
+            elseif ($position['available'] < (float) $product->min_quantity) $attention[] = 'below_minimum';
+            if ($position['backordered'] > 0) $attention[] = 'backorders';
+            if ($position['quality_hold'] > 0) $attention[] = 'quality_hold';
+            if (collect($snapshot['incoming_schedule'])->contains(fn ($s) => $s['expected_at'] && $s['expected_at'] < $today)
+                || collect($snapshot['incoming_evidence'])->contains(fn ($s) => $s['eta'] && $s['eta'] < $today && ($s['remaining_base'] === null || $s['remaining_base'] > 0))) $attention[] = 'delayed_incoming';
+            if ($position['in_transit'] === null) $attention[] = 'unattributed_receipts_or_cargo';
+            return ['product' => $product, 'position' => $position, 'attention' => $attention,
+                'incoming_schedule' => array_slice($snapshot['incoming_schedule'], 0, 20), 'incoming_evidence' => $snapshot['incoming_evidence'],
+                'sources_truncated' => count($snapshot['incoming_schedule']) > 20 || $snapshot['incoming_evidence_truncated'],
+                'url' => '/warehouse-operations?product='.$product->id,
+                'replenishment_url' => '/inventory-intelligence?product='.$product->id,
+                'orders_url' => '/order-hub?product='.$product->id.'&view=backorders'];
+        }));
+        return response()->json([...$page->toArray(), 'generated_at' => now()->toIso8601String(),
+            'scope' => 'Current page of products. No mixed-unit company quantity total. Facts only; forecasts remain in Inventory Intelligence.']);
+    }
+
     public function locator(Request $request): JsonResponse
     {
         $companyId = $request->user()->company_id;
@@ -67,8 +101,8 @@ class InventoryController extends Controller
     public function product(Product $product, Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'warehouse_id' => ['nullable', 'integer'],
-            'location_id' => ['nullable', 'integer'],
+            'warehouse_id' => ['nullable', 'integer', Rule::exists('warehouses', 'id')->where('company_id', $request->user()->company_id)],
+            'location_id' => ['nullable', 'integer', Rule::exists('warehouse_locations', 'id')->where('company_id', $request->user()->company_id)],
         ]);
         $balances = $this->inventory->balances(
             $product,
@@ -89,10 +123,13 @@ class InventoryController extends Controller
                 ->when($validated['location_id'] ?? null, fn ($builder, $id) => $builder->where('location_id', $id)))
             ->orderByRaw('CASE WHEN expiry_at IS NULL THEN 1 ELSE 0 END')->orderBy('expiry_at')->get();
 
+        $snapshot = $this->snapshots->forProduct($product, null, $validated['warehouse_id'] ?? null);
         return response()->json([
             'product' => $product,
             'company_quantity' => (float) $product->quantity,
-            'inventory' => $this->snapshots->forProduct($product),
+            'inventory' => $snapshot,
+            'position' => $this->snapshots->position($snapshot),
+            'position_scope' => isset($validated['warehouse_id']) ? 'warehouse' : 'company',
             'balances' => $balances,
             'totals' => collect(WarehouseInventoryService::STATES)->mapWithKeys(fn ($state) => [
                 $state => round((float) $balances->sum($state.'_quantity'), 3),

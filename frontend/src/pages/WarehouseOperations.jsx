@@ -1,5 +1,6 @@
 import EntityDocuments from '../components/EntityDocuments'
 import EntityContext from '../components/EntityContext'
+import InventoryControlCenter, { InventoryPosition } from '../components/InventoryPosition'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRightLeft, Building2, FileDown, LocateFixed, MapPin, PackageCheck, Pencil, Plus, Search, Send, X } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -140,7 +141,7 @@ export default function WarehouseOperations() {
   }, [t])
 
   useEffect(() => { void load() }, [load])
-  useEffect(() => { const target=documentParams.get('tab'); if(['locator','warehouses','locations','transfers','receipts'].includes(target))setTab(target) }, [documentParams.get('tab')])
+  useEffect(() => { const target=documentParams.get('tab'); if(['control','locator','warehouses','locations','transfers','receipts'].includes(target))setTab(target) }, [documentParams.get('tab')])
   useEffect(() => { const id=documentParams.get('product'); if(id){setTab('locator');setLocatorMode('product');setLocatedProductId(id);setLocatorQuery('');setLocatorCategoryId('');setLocatorSupplierId('');setLocatorLowOnly(false)} }, [documentParams.get('product')])
   useEffect(() => {
     if (linkedWarehouseId) {
@@ -370,6 +371,7 @@ export default function WarehouseOperations() {
   }
 
   const tabs = [
+    ['control', PackageCheck, language === 'sq' ? 'Kontrolli i stokut' : 'Inventory Control'],
     ['locator', LocateFixed, t('warehouseOps.stockLocator')],
     ['warehouses', Building2, t('warehouseOps.warehouses')],
     ['locations', MapPin, t('warehouseOps.locations')],
@@ -398,6 +400,7 @@ export default function WarehouseOperations() {
       {message ? <p className="success warehouse-feedback">{message}</p> : null}
       {loading ? <section className="card"><p>{t('common.loading')}</p></section> : null}
 
+      {tab === 'control' && <InventoryControlCenter warehouses={warehouses} />}
       {!loading && tab === 'warehouses' && <div className="warehouse-grid">
         {canManageWarehouses && <section ref={warehouseFormRef} className="card warehouse-side-form" id="warehouse-form"><h2>{editingWarehouseId ? <Pencil size={19} /> : <Plus size={19} />}{t(editingWarehouseId ? 'warehouseOps.editWarehouse' : 'warehouseOps.addWarehouse')}</h2><form onSubmit={saveWarehouse}>
           <label>{t('warehouseOps.name')}<input name="warehouse-name" value={warehouseForm.name} onChange={(event) => setWarehouseForm({ ...warehouseForm, name: event.target.value })} required /></label>
@@ -458,6 +461,7 @@ export default function WarehouseOperations() {
           {!locatedProduct ? <div className="stock-locator-prompt"><LocateFixed size={34} /><strong>{t('warehouseOps.locatorSelect')}</strong></div> : (
             <div className="stock-locator-overview">
               <header><h3>{locatedProduct.name}</h3><small>{locatedProduct.sku || locatedProduct.barcode || "—"} · {locatedProduct.unit}</small></header>
+              <InventoryPosition key={locatedProduct.id} productId={locatedProduct.id} />
               <div className="stock-locator-summary">
                 <div><small>{t('warehouseOps.locatorTotalStock')}</small><strong>{formatQuantity(locatedTotal, locatedProduct.unit)} <span>{locatedProduct.unit}</span></strong></div>
                 <div><small>{t('warehouseOps.locatorInWarehouses')}</small><strong>{locatedBalances.length}</strong></div>

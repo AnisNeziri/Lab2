@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\GoodsReceiptItem;
+
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderChange;
 use App\Models\PurchaseOrderPayment;
@@ -103,7 +105,7 @@ class PurchaseOrderService
     public function find(PurchaseOrder $order): PurchaseOrder
     {
         return $order->load([
-            'supplier', 'warehouse', 'items.product:id,name,sku,unit,tracking_mode,expiration_controlled,default_shelf_life_days,shelf_life_basis', 'items.productSupplier',
+            'supplier', 'warehouse', 'items.product:id,name,sku,unit,tracking_mode,expiration_controlled,default_shelf_life_days,shelf_life_basis', 'items.productSupplier', 'items.shipmentItems.shipment:id,tracking_number,status',
             'payments' => fn ($query) => $query
                 ->with(['user:id,name', 'allocations.expense:id,purchase_order_id,document_type,document_number,gross_amount,currency,status'])
                 ->latest('payment_date')->latest('id'),
@@ -424,6 +426,8 @@ class PurchaseOrderService
     public function receive(PurchaseOrder $order, array $data): PurchaseOrder
     {
         return DB::transaction(function () use ($order, $data) {
+            // Match the company -> source -> product lock order of outbound operations.
+            DB::table('companies')->where('id', Auth::user()->company_id)->lockForUpdate()->first();
             $order = PurchaseOrder::query()->lockForUpdate()->findOrFail($order->id);
             $requestFingerprint = RequestFingerprint::make($data, ['idempotency_key']);
             $existingReceipt = GoodsReceipt::withoutGlobalScopes()
@@ -485,6 +489,9 @@ class PurchaseOrderService
                 'request_fingerprint' => $requestFingerprint,
             ]);
             $order->load(['items.product.category', 'items.product.supplier']);
+            if (count(array_unique(array_column($data['items'], 'id'))) !== count($data['items'])) {
+                throw ValidationException::withMessages(['items' => ['Receive each PO line once per receipt. Split different shipment cargo into separate receipts.']]);
+            }
             $received = [];
             $hasAvailableReceipt = false;
             $hasQualityHold = false;
@@ -535,6 +542,29 @@ class PurchaseOrderService
                     isset($input['damaged_base_quantity']) ? (float) $input['damaged_base_quantity'] : null,
                 ) : 0;
                 $inventoryBaseQuantity = round($acceptedBase + $damagedBase, 3);
+                $cargo = null;
+                $cargoReceivedBase = null;
+                if (! empty($input['shipment_item_id'])) {
+                    $cargo = \App\Models\ShipmentItem::query()->lockForUpdate()->findOrFail($input['shipment_item_id']);
+                    if ((int) $cargo->company_id !== (int) $order->company_id
+                        || (int) $cargo->purchase_order_item_id !== (int) $item->id
+                        || (int) $cargo->product_id !== (int) $item->product_id
+                        || $cargo->unit !== $item->unit
+                        || $cargo->loaded_quantity === null || $cargo->base_quantity === null
+                        || (float) $cargo->quantity <= 0
+                        || ($item->conversion_mode === 'variable' && (float) $cargo->loaded_quantity !== (float) $cargo->quantity)) {
+                        throw ValidationException::withMessages(['items' => ['Select loaded cargo for this PO line with a verified base-unit quantity.']]);
+                    }
+                    $cargoReceivedBase = round($inventoryBaseQuantity + ($rejected > 0 ? $this->units->resolveSnapshot(
+                        $item->inventory_unit ?: $item->product->unit, $item->unit, $item->conversion_mode ?: 'none',
+                        $item->conversion_factor !== null ? (float) $item->conversion_factor : null, $rejected, null,
+                    ) : 0), 3);
+                    $alreadyArrived = (float) GoodsReceiptItem::query()->where('shipment_item_id', $cargo->id)->sum('shipment_received_base_quantity');
+                    $loadedBase = (float) $cargo->base_quantity * (float) $cargo->loaded_quantity / (float) $cargo->quantity;
+                    if ($alreadyArrived + $cargoReceivedBase > $loadedBase + 0.0005) {
+                        throw ValidationException::withMessages(['items' => ['Receipt exceeds the quantity remaining on the selected shipment cargo.']]);
+                    }
+                }
                 $purchaseExchangeRate = Money::normalizeDecimal($order->exchange_rate ?: '1', 8);
                 $basePurchaseCost = Money::product([$quantity, $item->unit_price, $purchaseExchangeRate], 6);
                 $basePurchaseUnitCost = $inventoryBaseQuantity > 0
@@ -586,6 +616,8 @@ class PurchaseOrderService
                     'received_base_quantity' => round((float) $item->received_base_quantity + $acceptedBase + $damagedBase, 3),
                 ]);
                 $receiptItem = $receipt->items()->create([
+                    'shipment_item_id' => $cargo?->id,
+                    'shipment_received_base_quantity' => $cargoReceivedBase,
                     'purchase_order_item_id' => $item->id,
                     'product_id' => $item->product_id,
                     'ordered_unit' => $item->unit,

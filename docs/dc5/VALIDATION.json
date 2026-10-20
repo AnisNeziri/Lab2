@@ -1,0 +1,22 @@
+{
+  "phase": "DC5",
+  "review_date": "2026-10-20",
+  "working_directory": "C:/Users/anisi/Lab2",
+  "branch": "main",
+  "head": "dd3e4e213fd32be824d56357be61744d079c95d3",
+  "implementation_uncommitted": true,
+  "business_database_modified": false,
+  "remote_main_pushed": false,
+  "sqlite_dc5_performance_slice": {"result": "PASS", "tests": 8, "dc5_journeys": 4, "assertions": 200},
+  "mariadb_dc5": {"result": "PASS", "tests": 4, "assertions": 113},
+  "reservation_process_race": "PASS",
+  "receipt_process_races": {"same_key": "PASS", "competing_keys": "PASS"},
+  "frontend": {"result": "PASS", "tests": 9},
+  "browser": {"result": "PASS", "journeys": 1},
+  "production_build": "PASS",
+  "upgrade_clone": {"result": "PASS", "preserved_tables": 203, "preserved_rows": 2860, "migrate_fresh_used": false},
+  "control_read_small_fixture": {"queries": 16, "bytes": 2255},
+  "large_scale_load_certified": false,
+  "real_device_provider_certified": false,
+  "next_phase_started": false
+}

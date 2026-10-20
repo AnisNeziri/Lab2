@@ -15,6 +15,11 @@ export default function OrderOverview({ detail, t, language, label, nextStep }) 
   return <div className="hub-overview">
     <div className="hub-order-heading"><div><p className="workspace-eyebrow">{t('Order overview','Përmbledhja e porosisë')}</p><h2>{order?.order_number || detail.external_id || `#${detail.id}`}</h2></div><span className="fulfillment-badge">{label(order?.status || detail.states?.order || detail.state)}</span></div>
     {nextStep}
+    {order && <div className="inventory-control-scroll" role="region" tabIndex={0} aria-label={t('Order stock availability', 'Disponueshmëria e stokut për porosinë')}><table><thead><tr>{['Product','Ordered','Reserved','Fulfilled','Backordered','Available now','Incoming','Expected availability (estimate)'].map((text, i) => <th key={text}>{t(text, ['Produkti','Porositur','Rezervuar','Nisur','Në pritje','I disponueshëm tani','Në ardhje','Disponueshmëria e pritshme (vlerësim)'][i])}</th>)}</tr></thead><tbody>{(order.items || []).map(line => {
+      const stock = detail.availability?.[line.product_id] || order.availability?.[line.product_id] || {}
+      const backorder = order.confirmed_at && order.status !== 'cancelled' ? Math.max(0, Number(line.base_quantity) - Number(line.reserved_quantity) - Number(line.dispatched_quantity)) : 0
+      return <tr key={line.id}><th>{line.product?.name || line.product_id} <small>{line.product?.unit}</small></th><td>{line.base_quantity}</td><td>{line.reserved_quantity}</td><td>{line.dispatched_quantity}</td><td>{backorder}</td><td>{stock.available ?? '—'}</td><td>{stock.incoming_quantity_complete === false ? t('Unknown total', 'Total i panjohur') : (stock.incoming ?? '—')}<small>{stock.incoming_coverage ? t('Quantity covered (estimate)', 'Sasia mbulohet (vlerësim)') : null}</small></td><td>{stock.expected_availability_date || t('No supported date', 'Pa datë të mbështetur')}</td></tr>
+    })}</tbody></table></div>}
     <dl className="hub-order-metrics">{facts.map(([name,value])=><div key={name}><dt>{name}</dt><dd>{value ?? '—'}</dd></div>)}</dl>
     <dl className="hub-order-context">
       {[

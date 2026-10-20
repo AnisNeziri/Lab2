@@ -17,11 +17,13 @@ class GoodsReceiptItem extends Model
         'landed_cost_unit', 'final_inventory_unit_cost', 'weighted_average_cost_before',
         'weighted_average_cost_after', 'notes',
         'quality_inspection_mode_snapshot', 'quality_inspection_id',
+        'shipment_item_id', 'shipment_received_base_quantity',
     ];
 
     protected function casts(): array
     {
         return [
+            'shipment_received_base_quantity' => 'decimal:3',
             'accepted_quantity' => 'decimal:3', 'damaged_quantity' => 'decimal:3',
             'rejected_quantity' => 'decimal:3', 'accepted_base_quantity' => 'decimal:3',
             'damaged_base_quantity' => 'decimal:3', 'conversion_factor' => 'decimal:6',

@@ -193,8 +193,18 @@ class AimsToolRegistry
 
     private function availability(array $input): array
     {
+        if (! empty($input['warehouse_term'])) {
+            $warehouses = \App\Models\Warehouse::query()->where(fn ($q) => $q->where('name', $input['warehouse_term'])->orWhere('code', $input['warehouse_term']))->limit(2)->get();
+            if ($warehouses->count() !== 1) throw \Illuminate\Validation\ValidationException::withMessages(['warehouse' => ['Choose one unambiguous warehouse before reading its stock.']]);
+            $input['warehouse_id'] = $warehouses->first()->id;
+        }
+        if (! empty($input['warehouse_id'])) \App\Models\Warehouse::query()->findOrFail($input['warehouse_id']);
         $x = Product::query()->with(['warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,name,code,path'])->findOrFail($this->id($input, 'product_id'));
-        return ['product' => $this->product($input), 'warehouses' => $x->warehouseStock->map(fn ($row) => ['warehouse' => $row->warehouse?->only(['id', 'name', 'code']), 'location' => $row->location?->only(['id', 'name', 'code', 'path']), 'on_hand' => (float) $row->quantity, 'available' => (float) $row->available_quantity, 'reserved' => (float) $row->reserved_quantity, 'damaged' => (float) $row->damaged_quantity, 'quarantine' => (float) $row->quarantine_quantity, 'blocked' => (float) $row->blocked_quantity])->values()->all()];
+        $snapshot = app(InventorySnapshotService::class)->forProduct($x, null, $input['warehouse_id'] ?? null);
+        return ['product' => $this->product($input), 'position' => app(InventorySnapshotService::class)->position($snapshot),
+            'qualification' => $snapshot['commitment_limitations'],
+            'incoming' => array_slice($snapshot['incoming_evidence'], 0, 10), 'url' => '/warehouse-operations?product='.$x->id,
+            'warehouses' => $x->warehouseStock->filter(fn ($row) => empty($input['warehouse_id']) || (int) $row->warehouse_id === (int) $input['warehouse_id'])->take(50)->map(fn ($row) => ['warehouse' => $row->warehouse?->only(['id', 'name', 'code']), 'location' => $row->location?->only(['id', 'name', 'code', 'path']), 'on_hand' => (float) $row->quantity, 'available' => (float) $row->available_quantity, 'reserved' => (float) $row->reserved_quantity, 'damaged' => (float) $row->damaged_quantity, 'quarantine' => (float) $row->quarantine_quantity, 'blocked' => (float) $row->blocked_quantity])->values()->all()];
     }
 
     private function movements(array $input): array
@@ -330,7 +340,7 @@ class AimsToolRegistry
             $tool('get_product', 'Concise product identity and stock summary.', $id('product_id'), 'inventory.view'),
             $tool('get_inventory_status', 'Product stock state by warehouse and bin.', $id('product_id'), 'inventory.view'),
             $tool('get_warehouse_stock','Recorded stock in the selected warehouse.',$id('warehouse_id'),'inventory.view'),
-            $tool('get_product_availability', 'Sellable and non-sellable product quantities.', $id('product_id'), 'inventory.view'),
+            $tool('get_product_availability', 'Current physical, available, reserved, picking, hold and incoming facts; never a stockout forecast.', array_replace_recursive($id('product_id'), ['properties' => ['warehouse_id' => ['type'=>'integer','minimum'=>1], 'warehouse_term' => ['type'=>'string','maxLength'=>255]]]), 'inventory.view'),
             $tool('get_stock_movements', 'Latest controlled product movements.', $id('product_id'), 'inventory.view'),
             $tool('get_replenishment_recommendations', 'Authoritative replenishment calculation.', ['type' => 'object', 'properties' => ['product_id' => ['type' => 'integer']]], 'replenishment.view'),
             $tool('get_supplier', 'Concise supplier profile.', $id('supplier_id'), 'supplier_catalogue.view'),

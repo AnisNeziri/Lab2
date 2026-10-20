@@ -7,6 +7,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PurchaseOrderItem extends Model
 {
+    public function shipmentItems(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ShipmentItem::class);
+    }
     protected $fillable = ['purchase_order_id', 'product_id', 'product_supplier_id', 'description', 'unit', 'inventory_unit', 'conversion_mode', 'conversion_factor', 'quantity', 'base_quantity', 'received_quantity', 'received_base_quantity', 'unit_price', 'line_total'];
 
     protected $appends = ['remaining_quantity'];

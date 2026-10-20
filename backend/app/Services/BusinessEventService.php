@@ -69,7 +69,7 @@ class BusinessEventService
                     try {
                     if(!in_array(class_basename($entity),['Product','ProductSupplier','StockMovement','DailySale','Invoice','PurchaseOrder','GoodsReceipt','StockTransfer','SalesOrder'],true))return;
                     $ids=$entity instanceof \App\Models\Product?[$entity->id]:(!empty($entity->product_id)?[$entity->product_id]:[]);
-                    if(!$ids&&in_array(class_basename($entity),['DailySale','Invoice','PurchaseOrder','GoodsReceipt','StockTransfer'],true))$ids=$entity->items()->pluck('product_id')->all();
+                    if(!$ids&&in_array(class_basename($entity),['DailySale','Invoice','PurchaseOrder','GoodsReceipt','StockTransfer','SalesOrder'],true))$ids=$entity->items()->pluck('product_id')->all();
                     if($ids)InventoryPlanningService::invalidate($companyId,$ids);
                     } catch(Throwable $e) { Log::warning('Planning invalidation deferred to scheduled refresh.',['company_id'=>$companyId]); }
                 };

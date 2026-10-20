@@ -353,6 +353,7 @@ Route::middleware('auth.token')->group(function () {
             Route::get('/webhooks/{webhookEndpoint}/deliveries', [WebhookController::class, 'deliveries'])->middleware('permission:integrations.manage');
 
             Route::get('/fulfillment/queues', [\App\Http\Controllers\Api\FulfillmentController::class, 'queues'])->middleware('permission:fulfillment.view');
+            Route::post('/fulfillment/reserve-waiting', [\App\Http\Controllers\Api\FulfillmentController::class, 'reserveWaiting'])->middleware('permission:fulfillment.manage');
             Route::get('/documents/config', [\App\Http\Controllers\Api\DocumentController::class, 'config']);
             Route::post('/documents/import-legacy', [\App\Http\Controllers\Api\DocumentController::class, 'legacy']);
             Route::get('/document-legacy', [\App\Http\Controllers\Api\DocumentController::class, 'legacyIndex']);
@@ -395,6 +396,7 @@ Route::middleware('auth.token')->group(function () {
             Route::post('/stock-movements', [StockMovementController::class, 'store'])->middleware('permission:stock.manage');
 
             Route::get('/inventory/locator', [InventoryController::class, 'locator'])->middleware('permission:inventory.view');
+            Route::get('/inventory/control-center', [InventoryController::class, 'control'])->middleware('permission:inventory.view');
             Route::get('/inventory/products/{product}', [InventoryController::class, 'product'])->middleware('permission:inventory.view');
             Route::get('/inventory/expiring', [InventoryController::class, 'expiring'])->middleware('permission:inventory.view');
             Route::get('/inventory/products/{product}/fefo', [InventoryController::class, 'fefo'])->middleware('permission:inventory.view');

@@ -33,6 +33,8 @@ class ShipmentLogisticsService
     public function update(Shipment $shipment, array $data): Shipment
     {
         return DB::transaction(function () use ($shipment, $data) {
+            // Serialize cargo allocation/receipt across shipments before locking their rows.
+            DB::table('companies')->where('id', Auth::user()->company_id)->lockForUpdate()->first();
             $shipment = Shipment::query()->lockForUpdate()->findOrFail($shipment->id);
             $purchaseOrderWasProvided = array_key_exists('purchase_order_id', $data);
             $purchaseOrder = $purchaseOrderWasProvided
@@ -233,15 +235,36 @@ class ShipmentLogisticsService
                 'unit_cbm' => $input['unit_cbm'] ?? $product?->volume_m3,
                 'unit_weight_kg' => $input['unit_weight_kg'] ?? $product?->weight_kg,
             ];
+            if ($poItem && $values['unit'] !== $poItem->unit) {
+                throw ValidationException::withMessages(['items' => ['Use the PO line unit for linked shipment cargo. Its base conversion is stored separately.']]);
+            }
+            if ($poItem && $poItem->conversion_mode !== 'variable') {
+                $expectedBase = round($quantity * (float) ($poItem->conversion_factor ?: 1), 3);
+                if (abs((float) $values['base_quantity'] - $expectedBase) >= 0.0005) {
+                    throw ValidationException::withMessages(['items' => ['Cargo base quantity must match the fixed PO conversion snapshot.']]);
+                }
+            }
             if ($values['loaded_quantity'] !== null && (float) $values['loaded_quantity'] > (float) $values['planned_quantity'] + 0.0005) {
                 throw ValidationException::withMessages(['items' => ['Loaded quantity cannot exceed planned quantity.']]);
             }
             if ($line) {
+                if (\App\Models\GoodsReceiptItem::where('shipment_item_id', $line->id)->exists()) {
+                    foreach (['purchase_order_item_id', 'product_id', 'unit', 'quantity', 'planned_quantity', 'loaded_quantity', 'base_quantity'] as $field) {
+                        $before = $line->{$field}; $after = $values[$field];
+                        $same = is_numeric($before) && is_numeric($after)
+                            ? abs((float) $before - (float) $after) < 0.0005 : $before === $after;
+                        if (! $same) throw ValidationException::withMessages(['items' => ['Received cargo quantities and source links are immutable. Add a new cargo line for a correction.']]);
+                    }
+                }
                 $line->update($values);
             } else {
                 $line = ShipmentItem::create($values);
             }
             $kept[] = $line->id;
+        }
+        $removed = $shipment->items()->whereNotIn('id', $kept)->pluck('id');
+        if (\App\Models\GoodsReceiptItem::whereIn('shipment_item_id', $removed)->exists()) {
+            throw ValidationException::withMessages(['items' => ['Cargo linked to a posted receipt cannot be removed.']]);
         }
         $shipment->items()->whereNotIn('id', $kept)->delete();
     }

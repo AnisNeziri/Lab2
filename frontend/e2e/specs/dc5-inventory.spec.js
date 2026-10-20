@@ -1,0 +1,51 @@
+import { test, expect } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+test('warehouse stock → backorder → linked partial receipt → live position → safe reservation', async ({ page }) => {
+  test.setTimeout(120000)
+  const f = JSON.parse(readFileSync(fileURLToPath(new URL('../../../output/dc5-fixture.json', import.meta.url)), 'utf8'))
+  const errors = []; page.on('pageerror', e => errors.push(e.message))
+  await page.goto('/login')
+  await page.getByLabel(/Email address|Adresa e emailit/).fill('dc5-owner@e2e.example')
+  await page.getByLabel(/^(Password|Fjalëkalimi)$/).fill('dc5-local-test-secret')
+  await page.getByRole('button', { name: /Enter workspace|Hyr në sistem/ }).click()
+  await expect(page).toHaveURL(/dashboard$/)
+  await page.evaluate(() => window.__aimsCertification.useSettingsStore.getState().applyPreferences({ language: 'en', theme: 'light' }))
+  await page.goto('/warehouse-operations?tab=control')
+  const control = page.getByRole('region', { name: 'Inventory Control Center', exact: true })
+  await expect(control.getByRole('link', { name: 'Milano 04', exact: true })).toBeVisible()
+  await expect(control.locator('[data-position=physical]')).toHaveText('5,000')
+  await expect(control.locator('[data-position=backordered]')).toHaveText('1,000')
+  await control.getByText('Investigate', { exact: true }).click()
+  await expect(control.getByRole('link', { name: 'SH-2048' })).toBeVisible()
+  await page.goto(`/order-hub?intake=${f.order}`)
+  await expect(page.getByRole('region', { name: 'Order stock availability' })).toContainText('Milano 04')
+  await page.goto('/warehouse-operations?tab=control')
+  await expect(control.locator('[data-position=in_transit]')).toHaveText('8,000')
+  const receipt = await page.evaluate(async f => {
+    const response = await fetch(`/api/purchase-orders/${f.po}/receive`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: 'Bearer ' + localStorage.getItem('api_token') },
+      body: JSON.stringify({ warehouse_id: f.warehouse, items: [{ id: f.po_item, shipment_item_id: f.cargo, accepted_quantity: 2000 }], idempotency_key: crypto.randomUUID() }) })
+    return response.status
+  }, f)
+  expect(receipt).toBe(200)
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('stock-refresh')))
+  await expect(control.locator('[data-position=physical]')).toHaveText('7,000')
+  await expect(control.locator('[data-position=incoming]')).toHaveText('6,000')
+  await control.getByRole('button', { name: 'Reserve waiting orders' }).click()
+  await expect(control.locator('[data-position=backordered]')).toHaveText('0')
+  await expect(control.locator('[data-position=available]')).toHaveText('1,000')
+  await page.goto(`/products?product=${f.product}`)
+  const position = page.getByRole('dialog').getByRole('region', { name: 'Stock position', exact: true })
+  await expect(position.locator('[data-position=physical]')).toHaveText('7,000 m')
+  await expect(position.locator('[data-position=reserved]')).toHaveText('6,000 m')
+  await page.goto('/warehouse-operations?tab=control')
+  await expect(control.locator('[data-position=physical]')).toHaveText('7,000')
+  await page.screenshot({ path: fileURLToPath(new URL('../../../output/dc5-inventory-browser.png', import.meta.url)), fullPage: true })
+  // Failure keeps the last good numbers and labels them disconnected.
+  await page.route('**/api/inventory/control-center**', route => route.abort())
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('database-refresh')))
+  await expect(control.getByRole('status').first()).toContainText('Temporarily disconnected')
+  await expect(control.locator('[data-position=physical]')).toHaveText('7,000')
+  expect(errors).toEqual([])
+})

@@ -57,12 +57,16 @@ final class AssistantPlanner
         if(!isset($context['optimization_plan_id'])&&$intent==='optimization_limit')$intent='optimization_run';
         if(isset($context['optimization_plan_id'])&&in_array($intent,['explain','compare']))$intent='optimization_'.$intent;
         if (in_array($q,['yes','po','confirm','konfirmo'])) return ['intent'=>'confirmation_required'];
-        $term = null;
+        $term = null; $warehouseTerm = null;
         if (preg_match('/["“]([^"”]+)["”]/u',$question,$m)) $term=$m[1];
         elseif (preg_match('/(?:\bfor\b|\babout\b|\bper\b|\bpër\b)\s+(.+?)[?.!]*$/iu',$question,$m)) $term=trim($m[1]);
         elseif (preg_match('/^(?:stock|stoku|stok|find|gjej|customer|klienti|supplier|furnitori|product|produkti)\s+(.+?)[?.!]*$/iu',$question,$m)) $term=trim($m[1]);
         elseif ($intent === 'explain' && preg_match('/^(?:why\s+is|pse\s+(?:është|eshte))\s+(.+?)\s+(?:at\s+risk|në\s+rrezik|ne\s+rrezik)[?.!]*$/iu', $question, $m)) $term=trim($m[1]);
         $type = preg_match('/\b(customer|klient)/',$q)?'customer':(preg_match('/\b(supplier|furnitor)/',$q)?'supplier':(preg_match('/\b(shipment|vessel|derges|anije)/',$q)?'shipment':null));
+        if ($intent === 'record' && preg_match('/^(?:how much|sa)\s+(.+?)\s+(?:do we have|kemi)(?:\s+(?:in|ne|në)\s+(.+?))?[?.!]*$/iu', $question, $m)) {
+            $term = trim($m[1]); $type = 'product'; $warehouseTerm = isset($m[2]) ? trim($m[2]) : null;
+        }
+        if ($intent === 'record' && preg_match('/\b(reserved|rezervuar|quality hold|available|disponuesh|where is it|ku eshte)\b/', $q) && ! $type) $type = 'product';
         if (in_array($intent,['forecast','movements','replenishment','stockout','capacity']) && !$type) $type='product';
         if ($intent==='compare' && preg_match('/supplier/', $q)) $type='product';
         if (preg_match('/\bwarehouse\b/', $q)) $type='warehouse';
@@ -109,7 +113,7 @@ final class AssistantPlanner
             if(preg_match('/(?:shipment|dergesa?)\s+([a-z0-9_-]+)/',$q,$m))$optimization['shipment_term']=$quoted?:$m[1];
         }
         if(preg_match('/(?:demand|kerkesa).{0,15}([0-9]+)\s*%/',$q,$m))$optimization['demand_multiplier']=1+(int)$m[1]/100;
-        return ['intent'=>$intent,'term'=>$term,'type'=>$type,'scenario'=>$scenario,'quantity'=>$quantity,'optimization'=>$optimization,'normalized'=>$q];
+        return ['intent'=>$intent,'term'=>$term,'type'=>$type,'scenario'=>$scenario,'quantity'=>$quantity,'optimization'=>$optimization,'normalized'=>$q,'warehouse_term'=>$warehouseTerm];
     }
 
     public function period(string $question, string $timezone): array

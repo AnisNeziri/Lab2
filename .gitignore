@@ -18,6 +18,7 @@ frontend/dist-certification/
 frontend/playwright-report/
 frontend/test-results/
 frontend/dist-dc4/
+frontend/dist-dc5/
 backend/public/build/
 desktop/dist/
 desktop/resources/

@@ -170,8 +170,14 @@ class SystemIntegrityService
             return $this->check('inventory_reconciliation', 'Inventory reconciliation', 'attention', 1, '/operations-center', 'Warehouse balances are not initialized.');
         }
         $mismatches = DB::table('warehouse_stock')->where('company_id', $companyId)
-            ->whereRaw('ABS(quantity - (available_quantity + reserved_quantity + damaged_quantity + quarantine_quantity + blocked_quantity)) >= 0.0005')
+            ->where(fn ($q) => $q->whereRaw('ABS(quantity - (available_quantity + reserved_quantity + damaged_quantity + quarantine_quantity + blocked_quantity)) >= 0.0005')
+                ->orWhereRaw('quantity < 0 OR available_quantity < 0 OR reserved_quantity < 0 OR damaged_quantity < 0 OR quarantine_quantity < 0 OR blocked_quantity < 0'))
             ->count();
+        $mismatches += DB::table('warehouse_stock as b')
+            ->leftJoin('warehouses as w', 'w.id', '=', 'b.warehouse_id')->leftJoin('products as p', 'p.id', '=', 'b.product_id')
+            ->leftJoin('warehouse_locations as l', 'l.id', '=', 'b.location_id')->where('b.company_id', $companyId)
+            ->where(fn ($q) => $q->whereNull('w.id')->orWhereNull('p.id')->orWhereColumn('w.company_id', '!=', 'b.company_id')->orWhereColumn('p.company_id', '!=', 'b.company_id')
+                ->orWhere(fn ($q) => $q->whereNotNull('b.location_id')->where(fn ($q) => $q->whereNull('l.id')->orWhereColumn('l.warehouse_id', '!=', 'b.warehouse_id')->orWhereColumn('l.company_id', '!=', 'b.company_id'))))->count();
 
         return $this->countCheck('inventory_reconciliation', 'Inventory state mismatches', $mismatches, '/operations-center', true);
     }

@@ -145,9 +145,10 @@ function Locator({ data, meta, run, t, can }) {
 
 function Counts({ data, meta, run, t, can }) {
  const tx = useUiText()
+  const [cycleParams] = useSearchParams()
   const user=useAuthStore(s=>s.user),[deleting,setDeleting]=useState(false),[countNotice,setCountNotice]=useState(''),[deleteBusy,setDeleteBusy]=useState(false),deleteLock=useRef(false)
 
-  const [form, setForm] = useState({ warehouse_id: "", location_id: "", product_ids: [], stock_states: ["available"], notes: "" });
+  const [form, setForm] = useState(() => ({ warehouse_id: cycleParams.get('warehouse') || "", location_id: "", product_ids: cycleParams.get('product') ? [cycleParams.get('product')] : [], stock_states: ["available"], notes: cycleParams.has('product') ? 'Cycle count selected from Inventory Control; review warehouse, location and stock states before taking the snapshot.' : "" }));
   const [selected, setSelected] = useState(null);
   const [values, setValues] = useState({});
   const [recountItems, setRecountItems] = useState([]);

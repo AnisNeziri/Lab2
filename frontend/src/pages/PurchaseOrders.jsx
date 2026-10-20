@@ -530,6 +530,7 @@ export default function PurchaseOrders() {
           .filter((line) => Number(line.accepted_quantity) + Number(line.damaged_quantity) + Number(line.rejected_quantity) > 0)
           .map((line) => ({
             id: line.id,
+            shipment_item_id: line.shipment_item_id ? Number(line.shipment_item_id) : null,
             accepted_quantity: Number(line.accepted_quantity || 0),
             damaged_quantity: Number(line.damaged_quantity || 0),
             rejected_quantity: Number(line.rejected_quantity || 0),
@@ -1019,6 +1020,10 @@ export default function PurchaseOrders() {
               <div className="po-receipt-line" key={line.id}>
                 {line.description} — {t("po.remainingQuantity")}:{" "}
                 {line.remaining}
+                <label>{language === 'sq' ? 'Ngarkesa burimore (opsionale)' : 'Source shipment cargo (optional)'}<select value={line.shipment_item_id || ''} onChange={e => setReceipt(rows => rows.map((row, i) => i === index ? { ...row, shipment_item_id: e.target.value } : row))}>
+                  <option value="">{language === 'sq' ? 'Vetëm PO — dërgesë e panjohur' : 'PO only — shipment unattributed'}</option>
+                  {(selected.items.find(item => item.id === line.id)?.shipment_items || []).filter(c => c.loaded_quantity != null && c.base_quantity != null).map(c => <option key={c.id} value={c.id}>{c.shipment?.tracking_number || `#${c.shipment_id}`} · {c.loaded_quantity} {c.unit} · #{c.id}</option>)}
+                </select></label>
                 <span>{t("warehouseOps.accepted")}</span>
                 <input
                   type="number"
