@@ -1,0 +1,136 @@
+{
+  "date": "2026-11-01",
+  "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+  "branch": "main",
+  "flags": {
+    "MariaDB system/grant integrity verified": "NO",
+    "Controlled restart verified": "YES",
+    "Isolated backup restore successful": "NO — SQL-copy restore succeeded; certified encrypted installation recovery remains blocked",
+    "Opening balances reconciled": "NOT YET PROVIDED",
+    "Posted vs operational finance clearly distinguished": "YES",
+    "Financial values have traceable source and period": "YES — changed summaries; missing historical attribution remains explicitly disclosed",
+    "Cashflow exclusions properly disclosed": "YES",
+    "Order → Sale → Payment → GL traceable": "YES — tested credit-sale / partial-payment lifecycle",
+    "Finance workspace understandable": "YES — focused journey verified; external accountant acceptance pending",
+    "Role workspaces improved": "YES",
+    "Changed screens visually reviewed": "YES — focused EN/SQ, light/dark, 1366/390 review; see scope below",
+    "MCP versions consistent": "YES",
+    "Automation search covers server-side pages": "YES",
+    "Known high-risk regression": "LIST — active MariaDB grant administration crashes; root runtime identity remains",
+    "Ready for supervised real-company pilot": "NO",
+    "Ready for commercial deployment": "NO"
+  },
+  "preservation": {
+    "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+    "branch": "main",
+    "entry_files": 251,
+    "byte_identical": 233,
+    "extended": [
+      "backend/app/Http/Controllers/Api/AutomationController.php",
+      "backend/app/Http/Controllers/Api/PlatformController.php",
+      "backend/app/Services/AimsToolRegistry.php",
+      "backend/app/Services/IntelligenceAssistantService.php",
+      "backend/app/Services/Platform/McpServer.php",
+      "backend/app/Services/ProductionReadinessService.php",
+      "backend/routes/api.php",
+      "backend/tests/Feature/DC7PlatformTest.php",
+      "docs/dc7/OPERATIONS.md",
+      "docs/dc7/README.md",
+      "docs/dc7/TECHNOLOGY_REVIEW.md",
+      "frontend/src/App.jsx",
+      "frontend/src/components/AppLayout.jsx",
+      "frontend/src/components/AutomationLibrary.jsx",
+      "frontend/src/config/navigation.js",
+      "frontend/src/locales/uiCopy.js",
+      "frontend/src/pages/AutomationStudio.jsx",
+      "frontend/src/styles/ProductExperience.css"
+    ],
+    "removed": []
+  },
+  "tests": {
+    "backend_initial": "17 tests / 267 assertions PASS",
+    "contract_followup": "3 tests / 51 assertions PASS (includes MCP recheck)",
+    "final_finance_and_diagnostic_followup": "4 tests / 34 assertions PASS",
+    "frontend": "18 tests PASS",
+    "production_build": "PASS; existing PDF/3D chunk warnings",
+    "browser": "PASS: 1 representative owner/accountant journey + 1 focused cash/forecast/assistant/template interaction check; 19 captures",
+    "fixtures": "Existing PX2 review company reused; no synthetic company regenerated",
+    "distinct_backend_methods": 20,
+    "pagination_final": "1 method / 13 assertions PASS (recheck after literal search handling)"
+  },
+  "database": {
+    "preserved_business_tables": 215,
+    "offline_copy_files": 2353,
+    "offline_copy_bytes": 767520789,
+    "source_reconciliation_healthy": false,
+    "source_journals": 0,
+    "source_documents": 0,
+    "source_payroll_runs": 0,
+    "original_key_compatible": true,
+    "dedicated_account_verified_on_clean_instance": true,
+    "active_account_switch_applied": false,
+    "live_grant_reconstruction": false,
+    "isolated_instance_stopped": true
+  },
+  "browser_timings": {
+    "/api/accounting/control-center": {
+      "samples": 6,
+      "median_ms": 1014.8,
+      "max_ms": 1278.7
+    },
+    "/api/action-center": {
+      "samples": 4,
+      "median_ms": 943.1,
+      "max_ms": 1931.9
+    },
+    "/api/finance/overview": {
+      "samples": 1,
+      "median_ms": 546.3,
+      "max_ms": 546.3
+    },
+    "/api/automations": {
+      "samples": 5,
+      "median_ms": 303.2,
+      "max_ms": 319.2
+    }
+  },
+  "logs": {
+    "dc9-backend.log": "0c7e90d1909cd21e691b84f3fb493fcc85f6d123626ee08f5e69a38375a5fb01",
+    "dc9-contract-checks.log": "c798b09c65a39d78f482acd71261195dc1e8c4ebf78a1bfa7f87fed5624169af",
+    "dc9-final-backend.log": "0883babf54013808fb98dd84ab7d9f542252b80af220e763a1623c3978fd32fa",
+    "dc9-frontend.log": "a3fb4ce88d8168b6a057c15eb3ef4a783b0d9566762fc943bee24085efb6c782",
+    "dc9-build.log": "4f14d20b441c03c5839a4d5abf7a8e2e6d7d98eff433d22b7b8a4b9b911a6073",
+    "dc9-browser.log": "a937b67e85300495214a68dace90b680bebb1cf62245b95f4a7d8e89a9ca3040",
+    "dc9-recovery-result.json": "b774f9331601b2ebbb4beb12ff733db4c18f20ef25509ca3f425f0266804e560",
+    "dc9-isolated-verified.json": "9f976dcbbbc109a1107117fef751d7f8e8fd9bf670e3a27375d89d9f21d93d64",
+    "dc9-isolated-account.json": "6a9fefa24254f3beb9dec4781f20de9af842db2a4e00795ef235e0e247f30e0a",
+    "dc9-isolated-native-grant.json": "63101659a012e6fedb7862d2de1e9f6cc086cd73bcaf528909ef6d162f484aaf",
+    "dc9-database-final.json": "2291f48aa8d36c7fb6dcbb4980e1da9ac03580ebba804d2a319e15704e2dfbac",
+    "dc9-database-readiness.json": "5603a173d3641fb62fc1304629ef1f61cbeef03ae38ab48116cecfbc3e9d2bdf",
+    "dc9-grant-experiment.log": "b847ee9b3213533126dab163ebf4b3ac378bcb088cd99f8758753081472d9aff",
+    "dc9-render-check.log": "2b94480f1a557d8b94e7f69ad1445af933587f5c0dd8d9e1d1ed79725325c0bb",
+    "dc9-pagination-final.log": "4d282cb6c945e776ef39d3742de40ab84cc75d1c0100616cc12d1077982baef1",
+    "dc9-diff-check.log": "d0fda04d5b74257c6f9939ec740658a0074b717675a0bbc94dcfd0a03dad12ef"
+  },
+  "screenshots": {
+    "assistant-boundary-390-en-light.png": "ee90fca1188f9fd4485636c6c1063fcfa4a7b86fb8918f7bd2b9e14ef76277d4",
+    "automation-1366-en-dark.png": "1469a957caa8aaf4747c964c631442f1a2de52108020b6e14eb49c3013f64115",
+    "automation-390-sq-dark.png": "a11e5b64d74f21c557118cfc8b5bd17dbcd9b87f33c66b61651fd110e17709f5",
+    "automation-390-sq-light.png": "be12ac68215e225fdef4283ba61cdad2d54fd369c8e134527811c86acf5a339f",
+    "automations-1366-en-light.png": "9437582ec52ef3a511ce7beea02c06933f1cc57546e47bf99b08fbe63c8a41e2",
+    "dashboard-1366-en-light.png": "7b82df4ee8cccffac69d4423e8b4c13cd283127aaf6ad7404dfe116ac39cbd4f",
+    "finance-1366-en-dark.png": "e1cad15d4183757478cda6e8a34c2cf63ff60c69f3780d0150db0abe94565ba4",
+    "finance-390-sq-dark.png": "8f8336aae35d9ce662c6aa77022de5a70e9e4faf491186ee67a4ba873dd65ac1",
+    "finance-390-sq-light.png": "e85298f0e74a5f2f55f4431a59dc6bf8e472e0e2bc40fd8ca50298791b8a06bc",
+    "financial-intelligence-390-sq-dark.png": "590d3925ac149016b1d4e5fe205030f0faa0ace95f8cdbb83105b3844785c8c8",
+    "health-1366-en-dark.png": "41d84abb0828078f6ba8bc4f4b45434955c0a462e90118df89c624cd8f443843",
+    "health-390-sq-dark.png": "d917d443c31cfe07e78eab647b0c66c9d462ceb898c3df2237e4ad607bc96f43",
+    "health-390-sq-light.png": "1bae6d54b74848e3e558bac20b4b9936088881523b7dc693533a8a717cd87489",
+    "money-accounts-390-sq-dark.png": "240e6b2cbd917be49d5cbdd68cc5e355fbdf917c2345cb9f238045fdd12ab9f6",
+    "operational-cash-1366-en-light.png": "84c25e973370ca7b8587a025de92c2b85b293d1b613d0d20a27384fcb168d63c",
+    "order-connections-1366-en-light.png": "025ebf61ec009e083f2128ff77206cf5e41d9f27d6a8df1842a66ca1e5992501",
+    "posted-books-1366-en-light.png": "0592ad84c2baa3cff4c1429506b46f2eb2ece6fd72a628f405f7fbabca25aa06",
+    "recovery-1366-en-light.png": "9fd228c4976d56b8dadbb31fbc024e1c17e0f0a6e9ca41cbaab0dbfda28cfc7b",
+    "template-navigation-390-en-light.png": "93daff91b9dbc2ce36dcb954400e1de0713b6a7f1396a90c0fe15a37343c9822"
+  }
+}

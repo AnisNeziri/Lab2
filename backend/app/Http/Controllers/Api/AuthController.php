@@ -19,15 +19,23 @@ class AuthController extends Controller
     public function login(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'email' => ['required', 'email'],
-            'password' => ['required', 'string'],
+            'email' => ['required', 'email','max:255'],
+            'password' => ['required', 'string','max:1024'],
         ]);
 
         $result = $this->authService->attemptLogin($validated['email'], $validated['password']);
 
+        if (isset($result['error'])) {
+            $key='login-fail:'.hash('sha256',strtolower($validated['email']).'|'.$request->ip());
+            $count=\Illuminate\Support\Facades\RateLimiter::hit($key,600);
+            if ($count===5) {
+                $candidate=User::where('email',$validated['email'])->first();
+                app(\App\Services\Security\SecurityEvents::class)->record('authentication.failed_threshold',$candidate,['count'=>5]);
+            }
+        }
         if (($result['error'] ?? null) === 'not_found') {
             return response()->json([
-                'message' => 'User not found.',
+                'message' => 'The provided credentials are incorrect.',
                 'errors' => ['email' => ['The provided credentials are incorrect.']],
             ], 422);
         }
@@ -49,7 +57,7 @@ class AuthController extends Controller
 
         if (($result['error'] ?? null) === 'invalid_password') {
             return response()->json([
-                'message' => 'Password incorrect.',
+                'message' => 'The provided credentials are incorrect.',
                 'errors' => ['email' => ['The provided credentials are incorrect.']],
             ], 422);
         }
@@ -101,9 +109,10 @@ class AuthController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'password' => [...\App\Services\Security\PasswordPolicy::rules(), 'confirmed'],
             'company_name' => ['required', 'string', 'max:255'],
             'company_address' => ['required', 'string', 'max:1000'],
+            'timezone' => ['sometimes','timezone'], 'currency'=>['sometimes','regex:/^[A-Z]{3}$/'], 'locale'=>['sometimes','in:en,sq'],
         ]);
 
         try {
@@ -123,12 +132,12 @@ class AuthController extends Controller
 
         if ($user->must_change_password) {
             $validated = $request->validate([
-                'password' => ['required', 'string', 'min:8', 'confirmed'],
+                'password' => [...\App\Services\Security\PasswordPolicy::rules(), 'confirmed'],
             ]);
         } else {
             $validated = $request->validate([
                 'current_password' => ['required', 'string'],
-                'password' => ['required', 'string', 'min:8', 'confirmed', 'different:current_password'],
+                'password' => [...\App\Services\Security\PasswordPolicy::rules(), 'confirmed', 'different:current_password'],
             ]);
 
             if (! Hash::check($validated['current_password'], $user->password)) {

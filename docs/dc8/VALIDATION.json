@@ -1,0 +1,275 @@
+{
+  "phase": "DC8",
+  "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+  "branch": "main",
+  "committed": false,
+  "next_phase_started": false,
+  "formal_certification": false,
+  "required_results": {
+    "WebAuthn/passkeys implemented": "YES",
+    "WebAuthn replay protection verified": "YES",
+    "Password-only operation still supported where policy allows": "YES",
+    "Session revocation works": "YES",
+    "Disabled user loses privileged access appropriately": "YES",
+    "Sensitive endpoints enforce authorization server-side": "YES",
+    "Entitlements separate from permissions": "YES",
+    "Entitlements enforced server-side": "YES",
+    "Future industry packages can compose capabilities": "YES",
+    "License data cannot be changed only from frontend": "YES",
+    "Signed/offline license verification available": "YES",
+    "Temporary internet outage does not immediately disable offline ERP": "YES",
+    "Expired license does not destroy company data": "YES",
+    "Update manifest signature verified": "YES",
+    "Tampered update rejected": "YES",
+    "Production upgrade avoids migrate:fresh/destructive reset": "YES",
+    "Application encryption-key compatibility checked before restore/update": "YES",
+    "Support bundle excludes sensitive business secrets/data": "YES",
+    "Security telemetry remains sanitized": "YES",
+    "Two-company security/licensing isolation verified": "YES",
+    "ASVS-based targeted review completed": "YES",
+    "Known critical security issue remaining": "NONE identified in targeted review; high desktop findings remain",
+    "Ready for controlled commercial deployment pilot": "NO"
+  },
+  "runtime": {
+    "php": "8.3.36",
+    "laravel": "12.69.3",
+    "database": "10.4.32-MariaDB",
+    "pending_migrations": 0,
+    "key_witness_verified": true,
+    "signed_company_licenses": 0,
+    "queue": "sync"
+  },
+  "tests": {
+    "unique_focused_backend_cases": 42,
+    "core_backend": {
+      "passed": 38,
+      "assertions": 354
+    },
+    "administrator_compatibility": {
+      "passed": 3,
+      "assertions": 29
+    },
+    "backup_security_regression": {
+      "passed": 9,
+      "assertions": 105,
+      "security_cases_overlap_core": 8
+    },
+    "frontend": {
+      "passed": 22
+    },
+    "desktop": {
+      "passed": 5
+    },
+    "production_build": "PASS; existing PDF/3D chunk-size warnings",
+    "browser": {
+      "passed": 1,
+      "authenticator": "Chromium virtual CTAP2 with user verification; real library signature validation",
+      "csp_violations": 0,
+      "page_errors": 0,
+      "mobile_width": 390,
+      "horizontal_overflow": false
+    },
+    "desktop_startup": "PASS; portable PHP/Python/assets, recovery login, workers, crash/restart and idempotent upgrade",
+    "upgrade_preflight": {
+      "upgrade": {
+        "result": "PASS",
+        "tables_preserved": 207,
+        "existing_rows_preserved": 1980,
+        "migrate_fresh_used": false
+      },
+      "authenticated_archive_checkpoint": "PASS",
+      "signed_preflight": "ready",
+      "staged_tree_and_artifact_verification": "PASS",
+      "unlisted_code_tampering_rejected": true,
+      "wrong_encryption_key_rejected": true,
+      "migration_started_by_preflight": false,
+      "code_changed_by_preflight": false
+    },
+    "local_mariadb_upgrade": {
+      "backup": "C:\\Users\\anisi\\Lab2/backups/before-dc8-20261031-c433274b.sql",
+      "backup_bytes": 8836937,
+      "preserved_business_tables": 20,
+      "result": "PASS"
+    }
+  },
+  "dependency_review": {
+    "composer_known_advisories": 0,
+    "frontend": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "desktop": {
+      "info": 0,
+      "low": 0,
+      "moderate": 15,
+      "high": 1,
+      "critical": 0,
+      "total": 16
+    },
+    "python_declared_packages_audited": 2,
+    "python_known_advisories": 0,
+    "inventory_components": 755,
+    "php_patch": {
+      "from": "8.3.35",
+      "runtime": "8.3.36",
+      "windows_build": "8.3.36-1",
+      "official_zip_sha256": "1a097d52b7a68622cdc723073b61cc70caf79c941218ff65b2d8441dbc6b10d4"
+    }
+  },
+  "preservation": {
+    "prior_changed_files": 116,
+    "byte_identical": 98,
+    "extended": 18,
+    "missing": [],
+    "authorities_unchanged": [
+      {
+        "path": "backend/app/Services/StockMovementService.php",
+        "matches_head": true
+      },
+      {
+        "path": "backend/app/Services/AccountingService.php",
+        "matches_head": true
+      },
+      {
+        "path": "backend/app/Services/CustomerDebtService.php",
+        "matches_head": true
+      },
+      {
+        "path": "backend/app/Services/ProcurementService.php",
+        "matches_head": true
+      },
+      {
+        "path": "backend/app/Services/InventoryPlanningService.php",
+        "matches_head": true
+      },
+      {
+        "path": "backend/app/Services/Workforce/PayrollService.php",
+        "matches_head": true
+      },
+      {
+        "path": "backend/app/Integrations/Sef/FiscalizationService.php",
+        "matches_head": true
+      }
+    ]
+  },
+  "limitations": [
+    "Electron 41.10.7 and desktop build advisories block commercial release; no forced major upgrade retained.",
+    "Trusted issuer/recovery configuration, real TLS/origin/host security and commissioning remain required.",
+    "No actual customer update, native Windows signing/publishing or physical authenticator certification.",
+    "Company-level passkey enforcement does not cover global installation recovery identities.",
+    "Legacy schema-1 desktop activation still needs issuer-managed migration; new company licenses use UUIDs.",
+    "Bearer storage retained; no remote OAuth/SAML/billing or antivirus added.",
+    "Frontend Nginx CSP starts report-only until complete target-host workflow validation.",
+    "MCP/AI high-risk write boundaries remain unchanged."
+  ],
+  "evidence": [
+    {
+      "path": "output/dc8-focused.log",
+      "sha256": "687ed42fd0fbfbe053cebd6e5ed64f4aabc6b5bec926f9f2ba222ebbfee4a6e0"
+    },
+    {
+      "path": "output/dc8-admin-compatibility.log",
+      "sha256": "306ea9c4ae706d743c9da2fd7b146fd5862d973a5790e429793604710e687300"
+    },
+    {
+      "path": "output/dc8-backup-boundary.log",
+      "sha256": "bbce967139ebaf70186991a4f8e37acfaa834bb674f9253cadb779df26d2c576"
+    },
+    {
+      "path": "output/dc8-frontend.log",
+      "sha256": "adfe4682e96e951ed2b7d9b1c29f32752bc077f7fd29d1f723edae70ee862556"
+    },
+    {
+      "path": "output/dc8-desktop-tests.log",
+      "sha256": "a8f3ed826c9c2c57fbd2220f228fb76afaf45137f563defa2dd12dc6256ce0c3"
+    },
+    {
+      "path": "output/dc8-build.log",
+      "sha256": "df0624c33ef0ebcb93f1776ed78c5bcee893813f7524a45726c6aeb7c94d1670"
+    },
+    {
+      "path": "output/dc8-browser.log",
+      "sha256": "7b52721f6a93bf38d61a8a37d4038b847a2b0f9cc5da9f927d26444fa0500d6d"
+    },
+    {
+      "path": "output/dc8-desktop-startup.log",
+      "sha256": "5ccc08da3090a88213ee205fa084bf2862c00872adeac06ea5e573f01ffb9cb7"
+    },
+    {
+      "path": "output/dc8-upgrade.json",
+      "sha256": "e8994176b5513cf5db2f43f6c58136e5bd398d2131097bc31f818988ef320bf2"
+    },
+    {
+      "path": "output/dc8-local-upgrade.json",
+      "sha256": "9df678c52770916d2f134c77a377a6201ddc52ff61b37899d33487b2be87625a"
+    },
+    {
+      "path": "output/dc8-release-recheck.log",
+      "sha256": "d439aa9deaeb9b682c56fbebd67ea60d5d420ddf65c4e832b8283f3e1d695f02"
+    },
+    {
+      "path": "output/dc8-preservation.json",
+      "sha256": "d8b9a4cd0fdb2a15249f49b78a4979bb12e566e7f79714b4e2a1eb5c1e2cb039"
+    },
+    {
+      "path": "output/dc8-runtime.json",
+      "sha256": "d18eaed8deebef1cfadb5ce4cc80d0a415eccce76dfaa0adcce3c448d0b37cd1"
+    },
+    {
+      "path": "output/dc8-composer-audit-final.json",
+      "sha256": "a03e0aca0917b90687a1a55cd0984a6f66e1555ee2cca8e955f18c07be0f2e72"
+    },
+    {
+      "path": "output/dc8-frontend-audit-final.json",
+      "sha256": "7682a506ecc0eeb4d2dcbdbccfaf0b5dc4d3bc98f1af391a78ca783fc19b1bd8"
+    },
+    {
+      "path": "output/dc8-desktop-audit-final.json",
+      "sha256": "617b5b58e4afb50418bac4b34c3d0c6020e6d334417ae2b439ca53bf75f95f75"
+    },
+    {
+      "path": "output/dc8-python-audit.json",
+      "sha256": "81b3df0eee9e203bb50ffbbaf7dc3cf388fb12ad4f9af765802df1f76c1bfc72"
+    },
+    {
+      "path": "output/dc8-php-download.log",
+      "sha256": "578af3a8c73bfa54b7e558fb6cdc9f7cdd9234d82aad6ce89ad42e4941c2d161"
+    },
+    {
+      "path": "output/dc8-pnpm-lock.log",
+      "sha256": "5b7abecc68e9511a304004e4347ab2c59d4f03c25b1a83a421abcadae36693c8"
+    },
+    {
+      "path": "output/dc8-mobile-security.png",
+      "sha256": "0f68605a5086144ad381eaccaea7e937760fb935218c65af70919ce0f0cde7a4"
+    }
+  ],
+  "lockfiles": {
+    "npm_and_pnpm_aligned": true,
+    "vite": "6.4.5",
+    "postcss_selector_parser": "6.1.5",
+    "pnpm_import_used_isolated_directory": true
+  },
+  "reports": [
+    {
+      "path": "docs/dc8/README.md",
+      "sha256": "54a5a74594caf3ec2cb73ba1a729df4f2bce7d07b091f0eafef213ed7430c3d0"
+    },
+    {
+      "path": "docs/dc8/OPERATIONS.md",
+      "sha256": "174b303adaaeba126e1a1b28cd413027d88a7d344c75cc49d892df31c79396dd"
+    },
+    {
+      "path": "docs/dc8/SECURITY_REVIEW.md",
+      "sha256": "b2ffca8b931522bb09f66cce9c9a84a2d90cd502773772e32129c62a744a099e"
+    },
+    {
+      "path": "docs/dc8/DEPENDENCIES.json",
+      "sha256": "4fcd03f47ea367cf35429e2a5c35133b9951834648831d7a03a3a8cf33a56183"
+    }
+  ]
+}

@@ -118,9 +118,16 @@ function triggerDownload(href, filename, revoke = false) {
   if (revoke) window.setTimeout(() => URL.revokeObjectURL(href), 1000);
 }
 
+export async function getInvoicePrint(id, locale = "en", signal) {
+  const response=await authenticatedFetch(buildApiUrl(`/invoices/${id}/print`,{locale}),{signal,headers:{Accept:'text/html'}})
+  if(!response.ok)await parseApiResponse(response,'Could not load the printable invoice.')
+  if(!response.headers.get('content-type')?.includes('text/html'))throw new Error('The printable invoice response was not a document.')
+  return response.text()
+}
+
 export async function downloadInvoicePdf(id, invoiceNumber, locale = "en") {
   const response = await authenticatedFetch(
-    buildApiUrl(`/invoices/${id}/download/pdf`, { locale }),
+    buildApiUrl(`/invoices/${id}/pdf`, { locale }),
     { headers: { Accept: "application/pdf, application/json" } },
   );
 
@@ -133,10 +140,8 @@ export async function downloadInvoicePdf(id, invoiceNumber, locale = "en") {
   if (contentType.includes("application/json")) {
     const data = await response.json();
     if (!data?.pdf) throw new Error(data?.message || "The PDF response was empty.");
-    triggerDownload(
-      `data:application/pdf;base64,${data.pdf}`,
-      data.filename || fallback,
-    );
+    const bytes=Uint8Array.from(atob(data.pdf),character=>character.charCodeAt(0))
+    triggerDownload(URL.createObjectURL(new Blob([bytes],{type:'application/pdf'})),data.filename||fallback,true);
     return;
   }
 

@@ -1,0 +1,19 @@
+{
+    "schema": 1,
+    "source_scope": "e8a9ff7728265af1bf1b771d29712568bdd95a2fd8ebb9669aaaf31a8d0b1ddd",
+    "target_scope": "de489d822ca700676cf0a15d7c6c6a7809efe327af9f152a4d57717fb888f13e",
+    "app_key_fingerprint": "84090aa6d0f7cddda8ddf7c8a5454d46012052d7a12e1deb4562d526c24bc242",
+    "logical_restore_verified": true,
+    "schema_objects_validated": true,
+    "key_compatible": true,
+    "target_version": "11.4.13-MariaDB",
+    "tables": 215,
+    "checked_at": "2026-11-01T18:29:50+00:00",
+    "source_sql_sha256": "0039aed523d38a08ff757ff07e9142393ceab1f6000b78024e847640f1d3eaac",
+    "active_cutover_performed": false,
+    "source_fk_violations": 13,
+    "relational_integrity_verified": false,
+    "runtime_scope": "de489d822ca700676cf0a15d7c6c6a7809efe327af9f152a4d57717fb888f13e",
+    "runtime_privileges_verified": true,
+    "runtime_grants_sha256": "80e12296018abcfef5e75554df80469fa1d981a7f158452ea68ff249a24ed901"
+}

@@ -260,6 +260,17 @@ class DailySaleService
         });
     }
 
+    /** Compact document activity, never General Ledger revenue or a second sales ledger. */
+    public function activitySummary(string $from, string $to): array
+    {
+        $q=DailySale::where('company_id',Auth::user()->company_id)->where('sale_date','>=',$from)->where('sale_date','<=',$to)
+            ->where(fn($q)=>$q->whereNotNull('inventory_applied_at')->orWhere('status','finalized'));
+        $totals=$q->selectRaw('COUNT(*) as count, COALESCE(SUM(total_amount),0) as amount')->first();
+        return ['basis'=>'operational_activity','from'=>$from,'to'=>$to,'currency'=>\App\Support\CompanyCurrency::current(),
+            'count'=>(int)$totals->count,'document_total'=>Money::normalize($totals->amount),'url'=>'/daily-sales?date='.$to,
+            'qualification'=>'Finalized or physically applied daily-sale documents, counted once. Recorded document totals; not GL revenue or profit. Standalone invoices and subsequent credits/returns are excluded.'];
+    }
+
     public function todaySummary(?string $date = null): array
     {
         $companyId = Auth::user()->company_id;

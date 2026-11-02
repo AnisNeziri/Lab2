@@ -31,6 +31,7 @@ class MobileWarehouseController extends Controller
         $validated = $request->validate([
             'purchase_order_id' => ['required', 'integer', Rule::exists('purchase_orders', 'id')->where('company_id', $companyId)],
             'purchase_order_item_id' => ['required', 'integer', 'exists:purchase_order_items,id'],
+            'shipment_item_id' => ['nullable', 'integer', Rule::exists('shipment_items','id')->where('company_id',$companyId)],
             'warehouse_id' => ['required', 'integer', Rule::exists('warehouses', 'id')->where('company_id', $companyId)],
             'location_id' => ['nullable', 'integer', Rule::exists('warehouse_locations', 'id')->where('company_id', $companyId)],
             'accepted_quantity' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],

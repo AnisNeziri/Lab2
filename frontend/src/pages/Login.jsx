@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, LockKeyhole, Mail, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, ArrowRight, KeyRound, LockKeyhole, Mail, ShieldCheck } from 'lucide-react'
 import { login } from '../api/login'
+import { usePasskey } from '../lib/passkeys'
 import AimsLogo from '../components/AimsLogo'
 import AuthExperienceVisual from '../components/AuthExperienceVisual'
 import { useTranslation } from '../hooks/useTranslation'
@@ -138,6 +139,8 @@ function Login({ onLoginSuccess, onBackHome, onRegister }) {
               {loading ? <i className="auth-button-spinner" aria-hidden="true" /> : <ArrowRight size={18} />}
             </button>
           </form>
+
+          <div className="auth-alternative"><button type="button" className="auth-passkey-action" disabled={loading} onClick={async()=>{setLoading(true);setError('');try{onLoginSuccess(await usePasskey('login'))}catch(e){setError(e.message)}finally{setLoading(false)}}}><KeyRound size={17} aria-hidden="true"/>{text('Sign in with passkey', 'Hyr me passkey')}</button></div>
 
           {!isDesktop ? (
             <p className="auth-switch">

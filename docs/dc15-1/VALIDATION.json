@@ -1,0 +1,55 @@
+{
+  "phase": "DC15.1",
+  "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+  "branch": "main",
+  "glyphs": 36,
+  "tenant_navigation": {
+    "total": 53,
+    "aims": 49,
+    "fallback": 4
+  },
+  "design_spec": "frontend/src/components/icons/README.md",
+  "source_paths": "frontend/src/components/icons/glyphPaths.js",
+  "editable_svg": "frontend/src/components/icons/aims-glyphs.svg",
+  "source_sha256": {
+    "frontend/src/components/icons/glyphPaths.js": "5c64c6e078699d64049d3b6546c2c424c8f5283a222981b751e910a1aebf6208",
+    "frontend/src/components/icons/AimsGlyph.jsx": "8d55ebf6fe6dc46a9da7aadedae883d6425093a9f6e390f846ea9aaee094b808",
+    "frontend/src/components/icons/AimsGlyph.css": "58df69e248c8bb957d05d5eeec8e4320fb54d0a7557ae6812fad2ca36dc4cc46",
+    "frontend/src/components/icons/aims-glyphs.svg": "e62f9e95ebbd736c642e744bb0f284e6e2ef61ae5f2328bddf7556061dda7210"
+  },
+  "build": {
+    "result": "PASS",
+    "log": "output/dc15-1-build.log",
+    "glyph_assets": [
+      "dist/assets/AimsGlyph-DbW_Iz6F.css                            0.94 kB \u2502 gzip:   0.43 kB",
+      "dist/assets/AimsGlyph-BTB3G7Ua.js                             8.96 kB \u2502 gzip:   3.59 kB"
+    ],
+    "known_warning": "Existing large unrelated chunks"
+  },
+  "frontend_tests": {
+    "result": "PASS",
+    "tests": 30,
+    "log": "output/dc15-1-frontend-tests.log"
+  },
+  "browser": {
+    "result": "PASS",
+    "screen_combinations": 20,
+    "errors": 0,
+    "overflow": 0,
+    "search_keyboard": true,
+    "assistant_open": true,
+    "reduced_motion": true,
+    "evidence": "output/dc15-1/navigation.json",
+    "log": "output/dc15-1-browser.log"
+  },
+  "gallery": [
+    "output/dc15-1/glyphs-light.png",
+    "output/dc15-1/glyphs-dark.png"
+  ],
+  "logo_preserved": true,
+  "new_dependency": false,
+  "backend_authority_changes": false,
+  "active_company_writes": false,
+  "dc16_started": false,
+  "temporary_services_stopped": true
+}

@@ -22,7 +22,9 @@ $application = Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
         $middleware->append(RequestCorrelationId::class);
+        $middleware->append(\App\Http\Middleware\PlatformTelemetry::class);
         $middleware->append(\App\Http\Middleware\PilotTelemetry::class);
         $middleware->append(\App\Http\Middleware\ProductionConfiguration::class);
         // Resolve the authenticated tenant before implicit route-model binding.

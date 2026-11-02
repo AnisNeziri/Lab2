@@ -41,6 +41,7 @@ final class ShipmentCargoPresentation
                     'receipt_scope'=>'purchase_order','other_shipments'=>$split,'url'=>'/products?product='.$item->product_id];
             }
             $receipts=$can('inventory.view')?GoodsReceipt::where('purchase_order_id',$po->id)->with('items')->orderByDesc('received_at')->get()->map(fn($r)=>['reference'=>$r->receipt_number,'received_at'=>$r->received_at?->toIso8601String(),'status'=>$r->status,'url'=>'/warehouse-operations?receipt='.$r->id,
+                'shipment_quantities'=>$r->items->whereIn('shipment_item_id',$shipment->items->pluck('id'))->groupBy('inventory_unit')->map(fn($items,$unit)=>['unit'=>$unit,'quantity'=>round($items->sum('shipment_received_base_quantity'),3)])->values()->all(),
                 'quantities'=>$r->items->groupBy('inventory_unit')->map(fn($items,$unit)=>['unit'=>$unit,'accepted'=>round($items->sum('accepted_base_quantity'),3),'damaged'=>round($items->sum('damaged_base_quantity'),3)])->values()->all()])->all():[];
             $groups[]=['reference'=>$po->po_number,'supplier'=>$po->supplier?->name,'destination'=>$shipment->warehouse?->name??$po->warehouse?->name,'status'=>$po->status,
                 'purchase_value'=>$can('analytics.finance')?$po->total_amount:null,'currency'=>$po->currency,'value_scope'=>'purchase_order','url'=>'/purchase-orders?po='.$po->id,'items'=>$rows,'receipts'=>$receipts];

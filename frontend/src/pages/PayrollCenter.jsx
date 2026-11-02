@@ -1,3 +1,4 @@
+import PageHeader from '../components/PageHeader';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
@@ -95,7 +96,7 @@ export default function PayrollCenter() {
     });
   };
   return <main className={'wf-workspace ' + (dense ? 'wf-compact' : '')}>
-    <header className="wf-heading"><div><span className="wf-eyebrow">AIMS · {t('Confidential finance', 'Financat konfidenciale')}</span><h1>{t('Payroll Control Center', 'Qendra e kontrollit të pagave')}</h1><p>{t('Reviewed earnings, statutory obligations and auditable settlement.', 'Të ardhurat e shqyrtuara, detyrimet dhe pagesat e auditueshme.')}</p></div><Link to="/workforce">{t('Employees', 'Punonjësit')}</Link><Link to="/accounting">{t('Accounting', 'Kontabiliteti')}</Link></header>
+    <PageHeader title={t('Payroll Control Center','Qendra e kontrollit të pagave')} eyebrow={t('Confidential finance','Financat konfidenciale')} description={t('Reviewed earnings, statutory obligations and auditable settlement.','Të ardhurat e shqyrtuara, detyrimet dhe pagesat e auditueshme.')} actions={<><Link to="/workforce">{t('Employees','Punonjësit')}</Link><Link to="/accounting">{t('Accounting','Kontabiliteti')}</Link></>}/>
     <nav className="wf-tabs"><button className={!configuration ? 'active' : ''} onClick={() => setParams(id ? {
         run: id
       } : {})}>{t('Payroll', 'Pagat')}</button>{can('payroll.configure') && <button className={configuration ? 'active' : ''} onClick={() => change({

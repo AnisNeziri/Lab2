@@ -36,8 +36,8 @@ class UserController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
-            'role' => ['required', Rule::in(['manager', 'staff', 'accountant', 'hr'])],
-            'temporary_password' => ['required', 'string', 'min:8', 'confirmed'],
+            'role' => ['required', Rule::in(['manager', 'staff', 'accountant', 'hr','sales','purchasing','warehouse','read_only'])],
+            'temporary_password' => [...\App\Services\Security\PasswordPolicy::rules(), 'confirmed'],
         ]);
 
         $user = $this->users->create([
@@ -76,7 +76,7 @@ class UserController extends Controller
         $this->ensureManageableUser($user);
 
         $validated = $request->validate([
-            'role' => ['required', Rule::in(['manager', 'staff', 'accountant', 'hr'])],
+            'role' => ['required', Rule::in(['manager', 'staff', 'accountant', 'hr','sales','purchasing','warehouse','read_only'])],
         ]);
 
         return response()->json([
@@ -112,6 +112,10 @@ class UserController extends Controller
     {
         $admin = Auth::user();
 
+        if ($user->role === 'integration') {
+            throw ValidationException::withMessages(['user' => ['Manage service identities in Integrations. They cannot become employee accounts.']]);
+        }
+
         if ($user->company_id !== $admin->company_id) {
             abort(404);
         }
@@ -133,7 +137,7 @@ class UserController extends Controller
             abort(403, 'Use the superadmin console to manage companies and users.');
         }
 
-        if (config('system.operation_mode') === 'offline' && $user?->role !== 'admin') {
+        if ($user?->role !== 'admin') {
             abort(403, 'Only the local company administrator can manage users.');
         }
     }

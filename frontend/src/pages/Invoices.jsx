@@ -1,5 +1,6 @@
 import TaxCodePicker,{useTaxCodes} from '../components/finance/TaxCodePicker'
 import EntityDocuments from '../components/EntityDocuments'
+import InvoicePrintPreview from '../components/InvoicePrintPreview'
 import {
   useCallback,
   useEffect,
@@ -28,6 +29,7 @@ import {
   LoaderCircle,
   Pencil,
   Plus,
+  Printer,
   ReceiptText,
   RotateCcw,
   Save,
@@ -1418,7 +1420,8 @@ function StatusPills({ invoice, t }) {
   );
 }
 
-function InvoiceDetail({ invoice, profile, open, onClose, onEdit, onIssue, onPayment, onReversePayment, onPdf, onExcel, onReason, canProcessPayments, actionError, busy, money, date, t, language }) {
+function InvoiceDetail({ invoice, profile, open, onClose, onEdit, onIssue, onPayment, onReversePayment, onPdf, onExcel, onPrint, onReason, canProcessPayments, actionError, busy, money, date, t, language }) {
+  const permissionsForInvoice=useAuthStore(s=>s.permissions);
   if (!invoice) return null;
   const buyer = buyerSnapshot(invoice);
   const seller = invoice.company_snapshot || invoice.seller_snapshot || profile;
@@ -1529,7 +1532,9 @@ function InvoiceDetail({ invoice, profile, open, onClose, onEdit, onIssue, onPay
         <footer className="invoice-detail-actions">
           {isDraft ? <button type="button" className="secondary" onClick={onEdit}><Pencil size={16} />{t("invoice.editDraft")}</button> : null}
           {isDraft ? <button type="button" onClick={onIssue} disabled={Boolean(busy)}>{busy === "issue" ? <LoaderCircle className="is-spinning" size={16} /> : <FileCheck2 size={16} />}{t("invoice.issueInvoice")}</button> : null}
+          {invoice.daily_sale_id&&invoice.customer_id&&!isDraft&&remaining>0&&permissionsForInvoice.includes('debts.view')&&<Link className="secondary" to={'/customer-debts?customer='+invoice.customer_id}><Banknote size={16}/>{language==='sq'?'Pagesat në llogarinë e klientit':'Payments in customer account'}</Link>}
           {canProcessPayments && !invoice.daily_sale_id && !isDraft && !terminal && remaining > 0 ? <button type="button" onClick={onPayment}><Banknote size={16} />{t("invoice.recordPayment")}</button> : null}
+          {!isDraft ? <button type="button" className="secondary" onClick={onPrint} disabled={Boolean(busy)}><Printer size={16}/>{language==='sq'?'Printo faturën':'Print invoice'}</button> : null}
           {!isDraft ? <button type="button" className="secondary" onClick={onPdf} disabled={Boolean(busy)}>{busy === `pdf-${invoice.id}` ? <LoaderCircle className="is-spinning" size={16} /> : <Download size={16} />}{t("invoice.downloadPdf")}</button> : null}
           {!isDraft ? <button type="button" className="secondary" onClick={onExcel} disabled={Boolean(busy)}>{busy === `excel-${invoice.id}` ? <LoaderCircle className="is-spinning" size={16} /> : <FileSpreadsheet size={16} />}{t("invoice.downloadExcel")}</button> : null}
           {canCredit ? <button type="button" className="secondary" onClick={() => onReason("credit")}><FilePenLine size={16} />{t("invoice.creditNote")}</button> : null}
@@ -1547,6 +1552,7 @@ export default function Invoices() {
   const canManageInvoiceProfile = permissions.includes("invoice_profile.manage");
   const canManageCustomers = permissions.includes("customers.manage");
   const canProcessPayments = permissions.includes("payments.process");
+  const [printInvoice,setPrintInvoice]=useState(null);
   const [profileState, setProfileState] = useState(() => normalizeProfile({}));
   const [profileOpen, setProfileOpen] = useState(false);
   const [products, setProducts] = useState([]);
@@ -1753,7 +1759,7 @@ export default function Invoices() {
     }
   };
 
-  const handlePdf = async (invoice = selected) => {
+  const handlePdf = async (invoice = selected, locale = profileState.profile.default_language || language) => {
     if (!invoice || actionBusy) return;
     setActionBusy(`pdf-${invoice.id}`);
     setError("");
@@ -1761,7 +1767,7 @@ export default function Invoices() {
       await downloadInvoicePdf(
         invoice.id,
         invoice.invoice_number,
-        profileState.profile.default_language || language,
+        locale,
       );
     } catch (err) {
       setError(apiError(err, t("invoice.pdfError")));
@@ -2002,6 +2008,7 @@ export default function Invoices() {
         onReversePayment={openPaymentReversal}
         onPdf={() => handlePdf(selected)}
         onExcel={() => handleExcel(selected)}
+        onPrint={() => {setError('');setDetailOpen(false);setPrintInvoice(selected)}}
         onReason={(type) => { setDetailOpen(false); setReasonAction({ type, invoice: selected }); }}
         canProcessPayments={canProcessPayments}
         actionError={error}
@@ -2011,6 +2018,7 @@ export default function Invoices() {
         t={t}
         language={language}
       />
+      {printInvoice&&<InvoicePrintPreview invoice={printInvoice} locale={profileState.profile.default_language||language} onClose={()=>{setPrintInvoice(null);setDetailOpen(true)}} onPdf={locale=>handlePdf(printInvoice,locale)} pdfBusy={Boolean(actionBusy)} pdfError={error}/>}
       <PaymentModal invoice={paymentInvoice} open={Boolean(paymentInvoice)} onClose={closePayment} onSuccess={afterPayment} money={money} t={t} />
       <PaymentReversalModal payment={reversingPayment} open={Boolean(reversingPayment)} onClose={closePaymentReversal} onConfirm={confirmPaymentReversal} money={money} date={date} t={t} />
       <ReasonModal action={reasonAction?.type} invoice={reasonAction?.invoice} open={Boolean(reasonAction)} onClose={closeReasonAction} onConfirm={confirmReasonAction} t={t} />

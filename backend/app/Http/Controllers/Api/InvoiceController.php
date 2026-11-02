@@ -77,6 +77,15 @@ class InvoiceController extends Controller
         return response()->json($this->invoices->fullCreditNote($invoice, $request->validated('reason')), 201);
     }
 
+    public function print(Request $request, Invoice $invoice): Response
+    {
+        $validated=$request->validate(['locale'=>['nullable','in:en,sq,bilingual']]);
+        return response(app(\App\Services\InvoicePdfService::class)->html($this->invoices->find($invoice),$validated['locale']??'bilingual'),200,[
+            'Content-Type'=>'text/html; charset=UTF-8','Cache-Control'=>'private, no-store','X-Content-Type-Options'=>'nosniff',
+            'Content-Security-Policy'=>"default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
+        ]);
+    }
+
     public function downloadPdf(Request $request, Invoice $invoice): JsonResponse
     {
         $validated = $request->validate(['locale' => ['nullable', 'in:en,sq,bilingual']]);

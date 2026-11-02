@@ -183,8 +183,8 @@ function Users() {
               id="temp-password"
               type="password"
               required
-              minLength={8}
-              placeholder={text('At least 8 characters','Të paktën 8 karaktere')}
+              minLength={15}
+              placeholder={text('At least 15 characters','Të paktën 15 karaktere')}
               value={temporaryPassword}
               onChange={(event) => setTemporaryPassword(event.target.value)}
             />
@@ -196,7 +196,7 @@ function Users() {
               id="temp-password-confirm"
               type="password"
               required
-              minLength={8}
+              minLength={15}
               value={temporaryPasswordConfirmation}
               onChange={(event) => setTemporaryPasswordConfirmation(event.target.value)}
             />

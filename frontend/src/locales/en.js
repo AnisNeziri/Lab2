@@ -1,4 +1,5 @@
 export const en = {
+  "nav.integrations": "Integrations",
   "common.close": "Close",
   "nav.analytics": "Analytics",
   "nav.inventoryIntelligence": "Inventory Intelligence",
@@ -714,6 +715,8 @@ export const en = {
   "shipments.status": "Status",
   "shipments.location": "Current location",
   "shipments.empty": "No shipments yet.",
+  "shipments.emptyTracked": "No vessels with verified tracking in this view. Open Shipment Intelligence for cargo and recorded milestones.",
+  "shipments.trackingScope": "Verified vessel tracking. Review cargo, manual milestones and arrival uncertainty in Shipment Intelligence.",
   "shipments.mode": "Tracking mode",
   "shipments.active": "Active",
   "shipments.archived": "Archived",

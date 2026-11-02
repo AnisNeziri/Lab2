@@ -15,7 +15,7 @@ class PasswordResetService
     {
         $user = User::where('email', $email)->first();
 
-        if (! $user) {
+        if (! $user || $user->is_active === false || $user->role === 'integration') {
             return true;
         }
 
@@ -67,6 +67,7 @@ class PasswordResetService
         app(JwtService::class)->revokeUserTokens($user);
 
         DB::table('password_reset_tokens')->where('email', $email)->delete();
+        app(\App\Services\Security\SecurityEvents::class)->record('password.recovered', $user);
 
         return $user;
         });

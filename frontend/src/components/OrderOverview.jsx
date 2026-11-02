@@ -1,4 +1,5 @@
 import { formatOrderMoney, formatOrderDate } from './orderPresentation'
+import './InventoryPosition.css'
 
 export default function OrderOverview({ detail, t, language, label, nextStep }) {
   const order = detail.order

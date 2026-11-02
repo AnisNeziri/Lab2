@@ -1,3 +1,5 @@
+import FinanceWorkspaceNav from './FinanceWorkspaceNav'
+import SecurityConfirmation from './SecurityConfirmation'
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { Menu, X } from "lucide-react";
@@ -12,7 +14,6 @@ import WorkspaceContext from './WorkspaceContext';
 import { navigationKey } from '../config/navigation';
 import AimsAssistant from './AimsAssistant';
 import SystemStatusBanner from './SystemStatusBanner';
-import PilotFeedback from './PilotFeedback';
 import { useWorkspaceHistory } from '../hooks/useWorkspaceHistory';
 
 export default function AppLayout() {
@@ -31,7 +32,7 @@ export default function AppLayout() {
   const logoutPending = useRef(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { role, permissions, clearAuth } = useAuthStore();
+  const { role, permissions, clearAuth, user } = useAuthStore();
   const { t, language } = useTranslation();
 
   const currentPage = location.pathname.startsWith('/control-tower/') ? 'control-tower' : location.pathname.replace("/", "") || "dashboard";
@@ -98,11 +99,12 @@ export default function AppLayout() {
       <div className="main-content" id="workspace-main" tabIndex={-1}>
         <WorkspaceContext onHelp={() => { setAssistantOpen(true); setAssistantGuide(value => value + 1); }}/>
         <SystemStatusBanner/>
+        <FinanceWorkspaceNav/>
         <div key={location.pathname} className="page-transition">
-          {canOpenPage(currentPage, permissions) ? <Outlet /> : <PageState forbidden />}
+          {canOpenPage(currentPage, permissions, user?.commercial?.capabilities) ? <Outlet /> : <PageState forbidden />}
         </div>
-        <PilotFeedback/>
       </div>
+      <SecurityConfirmation/>
       <AimsAssistant open={assistantOpen} onClose={closeAssistant} guideRequest={assistantGuide} request={assistantRequest}/>
     </div>
   );

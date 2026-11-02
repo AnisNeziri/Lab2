@@ -1,3 +1,4 @@
+import { useSessionState } from '../hooks/useSessionState'
 import TaxCodePicker,{useTaxCodes} from '../components/finance/TaxCodePicker'
 import EntityDocuments from '../components/EntityDocuments'
 import {businessDate,businessMoney} from '../utils/businessFormat'
@@ -6,7 +7,7 @@ import { useDialog } from '../hooks/useDialog'
 import { useUnsavedNavigation } from '../hooks/useUnsavedNavigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   BadgeEuro,
@@ -494,9 +495,11 @@ export default function FinanceCenter() {
   const canManageExpenses = permissions.includes("expenses.manage");
   const canExportFinance = permissions.includes("finance.export");
   const canManageInvoices = permissions.includes("invoices.manage");
-  const [tab, setTab] = useState("overview");
+  const [workspaceParams,setWorkspaceParams]=useSearchParams();
+  const tab=['overview','expenses','vat','cashflow','receivables'].includes(workspaceParams.get('tab'))?workspaceParams.get('tab'):'overview';
+  const setTab=value=>setWorkspaceParams(current=>{const next=new URLSearchParams(current);next.set('tab',value);return next});
   const [preset, setPreset] = useState("this_month");
-  const [period, setPeriod] = useState(() => periodFor("this_month"));
+  const [period, setPeriod] = useSessionState("finance.period", periodFor("this_month"));
   const [data, setData] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -743,6 +746,9 @@ export default function FinanceCenter() {
 
   const renderCashFlow = () => (
     <>
+      <section className="dc9-financial-basis"><strong>{language==='sq'?'Mbulim i pjesshëm i burimeve të parasë':'Partial operational cash coverage'}</strong><p>{language==='sq'?'Arkëtimet e shitjeve ditore dhe pagesat e porosive të blerjes shfaqen veçmas. Lidhja me pagesat e faturave/shpenzimeve duhet shqyrtuar para se të bashkohen.':'Daily Sales receipts and PO payments are disclosed separately. Their linkage to invoice/expense payments requires review before combining totals.'}</p>
+      {(cash.exclusions||[]).map(row=><div key={row.source}><strong>{row.source==='daily_sales'?(language==='sq'?'Arkëtime të shitjeve ditore':'Daily Sales receipts'):(language==='sq'?'Pagesa të porosive të blerjes':'PO payments')}</strong><p>{row.amounts.map(a=>`${a.amount} ${a.currency}`).join(' · ')||'0.00'} · {row.count} {language==='sq'?'regjistrime':'records'} · {language==='sq'?'Të papërfshira / të parakorduara':'Excluded / unreconciled'}</p><Link to={row.url}>{language==='sq'?'Shqyrto burimet':'Review sources'}</Link>{row.examples?.length>0&&<details><summary>{language==='sq'?'Shembuj burimorë (deri në 20)':'Source records (up to 20)'}</summary><ul>{row.examples.map(source=><li key={source.id}><Link to={source.url}>{source.reference||`#${source.id}`}</Link> · {source.date} · {source.amount} {source.currency}{source.exchange_rate&&<> · FX {source.exchange_rate} · {source.exchange_rate_date||'—'} · {source.exchange_rate_source||'—'}</>}</li>)}</ul></details>}</div>)}
+      </section>
       <div className="finance-metrics three"><MetricCard icon={BanknoteArrowUp} label={t("finance.cashIn")} value={money(firstValue(cashSummary, ["cash_in", "inflows", "total_in"]))} tone="green" /><MetricCard icon={BanknoteArrowDown} label={t("finance.cashOut")} value={money(firstValue(cashSummary, ["cash_out", "outflows", "total_out"]))} tone="red" /><MetricCard icon={TrendingUp} label={t("finance.netCashFlow")} value={money(firstValue(cashSummary, ["net_cash_flow", "net_flow"]))} tone="blue" /></div>
       <section className="card finance-panel"><header><div><h2>{t("finance.cashFlowTimeline")}</h2><p>{t("finance.cashFlowHint")}</p></div></header><DataTable rows={cashRows} emptyTitle={t("finance.noCashFlow") } emptyText={t("finance.noPeriodData")} columns={[{ key: "period", label: t("finance.period"), render: (row) => row.label || date(row.date || row.period) }, { key: "cash_in", label: t("finance.cashIn"), render: (row) => <span className="finance-positive">{money(firstValue(row, ["cash_in", "inflow"]))}</span> }, { key: "cash_out", label: t("finance.cashOut"), render: (row) => <span className="finance-negative">{money(firstValue(row, ["cash_out", "outflow"]))}</span> }, { key: "net", label: t("finance.netCashFlow"), render: (row) => <strong>{money(firstValue(row, ["net", "net_cash_flow"]))}</strong> }]} /></section>
     </>
@@ -761,6 +767,7 @@ export default function FinanceCenter() {
 
   return (
     <main className="finance-page page-stack">
+      <section className="dc9-financial-basis"><strong>{language==='sq'?'Aktiviteti operativ':'Operational Activity'}</strong><p>{period.date_from} — {period.date_to} · {language==='sq'?'Burime operative; shumat nuk janë gjendje bankare të rakorduara ose rezultati i librit kryesor.':'Operational sources; amounts are not reconciled bank balances or the posted-book result.'}</p><Link to="/accounting?tab=owner">{language==='sq'?'Hap librat e postuar':'Open Posted Books'}</Link></section>
       <section className="finance-hero">
         <div className="finance-heading"><span className="finance-hero-icon"><Landmark size={24} /></span><div><span className="finance-eyebrow">{t("finance.workspace")}</span><h1>{t("finance.title")}</h1><p>{t("finance.subtitle")}</p></div></div>
         <button type="button" className="secondary" onClick={() => setReloadKey((value) => value + 1)} disabled={loading}><RefreshCw className={loading ? "is-spinning" : ""} size={17} />{t("finance.refresh")}</button>

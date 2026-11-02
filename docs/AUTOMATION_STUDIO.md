@@ -1,5 +1,7 @@
 # Automation Studio and Action Center
 
+Latest implementation, safety results and pilot limits: [DC6 completion report](dc6/README.md).
+
 Automation Studio is a deterministic orchestration layer, not another inventory,
 finance, fulfillment, procurement, or approval implementation. It requires no
 paid service, cloud account, external scheduler, or internet connection.

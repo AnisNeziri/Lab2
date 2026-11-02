@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation, Link } from 'react-router-dom'
+import { CircleHelp, ChevronDown, MessageSquareWarning, ClipboardCheck } from 'lucide-react'
 import WorkspaceModal from './WorkspaceModal'
 import { useTranslation } from '../hooks/useTranslation'
 import { useUiText } from '../hooks/useUiText'
@@ -12,6 +13,7 @@ const categories = [ ['confusing','Confusing','E paqartë'], ['missing_action','
 
 export default function PilotFeedback() {
   const { language } = useTranslation(), tx = useUiText()
+  const menu = useRef(null)
   const role = useAuthStore(s => s.role), location = useLocation()
   const [open,setOpen] = useState(false), [busy,setBusy] = useState(false), [error,setError] = useState(''), [sent,setSent] = useState(false)
   const [category,setCategory] = useState('confusing'), [description,setDescription] = useState(''), [reference,setReference] = useState(''), [telemetry,setTelemetry] = useState(false)
@@ -32,11 +34,17 @@ export default function PilotFeedback() {
       setSent(true); setDescription(''); setReference('')
     } catch (cause) { setError(cause.message) } finally { setBusy(false) }
   }
-  return <footer className="pilot-feedback-bar">
-    <button type="button" className="secondary" onClick={() => {setOpen(true);setSent(false);setError('')}}>{tx('Report a problem')}</button>
-    <Link to="/pilot-evidence">{tx('Record a pilot trial')}</Link>
-    {telemetry && <span>{tx('Pilot usage aggregates enabled')}</span>}
-    {open && <WorkspaceModal title={tx('Report a problem')} onClose={() => setOpen(false)} busy={busy} warnOnUnsaved={Boolean(description)}>
+  const closeReport=()=>{setOpen(false);requestAnimationFrame(()=>menu.current?.querySelector('summary')?.focus())}
+  return <div className="workspace-help">
+    <details ref={menu} data-lightweight-menu>
+      <summary aria-label={language==='sq'?'Ndihmë dhe mbështetje':'Help and support'}><CircleHelp size={17} aria-hidden="true"/><span>{language==='sq'?'Ndihmë':'Help'}</span><ChevronDown size={14} aria-hidden="true"/></summary>
+      <div className="workspace-help-menu"><strong>{language==='sq'?'Ndihmë dhe mbështetje':'Help and support'}</strong>
+        <button type="button" onClick={()=>{menu.current.open=false;setOpen(true);setSent(false);setError('')}}><MessageSquareWarning size={16}/>{tx('Report a problem')}</button>
+        <Link to="/pilot-evidence" onClick={()=>{menu.current.open=false}}><ClipboardCheck size={16}/>{tx('Record a pilot trial')}</Link>
+        {telemetry&&<small>{tx('Pilot usage aggregates enabled')}</small>}
+      </div>
+    </details>
+    {open && <WorkspaceModal title={tx('Report a problem')} onClose={closeReport} busy={busy} warnOnUnsaved={Boolean(description)}>
       {sent ? <p role="status">{tx('Report saved for your company administrator.')}</p> : <form className="pilot-form" onSubmit={submit}>
         <p>{tx('Page and role are included. Do not include passwords, customer details, account numbers or document contents.')}</p>
         <label>{tx('Category')}<select value={category} onChange={e=>setCategory(e.target.value)}>{categories.map(([value,en,sq])=><option key={value} value={value}>{language === 'sq' ? sq : en}</option>)}</select></label>
@@ -46,5 +54,5 @@ export default function PilotFeedback() {
         <button disabled={busy}>{busy ? tx('Saving…') : tx('Send report')}</button>
       </form>}
     </WorkspaceModal>}
-  </footer>
+  </div>
 }

@@ -84,8 +84,8 @@ function ChangePassword({ onPasswordChanged, onLogout, requiresChange = true }) 
             name="password"
             type="password"
             required
-            minLength={8}
-            placeholder={text('At least 8 characters', 'Të paktën 8 karaktere')}
+            minLength={15}
+            placeholder={text('At least 15 characters', 'Të paktën 15 karaktere')}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
@@ -96,7 +96,7 @@ function ChangePassword({ onPasswordChanged, onLogout, requiresChange = true }) 
             name="password_confirmation"
             type="password"
             required
-            minLength={8}
+            minLength={15}
             value={passwordConfirmation}
             onChange={(event) => setPasswordConfirmation(event.target.value)}
           />

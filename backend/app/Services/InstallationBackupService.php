@@ -22,12 +22,14 @@ final class InstallationBackupService
     public function create(string $passphrase, bool $scheduled = false): array
     {
         $this->requireMaintenance();
+        if (Schema::hasTable('installation_state') && !app(\App\Services\Commercial\InstallationIdentity::class)->verify()) throw new \RuntimeException('The original application encryption key is required before certifying an installation backup.');
         $root = config('production.backup_root');
         if (is_link($root)) throw new \RuntimeException('Backup directory must not be a symbolic link.');
         if (! is_dir($root) && ! mkdir($root, 0700, true)) throw new \RuntimeException('Backup directory cannot be created.');
         $lock = fopen(storage_path('framework/aims-installation-backup.lock'), 'c');
         if (! $lock || ! flock($lock, LOCK_EX | LOCK_NB)) throw new \RuntimeException('Another installation backup is running. Retry after it completes.');
         $temporary = tempnam($root, '.snapshot-');
+        $stages = ['application_key' => 'passed'];
         try {
             $engine = DB::connection()->getDriverName();
             if ($engine === 'sqlite') {
@@ -39,8 +41,9 @@ final class InstallationBackupService
             } elseif ($engine === 'mysql') {
                 // single-transaction is consistent only for transactional tables.
                 foreach (DB::select('SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = ?', ['BASE TABLE']) as $table) if (strtolower($table->ENGINE) !== 'innodb') throw new \RuntimeException('Backup requires all business tables to use InnoDB.');
-                $this->databaseProcess(config('production.mysqldump'), ['--single-transaction', '--quick', '--hex-blob', '--skip-lock-tables', '--result-file='.$temporary])->mustRun();
+                $this->databaseProcess(config('production.mysqldump'), ['--single-transaction', '--quick', '--hex-blob', '--skip-lock-tables', '--routines', '--events', '--triggers', '--result-file='.$temporary])->mustRun();
             } else throw new \RuntimeException('Unsupported database engine.');
+            $stages['database_export'] = 'passed';
             $size = filesize($temporary);
             if ($size === false || $size > self::LIMIT || disk_free_space($root) < $size * 5 + config('production.min_free_bytes')) throw new \RuntimeException('Insufficient disk reserve or installation exceeds the 512 MiB encrypted archive limit. Use the documented large-installation backup procedure.');
             $files = [];
@@ -61,7 +64,9 @@ final class InstallationBackupService
                 }
             }
             $database = file_get_contents($temporary);
+            $stages['files_snapshot'] = 'passed';
             $reconciliation = $this->reconcile();
+            $stages['business_reconciliation'] = $reconciliation['healthy'] ? 'passed' : 'blocked';
             if (! $reconciliation['healthy']) throw new \RuntimeException('Installation integrity/reconciliation failed. Resolve inventory, finance, tenant or document issues before certifying a backup.');
             $payload = ['format' => 'aims-installation', 'version' => 1, 'app_version' => Release::version(), 'created_at' => now()->toIso8601String(), 'engine' => $engine, 'companies' => DB::table('companies')->orderBy('id')->get(['id', 'name'])->toArray(), 'app_key_fingerprint' => hash('sha256', (string) config('app.key')), 'database' => ['encoding' => 'gzip', 'bytes' => base64_encode(gzencode($database, 6)), 'sha256' => hash('sha256', $database)], 'files' => $files, 'reconciliation' => $reconciliation];
             unset($database);
@@ -79,11 +84,12 @@ final class InstallationBackupService
             $result = ['file' => $name, 'created_at' => $payload['created_at'], 'version' => Release::version(), 'engine' => $engine, 'verification' => 'authenticated_and_checksums_verified', 'sha256' => hash_file('sha256', $target), 'companies' => count($payload['companies'])];
             $metadata=json_encode($result, JSON_PRETTY_PRINT);
             if(file_put_contents($target.'.verified.json', $metadata, LOCK_EX)!==strlen($metadata))throw new \RuntimeException('Verified backup metadata could not be written. Free disk space and verify the archive again; no successful backup is recorded.');
-            $this->health(['last_success_at' => $result['created_at'], 'last_verified_at' => $result['created_at'], 'last_failure_at' => null]);
+            $stages['archive_integrity'] = $stages['archive_decryption'] = 'passed';
+            $this->health(['last_success_at' => $result['created_at'], 'last_verified_at' => $result['created_at'], 'last_failure_at' => null, 'last_create_review' => $this->stageEvidence($stages)]);
             if ($scheduled) $this->retain($root);
             return $result;
         } catch (\Throwable $error) {
-            $this->health(['last_failure_at' => now()->toIso8601String(), 'error_code' => 'installation_backup_failed']);
+            $this->health(['last_failure_at' => now()->toIso8601String(), 'error_code' => 'installation_backup_failed', 'last_create_review' => $this->stageEvidence($stages)]);
             throw $error;
         } finally {
             if (is_file($temporary)) unlink($temporary);
@@ -121,7 +127,10 @@ final class InstallationBackupService
     public function restore(string $file, string $passphrase): array
     {
         $this->requireMaintenance();
+        $stages = [];
+        try {
         $payload = $this->verify($file, $passphrase);
+        $stages['archive_integrity'] = $stages['archive_decryption'] = 'passed';
         if (! hash_equals($payload['app_key_fingerprint'], hash('sha256', (string) config('app.key')))) throw new \RuntimeException('Provide the separately escrowed original APP_KEY in this empty installation before restore. The key is never stored in the backup.');
         $engine = DB::connection()->getDriverName();
         if ($payload['engine'] !== $engine) throw new \RuntimeException('Installation restore requires the same database engine. Use selective portable exports for company transfers.');
@@ -146,12 +155,15 @@ final class InstallationBackupService
                 if (! rename($stage, $target)) throw new \RuntimeException('Restored database cannot be activated.');
             } finally { if (is_file($stage)) unlink($stage); }
         } else {
-            $process = $this->databaseProcess(config('production.mysql'), ['--binary-mode=1']);
+            $process = $this->databaseProcess(config('production.mysql'), ['--binary-mode=1'], true);
             $process->setInput($database); $process->mustRun(); DB::purge();
         }
         // Restore is intentionally offline. A failure leaves the marker in place
         // and never presents partial SQL/file restoration as an operable system.
         $this->migrateRestoredDatabase();
+        $stages['database_restoration'] = 'passed';
+        if (Schema::hasTable('installation_state') && !app(\App\Services\Commercial\InstallationIdentity::class)->verify()) throw new \RuntimeException('Restored installation key evidence does not match.');
+        $stages['application_key_restoration'] = 'passed';
         foreach ($payload['files'] as $path => $entry) {
             [$label, $relative] = explode('/', $path, 2);
             $target = $this->roots()[$label].DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $relative);
@@ -159,12 +171,14 @@ final class InstallationBackupService
             $bytes = base64_decode($entry['bytes'], true);
             if (file_put_contents($target, $bytes, LOCK_EX) !== strlen($bytes) || ! hash_equals($entry['sha256'], hash_file('sha256', $target))) throw new \RuntimeException('Attachment restore failed. Keep this installation offline and retry into a clean target.');
         }
+        $stages['files_preservation'] = 'passed';
         $actual = $this->reconcile();
+        $stages['business_reconciliation'] = $actual['healthy'] && $actual['totals'] === $payload['reconciliation']['totals'] ? 'passed' : 'blocked';
         if (! $actual['healthy'] || $actual['totals'] !== $payload['reconciliation']['totals']) throw new \RuntimeException('Post-restore critical totals or reconciliation failed. This installation remains blocked.');
         // No pre-loss login tokens, queued jobs or external delivery retries may
         // become live merely because a recovery database has been activated.
         DB::transaction(function () {
-            foreach (['refresh_tokens', 'password_reset_tokens', 'sessions', 'jobs', 'job_batches'] as $table) if (Schema::hasTable($table)) DB::table($table)->delete();
+            foreach (['auth_challenges','auth_sessions','refresh_tokens', 'password_reset_tokens', 'sessions', 'jobs', 'job_batches'] as $table) if (Schema::hasTable($table)) DB::table($table)->delete();
             DB::table('users')->update(['api_token' => null, 'remember_token' => null]);
             DB::table('users')->increment('token_version');
             if (Schema::hasTable('automations')) DB::table('automations')->update(['enabled' => false]);
@@ -172,39 +186,125 @@ final class InstallationBackupService
             if (Schema::hasTable('integration_operation_logs')) DB::table('integration_operation_logs')->whereNotNull('next_retry_at')->update(['next_retry_at' => null]);
             if (Schema::hasTable('webhook_endpoints')) DB::table('webhook_endpoints')->update(['enabled' => false]);
             if (Schema::hasTable('webhook_deliveries')) DB::table('webhook_deliveries')->whereNotNull('next_retry_at')->update(['next_retry_at' => null]);
+            if (Schema::hasTable('service_accounts')) DB::table('service_accounts')->update(['status'=>'revoked']);
+            if (Schema::hasColumn('companies','platform_settings')) DB::table('companies')->update(['platform_settings'=>json_encode(['api_enabled'=>false,'mcp_enabled'=>false,'observability_enabled'=>false])]);
             if (Schema::hasTable('order_channels')) DB::table('order_channels')->update(['enabled' => false]);
             if (Schema::hasTable('order_channel_keys')) DB::table('order_channel_keys')->whereNull('revoked_at')->update(['revoked_at' => now()]);
+            if (Schema::hasTable('pilot_profiles')) DB::table('pilot_profiles')->where('status','active')->update(['status'=>'paused']);
+            foreach (['pilot_evidence','pilot_reports'] as $table) if (Schema::hasTable($table)) DB::table($table)->update(['is_historical'=>true]);
         });
         unlink($marker);
-        $this->health(['last_restore_verified_at' => now()->toIso8601String(), 'last_verified_at' => now()->toIso8601String()]);
+        $proof = $this->stageEvidence($stages);
+        $proof['archive_sha256'] = hash_file('sha256', $file);
+        $this->health(['last_restore_verified_at' => now()->toIso8601String(), 'last_verified_at' => now()->toIso8601String(), 'restore_verification' => $proof, 'last_restore_review' => $proof]);
         return ['status' => 'restored_and_reconciled', 'version' => Release::version(), 'inventory' => true, 'finance' => true, 'attachments' => count($payload['files']), 'tenant_isolation' => true, 'totals' => $actual['totals']];
+        } catch (\Throwable $error) {
+            $this->health(['last_failure_at' => now()->toIso8601String(), 'error_code' => 'installation_restore_failed', 'last_restore_review' => $this->stageEvidence($stages)]);
+            throw $error;
+        }
+    }
+
+    private function stageEvidence(array $stages): array
+    {
+        $c = config('database.connections.'.config('database.default'));
+        return ['scope' => hash('sha256', DB::getDriverName().':'.($c['host'] ?? '').':'.($c['port'] ?? '').':'.($c['database'] ?? '')),
+            'key_fingerprint' => hash('sha256', (string) config('app.key')), 'at' => now()->toIso8601String(), 'stages' => $stages];
+    }
+
+    /** Local proof is bound to this database and key; a fixture receipt cannot certify another installation. */
+    public function recoveryStatus(): array
+    {
+        $file = storage_path('framework/aims-backup-health.json');
+        $health = is_file($file) ? json_decode(file_get_contents($file), true) : [];
+        $scope = $this->stageEvidence([]);
+        $matches = fn ($p) => is_array($p) && ($p['scope'] ?? '') === $scope['scope'] && hash_equals($p['key_fingerprint'] ?? '', $scope['key_fingerprint']);
+        $proof = $health['restore_verification'] ?? [];
+        $names = ['archive_integrity', 'archive_decryption', 'database_restoration', 'application_key_restoration', 'files_preservation', 'business_reconciliation'];
+        $verified = $matches($proof) && !is_file(storage_path('framework/aims-restore-incomplete'));
+        try { $verified = $verified && \Carbon\Carbon::parse($proof['at'] ?? '1970-01-01')->gte(now()->subDays(30)); } catch (\Throwable) { $verified = false; }
+        foreach ($names as $name) $verified = $verified && ($proof['stages'][$name] ?? '') === 'passed';
+        $attempt = $matches($health['last_restore_review'] ?? null) ? $health['last_restore_review'] : [];
+        $create = $matches($health['last_create_review'] ?? null) ? $health['last_create_review'] : [];
+        $safe = fn ($p) => array_intersect_key($p, array_flip(['at', 'stages']));
+        return ['status' => $verified ? 'VERIFIED' : 'NOT_VERIFIED', 'verified_at' => $verified ? $proof['at'] : null,
+            'restore_stages' => array_replace(array_fill_keys($names, 'not_tested'), array_intersect_key(($verified ? $proof : $attempt)['stages'] ?? [], array_flip($names))), 'last_restore_attempt' => $safe($attempt), 'last_backup_attempt' => $safe($create),
+            'incomplete_restore' => is_file(storage_path('framework/aims-restore-incomplete')), 'verified_stages' => $verified ? $proof['stages'] : []];
     }
 
     public function reconcile(): array
     {
         $prior = Auth::user(); $healthy = true; $totals = [];
+        $checks = array_fill_keys(['company_actor', 'inventory', 'finance', 'documents', 'payroll', 'tenant_links', 'relational_links'], true);
         try {
             foreach (Company::orderBy('id')->get() as $company) {
                 $actor = User::withoutGlobalScopes()->where('company_id', $company->id)->where('role', 'admin')->where('is_active', true)->first();
-                if (! $actor) { if (DB::table('products')->where('company_id', $company->id)->exists()) $healthy = false; continue; }
+                if (! $actor) { if (DB::table('products')->where('company_id', $company->id)->exists()) {$healthy = false;$checks['company_actor']=false;} continue; }
                 Auth::setUser($actor);
-                foreach (Product::query()->get() as $product) if (app(InventoryIntegrityService::class)->productSnapshot($product)['issues']) $healthy = false;
+                foreach (Product::query()->get() as $product) if (app(InventoryIntegrityService::class)->productSnapshot($product)['issues']) {$healthy = false;$checks['inventory']=false;}
                 $finance = app(AccountingService::class)->reconciliation(false);
-                if (! $finance['all_reconciled']) $healthy = false;
-                if (app(DocumentMaintenanceService::class)->verifyCompany($company->id)) $healthy = false;
+                if (! $finance['all_reconciled']) {$healthy = false;$checks['finance']=false;}
+                if (app(DocumentMaintenanceService::class)->verifyCompany($company->id)) {$healthy = false;$checks['documents']=false;}
                 $totals[(string) $company->id] = ['inventory_quantity' => number_format((float) DB::table('products')->where('company_id', $company->id)->sum('quantity'), 3, '.', ''), 'finance' => array_map(fn ($row) => array_intersect_key($row, array_flip(['operational_amount', 'gl_amount', 'difference', 'reconciled'])), $finance['rows']), 'users' => DB::table('users')->where('company_id', $company->id)->count(), 'documents' => DB::table('documents')->where('company_id', $company->id)->count()];
                 if(Schema::hasTable('employees') && \App\Models\Employee::query()->exists()) {
                     $payroll=app(\App\Services\Workforce\PayrollReadService::class)->reconcile('9999-12-31');
-                    if(!$payroll['reconciled']) $healthy=false;
+                    if(!$payroll['reconciled']) {$healthy=false;$checks['payroll']=false;}
                     $totals[(string)$company->id]['workforce']=['employees'=>\App\Models\Employee::count(),'runs'=>\App\Models\PayrollRun::count(),'payroll_lines'=>\App\Models\PayrollLine::count(),'advances'=>\App\Models\EmployeeAdvance::count(),'payments'=>\App\Models\PayrollPayment::count(),'controls'=>$payroll['rows']];
                 }
             }
-            if (! $this->tenantLinksAreValid()) $healthy = false;
+            if (! $this->tenantLinksAreValid()) {$healthy = false;$checks['tenant_links']=false;}
+            if (! $this->databaseReferencesAreValid()) {$healthy = false;$checks['relational_links']=false;}
         } finally { if ($prior) Auth::setUser($prior); else Auth::forgetUser(); }
-        return compact('healthy', 'totals');
+        return compact('healthy', 'totals', 'checks');
     }
 
-    /** Read current metadata once per reconciliation, including after migration. */
+    /** The DC11 declared-relationship check, with bounded operator evidence when requested. */
+    public function referenceAudit(bool $withRecords = false, bool $stopOnFailure = false): array
+    {
+        return DB::transaction(fn() => $this->collectReferenceAudit($withRecords,$stopOnFailure));
+    }
+
+    private function collectReferenceAudit(bool $withRecords, bool $stopOnFailure): array
+    {
+        $relations=[];$owners=[];$columns=[];$keys=[];
+        if(DB::getDriverName()==='mysql') {
+            $database=DB::connection()->getDatabaseName();
+            foreach(DB::table('information_schema.COLUMNS')->where('TABLE_SCHEMA',$database)->get(['TABLE_NAME','COLUMN_NAME','IS_NULLABLE']) as $c)$columns[$c->TABLE_NAME][$c->COLUMN_NAME]=$c->IS_NULLABLE==='YES';
+            foreach(DB::table('information_schema.STATISTICS')->where('TABLE_SCHEMA',$database)->where('INDEX_NAME','PRIMARY')->orderBy('SEQ_IN_INDEX')->get(['TABLE_NAME','COLUMN_NAME']) as $k)$keys[$k->TABLE_NAME][]=$k->COLUMN_NAME;
+            $rules=DB::table('information_schema.REFERENTIAL_CONSTRAINTS')->where('CONSTRAINT_SCHEMA',$database)->get()->keyBy(fn($r)=>$r->TABLE_NAME.':'.$r->CONSTRAINT_NAME);
+            $groups=DB::table('information_schema.KEY_COLUMN_USAGE')->where('TABLE_SCHEMA',$database)->whereNotNull('REFERENCED_TABLE_NAME')->orderBy('ORDINAL_POSITION')->get()->groupBy(fn($r)=>$r->TABLE_NAME.':'.$r->CONSTRAINT_NAME);
+            foreach($groups as $name=>$group){$f=$group->first();$rule=$rules->get($name);$relations[]=['table'=>$f->TABLE_NAME,'constraint'=>$f->CONSTRAINT_NAME,'columns'=>$group->pluck('COLUMN_NAME')->all(),'parent'=>$f->REFERENCED_TABLE_NAME,'parent_columns'=>$group->pluck('REFERENCED_COLUMN_NAME')->all(),'same_database'=>$f->REFERENCED_TABLE_SCHEMA===$database,'on_delete'=>$rule?->DELETE_RULE,'on_update'=>$rule?->UPDATE_RULE];}
+        } else {
+            foreach(Schema::getTables(Schema::getCurrentSchemaListing()) as $table){$name=$table['name'];foreach(Schema::getColumns($name) as $c)$columns[$name][$c['name']]=$c['nullable'];foreach(Schema::getIndexes($name) as $i)if($i['primary'])$keys[$name]=$i['columns'];foreach(Schema::getForeignKeys($name) as $fk)$relations[]=['table'=>$name,'constraint'=>$fk['name'],'columns'=>$fk['columns'],'parent'=>$fk['foreign_table'],'parent_columns'=>$fk['foreign_columns'],'same_database'=>true,'on_delete'=>$fk['on_delete'],'on_update'=>$fk['on_update']];}
+        }
+        $violations=[];$ownership=[];$checked=0;
+        $safe=['company_id','user_id','role_id','permission_id','product_id','supplier_id','customer_id','purchase_order_id','invoice_id','daily_sale_id','document_id','entity','entity_id','action','source','status','reference_number','document_number','payment_date','transaction_date','created_at','updated_at','amount','currency'];
+        foreach($relations as $r) {
+            $checked++;$table=$r['table'];$parent=$r['parent'];$cols=$r['columns'];$refs=$r['parent_columns'];
+            $query=DB::table($table.' as child');foreach($cols as $col)$query->whereNotNull('child.'.$col); // MATCH SIMPLE: any NULL exempts the row.
+            if($r['same_database'])$query->whereNotExists(function($q)use($parent,$cols,$refs){$q->selectRaw('1')->from($parent.' as parent');foreach($cols as $i=>$col)$q->whereColumn('parent.'.$refs[$i],'child.'.$col);});
+            $count=$r['same_database']?(clone $query)->count():null;
+            if(!$r['same_database'] || $count) {
+                $record=$r+['affected_count'=>$count,'nullable'=>array_map(fn($c)=>$columns[$table][$c]??false,$cols),'primary_columns'=>$keys[$table]??[],'status'=>'EVIDENCE_REQUIRED'];
+                if($withRecords){$select=array_values(array_intersect(array_keys($columns[$table]),array_unique([...($keys[$table]??[]),...$cols,...$safe])));$record['records']=(clone $query)->select(array_map(fn($c)=>'child.'.$c,$select))->limit(1001)->get()->map(fn($row)=>(array)$row)->all();$record['records_truncated']=count($record['records'])>1000;if($record['records_truncated'])$record['records']=array_slice($record['records'],0,1000);}
+                $violations[]=$record;if($stopOnFailure)break;
+            }
+            if(count($cols)===1 && array_key_exists('company_id',$columns[$parent]??[]))$owners[$table][]=[$cols[0],$parent,$refs[0]];
+        }
+        if(!$stopOnFailure || !$violations)foreach($owners as $table=>$links) {
+            if(array_key_exists('company_id',$columns[$table])) {
+                foreach($links as [$col,$parent,$ref]){$count=DB::table($table.' as c')->join($parent.' as p','p.'.$ref,'=','c.'.$col)->whereColumn('c.company_id','!=','p.company_id')->count();if($count)$ownership[]=['table'=>$table,'relationship'=>$col,'count'=>$count];}
+            } else {
+                foreach($links as $i=>[$col,$parent,$ref])foreach(array_slice($links,$i+1) as [$other,$otherParent,$otherRef]){$count=DB::table($table.' as c')->join($parent.' as p','p.'.$ref,'=','c.'.$col)->join($otherParent.' as q','q.'.$otherRef,'=','c.'.$other)->whereColumn('p.company_id','!=','q.company_id')->count();if($count)$ownership[]=['table'=>$table,'relationships'=>[$col,$other],'count'=>$count];}
+            }
+        }
+        return ['checked_at'=>now()->toIso8601String(),'constraints_total'=>count($relations),'constraints_checked'=>$checked,'healthy'=>!$violations&&!$ownership,'violated_constraints'=>count($violations),'violations'=>$violations,'ownership_violations'=>$ownership,'exceptions_are_valid_relationships'=>false];
+    }
+
+    private function databaseReferencesAreValid(): bool
+    {
+        return $this->referenceAudit(false,true)['healthy'];
+    }
+
     private function tenantLinksAreValid(): bool
     {
         $links = [];
@@ -258,9 +358,16 @@ final class InstallationBackupService
         if (! preg_match('~^(documents|private|public)/[A-Za-z0-9_./ -]+$~D', $path) || preg_match('~(^|/)(\.\.?)(/|$)~', $path) || str_contains($path, '//') || str_ends_with($path, '/') || preg_match('~(?:^|/)(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|/|$)~i', $path)) throw new \RuntimeException('Unsafe attachment path in installation backup.');
     }
 
-    private function databaseProcess(string $executable, array $options): Process
+    private function databaseProcess(string $executable, array $options, bool $restore = false): Process
     {
         $db = config('database.connections.mysql');
+        $prefix = $restore ? 'restore' : 'backup';
+        if ($username = config('production.'.$prefix.'_db_username')) {
+            $file = config('production.'.$prefix.'_db_password_file');
+            if (!is_string($file) || !is_readable($file) || !strlen(trim(file_get_contents($file)))) throw new \RuntimeException('The protected '.$prefix.' database credential file is required.');
+            $db['username'] = $username;
+            $db['password'] = trim(file_get_contents($file));
+        }
         return new Process([$executable, '--no-defaults', '--host='.$db['host'], '--port='.$db['port'], '--user='.$db['username'], ...$options, $db['database']], base_path(), ['MYSQL_PWD' => $db['password']], null, 300);
     }
 

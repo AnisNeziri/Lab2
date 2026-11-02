@@ -185,6 +185,13 @@ export async function apiRequest(path, options = {}, fallbackMessage = 'API requ
       window.dispatchEvent(new Event('auth-unauthorized'))
     }
 
+    if (response.status === 403 && retryOnUnauthorized && !path.startsWith('/security/confirm') && !path.startsWith('/security/passkeys/step_up')) {
+      const problem = await response.clone().json().catch(() => ({}))
+      if (['RECENT_AUTH_REQUIRED','PASSKEY_REQUIRED'].includes(problem.code)) {
+        const confirmed = await new Promise(resolve => window.dispatchEvent(new CustomEvent('aims-step-up', { detail: { passkey: problem.code === 'PASSKEY_REQUIRED', resolve } })))
+        if (confirmed) return makeRequest(false)
+      }
+    }
     return parseApiResponse(response, fallbackMessage)
   }
 

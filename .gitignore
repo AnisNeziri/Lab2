@@ -47,3 +47,16 @@ tools/mailpit/*.zip
 .phpunit.cache/
 .idea/
 .vscode/
+
+# Isolated DC6 browser build
+frontend/dist-dc6/
+
+frontend/dist-dc7/
+
+frontend/dist-dc8/
+
+# PX2 compiled review preview
+frontend/dist-px2/
+
+# Local operator evidence contains company record identifiers, never release source.
+backend/storage/framework/aims-reference-review.json

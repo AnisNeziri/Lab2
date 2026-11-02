@@ -1,6 +1,7 @@
+import { ProductsGlyph as Package, DashboardGlyph as LayoutGrid } from './icons/AimsGlyph'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { LayoutDashboard, Package, TrendingUp, FolderTree, Truck, FileText, Activity, Users, LogOut, FileEdit, Box, LayoutGrid, Ship, Globe, Bell, ChevronDown, ClipboardList, ShieldCheck, Landmark, Warehouse, ScanLine, Boxes, Radar, BookOpen, HeartPulse, X } from 'lucide-react'
+import { LogOut, ChevronDown, X } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import NotificationCenter from './NotificationCenter'
 import SettingsModal from './SettingsModal'
@@ -14,20 +15,22 @@ import { useDialog } from '../hooks/useDialog'
 import NavigationCustomizer from './NavigationCustomizer'
 import { useWorkspaceStore } from '../store/workspaceStore'
 import { defaultNavigation, personalizedNavigation } from '../config/workspaceNavigation'
+import { workspaceIcons } from './workspaceIcons'
 
-const icons = { LayoutDashboard, Package, TrendingUp, FolderTree, Truck, FileText, Activity, Users, FileEdit, Box, LayoutGrid, Ship, Globe, Bell, ClipboardList, ShieldCheck, Landmark, Warehouse, ScanLine, Boxes, Radar, BookOpen, HeartPulse }
+const icons = workspaceIcons
 
 export default function Sidebar({ currentPage, onPageChange, userRole, onLogout, loggingOut = false, onHome, onClose, isOpen = false }) {
   const { t, language } = useTranslation()
   const enable3dMap = useSettingsStore(state => state.enable_3d_map)
   const permissions = useAuthStore(state => state.permissions)
+  const capabilities=useAuthStore(state=>state.user?.commercial?.capabilities)
   const expandedGroups = useSidebarNavStore(state => state.expandedGroups)
   const toggleGroup = useSidebarNavStore(state => state.toggleGroup)
   const ensureGroupOpen = useSidebarNavStore(state => state.ensureGroupOpen)
   const workspace = useWorkspaceStore(state => state.document)
   const workspaceLoading = useWorkspaceStore(state => state.loading)
   const [customizing,setCustomizing] = useState(false)
-  const {groups,favorites} = useMemo(() => personalizedNavigation(permissions, enable3dMap, userRole, workspace?.navigation||defaultNavigation(userRole)), [permissions, enable3dMap, userRole, workspace?.navigation])
+  const {groups,favorites} = useMemo(() => personalizedNavigation(permissions, enable3dMap, userRole, workspace?.navigation||defaultNavigation(userRole),capabilities), [permissions, enable3dMap, userRole, workspace?.navigation,capabilities])
   const panelRef = useDialog(onClose, false, isOpen)
   const navRef = useRef(null)
 

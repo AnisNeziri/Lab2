@@ -20,22 +20,23 @@ class WebhookController extends Controller
     {
         $validated = $this->validated($request);
         $endpoint = WebhookEndpoint::create([
-            ...$validated, 'company_id' => $request->user()->company_id,
+            'contract_version'=>'v1', ...$validated, 'enabled'=>$validated['enabled']??false, 'company_id' => $request->user()->company_id,
             'secret' => $validated['secret'] ?? Str::random(64),
         ]);
         $this->audit($request, $endpoint, 'webhook.created', 'Webhook endpoint created.');
 
-        return response()->json($endpoint, 201);
+        return response()->json($endpoint->toArray()+['secret'=>$endpoint->secret,'shown_once'=>true], 201);
     }
 
     public function update(Request $request, WebhookEndpoint $webhookEndpoint): JsonResponse
     {
         $validated = $this->validated($request, true);
         if (blank($validated['secret'] ?? null)) unset($validated['secret']);
+        $rotated=isset($validated['secret']);
         $webhookEndpoint->update($validated);
         $this->audit($request, $webhookEndpoint, 'webhook.updated', 'Webhook endpoint updated.');
 
-        return response()->json($webhookEndpoint->fresh());
+        return response()->json($webhookEndpoint->fresh()->toArray()+($rotated?['secret'=>$webhookEndpoint->secret,'shown_once'=>true]:[]));
     }
 
     public function destroy(Request $request, WebhookEndpoint $webhookEndpoint): JsonResponse
@@ -56,10 +57,11 @@ class WebhookController extends Controller
         $required = $partial ? 'sometimes' : 'required';
         return $request->validate([
             'name' => [$required, 'string', 'max:120'],
-            'endpoint_url' => [$required, 'url', 'starts_with:https://', 'max:1000'],
+            'endpoint_url' => [$required, 'url', 'starts_with:https://', 'max:1000', function($field,$value,$fail){$u=parse_url($value);if(isset($u['user'])||isset($u['pass'])||isset($u['fragment'])||isset($u['query']))$fail('Use an HTTPS URL without credentials, query strings or fragments.');}],
             'enabled' => ['sometimes', 'boolean'], 'secret' => ['nullable', 'string', 'min:24', 'max:255'],
             'subscribed_event_types' => [$required, 'array', 'min:1', 'max:100'],
-            'subscribed_event_types.*' => ['string', 'max:100'],
+            'subscribed_event_types.*' => ['string', \Illuminate\Validation\Rule::in([...\App\Services\Platform\WebhookContract::EVENTS,'*'])],
+            'contract_version'=>['sometimes','in:v1,legacy'],
         ]);
     }
 

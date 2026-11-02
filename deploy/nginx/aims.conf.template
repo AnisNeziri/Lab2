@@ -26,6 +26,10 @@ server {
     add_header X-Frame-Options DENY always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Strict-Transport-Security "max-age=31536000" always;
+    # Start in report-only mode; enforce after target-host map/PDF/warehouse journeys.
+    # Allows existing maps, PDF workers, local media and inline React styles; no inline scripts/eval.
+    # Configure the exact wss Reverb origin if it is hosted outside this origin.
+    add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com; font-src 'self' data:; connect-src 'self' wss://${AIMS_DOMAIN}; worker-src 'self' blob:; frame-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'" always;
     gzip on;
     gzip_types text/css application/javascript application/json image/svg+xml;
     location ~ /\. { deny all; }
@@ -56,6 +60,10 @@ server {
         fastcgi_pass unix:${PHP_FPM_SOCKET};
     }
     location = /index.html {
+    # Start in report-only mode; enforce after target-host map/PDF/warehouse journeys.
+    # Allows existing maps, PDF workers, local media and inline React styles; no inline scripts/eval.
+    # Configure the exact wss Reverb origin if it is hosted outside this origin.
+    add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com; font-src 'self' data:; connect-src 'self' wss://${AIMS_DOMAIN}; worker-src 'self' blob:; frame-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'" always;
         add_header Cache-Control "no-store";
         add_header X-Content-Type-Options nosniff always;
         add_header X-Frame-Options DENY always;

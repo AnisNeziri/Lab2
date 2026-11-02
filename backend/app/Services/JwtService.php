@@ -9,23 +9,26 @@ use Illuminate\Support\Facades\DB;
 
 class JwtService
 {
-    public function issueTokens(User $user): array
+    public function issueTokens(User $user, ?object $session = null, string $method = 'password'): array
     {
+        $session ??= app(\App\Services\Security\SessionSecurity::class)->create($user, $method);
         return [
-            'access_token' => $this->createAccessToken($user),
-            'refresh_token' => $this->createRefreshToken($user),
+            'access_token' => $this->createAccessToken($user, $session),
+            'refresh_token' => $this->createRefreshToken($user, $session),
             'token_type' => 'Bearer',
             'expires_in' => (int) config('jwt.access_ttl', 900),
         ];
     }
 
-    public function createAccessToken(User $user): string
+    public function createAccessToken(User $user, ?object $session = null): string
     {
+        $session ??= app(\App\Services\Security\SessionSecurity::class)->create($user);
         $now = time();
         $ttl = (int) config('jwt.access_ttl', 900);
 
         $header = $this->encode(['alg' => 'HS256', 'typ' => 'JWT']);
         $payload = $this->encode([
+            'sid' => $session->id,
             'iss' => config('app.url'),
             'sub' => $user->id,
             'iat' => $now,
@@ -40,12 +43,13 @@ class JwtService
         return "{$header}.{$payload}.{$signature}";
     }
 
-    public function createRefreshToken(User $user): string
+    public function createRefreshToken(User $user, ?object $session = null): string
     {
         $plain = Str::random(80);
 
         RefreshToken::create([
             'user_id' => $user->id,
+            'auth_session_id' => $session?->id,
             'token_hash' => hash('sha256', $plain),
             'expires_at' => now()->addSeconds((int) config('jwt.refresh_ttl', 2_592_000)),
         ]);
@@ -94,18 +98,20 @@ class JwtService
 
         $user = $record->user;
 
-        if (! $user || $user->is_active === false) {
+        $session = $user ? app(\App\Services\Security\SessionSecurity::class)->find($record->auth_session_id, $user) : null;
+        if (! $user || $user->is_active === false || !$user->email_verified_at || !$session) {
             return null;
         }
 
         if (RefreshToken::whereKey($record->id)->whereNull('revoked_at')->update(['revoked_at' => now()]) !== 1) return null;
 
-        return $this->issueTokens($user);
+        return $this->issueTokens($user, $session);
         });
     }
 
     public function revokeUserTokens(User $user): void
     {
+        app(\App\Services\Security\SessionSecurity::class)->revoke($user);
         RefreshToken::where('user_id', $user->id)
             ->whereNull('revoked_at')
             ->update(['revoked_at' => now()]);

@@ -40,6 +40,10 @@ class DC4WorkforcePayrollTest extends TestCase
     private function setupPayroll(): void
     {
         $this->actingAsApiUser();
+        // DC8 requires a recently authenticated session for privileged payroll configuration.
+        $owner=User::where('company_id',$this->apiCompany->id)->where('role','admin')->firstOrFail();
+        $session=app(\App\Services\JwtService::class)->issueTokens($owner);
+        $this->withHeader('Authorization','Bearer '.$session['access_token']);
         $this->postJson('/api/payroll/configuration/initialize')->assertOk();
     }
 

@@ -1,4 +1,5 @@
-import { Search, X } from 'lucide-react'
+import { SearchGlyph as Search } from './icons/AimsGlyph'
+import { X } from 'lucide-react'
 import { useTranslation } from '../hooks/useTranslation'
 
 export default function SearchField({ value, onChange, placeholder, label, ...props }) {

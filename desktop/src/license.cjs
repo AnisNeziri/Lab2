@@ -63,15 +63,17 @@ function verifyLicenceDocument(document, publicKey, expectedMachineId = machineF
   }
 
   const now = Date.now()
-  if (payload.not_before && new Date(payload.not_before).getTime() > now) {
+  if (payload.not_before && (!Number.isFinite(Date.parse(payload.not_before)) || Date.parse(payload.not_before) > now)) {
     throw new Error('This licence is not active yet.')
   }
-  if (payload.expires_at && new Date(payload.expires_at).getTime() < now) {
-    throw new Error('This AIMS licence has expired.')
-  }
+  if (payload.expires_at && !Number.isFinite(Date.parse(payload.expires_at))) throw new Error('The licence expiry is invalid.')
+  const expired = Boolean(payload.expires_at && Date.parse(payload.expires_at) < now)
 
   return {
     valid: true,
+    status: expired ? 'expired' : 'active',
+    writeAllowed: !expired,
+    warning: expired ? 'Your licence has expired. Existing records remain accessible; premium changes require licence review.' : null,
     machineId: expectedMachineId,
     licenseId: payload.license_id,
     customer: payload.customer,

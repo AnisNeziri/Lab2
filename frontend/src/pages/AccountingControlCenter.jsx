@@ -1,16 +1,8 @@
+import { AccountingGlyph as BookOpen, PaymentsGlyph as Landmark, ReportsGlyph as FileChartColumn, CustomersGlyph as Users, SuppliersGlyph as Building2, SettingsGlyph as Settings2 } from '../components/icons/AimsGlyph'
+import OpeningReconciliationReview from '../components/finance/OpeningReconciliationReview'
 import { useCallback, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import {
-  RefreshCw,
-  BookOpen,
-  Landmark,
-  CalendarCheck,
-  FileChartColumn,
-  Users,
-  Building2,
-  Scale,
-  Settings2,
-} from "lucide-react";
+import { RefreshCw, CalendarCheck, Scale } from 'lucide-react';
 import { useAuthStore } from "../store/authStore";
 import { NextStep } from "../components/WorkflowSummary";
 import { useSessionState } from "../hooks/useSessionState";
@@ -186,7 +178,7 @@ export default function AccountingControlCenter() {
             <span className="fc-eyebrow">
               AIMS / {t("ACCOUNTING", "KONTABILITETI")}
             </span>
-            <h1>
+            <h1><BookOpen size={24} aria-hidden="true"/>
               {t("Finance Control Center", "Qendra e kontrollit financiar")}
             </h1>
             <p>
@@ -219,6 +211,7 @@ export default function AccountingControlCenter() {
             </button>
           </div>
         </header>
+        <section className="dc9-financial-basis" aria-label={t('Financial basis','Baza financiare')}><strong>{t('Posted Books','Librat e postuar')}</strong><p>{dates.from} — {dates.to} · {t('GL balances through the end date; activity within this period.','Gjendjet e librit kryesor deri në fund; aktiviteti brenda periudhës.')}</p><p>{summary.data?t(summary.data.controls_reconciled?'Current subledgers reconciled':'Current subledgers have differences',summary.data.controls_reconciled?'Nënlibrat aktualë janë rakorduar':'Nënlibrat aktualë kanë diferenca'):t('Checking reconciliation…','Duke kontrolluar rakordimin…')} · <Link to="/accounting?tab=reconciliation">{t('Investigate current balances','Shqyrto gjendjet aktuale')}</Link></p><p>{t(summary.data?.opening_readiness?.status==='verified'?'Opening balances verified':'Opening balances: unverified',summary.data?.opening_readiness?.status==='verified'?'Gjendjet fillestare janë verifikuar':'Gjendjet fillestare: të paverifikuara')} · {can('onboarding.view')&&<Link to="/onboarding">{t('Company opening','Hapja e kompanisë')}</Link>}</p><details><summary>{t('Currency support','Mbështetja e valutave')}</summary><small>{t('Foreign-currency customer invoicing and cross-currency transfers are not supported. Supplier payment exchange rates remain attached to their source records.','Faturimi i klientëve në valutë të huaj dhe transferet ndërmjet valutave nuk mbështeten. Kurset e pagesave të furnitorëve ruhen në regjistrimet burimore.')}</small></details></section>
         <nav
           className="fc-tabs"
           aria-label={t("Finance workspace", "Hapësira financiare")}
@@ -392,7 +385,7 @@ function ControlOverview({ data, owner }) {
                     good={a.severity === "critical" ? false : undefined}
                   />
                   <div>
-                    <b>{a.label}</b>
+                    <b>{a.code==='opening_not_verified'?t(a.label,'Gjendjet fillestare ende nuk janë certifikuar përmes hapjes së kompanisë'):a.label}</b>
                     {a.difference != null && (
                       <small>
                         <Amount value={a.difference} />
@@ -550,7 +543,7 @@ function Reconciliation({ data }) {
 function ReconciliationDetail({ data }) {
   const { t } = useFinance();
   return (
-    <section className="fc-panel">
+    <><OpeningReconciliationReview/><section className="fc-panel">
       <h2>{t("Subledgers ↔ General Ledger", "Nënlibrat ↔ libri kryesor")}</h2>
       <p className="fc-caption">{data.reconciliation_basis}</p>
       <div className="fc-table-scroll">
@@ -615,6 +608,6 @@ function ReconciliationDetail({ data }) {
           "Hetoni burimet dhe përdorni korrigjime të audituara. Diferencat nuk pastrohen duke ndryshuar gjendjen.",
         )}
       </p>
-    </section>
+    </section></>
   );
 }

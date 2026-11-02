@@ -3,7 +3,7 @@ import { useTranslation } from '../hooks/useTranslation';
 import { money, payrollLabels } from './workforcePresentation';
 import './Workforce.css';
 import WorkspaceModal from '../components/WorkspaceModal';
-import { businessStatus } from '../utils/businessStatus';
+import StatusBadge from '../components/StatusBadge';
 export function useWorkforceText() {
   const {
     language
@@ -23,8 +23,7 @@ export function Field({
 export function Status({
   value
 }) {
-  const { language } = useTranslation();
-  return <span className={'wf-status wf-' + value}>{businessStatus(value, language)}</span>;
+  return <StatusBadge value={value}/>;
 }
 export function Modal({
   title,

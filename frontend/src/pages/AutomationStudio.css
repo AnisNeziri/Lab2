@@ -29,3 +29,52 @@
 .auto-filterbar label { flex:1 1 150px; margin:0; }
 .automation-page a { color:var(--link-color,#328cda); }
 @media(max-width:767px){.automation-columns{grid-template-columns:1fr}.automation-page .auto-panel{padding:1rem}.auto-condition-row{align-items:stretch}}
+
+.automation-health{margin-block:1rem}.automation-health-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:1rem}.automation-health-facts dt{font-size:.8rem}.automation-health-facts dd{margin:.3rem 0;font-weight:650;font-variant-numeric:tabular-nums}.automation-health input[type=checkbox]{width:18px;min-height:18px;vertical-align:middle}.automation-health fieldset{display:flex;flex-wrap:wrap;gap:1rem}.auto-pause-banner{padding:1rem;border:1px solid #ad7d2a;border-radius:8px;background:var(--surface-soft)}.automation-task-review{max-width:820px}.automation-task-review label{display:grid;gap:.4rem;margin:.7rem 0}.auto-evidence-scroll{overflow:auto}.auto-evidence-scroll table{border-collapse:collapse;width:100%;font-size:.9rem}.auto-evidence-scroll th,.auto-evidence-scroll td{padding:.6rem;border-bottom:1px solid var(--border-color,#ddd);text-align:left}.auto-evidence-scroll td{text-align:right;font-variant-numeric:tabular-nums}.auto-confirmation{padding:1rem;border:1px solid var(--primary-color,#2563eb);border-radius:8px;margin-block:1rem}.automation-task-review details li{margin:.65rem 0}@media(max-width:600px){.automation-health-facts{grid-template-columns:1fr 1fr}.automation-task-review .auto-buttons{display:grid;grid-template-columns:1fr}.automation-task-review input,.automation-task-review button{min-height:42px}}
+/* Full-width browsing keeps template selection separate from the rule editor. */
+.auto-library { margin-top:20px; min-width:0; }
+.auto-library-heading h2 { margin:0 0 8px; }
+.auto-library-heading p { margin:0 0 20px; max-width:80ch; color:var(--text-muted); font-size:14px; line-height:1.6; }
+.auto-library-filters { display:grid; grid-template-columns:minmax(0,2fr) minmax(180px,1fr); gap:16px; align-items:end; padding:16px; border:1px solid var(--border-color); border-radius:var(--ui-radius-sm); background:var(--surface-soft); }
+.automation-page .auto-library-filters label { margin:0; font-size:13px; }
+.auto-library-count { margin:12px 0; color:var(--text-muted); font-size:13px; }
+.auto-library-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr)); align-items:stretch; gap:16px; }
+.auto-library-card { display:flex; flex-direction:column; min-width:0; padding:20px; background:var(--card-bg); border:1px solid var(--border-color); border-radius:var(--ui-radius); }
+.auto-library-meta { display:flex; gap:8px; align-items:center; justify-content:space-between; flex-wrap:wrap; font-size:12px; color:var(--text-muted); }
+.app .main-content .auto-library-card h3 { margin:12px 0 8px; font-size:16px; line-height:1.45; overflow-wrap:anywhere; }
+.auto-library-card > p { color:var(--text-muted); font-size:13px; line-height:1.6; margin:0 0 20px; flex:1; }
+.automation-page .auto-library-card > button { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; margin-top:auto; }
+.auto-library-back { display:inline-flex; align-items:center; gap:8px; margin-bottom:20px; }
+.automation-editor { margin-top:20px; }
+@media(max-width:600px) { .auto-library-filters { grid-template-columns:minmax(0,1fr); } .auto-library-card { padding:16px; } }
+
+.auto-library-pagination { display:flex; align-items:center; justify-content:flex-end; gap:12px; margin-top:20px; font-size:13px; color:var(--text-muted); }
+
+.automation-page .auto-health-disclosure { padding:12px 16px; border:1px solid var(--border-color); border-radius:var(--ui-radius-sm); background:var(--card-bg); margin:16px 0; }
+.auto-health-disclosure > summary { font-size:13px; font-weight:600; min-height:20px; line-height:20px; }
+.auto-health-disclosure > .automation-health { margin-bottom:0; }
+
+/* Daily work uses quiet rows, with task actions distinct from source issues. */
+.operating-brief { margin-block:16px 24px; }
+.operating-brief-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:20px; }
+.operating-brief-heading h2 { margin:0 0 8px; font-size:18px; }
+.operating-brief-heading p { margin:0; max-width:78ch; font-size:13px; line-height:1.6; }
+.automation-page .operating-brief-close { display:grid; place-items:center; flex:0 0 40px; padding:8px; }
+.operating-brief-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; }
+.operating-brief-columns > section { min-width:0; }
+.operating-brief-columns h3 { display:flex; align-items:center; gap:8px; margin:0 0 8px; font-size:14px; font-weight:600; }
+.operating-brief-columns h3 > span { font-size:12px; padding:2px 7px; border:1px solid var(--border-color); border-radius:var(--ui-radius-badge); color:var(--text-muted); font-variant-numeric:tabular-nums; }
+.operating-brief-list { list-style:none; margin:0 0 12px; padding:0; }
+.operating-brief-list > li { padding:14px 0; border-bottom:1px solid var(--border-color); }
+.automation-page .operating-brief-task,.automation-page .operating-brief-link { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; padding:0; min-height:28px; border:0; border-radius:2px; background:transparent; color:var(--text-color); text-align:left; font:inherit; font-size:14px; line-height:1.5; font-weight:600; text-decoration:none; }
+.automation-page .operating-brief-task:hover:not(:disabled) { box-shadow:none; color:var(--primary-color); }
+.operating-brief-link:hover { text-decoration:underline; }
+.operating-brief-list svg { flex-shrink:0; color:var(--text-muted); }
+.operating-brief-list p { margin:6px 0 0; font-size:13px; line-height:1.6; }
+.operating-brief-meta { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px; font-size:12px; color:var(--text-muted); }
+.operating-brief-footnote { border-top:1px solid var(--border-color); padding-top:16px; margin:20px 0 0; font-size:12px; line-height:1.6; }
+.automation-page .auto-issues-toggle { display:block; margin-top:24px; }
+.auto-task h3 { margin:0 0 12px; font-size:15px; line-height:1.5; font-weight:600; }
+.auto-task > p { margin:0 0 16px; font-size:13px; line-height:1.6; }
+.auto-task > small { display:block; margin-bottom:12px; }
+@media(max-width:900px) { .operating-brief-columns { grid-template-columns:minmax(0,1fr); } }

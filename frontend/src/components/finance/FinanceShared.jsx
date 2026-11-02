@@ -9,7 +9,7 @@ import {
 import { Link } from "react-router-dom";
 import { businessDate, businessMoney } from "../../utils/businessFormat";
 import { getFinanceParties } from "../../api/accounting";
-import { businessStatus } from "../../utils/businessStatus";
+import StatusBadge from "../StatusBadge";
 
 export const FinanceContext = createContext(null);
 export const useFinance = () => useContext(FinanceContext);
@@ -85,14 +85,7 @@ export function DateValue({ value, time = false }) {
   return businessDate(value, language, time);
 }
 export function Badge({ value, good }) {
-  const {language}=useFinance();
-  return (
-    <span
-      className={`fc-badge ${good === true ? "fc-good" : good === false ? "fc-bad" : ""}`}
-    >
-      {businessStatus(value?.toLowerCase(),language)}
-    </span>
-  );
+  return <StatusBadge value={value} tone={good === true ? 'success' : good === false ? 'danger' : undefined}/>;
 }
 export function Field({ label, children, ...input }) {
   const id = useId();

@@ -24,7 +24,7 @@ export default function PilotEvidence({ embedded=false }) {
     <header><div><h1>{tx('Pilot trials & evidence')}</h1><p>{tx('Record actual work. Evidence records are append-only; corrections are new observations.')}</p></div>{!embedded&&role==='admin'&&<Link to="/pilot">{tx('Owner review')}</Link>}</header>
     {error&&<p className="page-error" role="alert">{error}</p>}{message&&<p role="status">{message}</p>}
     <section><form className="pilot-form" onSubmit={submit}>
-      <label>{tx('Trial')}<select value={kind} onChange={e=>setKind(e.target.value)} required>{kinds.map(k=><option key={k} value={k}>{label(k)}</option>)}</select></label>
+      <label>{tx('Trial')}<select value={kind} onChange={e=>{const value=e.target.value;setKind(value);if(value==='commissioning_scope')setChecks([{name:'Fiscalization scope',result:'not_tested'},{name:'Payroll scope',result:'not_tested'},{name:'Runtime security commissioning',result:'not_tested'}])}} required>{kinds.map(k=><option key={k} value={k}>{label(k)}</option>)}</select></label>
       <label>{tx('Observed on')}<input type="date" value={date} onChange={e=>setDate(e.target.value)} required/></label>
       <label>{tx('Overall outcome')}<select value={outcome} onChange={e=>setOutcome(e.target.value)}>{['not_tested','confirmed','failed','not_applicable'].map(k=><option key={k} value={k}>{label(k)}</option>)}</select></label>
       {permissions.includes('documents.view')&&<PilotDocumentPicker value={docs} onChange={setDocs} disabled={busy}/>}

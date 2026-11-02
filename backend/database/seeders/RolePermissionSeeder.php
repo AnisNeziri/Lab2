@@ -13,6 +13,7 @@ class RolePermissionSeeder extends Seeder
     {
         $existingPermissionIds = Permission::pluck('id')->all();
         $permissions = [
+            ...array_map(fn($s)=>['name'=>ucwords(str_replace('.',' ',$s)),'slug'=>$s,'group'=>'security'], ['security.view','security.manage','security.audit.export','licensing.manage','deployment.view','deployment.manage']),
             ...array_map(fn($slug)=>['name'=>'Workforce '.str_replace('.',' ',$slug),'slug'=>$slug,'group'=>str_starts_with($slug,'payroll.')?'payroll':'workforce'],[
                 'employees.view','employees.manage','employees.compensation','employees.documents','workforce.manage','workforce.approve','workforce.self',
                 'payroll.view','payroll.manage','payroll.approve','payroll.post','payroll.pay','payroll.reverse','payroll.configure',
@@ -150,7 +151,7 @@ class RolePermissionSeeder extends Seeder
                 'invoices.manage','payments.process','inventory.view','landed_costs.manage','documents.view','documents.upload','documents.download','documents.update_metadata','documents.new_version','documents.review',
             ])->pluck('id')->all(),
             'hr' => Permission::whereIn('slug',['dashboard.view','employees.view','employees.manage','employees.documents','workforce.manage','workforce.approve','workforce.self','documents.view','documents.upload','documents.download','documents.update_metadata','documents.new_version','documents.confidential'])->pluck('id')->all(),
-            'manager' => Permission::whereNotIn('slug', ['users.manage', 'activity.view', 'cms.manage'])->where('slug','not like','employees.%')->where('slug','not like','payroll.%')->where(fn($q)=>$q->where('slug','not like','workforce.%')->orWhere('slug','workforce.self'))->where('slug', 'not like', 'onboarding.%')->where(fn($q)=>$q->where('slug','not like','accounting.%')->orWhereIn('slug',['accounting.reports.view','accounting.journal.view']))->whereNotIn('slug',['supplier_invoices.post','supplier_invoices.approve','bank_reconciliation.complete','bank_reconciliation.reopen','tax.configure','fiscalization.configure','fiscalization.prepare','fiscalization.submit'])->pluck('id')->all(),
+            'manager' => Permission::whereNotIn('slug', ['users.manage', 'activity.view', 'cms.manage','security.view','security.manage','security.audit.export','licensing.manage','deployment.view','deployment.manage'])->where('slug','not like','employees.%')->where('slug','not like','payroll.%')->where(fn($q)=>$q->where('slug','not like','workforce.%')->orWhere('slug','workforce.self'))->where('slug', 'not like', 'onboarding.%')->where(fn($q)=>$q->where('slug','not like','accounting.%')->orWhereIn('slug',['accounting.reports.view','accounting.journal.view']))->whereNotIn('slug',['supplier_invoices.post','supplier_invoices.approve','bank_reconciliation.complete','bank_reconciliation.reopen','tax.configure','fiscalization.configure','fiscalization.prepare','fiscalization.submit'])->pluck('id')->all(),
             'staff' => Permission::whereIn('slug', [
                 'workforce.self',
                 'documents.view', 'documents.upload', 'documents.download', 'documents.update_metadata',
@@ -186,6 +187,8 @@ class RolePermissionSeeder extends Seeder
             ])->pluck('id')->all(),
         ];
 
+        \App\Services\Security\RoleDefaults::install();
+        \App\Services\Security\RoleDefaults::install();
         $newRoleSlugs = [];
         foreach ($roles as $slug => $permissionIds) {
             $role = Role::firstOrCreate(

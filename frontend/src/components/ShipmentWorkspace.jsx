@@ -9,8 +9,14 @@ import {etaRange,shipmentIntelligenceLabel} from './shipmentIntelligencePresenta
 import {cargoGroups,logisticsProgress,projectedReceiptBalance} from './shipmentCargoPresentation'
 import {businessDate,businessNumber} from '../utils/businessFormat'
 import './ShipmentWorkspace.css'
+import { InventoryPosition } from './InventoryPosition'
 import { NextStep } from './WorkflowSummary'
 import { businessStatus } from '../utils/businessStatus'
+
+function CurrentCargoPosition({ productId, warehouseId, t }) {
+ const [open,setOpen]=useState(false)
+ return <details onToggle={e=>setOpen(e.currentTarget.open)} className="cargo-current-position"><summary>{t('Current stock, commitments & incoming','Stoku aktual, angazhimet dhe ardhjet')}</summary>{open&&<InventoryPosition productId={productId} warehouseId={warehouseId}/>}</details>
+}
 
 export default function ShipmentWorkspace({shipment}){
  const {language}=useTranslation(),t=(en,sq)=>language==='sq'?sq:en,permissions=useAuthStore(s=>s.permissions)
@@ -41,8 +47,9 @@ export default function ShipmentWorkspace({shipment}){
       <div className="cargo-order-quantity"><span>{t('Ordered','Porositur')}: {num(row.ordered)} {row.ordered!=null?row.order_unit:''}</span><span>{t('PO received','Pranuar nga porosia')}: {num(row.received)} {row.received!=null?row.order_unit:''}</span></div>
       <span className="cargo-status" data-state={row.status}>{t({ordered:'Ordered',in_transit:'In transit',partially_received:'Partially received',received:'Received'}[row.status],{ordered:'Porositur',in_transit:'Në transport',partially_received:'Pranuar pjesërisht',received:'Pranuar'}[row.status])}</span>
       {row.other_shipments?.length>0&&<details className="cargo-splits"><summary>{t('Other shipment allocations','Ndarjet në dërgesa të tjera')}</summary>{row.other_shipments.map(s=><Link key={`${s.url}-${s.unit}`} to={s.url}>{s.reference} · {num(s.quantity)} {s.unit}</Link>)}{row.unallocated!=null&&<p>{t('PO not allocated to any shipment','Porosia e pandarë në dërgesa')}: {num(row.unallocated)} {row.order_unit}</p>}</details>}
+      {row.product_id&&permissions.includes('inventory.view')&&<CurrentCargoPosition productId={row.product_id} warehouseId={shipment.warehouse_id} t={t}/>}
      </article>)}</div>
-     {group.receipts?.length>0&&<details className="cargo-receipts"><summary>{t('PO → shipment → receipt history','Porosia → dërgesa → historiku i pranimit')} · {group.receipts.length}</summary><p>{t('These receipts belong to the PO. Shipment-specific receiving attribution is not recorded.','Këto pranime i përkasin porosisë. Lidhja e pranimit me dërgesën konkrete nuk është regjistruar.')}</p>{group.receipts.map(r=><div key={r.url}><Link to={r.url}>{r.reference} ↗</Link> · {date(r.received_at)}{r.quantities.map(v=><small key={v.unit}>{t('Accepted','Pranuar')}: {num(v.accepted)} {v.unit} · {t('Damaged','Dëmtuar')}: {num(v.damaged)} {v.unit}</small>)}</div>)}</details>}
+     {group.receipts?.length>0&&<details className="cargo-receipts"><summary>{t('PO → shipment → receipt history','Porosia → dërgesa → historiku i pranimit')} · {group.receipts.length}</summary><p>{t('These receipts belong to the PO. Only receipts with a matching cargo link are attributed to this shipment.','Këto pranime i përkasin porosisë. Vetëm pranimet me lidhje të ngarkesës i atribuohen kësaj dërgese.')}</p>{group.receipts.map(r=><div key={r.url}><Link to={r.url}>{r.reference} ↗</Link> · {date(r.received_at)}{r.shipment_quantities?.map(v=><small key={'linked-'+v.unit}>{t('Linked to this shipment','Lidhur me këtë dërgesë')}: {num(v.quantity)} {v.unit}</small>)}{r.quantities.map(v=><small key={v.unit}>{t('Accepted','Pranuar')}: {num(v.accepted)} {v.unit} · {t('Damaged','Dëmtuar')}: {num(v.damaged)} {v.unit}</small>)}</div>)}</details>}
     </section>)}
     {!groups.length&&<p>{query?t('No cargo matches this search.','Nuk ka ngarkesë që përputhet me kërkimin.'):t('No purchase order or cargo allocation is linked yet.','Nuk është lidhur ende porosi blerjeje ose ndarje ngarkese.')}</p>}
    </>}

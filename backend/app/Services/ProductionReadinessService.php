@@ -17,12 +17,18 @@ final class ProductionReadinessService
         };
         $add('environment', app()->environment('production'), 'Set APP_ENV=production. Synthetic and testing configurations cannot serve production.');
         $add('restore_state', ! is_file(storage_path('framework/aims-restore-incomplete')), 'An installation restore is incomplete. Keep it offline and retry into a clean target; do not remove the marker to bypass validation.');
+        try { $keyEvidencePresent=\Illuminate\Support\Facades\Schema::hasTable('installation_state'); } catch (\Throwable) { $keyEvidencePresent=true; }
+        if ($keyEvidencePresent) {
+            try { $keyCompatible=app(\App\Services\Commercial\InstallationIdentity::class)->verify(); } catch (\Throwable) { $keyCompatible=false; }
+            $add('encryption_key_compatibility',$keyCompatible,'The original application key cannot unlock installation evidence. Recover the key before starting or updating.');
+        }
         $add('debug', ! config('app.debug'), 'Set APP_DEBUG=false to prevent stack traces and private configuration exposure.');
         $key = (string) config('app.key');
         $bytes = str_starts_with($key, 'base64:') ? base64_decode(substr($key, 7), true) : $key;
         $add('app_key', is_string($bytes) && strlen($bytes) === 32 && $key !== 'base64:32Hr/pYy5GkWR0Lcm3HnL0fHw2cbCtmHtravymO8GA0=', 'Generate a unique APP_KEY and escrow it separately from backups.');
         $add('jwt_key', strlen((string) config('jwt.secret')) >= 32, 'Configure a strong JWT_SECRET or unique APP_KEY.');
         $add('database_mode', $desktop ? config('database.default') === 'sqlite' : config('database.default') === 'mysql', 'Supported production database: SQLite for offline desktop; MariaDB/MySQL for online server.');
+        $add('database_runtime_account', $desktop || !in_array(config('database.connections.mysql.username'), ['root',''], true), 'Configure a verified least-privilege runtime database account. Use a separate administrator connection for migrations.');
         $add('database_url', ! config('database.connections.'.config('database.default').'.url'), 'Use explicit DB_HOST/DB_PORT/DB_DATABASE credentials; remove DB_URL overrides.');
         $add('queue', config('queue.default') === 'database', 'Set QUEUE_CONNECTION=database and supervise default, supply-optimizer and strategic-simulation workers.');
         $add('queue_retry', (int) config('queue.connections.database.retry_after') > 240, 'Set DB_QUEUE_RETRY_AFTER above the longest 240-second worker timeout (300 recommended).');
@@ -33,9 +39,9 @@ final class ProductionReadinessService
         $add('locale', in_array(config('app.locale'), ['en', 'sq'], true), 'Set APP_LOCALE to a supported locale: en or sq.');
         $origins = config('cors.allowed_origins', []);
         $url = (string) config('app.url');
-        $validUrl = $desktop ? (bool) preg_match('~^http://127\.0\.0\.1:\d+$~D', $url) : $this->productionUrl($url);
+        $validUrl = $desktop ? (bool) preg_match('~^http://(?:127\.0\.0\.1|localhost):\d+$~D', $url) : $this->productionUrl($url);
         $add('url', $validUrl, 'Set APP_URL to your HTTPS production URL (desktop uses its explicit loopback port).');
-        $add('cors', $origins !== [] && ! config('cors.allowed_origins_patterns') && collect($origins)->every(fn ($origin) => $desktop ? (bool) preg_match('~^http://127\.0\.0\.1:\d+$~D', $origin) : $this->productionUrl($origin)), 'Set CORS_ALLOWED_ORIGINS to explicit HTTPS frontend origins; wildcard and development origins are rejected.');
+        $add('cors', $origins !== [] && ! config('cors.allowed_origins_patterns') && collect($origins)->every(fn ($origin) => $desktop ? (bool) preg_match('~^http://(?:127\.0\.0\.1|localhost):\d+$~D', $origin) : $this->productionUrl($origin)), 'Set CORS_ALLOWED_ORIGINS to explicit HTTPS frontend origins; wildcard and development origins are rejected.');
         if (! $desktop) {
             $db = config('database.connections.mysql');
             $add('db_credentials', filled($db['database'] ?? null) && filled($db['username'] ?? null) && ! in_array(strtolower($db['username'] ?? ''), ['root', 'aims'], true) && strlen($db['password'] ?? '') >= 16 && ! in_array(strtolower($db['password'] ?? ''), ['password', 'changeme'], true), 'Configure a dedicated least-privilege DB_USERNAME and a unique DB_PASSWORD of at least 16 characters.');
@@ -63,9 +69,9 @@ final class ProductionReadinessService
         };
         $probe('php', function () {
             $extensions = ['bcmath', 'ctype', 'curl', 'dom', 'fileinfo', 'mbstring', 'openssl', 'pdo', 'xml', 'zlib', config('database.default') === 'sqlite' ? 'pdo_sqlite' : 'pdo_mysql'];
-            if (PHP_VERSION_ID < 80335 || array_diff($extensions, array_map('strtolower', get_loaded_extensions()))) throw new \RuntimeException();
+            if (PHP_VERSION_ID < 80336 || array_diff($extensions, array_map('strtolower', get_loaded_extensions()))) throw new \RuntimeException();
             return 'PHP '.PHP_VERSION.'; required extensions loaded.';
-        }, 'Install the pinned PHP 8.3.35+ runtime with bcmath, ctype, curl, dom, fileinfo, mbstring, openssl, PDO, xml, zlib and the selected PDO driver.');
+        }, 'Install the pinned PHP 8.3.36+ runtime with bcmath, ctype, curl, dom, fileinfo, mbstring, openssl, PDO, xml, zlib and the selected PDO driver.');
         $probe('database', function () {
             $version = DB::connection()->getDriverName() === 'sqlite' ? DB::selectOne('select sqlite_version() as version')->version : DB::selectOne('select version() as version')->version;
             $minimum = config('database.default') === 'sqlite' ? '3.27' : (str_contains($version, 'MariaDB') ? '10.4' : '8.0');

@@ -136,6 +136,7 @@ class MobileWarehouseService
                 ->whereColumn('received_quantity', '<', 'quantity'))
             ->with([
                 'supplier:id,name', 'warehouse:id,name,code',
+                'items.shipmentItems' => fn ($q) => $q->with('shipment:id,tracking_number,status')->withSum('receiptItems as arrived_base','shipment_received_base_quantity'),
                 'items' => fn ($query) => $query
                     ->where('product_id', $product->id)
                     ->whereColumn('received_quantity', '<', 'quantity'),
@@ -149,6 +150,9 @@ class MobileWarehouseService
                 'warehouse' => $order->warehouse?->name,
                 'ordered_unit' => $item->unit,
                 'remaining_quantity' => $item->remaining_quantity,
+                'shipment_cargo' => $item->shipmentItems->filter(fn ($line) => $line->shipment?->status !== 'cancelled' && $line->loaded_quantity !== null && $line->base_quantity !== null && (float)$line->quantity > 0 && $line->unit === $item->unit
+                    && ($item->conversion_mode !== 'variable' || (float)$line->loaded_quantity === (float)$line->quantity))
+                    ->map(fn ($line) => ['id'=>$line->id,'reference'=>$line->shipment?->tracking_number,'remaining_base'=>max(0,round((float)$line->base_quantity*(float)$line->loaded_quantity/(float)$line->quantity-(float)$line->arrived_base,3)), 'unit'=>$product->unit])->values(),
             ]))->values();
         $countItems = InventoryCountItem::query()
             ->where('product_id', $product->id)
@@ -200,7 +204,9 @@ class MobileWarehouseService
             'warehouse_id' => $data['warehouse_id'],
             'location_id' => $data['location_id'] ?? null,
             'supplier_document_number' => $data['supplier_document_number'] ?? null,
-            'received_at' => $data['received_at'] ?? now(),
+            // Keep omitted dates stable in the request fingerprint. The receipt
+            // authority assigns the timestamp once when it creates the receipt.
+            'received_at' => $data['received_at'] ?? null,
             'reason' => $data['reason'] ?? 'Mobile warehouse receipt',
             'notes' => $data['notes'] ?? null,
             'allow_expired_receipt' => (bool) ($data['allow_expired_receipt'] ?? false),
@@ -208,6 +214,7 @@ class MobileWarehouseService
             'idempotency_key' => $data['idempotency_key'],
             'items' => [[
                 'id' => $data['purchase_order_item_id'],
+                'shipment_item_id' => $data['shipment_item_id'] ?? null,
                 'accepted_quantity' => $data['accepted_quantity'] ?? 0,
                 'damaged_quantity' => $data['damaged_quantity'] ?? 0,
                 'rejected_quantity' => $data['rejected_quantity'] ?? 0,

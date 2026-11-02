@@ -1,0 +1,119 @@
+{
+  "date": "2026-11-01",
+  "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+  "branch": "main",
+  "committed": false,
+  "completed_browser_comments": {
+    "1_passkey_centered": "YES",
+    "2_registration_email_generic": "YES",
+    "3_registration_name_generic": "YES",
+    "4_status_and_retry_button_refined": "YES",
+    "5_feedback_moved_to_help": "YES",
+    "6_searchable_paged_automation_library": "YES"
+  },
+  "tests": {
+    "production_frontend_build": "PASS",
+    "focused_frontend_tests": {
+      "result": "PASS",
+      "count": 27
+    },
+    "focused_browser_journeys": {
+      "result": "PASS",
+      "count": 2,
+      "coverage": [
+        "1074×884 and 390×844",
+        "EN/SQ and light/dark",
+        "centered sign-in alternative and generic registration placeholders",
+        "optional Redis degradation vs actual cache/endpoint failure",
+        "explicit retry and recovery clears the notice",
+        "no global feedback footer",
+        "Help report dialog, Escape and focus restoration",
+        "Help popup remains within the phone viewport",
+        "six-card template paging and canonical business-area filters",
+        "template selection prepares the existing disabled draft",
+        "cancel restores library search state",
+        "health/pause controls remain reachable",
+        "no uncaught browser errors",
+        "business-area selection filters cards and survives cancelling a draft"
+      ]
+    },
+    "backend_suite": "Not run: no backend authority changed."
+  },
+  "preservation": {
+    "baseline": "output/review-followup-baseline/manifest.json",
+    "entry_files": 241,
+    "byte_identical": 234,
+    "intentionally_extended": [
+      "frontend/e2e/specs/dc6-automation.spec.js",
+      "frontend/src/components/AppLayout.jsx",
+      "frontend/src/pages/AutomationStudio.css",
+      "frontend/src/pages/AutomationStudio.jsx",
+      "frontend/src/pages/Login.jsx",
+      "frontend/src/pages/Register.jsx",
+      "frontend/src/styles/ProductExperience.css"
+    ],
+    "removed": [],
+    "existing_backend_and_desktop_files_changed": []
+  },
+  "scope_notes": [
+    "Feature catalogue is source-reviewed, not an end-to-end recertification of all business features.",
+    "Rule list inherits the existing first server page of 50 records; server paging/filtering is selected follow-up work.",
+    "The registry supplies 81 templates in the test company; the UI displays six per page and does not enable them automatically.",
+    "Existing PDF/3D build-chunk warnings remain.",
+    "No new business engine, dependency or database migration."
+  ],
+  "evidence": [
+    {
+      "path": "output/review-build.log",
+      "sha256": "fc40b4459e07b553ab7a12a8652c426cdc2c9f40c57be60dea7f8071a5a3ae4c"
+    },
+    {
+      "path": "output/review-frontend.log",
+      "sha256": "8e6f0bd16a299899265bc18aafbf94e8e2735d1739c621f76f5904319c22e5e8"
+    },
+    {
+      "path": "output/review-browser.log",
+      "sha256": "407fbf526fec5d65b925cde51718b88785db3bf9eec87381a73ff715c6f62ce1"
+    },
+    {
+      "path": "output/review-feedback/automation-library-1074-en-light.png",
+      "sha256": "18a5ae10eaadec0cbebd675739762621a214fd739743731053853ecb441a174c"
+    },
+    {
+      "path": "output/review-feedback/automation-library-1074-sq-dark.png",
+      "sha256": "94bb9176e87ca0d240886f105671bb2b6d7fa25e982e2e858a456ecc245f106c"
+    },
+    {
+      "path": "output/review-feedback/automation-library-390-en-light.png",
+      "sha256": "04d4f5265df915260351f7c46940cb1a7872b6515ff37fd0c50dc65bb5ef1f6a"
+    },
+    {
+      "path": "output/review-feedback/dashboard-status-1074-en-light.png",
+      "sha256": "827c171363262ba529019423357f3fdcf277fc8f241881945d197b467eb5fa00"
+    },
+    {
+      "path": "output/review-feedback/dashboard-status-1074-sq-dark.png",
+      "sha256": "9c56f987868dacd6abce69253f357c14a02ab9e935ab97664f4a67dd5a5b6a89"
+    },
+    {
+      "path": "output/review-feedback/help-1074-sq.png",
+      "sha256": "888f58b8112f0bc9faab53b297dc227ae4d7b93e771adf2e6537e270909f626b"
+    },
+    {
+      "path": "output/review-feedback/help-390-en.png",
+      "sha256": "b26ea396a9ce288f47611869ac499e550bc699dce0c987ab132db7f451c80cff"
+    },
+    {
+      "path": "output/review-feedback/login-1074-sq.png",
+      "sha256": "339d3fecd5d226012dc29c09713020d347556af05c48d955ce69e065a3da583c"
+    },
+    {
+      "path": "output/review-feedback/login-390-en.png",
+      "sha256": "8a8ae4ee8a5006da36dfb7cc73e5b9802441f942519bd4dfa1c8ef786c1f4653"
+    },
+    {
+      "path": "output/review-feedback/register-1074-sq.png",
+      "sha256": "989251b34e1ac8742ebddd6cf429e3dd16347058eca8e68ea4ab82e8098c5c78"
+    }
+  ]
+}

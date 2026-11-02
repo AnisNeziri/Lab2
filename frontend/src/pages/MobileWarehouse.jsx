@@ -1,9 +1,7 @@
+import { InventoryGlyph as Boxes, StockCountGlyph as ClipboardCheck, LocationsGlyph as MapPin, ReceivingGlyph as PackageCheck, ProductsGlyph as PackageSearch, ScanGlyph as ScanLine, SearchGlyph as Search, DispatchGlyph as Truck } from '../components/icons/AimsGlyph'
 import { useUiText } from '../hooks/useUiText'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  ArrowRight, Boxes, Camera, CheckCircle2, ClipboardCheck, LoaderCircle,
-  MapPin, PackageCheck, PackageSearch, ScanLine, Search, Truck, Wifi, WifiOff,
-} from 'lucide-react'
+import { ArrowRight, Camera, CheckCircle2, LoaderCircle, Wifi, WifiOff } from 'lucide-react'
 import BarcodeScanner from '../components/BarcodeScanner'
 import {
   countWarehouseProduct,
@@ -15,6 +13,8 @@ import {
 } from '../api/mobileWarehouse'
 import { useSettingsStore } from '../store/settingsStore'
 import { useAuthStore } from '../store/authStore'
+import { buildApiUrl } from '../api/client'
+import { useInventoryResource } from '../hooks/useInventoryResource'
 import { formatQuantity } from '../utils/formatQuantity'
 import './MobileWarehouse.css'
 
@@ -69,6 +69,7 @@ export default function MobileWarehouse() {
   const canOverrideExpiredReceipt = permissions.includes('inventory.expired.override')
   const text = copy[language] || copy.en
   const searchRef = useRef(null)
+  const operationRef = useRef(new Map())
   const [online, setOnline] = useState(navigator.onLine)
   const [workspace, setWorkspace] = useState(null)
   const [action, setAction] = useState('lookup')
@@ -94,7 +95,18 @@ export default function MobileWarehouse() {
     ? locations.filter((row) => String(row.warehouse_id) === String(selectedSource.warehouse_id) && String(row.id) !== String(selectedSource.location_id))
     : []
   const reservedTotal = useMemo(() => (result?.balances || []).reduce((sum, row) => sum + Number(row.reserved_quantity || 0), 0), [result])
-  const incomingTotal = useMemo(() => (result?.receivable_lines || []).reduce((sum, row) => sum + Number(row.remaining_quantity || 0), 0), [result])
+  const incomingTotal = result?.inventory?.incoming_quantity_complete === false ? null : result?.inventory?.incoming
+  const currentCode = product?.barcode || product?.sku
+  const live = useInventoryResource(currentCode ? buildApiUrl('/mobile-warehouse/lookup', { code: currentCode }) : null)
+  useEffect(() => { if (live.data?.product?.id === product?.id) setResult(live.data) }, [live.data, product?.id])
+  const receiveLine = (result?.receivable_lines || []).find(row => `${row.purchase_order_id}:${row.purchase_order_item_id}` === form.receive_line)
+  function operationKey(operation) {
+    // Retain the key after an uncertain response, even if the employee edits
+    // the form. The authority then rejects changed details instead of posting twice.
+    const identity = `${operation}:${product?.id}`
+    if (!operationRef.current.has(identity)) operationRef.current.set(identity, requestKey())
+    return operationRef.current.get(identity)
+  }
 
   const loadWorkspace = useCallback(async () => {
     setLoading(true)
@@ -125,6 +137,7 @@ export default function MobileWarehouse() {
     const firstPick = lookup.pick_lines?.[0]
     setForm({
       receive_line: firstReceipt ? `${firstReceipt.purchase_order_id}:${firstReceipt.purchase_order_item_id}` : '',
+      shipment_item_id: firstReceipt?.shipment_cargo?.length === 1 ? String(firstReceipt.shipment_cargo[0].id) : '',
       warehouse_id: firstReceipt?.warehouse_id || firstBalance?.warehouse_id || '',
       location_id: '', accepted_quantity: '', damaged_quantity: '', rejected_quantity: '', supplier_document_number: '',
       source_key: firstMove ? String(firstMove.location_id) : '', destination_location_id: '', quantity: '',
@@ -203,12 +216,17 @@ export default function MobileWarehouse() {
     setBusy(true); setError(''); setSuccess('')
     try {
       await handler()
-      setSuccess(message)
+      operationRef.current.delete(`${action}:${product.id}`)
+      setForm(current => ({ ...current, accepted_quantity: '', damaged_quantity: '', rejected_quantity: '', quantity: '' }))
       navigator.vibrate?.(80)
       await Promise.all([loadWorkspace(), lookup(code)])
+      setSuccess(message)
       window.dispatchEvent(new Event('stock-refresh'))
     } catch (err) {
       setError(errorText(err))
+      // A lost response may follow a committed receipt. Refresh facts without
+      // clearing the form or replacing its retry key.
+      void live.reload()
       navigator.vibrate?.([70, 40, 70])
     } finally {
       setBusy(false)
@@ -223,14 +241,14 @@ export default function MobileWarehouse() {
       ...traceAllocations(form.damaged_quantity, 'damaged'),
     ]
     void runOperation(() => receiveWarehouseProduct({
-      purchase_order_id, purchase_order_item_id, warehouse_id: Number(form.warehouse_id),
+      purchase_order_id, purchase_order_item_id, shipment_item_id: form.shipment_item_id ? Number(form.shipment_item_id) : null, warehouse_id: Number(form.warehouse_id),
       location_id: form.location_id ? Number(form.location_id) : null,
       accepted_quantity: Number(form.accepted_quantity || 0), damaged_quantity: Number(form.damaged_quantity || 0),
       rejected_quantity: Number(form.rejected_quantity || 0), supplier_document_number: form.supplier_document_number || null,
       reason: form.reason || 'Mobile warehouse receipt', notes: form.notes || null,
       allow_expired_receipt: canOverrideExpiredReceipt && Boolean(form.allow_expired_receipt),
       expired_receipt_reason: canOverrideExpiredReceipt && form.allow_expired_receipt ? form.expired_receipt_reason : null,
-      idempotency_key: requestKey(), trace_allocations: trace,
+      idempotency_key: operationKey('receive'), trace_allocations: trace,
     }), text.received)
   }
 
@@ -239,7 +257,7 @@ export default function MobileWarehouse() {
     void runOperation(() => moveWarehouseProduct({
       product_id: product.id, source_location_id: Number(selectedSource?.location_id),
       destination_location_id: Number(form.destination_location_id), quantity: Number(form.quantity),
-      stock_state: 'available', reason: form.reason || 'Mobile bin move', idempotency_key: requestKey(),
+      stock_state: 'available', reason: form.reason || 'Mobile bin move', idempotency_key: operationKey(action),
       trace_allocations: traceAllocations(form.quantity),
     }), text.moved)
   }
@@ -281,8 +299,8 @@ export default function MobileWarehouse() {
         <input ref={searchRef} value={code} onChange={(event) => setCode(event.target.value)}
           onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void lookup() } }}
           placeholder={text.scanPlaceholder} autoComplete="off" inputMode="search" />
-        <button type="button" onClick={() => void lookup()} disabled={finding}>{finding ? <LoaderCircle className="spin" /> : <Search /> }<span>{text.find}</span></button>
-        <button type="button" className="camera" onClick={() => openScanner('product')}><Camera /><span>{text.scan}</span></button>
+        <button type="button" aria-label={text.find} onClick={() => void lookup()} disabled={finding}>{finding ? <LoaderCircle className="spin" /> : <Search /> }<span>{text.find}</span></button>
+        <button type="button" aria-label={text.scan} className="camera" onClick={() => openScanner('product')}><Camera /><span>{text.scan}</span></button>
       </section>
 
       <nav className="mobile-warehouse-actions" aria-label={tx("Warehouse actions")}>
@@ -299,6 +317,7 @@ export default function MobileWarehouse() {
       {!product && <section className="mobile-warehouse-empty"><PackageSearch /><h2>{result ? text.noMatch : text.noProduct}</h2></section>}
 
       {product && <>
+        <p role="status">{live.health === 'disconnected' ? (language === 'sq' ? 'Pa lidhje — stok i paverifikuar' : 'Disconnected — stock not confirmed live') : live.health === 'live' ? text.online : (language === 'sq' ? 'Duke përditësuar / në pauzë' : 'Refreshing / paused')}{live.updated && ` · ${live.updated.toLocaleTimeString()}`}</p>
         <section className="mobile-warehouse-product">
           <div className="product-picture">{product.image_url ? <img src={product.image_url} alt="" /> : <Boxes />}</div>
           <div><span>{product.sku || product.barcode}</span><h2>{product.name}</h2><p>{product.category?.name || '—'} · {product.unit}</p></div>
@@ -306,7 +325,8 @@ export default function MobileWarehouse() {
         </section>
 
         {action === 'receive' && <OperationForm onSubmit={submitReceive} submit={text.submitReceive} busy={busy}>
-          <Field label={text.purchaseLine}><select required value={form.receive_line || ''} onChange={(e) => { const line = result.receivable_lines.find((row) => `${row.purchase_order_id}:${row.purchase_order_item_id}` === e.target.value); setForm({ ...form, receive_line: e.target.value, warehouse_id: line?.warehouse_id || form.warehouse_id }) }}><option value="">—</option>{result.receivable_lines.map((line) => <option key={`${line.purchase_order_id}:${line.purchase_order_item_id}`} value={`${line.purchase_order_id}:${line.purchase_order_item_id}`}>{line.po_number} · {line.supplier} · {formatQuantity(line.remaining_quantity, line.ordered_unit)} {line.ordered_unit}</option>)}</select></Field>
+          <Field label={text.purchaseLine}><select required value={form.receive_line || ''} onChange={(e) => { const line = result.receivable_lines.find((row) => `${row.purchase_order_id}:${row.purchase_order_item_id}` === e.target.value); setForm({ ...form, receive_line: e.target.value, warehouse_id: line?.warehouse_id || form.warehouse_id, shipment_item_id: line?.shipment_cargo?.length === 1 ? String(line.shipment_cargo[0].id) : '' }) }}><option value="">—</option>{result.receivable_lines.map((line) => <option key={`${line.purchase_order_id}:${line.purchase_order_item_id}`} value={`${line.purchase_order_id}:${line.purchase_order_item_id}`}>{line.po_number} · {line.supplier} · {formatQuantity(line.remaining_quantity, line.ordered_unit)} {line.ordered_unit}</option>)}</select></Field>
+          {(receiveLine?.shipment_cargo || []).length > 0 && <Field label={language === 'sq' ? 'Ngarkesa e dërgesës' : 'Shipment cargo'} hint={language === 'sq' ? 'Lidhni vetëm ngarkesën që po pranoni.' : 'Link only the cargo you are receiving.'}><select value={form.shipment_item_id || ''} onChange={e => setForm({ ...form, shipment_item_id: e.target.value })}><option value="">—</option>{receiveLine.shipment_cargo.map(cargo => <option key={cargo.id} value={cargo.id}>{cargo.reference} · {formatQuantity(cargo.remaining_base, cargo.unit)} {cargo.unit}</option>)}</select></Field>}
           <WarehouseLocationFields text={text} form={form} setForm={setForm} warehouses={workspace.warehouses} locations={locations} onScan={() => openScanner('receive_location')} />
           <div className="mobile-warehouse-grid three"><Field label={text.accepted}><input required type="number" min="0" step="any" value={form.accepted_quantity || ''} onChange={(e) => setForm({ ...form, accepted_quantity: e.target.value })} /></Field><Field label={text.damaged}><input type="number" min="0" step="any" value={form.damaged_quantity || ''} onChange={(e) => setForm({ ...form, damaged_quantity: e.target.value })} /></Field><Field label={text.rejected}><input type="number" min="0" step="any" value={form.rejected_quantity || ''} onChange={(e) => setForm({ ...form, rejected_quantity: e.target.value })} /></Field></div>
           <TraceFields text={text} product={product} result={result} form={form} setForm={setForm} receive />
@@ -316,8 +336,8 @@ export default function MobileWarehouse() {
         </OperationForm>}
 
         {action === 'move' && <OperationForm onSubmit={submitMove} submit={text.submitMove} busy={busy}>
-          <Field label={text.source}><div className="mobile-location-control"><select required value={form.source_key || ''} onChange={(e) => setForm({ ...form, source_key: e.target.value, destination_location_id: '' })}><option value="">—</option>{movableBalances.map((row) => <option key={row.id} value={row.location_id}>{row.warehouse?.name} · {row.location?.path} · {formatQuantity(row.available_quantity, product.unit)} {product.unit}</option>)}</select><button type="button" onClick={() => openScanner('source_location')}><ScanLine /><span>{text.scanLocation}</span></button></div></Field>
-          <Field label={text.destination}><div className="mobile-location-control"><select required value={form.destination_location_id || ''} onChange={(e) => setForm({ ...form, destination_location_id: e.target.value })}><option value="">—</option>{destinationLocations.map((row) => <option key={row.id} value={row.id}>{row.path}</option>)}</select><button type="button" onClick={() => openScanner('destination_location')}><ScanLine /><span>{text.scanLocation}</span></button></div></Field>
+          <Field label={text.source}><div className="mobile-location-control"><select required value={form.source_key || ''} onChange={(e) => setForm({ ...form, source_key: e.target.value, destination_location_id: '' })}><option value="">—</option>{movableBalances.map((row) => <option key={row.id} value={row.location_id}>{row.warehouse?.name} · {row.location?.path} · {formatQuantity(row.available_quantity, product.unit)} {product.unit}</option>)}</select><button type="button" aria-label={text.scanLocation} onClick={() => openScanner('source_location')}><ScanLine /><span>{text.scanLocation}</span></button></div></Field>
+          <Field label={text.destination}><div className="mobile-location-control"><select required value={form.destination_location_id || ''} onChange={(e) => setForm({ ...form, destination_location_id: e.target.value })}><option value="">—</option>{destinationLocations.map((row) => <option key={row.id} value={row.id}>{row.path}</option>)}</select><button type="button" aria-label={text.scanLocation} onClick={() => openScanner('destination_location')}><ScanLine /><span>{text.scanLocation}</span></button></div></Field>
           <Field label={text.quantity}><input required type="number" min="0.001" step="any" value={form.quantity || ''} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /></Field>
           <TraceFields text={text} product={product} result={result} form={form} setForm={setForm} />
           <Field label={text.reason}><input required value={form.reason || ''} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></Field>
@@ -331,13 +351,13 @@ export default function MobileWarehouse() {
 
         {action === 'pick' && <OperationForm onSubmit={submitPick} submit={text.submitPick} busy={busy}>
           <Field label={text.pickRequest}><select required value={form.pick_line_id || ''} onChange={(e) => { const line = (result.pick_lines || []).find((row) => String(row.stock_transfer_item_id) === e.target.value); const matchingBalance = availableBalances.find((row) => String(row.warehouse_id) === String(line?.source_warehouse_id) && (!line?.source_location_id || String(row.location_id) === String(line.source_location_id))); setForm({ ...form, pick_line_id: e.target.value, source_key: matchingBalance?.location_id ? String(matchingBalance.location_id) : '', quantity: line?.remaining_quantity || '' }) }}><option value="">—</option>{(result.pick_lines || []).map((line) => <option key={line.stock_transfer_item_id} value={line.stock_transfer_item_id}>{line.transfer_number} · {line.source_warehouse} → {line.destination_warehouse} · {formatQuantity(line.remaining_quantity, product.unit)} {product.unit}</option>)}</select></Field>
-          <Field label={text.source}><div className="mobile-location-control"><select required value={form.source_key || ''} onChange={(e) => setForm({ ...form, source_key: e.target.value })}><option value="">—</option>{availableBalances.filter((row) => row.location_id && (!(result.pick_lines || []).find((line) => String(line.stock_transfer_item_id) === String(form.pick_line_id))?.source_warehouse_id || String(row.warehouse_id) === String((result.pick_lines || []).find((line) => String(line.stock_transfer_item_id) === String(form.pick_line_id))?.source_warehouse_id))).map((row) => <option key={row.id} value={row.location_id}>{row.warehouse?.name} · {row.location?.path} · {formatQuantity(row.available_quantity, product.unit)} {product.unit}</option>)}</select><button type="button" onClick={() => openScanner('pick_location')}><ScanLine /><span>{text.scanLocation}</span></button></div></Field>
+          <Field label={text.source}><div className="mobile-location-control"><select required value={form.source_key || ''} onChange={(e) => setForm({ ...form, source_key: e.target.value })}><option value="">—</option>{availableBalances.filter((row) => row.location_id && (!(result.pick_lines || []).find((line) => String(line.stock_transfer_item_id) === String(form.pick_line_id))?.source_warehouse_id || String(row.warehouse_id) === String((result.pick_lines || []).find((line) => String(line.stock_transfer_item_id) === String(form.pick_line_id))?.source_warehouse_id))).map((row) => <option key={row.id} value={row.location_id}>{row.warehouse?.name} · {row.location?.path} · {formatQuantity(row.available_quantity, product.unit)} {product.unit}</option>)}</select><button type="button" aria-label={text.scanLocation} onClick={() => openScanner('pick_location')}><ScanLine /><span>{text.scanLocation}</span></button></div></Field>
           <Field label={text.quantity}><input required type="number" min="0.001" step="any" value={form.quantity || ''} onChange={(e) => setForm({ ...form, quantity: e.target.value })} /></Field>
           <TraceFields text={text} product={product} result={result} form={form} setForm={setForm} />
           <Field label={text.reason}><input required value={form.reason || ''} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></Field>
         </OperationForm>}
 
-        {action === 'lookup' && <section className="mobile-warehouse-panel"><div className="mobile-lookup-summary"><article><span>{text.available}</span><strong>{formatQuantity(availableBalances.reduce((sum, row) => sum + Number(row.available_quantity || 0), 0), product.unit)}</strong></article><article><span>{text.reserved}</span><strong>{formatQuantity(reservedTotal, product.unit)}</strong></article><article><span>{text.incoming}</span><strong>{formatQuantity(incomingTotal, product.unit)}</strong></article></div><h2>{text.balances}</h2><div className="mobile-warehouse-balances">{(result.balances || []).map((row) => <article key={row.id}><MapPin /><div><strong>{row.warehouse?.name}</strong><span>{row.location?.path || 'Unassigned'}</span></div><b>{formatQuantity(row.available_quantity, product.unit)} {product.unit}<small>{text.reserved}: {formatQuantity(row.reserved_quantity, product.unit)} {tx("· Total:")} {formatQuantity(row.quantity, product.unit)}</small></b></article>)}</div>{(result.lots || []).length > 0 && <><h2>{text.traceStock}</h2><div className="mobile-trace-list">{result.lots.map((lot) => <article key={lot.id}><div><strong>{lot.serial_number || lot.lot_number}</strong><span>{lot.expiry_at ? `${text.expiry}: ${String(lot.expiry_at).slice(0, 10)} · ${lot.expiry_status}` : lot.supplier_batch || '—'}</span></div><b>{formatQuantity(lot.quantity_remaining, product.unit)} {product.unit}</b><small>{(lot.balances || []).map((balance) => `${balance.warehouse?.name} / ${balance.location?.path || 'Unassigned'}: ${formatQuantity(balance.quantity, product.unit)}`).join(' · ')}</small></article>)}</div></>}</section>}
+        {action === 'lookup' && <section className="mobile-warehouse-panel"><div className="mobile-lookup-summary"><article><span>{text.available}</span><strong>{formatQuantity(availableBalances.reduce((sum, row) => sum + Number(row.available_quantity || 0), 0), product.unit)}</strong></article><article><span>{text.reserved}</span><strong>{formatQuantity(reservedTotal, product.unit)}</strong></article><article><span>{text.incoming}</span><strong>{incomingTotal == null ? '—' : formatQuantity(incomingTotal, product.unit)}</strong></article></div><h2>{text.balances}</h2><div className="mobile-warehouse-balances">{(result.balances || []).map((row) => <article key={row.id}><MapPin /><div><strong>{row.warehouse?.name}</strong><span>{row.location?.path || 'Unassigned'}</span></div><b>{formatQuantity(row.available_quantity, product.unit)} {product.unit}<small>{text.reserved}: {formatQuantity(row.reserved_quantity, product.unit)} {tx("· Total:")} {formatQuantity(row.quantity, product.unit)}</small></b></article>)}</div>{(result.lots || []).length > 0 && <><h2>{text.traceStock}</h2><div className="mobile-trace-list">{result.lots.map((lot) => <article key={lot.id}><div><strong>{lot.serial_number || lot.lot_number}</strong><span>{lot.expiry_at ? `${text.expiry}: ${String(lot.expiry_at).slice(0, 10)} · ${lot.expiry_status}` : lot.supplier_batch || '—'}</span></div><b>{formatQuantity(lot.quantity_remaining, product.unit)} {product.unit}</b><small>{(lot.balances || []).map((balance) => `${balance.warehouse?.name} / ${balance.location?.path || 'Unassigned'}: ${formatQuantity(balance.quantity, product.unit)}`).join(' · ')}</small></article>)}</div></>}</section>}
       </>}
 
       {scannerOpen && <BarcodeScanner onScanSuccess={scanned} onClose={() => setScannerOpen(false)} />}
@@ -353,7 +373,7 @@ function WarehouseLocationFields({ text, form, setForm, warehouses, locations, o
  const tx = useUiText()
 
   const options = locations.filter((location) => String(location.warehouse_id) === String(form.warehouse_id))
-  return <div className="mobile-warehouse-grid"><Field label={text.warehouse}><select required value={form.warehouse_id || ''} onChange={(e) => setForm({ ...form, warehouse_id: e.target.value, location_id: '' })}><option value="">—</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select></Field><Field label={text.location}><div className="mobile-location-control"><select value={form.location_id || ''} onChange={(e) => setForm({ ...form, location_id: e.target.value })}><option value="">{tx("Unassigned")}</option>{options.map((location) => <option key={location.id} value={location.id}>{location.path}</option>)}</select>{onScan && <button type="button" onClick={onScan}><ScanLine /><span>{text.scanLocation}</span></button>}</div></Field></div>
+  return <div className="mobile-warehouse-grid"><Field label={text.warehouse}><select required value={form.warehouse_id || ''} onChange={(e) => setForm({ ...form, warehouse_id: e.target.value, location_id: '' })}><option value="">—</option>{warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select></Field><Field label={text.location}><div className="mobile-location-control"><select value={form.location_id || ''} onChange={(e) => setForm({ ...form, location_id: e.target.value })}><option value="">{tx("Unassigned")}</option>{options.map((location) => <option key={location.id} value={location.id}>{location.path}</option>)}</select>{onScan && <button type="button" aria-label={text.scanLocation} onClick={onScan}><ScanLine /><span>{text.scanLocation}</span></button>}</div></Field></div>
 }
 
 function TraceFields({ text, product, result, form, setForm, receive = false }) {

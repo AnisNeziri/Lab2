@@ -2,7 +2,7 @@
   max-width: 1440px;
   margin: 0 auto;
   padding: 24px;
-  color: var(--text-primary, #172434);
+  color: var(--text-color);
 }
 .tax-heading {
   display: flex;

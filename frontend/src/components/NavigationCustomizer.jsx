@@ -16,7 +16,7 @@ export default function NavigationCustomizer({onClose}) {
   const {t:translate,language}=useTranslation(),t=(en,sq)=>language==='sq'?sq:en
   const user=useAuthStore(s=>s.user),role=useAuthStore(s=>s.role),permissions=useAuthStore(s=>s.permissions),enable3d=useSettingsStore(s=>s.enable_3d_map)
   const {document,saving,save,load,error:loadError}=useWorkspaceStore(),[draft,setDraft]=useState(()=>normalizeNavigation(document?.navigation||defaultNavigation(role))),[error,setError]=useState(''),[query,setQuery]=useState(''),[filter,setFilter]=useState('all'),[reset,setReset]=useState(false)
-  const groups=useMemo(()=>permittedNavigation(permissions,enable3d,role),[permissions,enable3d,role])
+  const groups=useMemo(()=>permittedNavigation(permissions,enable3d,role,user?.commercial?.capabilities),[permissions,enable3d,role,user?.commercial?.capabilities])
   const [initial]=useState(()=>JSON.stringify(normalizeNavigation(document?.navigation||defaultNavigation(role))))
   const dirty=JSON.stringify(normalizeNavigation(draft))!==initial,[discard,setDiscard]=useState(false)
   const cancel=()=>dirty?setDiscard(true):onClose()

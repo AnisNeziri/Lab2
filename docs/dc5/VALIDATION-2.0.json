@@ -1,0 +1,65 @@
+{
+  "phase": "DC5 2.0",
+  "review_date": "2026-10-21",
+  "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+  "branch": "main",
+  "working_directory": "C:\\Users\\anisi\\Lab2",
+  "implementation_uncommitted": true,
+  "new_migrations": 0,
+  "business_database_mutated_by_this_extension": false,
+  "prior_authorized_startup_upgrade_evidence": "output/local-startup-upgrade.json",
+  "sqlite_regressions": {
+    "result": "PASS",
+    "tests": 59,
+    "assertions": 932
+  },
+  "sqlite_final_controls": {
+    "result": "PASS",
+    "tests": 8,
+    "assertions": 225
+  },
+  "sqlite_assistant_controls": {
+    "result": "PASS",
+    "tests": 26,
+    "assertions": 382
+  },
+  "sqlite_last_affected_controls": {
+    "result": "PASS",
+    "tests": 3,
+    "assertions": 49
+  },
+  "test_slices_overlap": true,
+  "mariadb": {
+    "result": "PASS",
+    "tests": 20,
+    "assertions": 380,
+    "final_dc5_tests": 6,
+    "final_dc5_assertions": 206,
+    "port": 3315,
+    "engine": "MariaDB 11.8.9"
+  },
+  "process_races": {
+    "reservation": "PASS",
+    "receipt_same_key": "PASS",
+    "receipt_competing_keys": "PASS"
+  },
+  "frontend": {
+    "result": "PASS",
+    "tests": 9
+  },
+  "browser": {
+    "result": "PASS",
+    "journeys": 1,
+    "mobile_width": 390,
+    "lost_response_and_changed_payload_retry": "PASS"
+  },
+  "production_build": "PASS",
+  "control_read_small_fixture": {
+    "queries": 16,
+    "bytes": 2596
+  },
+  "warehouse_scale_certified": false,
+  "real_hardware_provider_certified": false,
+  "controlled_pilot_ready": true,
+  "next_phase_started": false
+}

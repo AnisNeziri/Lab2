@@ -1,6 +1,7 @@
+import { NotificationsGlyph as Bell, InventoryGlyph as Package } from './icons/AimsGlyph'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { Bell, X, AlertTriangle, Package, Trash2 } from 'lucide-react'
+import { X, AlertTriangle, Trash2 } from 'lucide-react'
 import { clearNotifications, getNotifications, markNotificationRead, markAllNotificationsRead } from '../api/notifications'
 import { useNotificationStore } from '../store/notificationStore'
 import { useSettingsStore } from '../store/settingsStore'

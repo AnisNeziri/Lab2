@@ -16,14 +16,17 @@ export default function WorkspacePulse() {
   const state={finance:financial,pay:payment,fiscal:fiscalization}
   if(!finance&&!pay&&!fiscal)return null
   const f=financial.data,p=payment.data,x=fiscalization.data
+  const qualified=f?.opening_readiness?.status==='verified'&&f?.controls_reconciled&&f?.books_balanced
   return <section ref={node=>{financial.ref.current=node;payment.ref.current=node;fiscalization.ref.current=node}} className="workspace-pulse" aria-label={t('Business at a glance','Biznesi me një shikim')}>
-    <header><h2>{t('Business at a glance','Biznesi me një shikim')}</h2><small>{t('Recorded balances · forecasts are shown separately below','Gjendje të regjistruara · parashikimet shfaqen veçmas më poshtë')}</small></header>
-    {f&&<BusinessFacts facts={[
+    <header><h2>{t('Business at a glance','Biznesi me një shikim')}</h2><small>{t('Posted Books · General Ledger balances · forecasts shown separately','Librat e postuar · gjendjet e librit kryesor · parashikimet veçmas')}</small></header>
+    {f&&<p className="wf-note">{f.from} — {f.to} · {t(f.controls_reconciled?'Current subledgers reconciled':'Current subledgers differ — review reconciliation',f.controls_reconciled?'Nënlibrat aktualë janë rakorduar':'Nënlibrat aktualë kanë diferenca — shqyrto rakordimin')}</p>}
+    {f&&qualified&&<BusinessFacts facts={[
       {label:t('Cash & bank','Arka dhe banka'),value:f.summary.cash==null||f.summary.bank==null?'—':businessMoney(Number(f.summary.cash)+Number(f.summary.bank),f.currency,language),to:'/accounting?tab=bank'},
       {label:t('Customers owe us','Borxhet e klientëve'),value:businessMoney(f.summary.accounts_receivable,f.currency,language),to:'/accounting?tab=ar'},
       {label:t('We owe suppliers','Detyrimet ndaj furnitorëve'),value:businessMoney(f.summary.accounts_payable,f.currency,language),to:'/accounting?tab=ap'},
       {label:t('Net result','Rezultati neto'),value:businessMoney(f.summary.net_profit,f.currency,language),to:'/accounting?tab=owner',note:t('Current month','Muaji aktual')},
     ]}/>}
+    {f&&!qualified&&<p className="wf-note">{t('Cash and profit conclusions are unavailable until opening balances and controls are verified.','Përfundimet për arkën dhe fitimin nuk janë në dispozicion derisa të verifikohen gjendjet fillestare dhe kontrollet.')}</p>}
     <nav className="workspace-pulse-links" aria-label={t('Control centers','Qendrat e kontrollit')}>
       {finance&&<Link to="/accounting"><strong>{t('Accounting','Kontabiliteti')}</strong><span>{f?businessStatus(f.integrity_status.toLowerCase(),language):state.finance?.error?t('Unavailable · review source','Jo në dispozicion · shqyrto burimin'):t('Loading…','Duke ngarkuar…')}</span></Link>}
       {pay&&<Link to={p?.latest_run?'/payroll?run='+p.latest_run.id:'/payroll'}><strong>{t('Payroll','Pagat')}</strong><span>{p?.latest_run?`${p.latest_run.period?.name||''} · ${businessStatus(p.latest_run.status,language)}`:p?t('No payroll period','Pa periudhë pagash'):state.pay?.error?t('Unavailable · review source','Jo në dispozicion · shqyrto burimin'):t('Loading…','Duke ngarkuar…')}</span></Link>}

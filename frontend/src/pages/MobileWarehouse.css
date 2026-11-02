@@ -129,3 +129,5 @@ html.dark .mobile-warehouse-alert.success, html[data-theme='dark'] .mobile-wareh
   .mobile-warehouse-actions button { transition: none; }
   .spin { animation-duration: 1.6s; }
 }
+
+.mobile-warehouse-field input[type=checkbox]{width:18px;min-height:18px;height:18px;padding:0;margin-right:.4rem;vertical-align:middle}

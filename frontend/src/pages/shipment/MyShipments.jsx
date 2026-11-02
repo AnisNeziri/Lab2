@@ -346,9 +346,9 @@ export default function MyShipments() {
 
   return (
     <div className="page">
-      <ShipmentsPageIntro message={t('shipments.networkLoading')} />
+      <ShipmentsPageIntro message={t('shipments.networkLoading')} loading={loading&&!shipments.length} />
       <div className="shipments-toolbar no-print">
-        <h1>{t('nav.myShipments')}</h1>
+        <div><h1>{t('nav.myShipments')}</h1><p className="shipment-tracking-scope">{t('shipments.trackingScope')}</p></div>
         <div className="shipments-view-tabs">
           <button type="button" onClick={() => switchView('intelligence')}>{t('shipments.intelligence')}</button>
           <button type="button" className={view === 'active' ? 'active' : ''} onClick={() => switchView('active')}>
@@ -439,7 +439,7 @@ export default function MyShipments() {
             }} />
           <div className="shipments-list">
             {loading ? <p>{t('common.loading')}</p> : null}
-            {!loading && !shipments.length ? <p>{t('shipments.empty')}</p> : null}
+            {!loading && !shipments.length ? <p>{t('shipments.emptyTracked')}</p> : null}
             {shipments.map((item) => (
               <button
                 key={item.id}
@@ -559,7 +559,7 @@ export default function MyShipments() {
               <details className="shipment-technical"><summary>{language==='sq'?'Dokumentet':'Documents'}</summary><EntityDocuments entityType="shipment" entityId={selected.id}/></details>
             </>
           ) : (
-            <p className="page-message">{loading ? t('common.loading') : t('shipments.empty')}</p>
+            <p className="page-message">{loading ? t('common.loading') : t('shipments.emptyTracked')}</p>
           )}
         </div>
       </div>

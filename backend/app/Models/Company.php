@@ -12,6 +12,7 @@ class Company extends Model
     use HasFactory;
 
     protected $fillable = [
+        'automation_settings', 'platform_settings', 'public_id', 'locale', 'security_policy', 'role_permissions', 'capability_settings',
         'name',
         'address',
         'base_currency',
@@ -29,6 +30,7 @@ class Company extends Model
     protected function casts(): array
     {
         return [
+            'automation_settings'=>'array', 'platform_settings'=>'array', 'security_policy'=>'array', 'role_permissions'=>'array', 'capability_settings'=>'array',
             'fiscal_year_start_month' => 'integer',
             'operational_cutover_date' => 'date',
             'accounting_start_date' => 'date',
@@ -38,6 +40,11 @@ class Company extends Model
             'supplier_match_price_tolerance' => 'decimal:4',
             'supplier_match_tax_tolerance' => 'decimal:2',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function ($company) { $company->public_id ??= (string) \Illuminate\Support\Str::uuid(); });
     }
 
     public function users(): HasMany

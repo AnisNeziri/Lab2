@@ -13,6 +13,14 @@ class SuperadminPlatformTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function actingAsApiUser(string $role = 'admin'): self
+    {
+        parent::actingAsApiUser($role);
+        $user=User::where('company_id',$this->apiCompany->id)->firstOrFail();
+        return $this->withHeader('Authorization','Bearer '.app(\App\Services\JwtService::class)->createAccessToken($user));
+    }
+
+
     public function test_superadmin_can_manage_platform_users_and_view_usage(): void
     {
         $this->actingAsApiUser('superadmin');
@@ -23,8 +31,8 @@ class SuperadminPlatformTest extends TestCase
             'name' => 'Platform Customer',
             'email' => 'platform@example.com',
             'role' => 'admin',
-            'temporary_password' => 'Temporary.123',
-            'temporary_password_confirmation' => 'Temporary.123',
+            'temporary_password' => 'Temporary.Test.2026!',
+            'temporary_password_confirmation' => 'Temporary.Test.2026!',
         ])->assertCreated()->assertJsonPath('email', 'platform@example.com');
 
         $user = User::findOrFail($created->json('id'));
@@ -39,10 +47,10 @@ class SuperadminPlatformTest extends TestCase
         ])->assertOk()->assertJsonPath('role', 'manager');
 
         $this->postJson("/api/superadmin/users/{$user->id}/reset-password", [
-            'temporary_password' => 'Replacement.123',
-            'temporary_password_confirmation' => 'Replacement.123',
+            'temporary_password' => 'Replacement.Test.2026!',
+            'temporary_password_confirmation' => 'Replacement.Test.2026!',
         ])->assertOk();
-        $this->assertTrue(Hash::check('Replacement.123', $user->fresh()->password));
+        $this->assertTrue(Hash::check('Replacement.Test.2026!', $user->fresh()->password));
 
         $this->getJson('/api/superadmin/dashboard')
             ->assertOk()

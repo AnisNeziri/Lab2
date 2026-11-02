@@ -26,6 +26,18 @@ class InventoryController extends Controller
         private readonly BinTransferService $binTransfers,
     ) {}
 
+    public function operations(Product $product, Request $request): JsonResponse
+    {
+        $filters = $request->validate(['warehouse_id'=>['nullable','integer',Rule::exists('warehouses','id')->where('company_id',$request->user()->company_id)]]);
+        return response()->json($this->snapshots->operations($product, $filters['warehouse_id'] ?? null));
+    }
+
+    public function health(Request $request): JsonResponse
+    {
+        $filters = $request->validate(['warehouse_id'=>['nullable','integer',Rule::exists('warehouses','id')->where('company_id',$request->user()->company_id)]]);
+        return response()->json(app(\App\Services\InventoryIntegrityService::class)->operationalHealth($filters['warehouse_id'] ?? null));
+    }
+
     public function control(Request $request): JsonResponse
     {
         $companyId = $request->user()->company_id;
@@ -51,6 +63,7 @@ class InventoryController extends Controller
             if ($position['in_transit'] === null) $attention[] = 'unattributed_receipts_or_cargo';
             return ['product' => $product, 'position' => $position, 'attention' => $attention,
                 'incoming_schedule' => array_slice($snapshot['incoming_schedule'], 0, 20), 'incoming_evidence' => $snapshot['incoming_evidence'],
+                'incoming_lines' => $snapshot['incoming_lines'],
                 'sources_truncated' => count($snapshot['incoming_schedule']) > 20 || $snapshot['incoming_evidence_truncated'],
                 'url' => '/warehouse-operations?product='.$product->id,
                 'replenishment_url' => '/inventory-intelligence?product='.$product->id,

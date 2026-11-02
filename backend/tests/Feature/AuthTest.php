@@ -11,13 +11,21 @@ class AuthTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function actingAsApiUser(string $role = 'admin'): self
+    {
+        parent::actingAsApiUser($role);
+        $user=\App\Models\User::where('company_id',$this->apiCompany->id)->firstOrFail();
+        return $this->withHeader('Authorization','Bearer '.app(\App\Services\JwtService::class)->createAccessToken($user));
+    }
+
+
     public function test_company_registration_creates_admin_user(): void
     {
         $response = $this->postJson('/api/register', [
             'name' => 'Jane Admin',
             'email' => 'jane@acme.test',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
+            'password' => 'Registration-test-2026!',
+            'password_confirmation' => 'Registration-test-2026!',
             'company_name' => 'Acme Corp',
             'company_address' => '456 Industrial Way, Metro City',
         ]);
@@ -43,8 +51,8 @@ class AuthTest extends TestCase
             'name' => 'New Staff',
             'email' => 'staff@acme.test',
             'role' => 'staff',
-            'temporary_password' => 'TempPass123!',
-            'temporary_password_confirmation' => 'TempPass123!',
+            'temporary_password' => 'Temporary-pass-2026!',
+            'temporary_password_confirmation' => 'Temporary-pass-2026!',
         ]);
 
         $response
@@ -60,7 +68,7 @@ class AuthTest extends TestCase
     {
         $this->actingAsApiUser('admin');
 
-        $tempPassword = 'TempPass123!';
+        $tempPassword = 'Temporary-pass-2026!';
 
         $this->postJson('/api/users', [
             'name' => 'Temp User',
@@ -95,7 +103,7 @@ class AuthTest extends TestCase
     {
         $this->seed(\Database\Seeders\RolePermissionSeeder::class);
         $company = Company::factory()->create();
-        $tempPassword = 'TempPass123!';
+        $tempPassword = 'Temporary-pass-2026!';
 
         $user = User::factory()->create([
             'company_id' => $company->id,
@@ -115,8 +123,8 @@ class AuthTest extends TestCase
 
         $changed = $this->withHeader('Authorization', 'Bearer forced-change-token')
             ->postJson('/api/change-password', [
-                'password' => 'newpassword123',
-                'password_confirmation' => 'newpassword123',
+                'password' => 'newRegistration-test-2026!',
+                'password_confirmation' => 'newRegistration-test-2026!',
             ])
             ->assertOk();
 

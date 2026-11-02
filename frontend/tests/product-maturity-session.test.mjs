@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {readSession,writeSession,sessionKey,recentDestination} from '../src/lib/sessionWorkspace.js'
+import {historyEntryKey,readSession,writeSession,sessionKey,recentDestination} from '../src/lib/sessionWorkspace.js'
 import {businessDate,businessMoney,businessNumber} from '../src/utils/businessFormat.js'
 import {businessError} from '../src/utils/businessErrors.js'
 import {businessStatus} from '../src/utils/businessStatus.js'
@@ -8,8 +8,15 @@ import {profileDashboard,profileNavigation,workProfiles} from '../src/config/wor
 import {canOpenPage} from '../src/config/pageAccess.js'
 import {searchSections} from '../src/lib/searchPresentation.js'
 import {financeWarning} from '../src/utils/financePresentation.js'
-import {attentionPreview,attentionDescription} from '../src/lib/actionCenterPresentation.js'
+import {attentionPreview,attentionDescription,attentionTitle,taskTitle,taskDescription} from '../src/lib/actionCenterPresentation.js'
 import {businessActivity} from '../src/utils/businessActivity.js'
+test('full document destinations do not share scroll positions; Back history keys remain stable',()=>{
+ const a={key:'default',pathname:'/products',search:'?product=1'}
+ const b={key:'default',pathname:'/security',search:''}
+ assert.notEqual(historyEntryKey(a),historyEntryKey(b))
+ assert.notEqual(historyEntryKey(a),historyEntryKey({...a,search:'?product=2'}))
+ assert.equal(historyEntryKey({...a,key:'previous-entry'}),'previous-entry')
+})
 test('record history presents money, quantities and events in business language without rewriting records',()=>{
  const movement={title:'Stock issued',kind:'stock_movement',movement_code:'daily_sale',quantity:'12.5',unit:'m',detail:'daily_sale · 12.5'}
  assert.equal(businessActivity(movement,'en').detail,'Daily sale · 12.5 m');assert.equal(businessActivity(movement,'sq').title,'Stoku doli');assert.equal(movement.detail,'daily_sale · 12.5')
@@ -22,6 +29,20 @@ test('Action Center groups identical exceptions without deleting records and sur
  const items=[{kind:'stock',title:'Watch',url:'/stock'},{kind:'order',title:'short_pick',description:'Quantity short',url:'/fulfillment?order=1'},{kind:'order',title:'short_pick',description:'Quantity short',url:'/fulfillment?order=1'},{kind:'customer',title:'Buyer',due_at:'2026-09-01',url:'/customer-debts?customer=1'},{kind:'approval',title:'Approval',url:'/procurement'}]
  const result=attentionPreview(items,new Date('2026-10-10').getTime());assert.equal(items.length,5);assert.equal(result.length,4);assert.equal(result[0].kind,'customer');assert.equal(result[1].kind,'approval');assert.equal(result.find(r=>r.title==='short_pick').occurrences,2)
  assert.equal(attentionDescription({description:'Review enterprise decision'},'en'),'Review the recommended stock action');assert.match(attentionDescription({description:'Customer payment overdue'},'sq'),/Pagesa/)
+})
+
+test('failed finance controls describe the problem in SQ without rewriting user content or source evidence',()=>{
+ const issue={kind:'finance',id:'dc2-critical_exceptions',title:'No unresolved critical accounting exception',description:'12 items require review'}
+ assert.equal(attentionTitle(issue,'sq'),'Përjashtime kritike kontabël të pazgjidhura')
+ assert.equal(attentionTitle(issue,'en'),'Unresolved critical accounting exceptions')
+ assert.equal(attentionDescription(issue,'sq'),'12 regjistrime kërkojnë rishikim')
+ assert.equal(attentionDescription({...issue,description:'1 items require review'},'en'),'1 record requires review')
+ assert.equal(attentionTitle({kind:'customer',title:'Milano & Co'},'sq'),'Milano & Co')
+ const task={source_type:'FinancialIntelligenceSnapshot',title:'Review financial intelligence: cash pressure detected',description:'Review current evidence, unknowns and source documents. Advisory only.'}
+ assert.equal(taskTitle(task,'sq'),'Rishiko presionin mbi likuiditetin')
+ assert.match(taskDescription(task,'sq'),/Vetëm këshillim/)
+ assert.equal(taskTitle({...task,source_type:null},'sq'),task.title)
+ assert.equal(issue.title,'No unresolved critical accounting exception')
 })
 
 test('global search ranks an exact record before related tasks and shares visible/keyboard order',()=>{

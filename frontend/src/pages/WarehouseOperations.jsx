@@ -1,8 +1,9 @@
+import { TransfersGlyph as ArrowRightLeft, WarehouseGlyph as Building2, SearchGlyph as LocateFixed, LocationsGlyph as MapPin, ReceivingGlyph as PackageCheck, SearchGlyph as Search } from '../components/icons/AimsGlyph'
 import EntityDocuments from '../components/EntityDocuments'
 import EntityContext from '../components/EntityContext'
 import InventoryControlCenter, { InventoryPosition } from '../components/InventoryPosition'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowRightLeft, Building2, FileDown, LocateFixed, MapPin, PackageCheck, Pencil, Plus, Search, Send, X } from 'lucide-react'
+import { FileDown, Pencil, Plus, Send, X } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getAllProducts } from '../api/products'
 import {

@@ -86,7 +86,7 @@ class IntelligenceAssistantTest extends TestCase
         $result = $this->ask('What needs my attention today?')->assertOk()->json();
         $this->assertSame('brief', $result['intent']);
         $this->assertTrue($result['read_only']);
-        $this->assertContains('get_open_decisions', array_column($result['sources'], 'tool'));
+        $this->assertContains('get_operating_brief', array_column($result['sources'], 'tool')); // Current DC6 inbox includes existing decisions.
         $risk = $this->ask('Which products are at highest stock risk?')->assertOk()->json();
         $this->assertContains('get_replenishment_decisions', array_column($risk['sources'], 'tool'));
         $this->assertTrue($risk['read_only']);

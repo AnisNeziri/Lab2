@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -186,6 +187,7 @@ export default function Superadmin() {
 
   return (
     <main className="page-stack superadmin-page">
+      <Link className="secondary" to="/cms">{t('nav.platformAdmin')} · CMS</Link>
       <section className="card">
         <div className="section-header">
           <div>

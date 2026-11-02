@@ -1,7 +1,24 @@
 import { pilotCopySq } from './pilotCopy.js'
 // Shared wording for older workspaces that originally used inline English copy.
 export const uiCopySq = {
+  'Name or SKU':'Emri ose SKU',
+  'Search stock products':'Kërko produktet e stokut',
+  'Quality hold':'Në kontroll cilësie',
+  'Blocked':'Bllokuar',
+  'on hand':'gjendje fizike',
+  'available':'në dispozicion',
+  'Database administration':'Administrimi i bazës së të dhënave',
+  'Database application identity':'Identiteti i aplikacionit në bazën e të dhënave',
+  'SQLite installation: server grant tables do not apply. Backup and opening reconciliation are checked separately.':'Instalim SQLite: tabelat e lejeve të serverit nuk zbatohen. Kopjeruajtja dhe rakordimi fillestar kontrollohen veçmas.',
+  'Connection is reachable. This does not verify system/grant integrity, independent recovery or reconciled opening balances.':'Lidhja është e arritshme. Kjo nuk verifikon integritetin e lejeve, rikuperimin e pavarur ose rakordimin fillestar.',
+  'Grant-table administration failed in the last recorded check. Preserve backups and use a clean isolated database for recovery; live grant integrity is not certified.':'Administrimi i lejeve dështoi në kontrollin e fundit të regjistruar. Ruaj kopjet dhe përdor një bazë të pastër të izoluar për rikuperim; integriteti i lejeve aktive nuk është certifikuar.',
+  'The application uses a database administrator account. A verified least-privilege runtime account is required.':'Aplikacioni përdor llogari administratori të bazës së të dhënave. Kërkohet një llogari e verifikuar me leje minimale.',
+  'A dedicated account is configured. Verify its effective grants and independent recovery separately.':'Është konfiguruar llogari e posaçme. Verifiko lejet efektive dhe rikuperimin e pavarur veçmas.',
+
+  'Stock Movements': 'Lëvizjet e stokut',
   ...pilotCopySq,
+  'Source posted bill (optional)':'Fatura burimore e postuar (opsionale)',
+  'Recoverable VAT is excluded. Linked costs reclassify the bill cost and cannot exceed its remaining capitalizable amount.':'TVSH-ja e zbritshme përjashtohet. Kostot e lidhura riklasifikojnë koston e faturës dhe nuk mund të tejkalojnë shumën e saj të mbetur që mund të kapitalizohet.',
   'From date':'Nga data', 'To date':'Deri më datën',
   'Search products':'Kërko produkte',
   'Last verified backup':'Kopja rezervë e fundit e verifikuar',

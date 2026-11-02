@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
@@ -64,8 +65,10 @@ function resultRows(result) {
   }))
 }
 
-function Reports() {
+function Reports({ recoveryOnly = false }) {
   const { t, language } = useTranslation()
+  const text=(en,sq)=>language==='sq'?sq:en
+  const Surface=recoveryOnly?'section':'main'
   const role = useAuthStore((state) => state.role)
   const user = useAuthStore((state) => state.user)
   const permissions = useAuthStore((state) => state.permissions)
@@ -116,10 +119,10 @@ function Reports() {
     }
   }, [t])
 
-  useEffect(() => { loadReports() }, [loadReports])
+  useEffect(() => { if(!recoveryOnly)loadReports() }, [loadReports,recoveryOnly])
 
   useEffect(() => {
-    if (!canManagePortableBackup) return undefined
+    if (!recoveryOnly || !canManagePortableBackup) return undefined
     let active = true
     getBackupCapabilities()
       .then((capabilities) => {
@@ -129,7 +132,7 @@ function Reports() {
       })
       .catch(() => {})
     return () => { active = false }
-  }, [canManagePortableBackup])
+  }, [canManagePortableBackup,recoveryOnly])
 
   const dateTimeFormatter = useMemo(() => new Intl.DateTimeFormat(
     language === 'sq' ? 'sq-AL' : 'en-GB',
@@ -300,12 +303,12 @@ function Reports() {
     : [...current, module])
 
   return (
-    <main className="reports-page page-stack">
+    <Surface className="reports-page page-stack">
       <section className="card reports-heading-card">
         <div>
-          <span className="eyebrow">{t('reports.workspace')}</span>
-          <h1>{t('reports.title')}</h1>
-          <p className="page-intro">{t('reports.intro')}</p>
+          <span className="eyebrow">{recoveryOnly?text('Recovery administration','Administrimi i rikuperimit'):t('reports.workspace')}</span>
+          <h1>{recoveryOnly?text('Company backup & recovery','Kopjeruajtja dhe rikuperimi i kompanisë'):t('reports.title')}</h1>
+          <p className="page-intro">{recoveryOnly?text('Portable company data. Full installation disaster recovery uses the protected administrator command and the original encryption key.','Të dhënat portative të kompanisë. Rikuperimi i plotë përdor komandën e mbrojtur të administratorit dhe çelësin origjinal.'):t('reports.intro')}</p>
         </div>
         <span className="backup-security-badge"><ShieldCheck size={16} />{t('backup.companyScoped')}</span>
       </section>
@@ -313,7 +316,7 @@ function Reports() {
       {actionError ? <div className="form-error-banner" role="alert">{actionError}</div> : null}
       {message ? <div className="success-banner backup-notice" role="status"><CheckCircle2 size={17} />{message}</div> : null}
 
-      {canManagePortableBackup ? <section className="card backup-workspace" aria-labelledby="backup-title">
+      {recoveryOnly && canManagePortableBackup ? <section className="card backup-workspace" aria-labelledby="backup-title">
         <div className="backup-workspace-heading">
           <span className="backup-workspace-icon"><DatabaseBackup size={26} /></span>
           <div><h3 id="backup-title">{t('backup.title')}</h3><p>{t('backup.intro')}</p></div>
@@ -327,7 +330,7 @@ function Reports() {
 
         <div className="backup-callout">
           <ShieldCheck size={19} />
-          <div><strong>{t('backup.disasterRecovery')}</strong><span>{t('backup.disasterRecoveryHint')}</span></div>
+          <div><strong>{text('Portable company archive','Arkivi portativ i kompanisë')}</strong><span>{text('Company data export. This does not certify full installation recovery, database grants or encryption-key readiness.','Eksporti i të dhënave të kompanisë. Nuk certifikon rikuperimin e plotë, lejet e bazës së të dhënave ose gatishmërinë e çelësit të enkriptimit.')}</span></div>
         </div>
         <div className="backup-confidential-warning">
           <AlertTriangle size={18} />
@@ -503,6 +506,8 @@ function Reports() {
         ) : null}
       </section> : null}
 
+      {!recoveryOnly&&<>
+      {canManagePortableBackup&&<Link className="secondary" to="/system-integrity?view=recovery">{text('Backup & recovery in System Health','Kopjeruajtja dhe rikuperimi te gjendja e sistemit')}</Link>}
       <section className="card reports-transfer-card">
         <div className="backup-section-heading"><div><h3>{t('reports.dataTools')}</h3><p>{t('reports.dataToolsHint')}</p></div></div>
         <div className="reports-transfer-note"><AlertTriangle size={17} /><span>{t('reports.notBackupWarning')}</span></div>
@@ -553,7 +558,8 @@ function Reports() {
           {data.top_products.map((product) => <tr key={product.id}><td>{product.name}</td><td>{product.sku || '—'}</td><td>{product.category ?? '—'}</td><td>{product.quantity}</td><td>{currencyFormatter.format(Number(product.price || 0))}</td><td>{currencyFormatter.format(Number(product.value || 0))}</td></tr>)}
         </tbody></table></div>}</section>
       </> : null}
-    </main>
+      </>}
+    </Surface>
   )
 }
 

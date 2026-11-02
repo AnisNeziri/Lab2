@@ -6,8 +6,10 @@ use App\Models\BusinessEvent;
 use App\Models\Category;
 use App\Models\Company;
 use App\Models\Customer;
+use App\Models\GoodsReceiptItem;
 use App\Models\JournalEntry;
 use App\Models\Product;
+use App\Models\PurchaseOrder;
 use App\Models\QualityInspection;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderItem;
@@ -18,7 +20,9 @@ use App\Models\Supplier;
 use App\Models\User;
 use App\Services\AimsToolRegistry;
 use App\Services\AssistantPlanner;
+use App\Services\IntelligenceAssistantService;
 use App\Services\InventoryIntegrityService;
+use App\Services\ShipmentCargoPresentation;
 use App\Services\ShipmentLogisticsService;
 use App\Services\StockMovementService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -179,6 +183,11 @@ class DC5InventoryControlTest extends TestCase
         }
         $this->assertEquals(15, $this->position($p)['in_transit']);
         $this->assertEquals(20, $this->position($p)['incoming']);
+        $this->assertEquals(5, $this->position($p)['not_yet_shipped']);
+        $lines[0]->shipment->update(['status'=>'draft']);
+        $this->assertEquals(13, $this->position($p)['not_yet_shipped']);
+        $this->assertEquals(7, $this->position($p)['in_transit']);
+        $lines[0]->shipment->update(['status'=>'in_transit']);
         $receive = ['warehouse_id' => $warehouse['id'], 'items' => [['id' => $po['items'][0]['id'], 'shipment_item_id' => $lines[0]->id, 'accepted_quantity' => 6]], 'idempotency_key' => (string) Str::uuid()];
         $this->postJson('/api/purchase-orders/'.$po['id'].'/receive', $receive)->assertOk();
         $receive['idempotency_key'] = (string) Str::uuid();
@@ -208,5 +217,107 @@ class DC5InventoryControlTest extends TestCase
             'description' => 'Unattributed standalone cargo', 'unit' => 'm', 'quantity' => 3, 'loaded_quantity' => 3, 'base_quantity' => 3]));
         $this->assertNull($this->position($p)['incoming']);
         $this->assertNull($this->position($p)['in_transit']);
+    }
+
+    public function test_dc5_mobile_receipt_commitment_timeline_health_and_exact_warehouse_lifecycle(): void
+    {
+        [$p, $supplier, $warehouse, $customer] = $this->fixture();
+        $order = $this->order($p, $customer, 1500);
+        $this->assertEquals(3500, $this->position($p)['available']);
+        $operations = $this->getJson('/api/inventory/products/'.$p['id'].'/operations')->assertOk()->json();
+        $this->assertEquals(1500, $operations['commitments'][0]['quantity']);
+        $this->assertEquals('customer_reservation', $operations['commitments'][0]['kind']);
+        $reservedEvent = collect($operations['timeline'])->firstWhere('from_state', 'available');
+        $this->assertEquals(0, $reservedEvent['physical_change']);
+        $this->assertEquals($reservedEvent['before'], $reservedEvent['after']);
+        $this->assertEquals('/fulfillment?order='.$order['id'], $reservedEvent['url']);
+        $this->assertArrayNotHasKey('cost_total', $reservedEvent);
+        $po = $this->postJson('/api/purchase-orders', ['supplier_id' => $supplier->id, 'warehouse_id' => $warehouse['id'],
+            'ordered_at' => now()->toDateString(), 'expected_at' => now()->addDays(2)->toDateString(), 'currency' => 'EUR', 'status' => 'ordered',
+            'items' => [['product_id' => $p['id'], 'description' => 'Fabric', 'unit' => 'm', 'quantity' => 8000, 'unit_price' => 2]]])->assertCreated()->json();
+        $shipment = Shipment::create($this->tenantAttributes(['tracking_number' => 'DC5-MOBILE-8000', 'status' => 'in_transit', 'eta' => now()->addDays(2), 'purchase_order_id' => $po['id'], 'warehouse_id' => $warehouse['id']]));
+        $cargo = ShipmentItem::create($this->tenantAttributes(['shipment_id' => $shipment->id, 'purchase_order_item_id' => $po['items'][0]['id'],
+            'product_id' => $p['id'], 'description' => 'Milano 04', 'unit' => 'm', 'quantity' => 8000, 'planned_quantity' => 8000, 'loaded_quantity' => 8000, 'base_quantity' => 8000]));
+        $this->assertEquals(8000, $this->position($p)['in_transit']);
+        $incoming = app(AimsToolRegistry::class)->execute('get_incoming_supply', [])['data'];
+        $this->assertEquals(8000, $incoming['rows'][0]['quantity']);
+        // Arrived cargo remains incoming until authoritative receipt, but is no longer travelling.
+        $shipment->update(['status' => 'arrived']);
+        $this->assertEquals(0, $this->position($p)['in_transit']);
+        $this->assertEquals(8000, $this->position($p)['arrived_awaiting_receipt']);
+        $lookup = $this->getJson('/api/mobile-warehouse/lookup?code=DC5-M04')->assertOk()->json();
+        $this->assertEquals($cargo->id, $lookup['receivable_lines'][0]['shipment_cargo'][0]['id']);
+        $this->assertEquals(8000, $lookup['receivable_lines'][0]['shipment_cargo'][0]['remaining_base']);
+        $receipt = ['purchase_order_id' => $po['id'], 'purchase_order_item_id' => $po['items'][0]['id'], 'shipment_item_id' => $cargo->id,
+            'warehouse_id' => $warehouse['id'], 'accepted_quantity' => 7900, 'damaged_quantity' => 100, 'idempotency_key' => (string) Str::uuid()];
+        $this->postJson('/api/mobile-warehouse/receive', $receipt)->assertOk();
+        $movements = StockMovement::count();
+        $this->postJson('/api/mobile-warehouse/receive', $receipt)->assertOk();
+        $this->assertEquals($movements, StockMovement::count());
+        $this->assertDatabaseCount('goods_receipts', 1);
+        $state = $this->position($p);
+        $this->assertEquals(13000, $state['physical']);
+        $this->assertEquals(11400, $state['available']);
+        $this->assertEquals(100, $state['damaged']);
+        $this->assertEquals(0, $state['incoming']);
+        $this->assertEquals('received', PurchaseOrder::find($po['id'])->status);
+        $this->assertEquals(8000, GoodsReceiptItem::where('shipment_item_id', $cargo->id)->sum('shipment_received_base_quantity'));
+        $presentation = app(ShipmentCargoPresentation::class)->forShipment($shipment->fresh());
+        $this->assertEquals(8000, $presentation['groups'][0]['receipts'][0]['shipment_quantities'][0]['quantity']);
+        $health = $this->getJson('/api/inventory/health')->assertOk()->json();
+        $this->assertEquals(1, $health['checks']['damaged_blocked']['count']);
+        $this->assertEquals(0, $health['checks']['integrity']['count']);
+        $key = $health['attention'][0]['id'];
+        $this->getJson('/api/inventory/health')->assertOk()->assertJsonPath('attention.0.id', $key);
+        $this->assertDatabaseCount('operational_tasks', 0);
+        $this->assertContains($key, array_column($this->getJson('/api/action-center')->assertOk()->json('attention'), 'id'));
+        $order = $this->action($order, 'allocate');
+        $allocation = $order['allocations'][0];
+        $order = $this->action($order, 'pick', ['allocation_id' => $allocation['id'], 'quantity' => 1500, 'location_id' => $allocation['location_id'], 'inventory_lot_id' => null, 'manual_verification' => true]);
+        $this->assertEquals(13000, $this->position($p)['physical']);
+        $order = $this->action($order, 'pack', ['items' => [['allocation_id' => $allocation['id'], 'quantity' => 1500]]]);
+        $dispatch = ['idempotency_key' => (string) Str::uuid(), 'package_ids' => [$order['packages'][0]['id']]];
+        $this->postJson('/api/sales-orders/'.$order['id'].'/dispatch', $dispatch)->assertOk();
+        $movements = StockMovement::count();
+        $this->postJson('/api/sales-orders/'.$order['id'].'/dispatch', $dispatch)->assertOk();
+        $this->assertEquals($movements, StockMovement::count());
+        $state = $this->position($p);
+        foreach (['physical' => 11500, 'available' => 11400, 'reserved' => 0, 'allocated' => 0, 'damaged' => 100, 'incoming' => 0, 'difference' => 0] as $key => $value) {
+            $this->assertEquals($value, $state[$key], $key);
+        }
+        $reconciliation = $this->getJson('/api/accounting/reconciliation')->assertOk()->json('rows.inventory');
+        $this->assertEquals(0, $reconciliation['difference']);
+        $this->assertTrue($reconciliation['reconciled']);
+        $this->assertSame([], app(InventoryIntegrityService::class)->productSnapshot(Product::findOrFail($p['id']))['issues']);
+        fwrite(STDERR, 'DC5 exact lifecycle: '.json_encode($state).PHP_EOL);
+    }
+
+    public function test_inventory_ask_facts_are_bounded_read_only_and_tenant_scoped(): void
+    {
+        [$p, , $warehouse, $customer] = $this->fixture();
+        $this->order($p, $customer, 1500);
+        $planner = app(AssistantPlanner::class);
+        $plan = $planner->plan('how much Milano 04 do we really have available');
+        $this->assertSame('Milano 04', $plan['term']);
+        $this->assertSame('product', $plan['type']);
+        $this->assertSame('product', $planner->plan('which warehouse has Milano 04')['type']);
+        $this->assertSame('Milano 04', $planner->plan('which warehouse has Milano 04')['term']);
+        $this->assertSame('stock_commitments', $planner->plan('what stock is reserved')['intent']);
+        $this->assertSame('incoming_supply', $planner->plan('what is coming this week')['intent']);
+        $data = app(AimsToolRegistry::class)->execute('get_stock_commitments', [])['data'];
+        $this->assertEquals(1, $data['count']);
+        $this->assertEquals(1500, $data['rows'][0]['quantity']);
+        $this->assertSame('m', $data['rows'][0]['unit']);
+        $reply = app(IntelligenceAssistantService::class)->ask(['question' => 'what stock is reserved', 'language' => 'sq']);
+        $this->assertTrue($reply['read_only']);
+        $this->assertEquals(1500, $reply['cards'][0]['metrics'][0]['value']);
+        $other = Company::factory()->create();
+        User::factory()->create(['company_id' => $other->id, 'role' => 'admin', 'api_token' => hash('sha256', 'dc5-expanded-other'), 'email_verified_at' => now()]);
+        $this->withToken('dc5-expanded-other')->getJson('/api/inventory/products/'.$p['id'].'/operations')->assertNotFound();
+        $this->getJson('/api/inventory/health?warehouse_id='.$warehouse['id'])->assertUnprocessable();
+        $this->getJson('/api/inventory/health')->assertOk()->assertJsonPath('checks.integrity.count', 0)->assertJsonCount(0, 'attention');
+        $this->assertEquals(5000, Product::withoutGlobalScopes()->find($p['id'])->quantity);
+        $this->assertDatabaseCount('operational_tasks', 0);
+        $this->assertEquals(0,app(AimsToolRegistry::class)->execute('get_stock_commitments',[])['data']['count']);
     }
 }

@@ -1,6 +1,7 @@
 // The same route-level permissions drive navigation and direct URL access.
 import { simulationPermissions } from '../pages/strategicSimulationPresentation.js'
 export const pagePermissions = {
+  customers:['customers.manage'],
   workforce:['employees.view'],payroll:['payroll.view'],'my-workforce':['workforce.self'],
   onboarding:['onboarding.view'],
   'strategic-simulation':simulationPermissions,
@@ -29,6 +30,8 @@ export const pagePermissions = {
   'money-accounts': ['financial_accounts.view'],
   tax:['tax.view'], fiscalization:['fiscalization.view'],
   accounting: ['accounting.reports.view'],
+  integrations:['integrations.view'],
+  'system-health':['deployment.view'], security:[],
   'system-integrity': ['system_integrity.view'],
   'warehouse-operations': ['transfers.view'],
   'warehouse-mobile': ['warehouse_mobile.use'],
@@ -44,10 +47,23 @@ export const pagePermissions = {
   cms: ['cms.manage'],
 }
 
-export function canOpenPage(page, permissions = []) {
+export const pageCapabilities = Object.fromEntries(Object.entries({
+  inventory:['products','stock','categories','quality','operations-center','reports'],
+  wms:['warehouse-operations','warehouse-mobile','warehouse-layout','warehouse-3d'],
+  sales:['daily-sales','invoices','fulfillment','order-hub'],crm:['customer-debts','customers'],
+  procurement:['purchase-orders','procurement','suppliers'],shipments:['control-tower','shipments/global-map','shipments/my-shipments','shipments/alerts'],
+  accounting:['accounting','finance','money-accounts'],tax:['tax','fiscalization'],
+  workforce:['workforce','my-workforce'],payroll:['payroll'],automation:['automation-studio'],
+  integrations:['integrations'],analytics:['analytics'],
+  intelligence:['intelligence-assistant','inventory-intelligence','inventory-planning','decision-center','supply-optimizer','strategic-simulation','financial-intelligence','customer-sales-intelligence','decision-learning'],
+}).flatMap(([capability,pages])=>pages.map(page=>[page,capability])))
+
+export function canOpenPage(page, permissions = [], capabilities = null) {
   const pathname = String(page).replace(/^\/+|\/+$/g, '').split(/[?#]/)[0]
   const key = pathname.startsWith('control-tower/') ? 'control-tower' : pathname
+  if (Array.isArray(capabilities) && pageCapabilities[key] && !capabilities.includes(pageCapabilities[key])) return false
   const required = pagePermissions[key]
+  if (key === 'security') return true
   if (key === 'strategic-simulation') return simulationPermissions.every(p=>permissions.includes(p))
   if (key === 'supply-optimizer') return ['analytics.view','analytics.finance','inventory.view','procurement.view','finance.view','financial_accounts.view'].every(p=>permissions.includes(p))
   if (key === 'customer-sales-intelligence') return ['analytics.view', 'customers.manage', 'daily_sales.manage'].every(p => permissions.includes(p))

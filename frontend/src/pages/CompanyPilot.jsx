@@ -93,6 +93,7 @@ export default function CompanyPilot() {
     {error&&<p role="alert" className="page-error">{error}</p>}{busy&&!data&&<p role="status">{tx('Loading observations…')}</p>}
     <nav className="pilot-tabs" aria-label={tx('Pilot views')}>{tabs.map(([key,en,sq])=><button key={key} aria-pressed={tab===key} onClick={()=>setTab(key)}>{language === 'sq' ? sq : en}</button>)}</nav>
     {data&&tab==='scorecard'&&<Scorecard report={data.readiness} tx={tx} label={label}/>}
+    {data&&tab==='plan'&&<p><Link to="/system-integrity">{language==='sq'?'Kontrollo gatishmërinë para aktivizimit':'Review commissioning before activation'}</Link></p>}
     {data&&tab==='plan'&&<Plan key={data.readiness.profile?.revision||0} data={data} users={data.users} onSaved={load} tx={tx} label={label}/>}
     {tab==='imports'&&<Imports tx={tx} label={label}/>}{tab==='feedback'&&<Feedback tx={tx} label={label}/>}{tab==='evidence'&&<PilotEvidence embedded/>}{tab==='reports'&&<Reports tx={tx} label={label}/>}{tab==='support'&&<Support tx={tx}/>}
   </main>

@@ -11,4 +11,9 @@ return [
     'backup_keep' => max(2, (int) env('AIMS_BACKUP_KEEP', 14)),
     'mysqldump' => env('AIMS_MYSQLDUMP', 'mariadb-dump'),
     'mysql' => env('AIMS_MYSQL', 'mariadb'),
+    // Optional operator identities, never additional privileges on the everyday runtime account.
+    'backup_db_username' => env('AIMS_BACKUP_DB_USERNAME'),
+    'backup_db_password_file' => env('AIMS_BACKUP_DB_PASSWORD_FILE'),
+    'restore_db_username' => env('AIMS_RESTORE_DB_USERNAME'),
+    'restore_db_password_file' => env('AIMS_RESTORE_DB_PASSWORD_FILE'),
 ];

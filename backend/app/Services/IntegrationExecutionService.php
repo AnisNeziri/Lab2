@@ -32,7 +32,7 @@ class IntegrationExecutionService
         ]);
 
         try {
-            $result = $callback();
+            $result = app(\App\Services\Platform\PlatformTrace::class)->measure('integration.call',$callback,['entity_id'=>$provider->id]);
             $log->update(['status' => 'succeeded', 'completed_at' => now(), 'error' => null]);
             $provider->update([
                 'health_state' => 'healthy', 'last_success_at' => now(),

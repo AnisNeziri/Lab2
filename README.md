@@ -13,7 +13,7 @@ Controlled company opening: [DC1 completion report](docs/DC1_ONBOARDING_REPORT.m
 
 | Layer | Technology |
 |---|---|
-| Backend | Laravel 12; PHP >=8.2 (certified with bundled PHP 8.3.35) |
+| Backend | Laravel 12; production PHP 8.3.36+ (verified Windows bundle 8.3.36-1) |
 | Frontend | React 19 + Vite 6 |
 | Styling | Tailwind CSS 3.4 + Custom CSS |
 | Database (SQL) | MariaDB web path; SQLite portable desktop path. Current schema is defined by migrations. |
@@ -427,3 +427,5 @@ UBT — Computer Science and Engineering
 Lab Course 2 · Stack #7 · Academic Year 2025/2026
 
 > Repository invite for professor: **elton.boshnjaku@ubt-uni.net**
+
+Security and commercial deployment review: [DC8 evidence and remaining release blockers](docs/dc8/README.md).

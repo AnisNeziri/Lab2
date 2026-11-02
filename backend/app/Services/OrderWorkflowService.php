@@ -17,11 +17,25 @@ class OrderWorkflowService
         $dispatches=$order->dispatches()->get();
         $sales=DailySale::whereIn('id',$dispatches->pluck('daily_sale_id')->filter())->get(['id','sale_number','sale_date','total_amount','paid_amount','payment_method']);
         $invoices=Invoice::whereIn('daily_sale_id',$sales->pluck('id'))->where('document_type','invoice')->get(['id','daily_sale_id','invoice_number','status','grand_total','total_paid']);
+        $payments=CustomerDebtTransaction::where('customer_id',$order->customer_id)->where('metadata->sales_order_id',$order->id)->where('type','payment')->get();
+        $financial=[];$journals=[];
+        if(app(PermissionService::class)->roleHasPermission(Auth::user()->role,'financial_accounts.view')) {
+            $financial=\App\Models\FinancialAccountTransaction::whereIn('id',$payments->pluck('financial_account_transaction_id')->filter())->get(['id','financial_account_id','transaction_date','amount','currency','status','journal_entry_id','reversed_at']);
+        }
+        if(app(PermissionService::class)->roleHasPermission(Auth::user()->role,'accounting.journal.view')) {
+            $journals=\App\Models\JournalEntry::where(function($q)use($sales,$invoices,$payments,$financial){
+                $q->where(fn($x)=>$x->where('source_type','daily_sale')->whereIn('source_id',$sales->pluck('id')))
+                  ->orWhere(fn($x)=>$x->where('source_type','invoice')->whereIn('source_id',$invoices->pluck('id')))
+                  ->orWhere(fn($x)=>$x->where('source_type','customer_debt_transaction')->whereIn('source_id',$payments->pluck('id')))
+                  ->orWhereIn('id',collect($financial)->pluck('journal_entry_id')->filter());
+            })->orderBy('id')->limit(100)->get(['id','journal_number','source_type','source_id','posting_date','status','reversal_of_id','reversed_at']);
+        }
         return [
+            'financial_transactions'=>$financial,'journals'=>$journals,
             'sales'=>$sales,
             'invoices'=>$invoices,
             'credit_notes'=>Invoice::whereIn('original_invoice_id',$invoices->pluck('id'))->where('document_type','credit_note')->get(['id','original_invoice_id','invoice_number','status','grand_total']),
-            'payments'=>CustomerDebtTransaction::where('customer_id',$order->customer_id)->where('metadata->sales_order_id',$order->id)->where('type','payment')->get(),
+            'payments'=>$payments,
             'recognition_policy'=>'dispatch',
             'next_action'=>$this->nextAction($order),
         ];

@@ -7,8 +7,15 @@ use Illuminate\Support\Facades\Auth;
 /** Explicit allowlists: adding a provider requires code review, never user code. */
 class AutomationRegistry
 {
-    public const SCHEDULED_TRIGGERS=['inventory.low_stock','inventory.stockout','customer.payment_overdue','customer.credit_warning','purchase_order.overdue','shipment.delayed','shipment.eta_changed','document.expiring','integration.failed','task.overdue'];
+    public const INVENTORY_ISSUE_TRIGGERS = ['inventory.low_stock','inventory.stockout','inventory.quality_hold','inventory.transfer_stale','inventory.count_variance','inventory.reservation_invalid'];
+    public const ISSUE_TRIGGERS = [...self::INVENTORY_ISSUE_TRIGGERS,'customer.payment_overdue','customer.credit_warning','purchase_order.overdue','shipment.delayed','document.expiring','integration.failed','accounting.exception_detected','fiscalization.review_required','payroll.review_required','payroll.unpaid','employee.contract_expiring'];
+    public const SCHEDULED_TRIGGERS=['accounting.exception_detected','fiscalization.review_required','payroll.review_required','payroll.unpaid','employee.contract_expiring','operating.brief','inventory.quality_hold','inventory.transfer_stale','inventory.count_variance','inventory.reservation_invalid','inventory.low_stock','inventory.stockout','customer.payment_overdue','customer.credit_warning','purchase_order.overdue','shipment.delayed','shipment.eta_changed','document.expiring','integration.failed','task.overdue'];
     public const SOURCES = [
+        'CustomerQuotation'=>[\App\Models\CustomerQuotation::class,'customers.manage','/customers?quote='],
+        'Company'=>[\App\Models\Company::class,'tasks.view','/action-center?company='],
+        'PayrollRun'=>[\App\Models\PayrollRun::class,'payroll.view','/workforce?tab=payroll&run='],
+        'EmploymentTerm'=>[\App\Models\EmploymentTerm::class,'employees.view','/workforce?term='],
+        'FiscalReceipt'=>[\App\Models\FiscalReceipt::class,'fiscalization.view','/fiscalization?receipt='],
         'SupplyOptimizationPlan'=>[\App\Models\SupplyOptimizationPlan::class,'analytics.finance','/supply-optimizer?plan='],
         'DecisionLearningRecord'=>[\App\Models\DecisionLearningRecord::class,'analytics.view','/decision-learning?record='],
         'CustomerSalesSnapshot'=>[\App\Models\CustomerSalesSnapshot::class,'analytics.view','/customer-sales-intelligence?snapshot='],
@@ -19,7 +26,10 @@ class AutomationRegistry
         'InventoryIntelligenceAlert'=>[\App\Models\InventoryIntelligenceAlert::class,'analytics.view','/inventory-intelligence?alert='],
         'InventoryRecommendation'=>[\App\Models\InventoryRecommendation::class,'analytics.view','/inventory-intelligence?recommendation='],
         'AnalyticsIssue'=>[\App\Models\AnalyticsIssue::class,'analytics.data_quality','/analytics?tab=data_quality&issue='],
-        'Product'=>[Product::class,'products.manage','/products?product='],
+        'Product'=>[Product::class,'inventory.view','/products?product='],
+        'WarehouseStock'=>[\App\Models\WarehouseStock::class,'inventory.view','/warehouse-operations?balance='],
+        'StockTransfer'=>[\App\Models\StockTransfer::class,'transfers.view','/warehouse-operations?tab=transfers&transfer='],
+        'InventoryCountSession'=>[\App\Models\InventoryCountSession::class,'inventory.counts.manage','/operations-center?tab=counts&count='],
         'SalesOrder'=>[SalesOrder::class,'fulfillment.view','/fulfillment?order='],
         'OrderIntake'=>[OrderIntake::class,'fulfillment.view','/order-hub?intake='],
         'Customer'=>[Customer::class,'debts.view','/customer-debts?customer='],
@@ -36,6 +46,12 @@ class AutomationRegistry
     public function triggers(): array
     {
         $definitions = [
+            'quotation.sent'=>['Customer quotation sent for follow-up','Oferta e klientit u dërgua për ndjekje','CustomerQuotation',['customer_id','expires_on','status']],
+            'operating.brief'=>['Operating brief ready','Përmbledhja operative është gati','Company',[]],
+            'payroll.review_required'=>['Payroll needs review','Listëpagesa kërkon rishikim','PayrollRun',['status']],
+            'payroll.unpaid'=>['Posted payroll settlement review','Rishikim shlyerjeje listëpagese','PayrollRun',['status']],
+            'employee.contract_expiring'=>['Employment terms approaching end','Kushtet e punësimit afër fundit','EmploymentTerm',['effective_to','days_remaining']],
+            'fiscalization.review_required'=>['Fiscal result needs human verification','Rezultati fiskal kërkon verifikim','FiscalReceipt',['status']],
             ...array_combine(['optimizer.plan.generated','optimizer.plan.stale','optimizer.plan.infeasible','optimizer.critical_constraint','optimizer.plan.approved','optimizer.plan.executed'],array_map(fn($en,$sq)=>[$en,$sq,'SupplyOptimizationPlan',['status','plan_id']],['Supply plan generated','Supply plan stale','Supply plan infeasible','Critical supply constraint','Supply plan reviewed','Supply execution observed'],['Plani i furnizimit u gjenerua','Plani i furnizimit është i vjetruar','Plani i furnizimit është i parealizueshëm','Kufizim kritik i furnizimit','Plani i furnizimit u rishikua','U vëzhgua realizimi i furnizimit'])),
             ...array_combine(array_map(fn($e)=>'intelligence.learning.'.$e,['outcome_completed','performance_degraded','challenger_ready','policy_review_suggested','champion_promoted','champion_rolled_back']),array_map(fn($en,$sq)=>[$en,$sq,'DecisionLearningRecord',['state','samples']],['Decision outcome completed','Decision performance review','Policy challenger ready','Policy review suggested','Champion policy promoted','Champion policy rolled back'],['Rezultati i vendimit përfundoi','Rishikim i performancës','Kandidati i politikës është gati','Sugjerohet rishikim i politikës','Politika aktive u promovua','Politika aktive u rikthye'])),
             ...array_combine(array_map(fn($e)=>'customer.intelligence.'.$e,['activity_changed','reorder_window','sales_opportunity','concentration_changed','high_value_inactivity']),array_map(fn($en,$sq)=>[$en,$sq,'CustomerSalesSnapshot',['customer_id','product_id','state','confidence','change_points','issue_count']],['Customer activity changed','Likely reorder review','Related product review','Sales concentration changed','High-value customer inactivity'],['Aktiviteti i klientit ndryshoi','Rishikim i riporositjes','Rishikim i produktit të lidhur','Përqendrimi i shitjeve ndryshoi','Joaktivitet i klientit me vlerë të lartë'])),
@@ -65,15 +81,19 @@ class AutomationRegistry
             'inventory_forecast.updated'=>['Inventory forecast updated','Parashikimi i stokut u përditësua','InventoryRecommendation',['horizon','predicted_demand','risk']],
             'inventory_stockout_risk.detected'=>['Forecast stockout risk','Rrezik i parashikuar i mungesës së stokut','InventoryRecommendation',['risk','recommended_quantity','stockout_date']],
             'analytics.data_quality_problem'=>['Analytics data-quality problem','Problem i cilësisë së të dhënave','AnalyticsIssue',['severity','code']],
-            'inventory.low_stock'=>['Low stock','Stok i ulët','Product',['available','minimum','shortage']],
-            'inventory.stockout'=>['Stockout','Stok i mbaruar','Product',['available','minimum','shortage']],
+            'inventory.low_stock'=>['Low stock','Stok i ulët','Product',['available','minimum','shortage','reserved','incoming','demand']],
+            'inventory.quality_hold'=>['Quality hold requires review','Stoku në kontroll kërkon rishikim','WarehouseStock',['quantity','warehouse_id','product_id']],
+            'inventory.transfer_stale'=>['Internal transfer open more than 7 days','Transferim i hapur më shumë se 7 ditë','StockTransfer',['status','review_days']],
+            'inventory.count_variance'=>['Count variance requires review','Diferenca e numërimit kërkon rishikim','InventoryCountSession',['status','variance_items']],
+            'inventory.reservation_invalid'=>['Expired or inactive reservation lot','Lot i skaduar ose joaktiv në rezervim','SalesOrder',['status','invalid_allocations']],
+            'inventory.stockout'=>['Stockout','Stok i mbaruar','Product',['available','minimum','shortage','reserved','incoming','demand']],
             'sales_order.confirmed'=>['Order confirmed','Porosia u konfirmua','SalesOrder',['total_amount','status','customer_id']],
             'order.payment_received'=>['Order payment received','Pagesa e porosisë u pranua','SalesOrder',['total_amount','status','customer_id','amount']],
             'packing.completed'=>['Order packed','Porosia u paketua','SalesOrder',['total_amount','status']],
             'dispatch.departed'=>['Order dispatched','Porosia u dërgua','SalesOrder',['total_amount','status']],
             'delivery.failed'=>['Delivery failed','Dorëzimi dështoi','SalesOrder',['status']],
             'customer_return.created'=>['Return requested','Kthimi u kërkua','SalesOrder',['status']],
-            'customer.payment_overdue'=>['Customer overdue balance','Borxhi i vonuar i klientit','Customer',['overdue','total_exposure','credit_limit']],
+            'customer.payment_overdue'=>['Customer overdue balance','Borxhi i vonuar i klientit','Customer',['overdue','total_exposure','credit_limit','days_overdue']],
             'customer.credit_warning'=>['Customer credit warning','Paralajmërim kredie','Customer',['overdue','total_exposure','credit_limit','utilization_percent']],
             'purchase_order.overdue'=>['Purchase order overdue','Porosia e blerjes është vonuar','PurchaseOrder',['status','expected_at','total_amount']],
             'purchase_order.received'=>['Purchase order received','Porosia e blerjes u pranua','PurchaseOrder',['status','total_amount']],
@@ -87,25 +107,32 @@ class AutomationRegistry
             'integration.failed'=>['Integration degraded','Integrimi ka probleme','IntegrationProvider',['health_state']],
             'task.overdue'=>['Task overdue','Detyra është vonuar','OperationalTask',['status','priority','due_at']],
         ];
-        return collect($definitions)->map(fn($d,$key)=>['key'=>$key,'label'=>$d[0],'label_sq'=>$d[1],'source'=>$d[2],'permission'=>self::SOURCES[$d[2]][1],'scheduled'=>in_array($key,self::SCHEDULED_TRIGGERS,true),'fields'=>array_merge(['reference'], $d[3])])->all();
+        if(!app(CustomerWorkspaceService::class)->installed())unset($definitions['quotation.sent']);
+        return collect($definitions)->map(fn($d,$key)=>['key'=>$key,'label'=>$d[0],'label_sq'=>$d[1],'source'=>$d[2],'permission'=>self::SOURCES[$d[2]][1],'scheduled'=>in_array($key,self::SCHEDULED_TRIGGERS,true),'category'=>app(AutomationOperations::class)->category($key),'fields'=>array_merge(['reference'], $d[3])])->all();
     }
 
     public function actions(): array
     {
-        return [
+        $actions = [
             'create_task'=>['label'=>'Create operational task','label_sq'=>'Krijo detyrë operative','risk'=>'LOW_RISK','permission'=>'tasks.create'],
             'notify'=>['label'=>'Send notification','label_sq'=>'Dërgo njoftim','risk'=>'LOW_RISK','permission'=>'tasks.create'],
             'request_document_review'=>['label'=>'Request document approval','label_sq'=>'Kërko miratim dokumenti','risk'=>'APPROVAL_REQUIRED','permission'=>'documents.review','source'=>'Document'],
             'purchase_request_draft'=>['label'=>'Prepare purchase request draft','label_sq'=>'Përgatit draft kërkese për blerje','risk'=>'CONTROLLED','permission'=>'procurement.manage','source'=>'Product'],
         ];
+        $authorities=['create_task'=>'OperationalTask / ActionCenterService','notify'=>'NotificationService (in-app)', 'request_document_review'=>'DocumentService / ApprovalService','purchase_request_draft'=>'ProcurementService::createRequest'];
+        foreach($actions as $key=>&$action) $action+=['safety_level'=>$key==='notify'?1:2,'authority'=>$authorities[$key],
+            'input_schema'=>['type'=>'object','allowed_fields'=>['title','description','assigned_user_id','assigned_role','assigned_team','due_days','quantity','escalate_after_days']],
+            'idempotency'=>'Durable company/rule/action/source identity; transactional result ledger', 'audit'=>'AutomationExecution + ActivityLog',
+            'human_commitment_required'=>true];
+        return $actions;
     }
 
     public function source(string $type, int $id): mixed
     {
         $definition=self::SOURCES[$type] ?? null;
         if (!$definition) return null;
-        if (in_array($type,['SupplyOptimizationPlan','FinancialIntelligenceSnapshot','CustomerSalesSnapshot']) && !$this->canAccessSource($type)) return null;
-        $source=$definition[0]::query()->where('company_id',Auth::user()->company_id)->find($id);
+        if (in_array($type,['SupplyOptimizationPlan','FinancialIntelligenceSnapshot','CustomerSalesSnapshot','CustomerQuotation']) && !$this->canAccessSource($type)) return null;
+        $source=$type==='Company' ? \App\Models\Company::whereKey(Auth::user()->company_id)->whereKey($id)->first() : $definition[0]::query()->where('company_id',Auth::user()->company_id)->find($id);
         if($type==='DecisionLearningRecord'&&$source&&!in_array($source->domain,app(DecisionLearningService::class)->allowedDomains()))return null;
         if ($source instanceof Document) return app(DocumentService::class)->visibleQuery()->find($id);
         return $source;
@@ -114,6 +141,10 @@ class AutomationRegistry
     public function url(string $type, int $id): ?string
     {
         $d=self::SOURCES[$type] ?? null;
+        if ($type === 'WarehouseStock' && $this->canAccessSource($type)) {
+            $row=$this->source($type,$id);
+            return $row ? '/warehouse-operations?product='.$row->product_id.'&warehouse='.$row->warehouse_id : null;
+        }
         if($type==='DecisionLearningRecord'){
             if(!$d||!app(PermissionService::class)->roleHasPermission(Auth::user()->role,$d[1]))return null;
             $r=$this->source($type,$id);if(!$r)return null;
@@ -135,6 +166,7 @@ class AutomationRegistry
         $d=self::SOURCES[$type] ?? null;
         if (!$d || !($role ??= Auth::user()?->role)) return false;
         $required=$type==='SupplyOptimizationPlan'?SupplyOptimizerService::PERMISSIONS:($type==='CustomerSalesSnapshot'?CustomerSalesIntelligenceService::PERMISSIONS:($type==='FinancialIntelligenceSnapshot'?['analytics.finance','finance.view','financial_accounts.view']:[$d[1]]));
+        if($type==='CustomerQuotation')$required=['customers.manage','fulfillment.view'];
         foreach($required as $permission) if(!app(PermissionService::class)->roleHasPermission($role,$permission)) return false;
         return true;
     }
@@ -162,6 +194,62 @@ class AutomationRegistry
         return $context;
     }
 
+
+    /** Trigger evidence remains immutable; execution always evaluates current source facts. */
+    public function currentContext(BusinessEvent $event): array
+    {
+        $context=$this->context($event);
+        $source=$this->source($event->entity_type,(int)$event->entity_id);
+        if (!$source || !$context) return [];
+        foreach($this->triggers()[$event->event_type]['fields'] as $field) {
+            if ($field!=='reference' && array_key_exists($field,$source->getAttributes())) $context[$field]=$source->getRawOriginal($field);
+        }
+        if ($source instanceof Product) {
+            $stock=app(InventorySnapshotService::class)->forProduct($source);
+            $context=array_replace($context,['available'=>$stock['available'],'reserved'=>$stock['reserved'],'incoming'=>$stock['incoming_quantity_complete']?$stock['incoming']:null,
+                'demand'=>$stock['committed_outgoing'],'unit'=>$source->unit,'minimum'=>(float)$source->min_quantity,'shortage'=>max(0,(float)$source->min_quantity-$stock['available'])]);
+        }
+        if ($source instanceof Customer) {
+            $facts=app(CustomerCreditService::class)->exposure($source);
+            $context=array_replace($context,$facts,['days_overdue'=>$facts['oldest_overdue_date'] ? max(0,(int)\Carbon\CarbonImmutable::parse($facts['oldest_overdue_date'])->diffInDays(\App\Support\CompanyClock::today())) : 0]);
+        }
+        if ($source instanceof \App\Models\WarehouseStock) $context['quantity']=(float)$source->quarantine_quantity;
+        if ($source instanceof \App\Models\InventoryCountSession) { $context['variance_items']=$source->items()->whereNotNull('counted_quantity')->where('variance_quantity','!=',0)->count(); }
+        if ($source instanceof \App\Models\StockTransfer) $context['review_days']=$source->dispatched_at ? max(0,(int)$source->dispatched_at->diffInDays(now())) : 0;
+        if ($source instanceof \App\Models\SalesOrder && $event->event_type==='inventory.reservation_invalid') $context['invalid_allocations']=$source->allocations()->where('status','!=','released')->whereRaw('quantity > dispatched_quantity')->whereHas('lot',fn($q)=>$q->where('status','!=','active')->orWhereDate('expiry_at','<',\App\Support\CompanyClock::today()))->count();
+        if ($source instanceof \App\Models\EmploymentTerm) $context['days_remaining']=$source->effective_to ? (int)\App\Support\CompanyClock::today()->diffInDays($source->effective_to,false) : null;
+        if ($source instanceof \App\Models\InventoryRecommendation) $context['qualified']=$source->prediction && $source->prediction->valid_until?->gt(now()) && !in_array($source->status,['superseded','dismissed','expired'],true)
+            && (($source->explanation['coverage_supported']??false) || in_array($source->explanation['confidence']??null,['high','medium'],true));
+        return $context;
+    }
+
+    public function issueActive(string $trigger, $source, array $facts): bool
+    {
+        if (!$source) return false;
+        $today=\App\Support\CompanyClock::today();
+        return match($trigger) {
+            'inventory.low_stock'=>(float)($facts['available']??INF)<(float)$source->min_quantity,
+            'inventory.stockout'=>(float)($facts['available']??INF)<=0,
+            'inventory.quality_hold'=>(float)$source->quarantine_quantity>0,
+            'inventory.transfer_stale'=>in_array($source->status,['in_transit','partially_received'],true) && $source->dispatched_at?->lt(now()->subDays(7)),
+            'inventory.count_variance'=>in_array($source->status,['in_progress','submitted','recount_required'],true) && $source->items()->whereNotNull('counted_quantity')->where('variance_quantity','!=',0)->exists(),
+            'inventory.reservation_invalid'=>!in_array($source->status,['cancelled','delivered'],true) && $source->allocations()->where('status','!=','released')->whereRaw('quantity > dispatched_quantity')->whereHas('lot',fn($q)=>$q->where('status','!=','active')->orWhereDate('expiry_at','<',$today))->exists(),
+            'customer.payment_overdue'=>(float)($facts['overdue']??0)>0,
+            'customer.credit_warning'=>($facts['utilization_percent']??0)>=90,
+            'purchase_order.overdue'=>!in_array($source->status,['received','completed','cancelled'],true) && $source->expected_at?->lt($today),
+            'shipment.delayed'=>!$source->arrival_date && !in_array($source->status,['delivered','cancelled'],true) && $source->eta?->lt(now()),
+            'document.expiring'=>$source->status!=='archived' && $source->expiry_date && $source->expiry_date->lte($today->addDays(30)),
+            'integration.failed'=>$source->enabled && in_array($source->health_state,['error','degraded'],true),
+            'accounting.exception_detected'=>$source->status==='open',
+            'fiscalization.review_required'=>in_array($source->status,['failed','unknown_outcome','unknown','needs_review'],true),
+            'payroll.review_required'=>in_array($source->status,['needs_review','calculated'],true),
+            'payroll.unpaid'=>$source->status==='posted',
+            'employee.contract_expiring'=>$source->effective_to && $source->effective_to->lte($today->addDays(30)) && in_array($source->employee?->status,['active','on_leave'],true)
+                && !$source->employee->terms()->where('effective_from','>',$source->effective_from)->exists(),
+            default=>true,
+        };
+    }
+
     public function templates(): array
     {
         $conditions=[
@@ -175,7 +263,7 @@ class AutomationRegistry
             'name'=>$t['label'],'name_sq'=>$t['label_sq'],'trigger'=>$t['key'],'enabled'=>false,
             'description'=>'Review the source record and take the appropriate action.',
             'conditions'=>['all'=>isset($conditions[$t['key']])?[$conditions[$t['key']]]:[]],
-            'actions'=>[['type'=>'create_task','title'=>$t['label'],'due_days'=>1]],'priority'=>'normal',
+            'actions'=>[['type'=>$t['key']==='operating.brief'?'notify':'create_task','title'=>$t['label'],'assigned_team'=>match($t['category']){'sales'=>'sales','purchasing','shipments'=>'purchasing','finance','tax'=>'finance','workforce'=>str_starts_with($t['key'],'payroll.')?'finance':'hr','documents','operations'=>'management',default=>'warehouse'},'due_days'=>str_starts_with($t['key'],'fiscalization.')?0:($t['category']==='sales'?2:1),'escalate_after_days'=>2]],'priority'=>str_starts_with($t['key'],'fiscalization.')?'urgent':'normal',
         ])->values()->all();
     }
 }

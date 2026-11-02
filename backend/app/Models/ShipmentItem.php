@@ -29,4 +29,5 @@ class ShipmentItem extends Model
     public function container(): BelongsTo { return $this->belongsTo(ShipmentContainer::class, 'shipment_container_id'); }
     public function purchaseOrderItem(): BelongsTo { return $this->belongsTo(PurchaseOrderItem::class); }
     public function product(): BelongsTo { return $this->belongsTo(Product::class); }
+    public function receiptItems(): \Illuminate\Database\Eloquent\Relations\HasMany { return $this->hasMany(GoodsReceiptItem::class); }
 }

@@ -149,7 +149,7 @@ class SearchService
         }
 
         // Suggest close matches, but never silently select a different record.
-        if (collect($result)->every(fn (Collection $items) => $items->isEmpty()) && strlen($term) >= 3) {
+        if (collect($result)->every(fn (Collection $items) => $items->isEmpty()) && strlen($term) >= 3 && mb_strlen($term)<=80 && str_word_count($term)<=4) {
             $lookup = app(AssistantEntityResolver::class)->resolve($term);
             $suggestions = $lookup['entity'] ? [$lookup['entity']] : $lookup['choices'];
             $groups = ['product'=>'products','customer'=>'customers','supplier'=>'suppliers','shipment'=>'shipments','purchase_order'=>'purchase_orders','sales_order'=>'sales_orders','warehouse'=>'warehouses'];

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useTranslation } from '../hooks/useTranslation'
 import { useEffect, useState } from 'react'
 import { getCmsPages, updateCmsPage } from '../api/cms'
@@ -68,7 +69,7 @@ export default function Cms() {
   return (
     <main className="cms-page page-stack">
       <section className="card">
-        <h1>{text("Site Content", "Përmbajtja e faqes")}</h1>
+        <Link to="/superadmin">{text("Back to platform administration", "Kthehu te administrimi i platformës")}</Link><h1>{text("Public website content", "Përmbajtja e faqes publike")}</h1>
         <p className="page-intro">
           {text('Edit the public landing page text. These changes do not affect your inventory data.','Ndryshoni tekstin e faqes publike. Këto ndryshime nuk ndikojnë në të dhënat e inventarit.')}
         </p>

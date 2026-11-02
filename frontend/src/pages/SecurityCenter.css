@@ -1,0 +1,47 @@
+/* Administration uses the same surfaces and controls as operational workspaces. */
+.security-center { color:var(--text-color); min-width:0; }
+.security-center h2 { margin:0 0 var(--space-3); }
+.security-panel { min-width:0; padding:var(--ui-panel-padding); margin:var(--space-4) 0; background:var(--card-bg); border:1px solid var(--border-color); border-radius:var(--ui-radius); }
+.security-panel p { max-width:85ch; color:var(--text-muted); line-height:1.6; font-size:14px; margin:var(--space-2) 0 var(--space-4); }
+.security-panel label { display:grid; gap:6px; margin:var(--space-3) 0; font-size:13px; }
+.security-panel label:has(input[type=checkbox]) { display:flex; gap:var(--space-2); align-items:center; }
+.security-panel :is(input:not([type=checkbox]),select) { width:100%; min-width:0; max-width:100%; background:var(--card-bg); color:var(--text-color); border:1px solid var(--border-color); border-radius:var(--ui-radius-sm); padding:var(--space-2) var(--space-3); font:inherit; }
+.security-panel :is(input[type=checkbox],input[type=radio]) { flex:0 0 16px; width:16px; height:16px; accent-color:var(--ui-primary-fill); }
+.security-panel input[type=file] { height:auto; line-height:1.5; }
+.security-panel fieldset { min-width:0; border:1px solid var(--border-color); border-radius:var(--ui-radius-sm); padding:var(--space-3) var(--space-4); }
+.security-panel legend { padding:0 var(--space-2); font-size:13px; font-weight:600; }
+.security-policy-form { max-width:640px; }
+.security-table { max-width:100%; min-width:0; overflow:auto; overscroll-behavior-x:contain; }
+.security-table table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+.security-table :is(th,td) { text-align:left; border-bottom:1px solid var(--border-color); vertical-align:top; }
+.security-table :is(code,td) { overflow-wrap:anywhere; }
+.security-table small { display:block; margin-top:var(--space-1); color:var(--text-muted); }
+.security-panel details { margin:var(--space-3) 0; padding:var(--space-3) 0; border-bottom:1px solid var(--border-color); }
+.security-panel summary { cursor:pointer; font-size:14px; }
+.security-panel pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:360px; overflow:auto; font-size:12px; padding:var(--space-3); background:var(--surface-soft); border-radius:var(--ui-radius-sm); }
+.security-actions,.security-section-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:var(--space-3); }
+.security-actions { justify-content:flex-start; align-items:end; margin:var(--space-4) 0; }
+.security-actions label { flex:0 1 320px; margin:0; }
+.security-section-heading h2 { margin:0; }
+.security-section-heading p { margin-bottom:0; }
+.security-section-heading + .security-table { margin-top:var(--space-4); }
+.security-notice { display:block; padding:var(--space-3) var(--space-4); border:1px solid color-mix(in srgb,var(--ui-warning) 30%,var(--border-color)); border-radius:var(--ui-radius-sm); background:color-mix(in srgb,var(--ui-warning) 5%,var(--card-bg)); color:var(--text-color); font-size:14px; line-height:1.6; }
+.security-notice.is-error { border-color:var(--ui-danger); color:var(--ui-danger); }
+.security-notice button { margin-inline-start:var(--space-3); }
+.security-check { display:grid; grid-template-columns:minmax(140px,1fr) minmax(100px,140px) minmax(0,2.5fr); align-items:start; gap:var(--space-4); padding:var(--space-4) 0; border-bottom:1px solid var(--border-color); font-size:13px; }
+.security-check > :last-child { color:var(--text-muted); line-height:1.55; overflow-wrap:anywhere; }
+.security-check .workspace-status { justify-self:start; }
+.security-capabilities { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr)); gap:0 var(--space-4); margin:var(--space-4) 0; }
+.security-capabilities label { margin:0; padding:var(--space-3) 0; }
+.security-recommendations { padding-left:var(--space-5); font-size:14px; line-height:1.6; color:var(--text-muted); }
+.security-recommendations li { margin:var(--space-2) 0; }
+.security-license-facts dd { font-size:18px; }
+.security-license-facts small { font-size:12px; }
+.security-center a { color:var(--primary-color); text-underline-offset:3px; }
+@media(max-width:650px) {
+ .security-check { grid-template-columns:minmax(0,1fr) auto; gap:var(--space-2); }
+ .security-check > :last-child { grid-column:1/-1; }
+ .security-actions { align-items:stretch; }
+ .security-actions label { flex-basis:100%; }
+ .security-table table { min-width:580px; }
+}

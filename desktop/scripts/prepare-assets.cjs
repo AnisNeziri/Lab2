@@ -64,6 +64,7 @@ validateFrontendBundle()
 function findPhpSource() {
   const candidates = [
     process.env.AIMS_PHP_SOURCE,
+    path.join(desktop, 'runtime', 'php-'+JSON.parse(fs.readFileSync(path.join(root,'RELEASE.json'),'utf8')).toolchain.php_windows_build),
     path.join(desktop, 'runtime', 'php'),
     process.env.PHP_HOME,
   ].filter(Boolean)

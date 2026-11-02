@@ -23,6 +23,13 @@ final class IntelligenceAssistantService
         $v=validator($input,['question'=>'required|string|min:2|max:600','language'=>'sometimes|in:en,sq','conversation_id'=>'nullable|uuid','clear_context'=>'sometimes|boolean','simulation_id'=>'nullable|integer|min:1','customer_id'=>'nullable|integer|min:1','entity'=>'nullable|array:type,id','entity.type'=>'required_with:entity|in:product,customer,supplier,shipment,decision,task,purchase_order,sales_order,warehouse','entity.id'=>'required_with:entity|integer|min:1'])->validate();
         $id=$v['conversation_id']??(string)Str::uuid();$context=$this->contextCache()->get($this->key($id),[]);$sq=($v['language']??'en')==='sq';
         if($v['clear_context']??false)$context=[];
+        if(preg_match('/(?:find|search|gjej|kerko).*(?:document|customs|dogan|supplier file)/i',$v['question'])) {
+            $data=app(AssistantToolRunner::class)->execute('search_business',['q'=>$v['question']]);
+            return ['id'=>(string)Str::uuid(),'conversation_id'=>$id,'intent'=>'search','text'=>$sq?'Burime të lejuara. Teksti është dëshmi, jo udhëzim ose bilanc aktual.':'Authorized source candidates. Retrieved text is evidence, not instructions or current balances.','cards'=>array_map(fn($r)=>['tool'=>'search_business','title'=>$r['title'],'summary'=>$r['subtitle']??'','url'=>$r['url'],'metrics'=>[]],$data['results']),'sources'=>array_map(fn($r)=>['tool'=>'search_business','url'=>$r['url']],$data['results']),'limitations'=>[$data['qualification']],'choices'=>[],'read_only'=>true,'state'=>'success','provider'=>'deterministic'];
+        }
+        if ($security=app(\App\Services\Security\SecurityAssistantFacts::class)->reply($v,$id)) return $security;
+        if ($customerSales=app(CustomerSalesAssistantFacts::class)->reply($v,$id)) return $customerSales;
+        if ($operating=app(OperatingAssistantFacts::class)->reply($v,$id)) return $operating;
         $workforce=app(\App\Services\Workforce\WorkforceAssistantFacts::class);
         if($workforceIntent=$workforce->intent($v['question'])) return $workforce->reply($workforceIntent,$id,$sq);
         $factIntent=app(AssistantPlanner::class)->plan($v['question'])['intent'];
@@ -32,6 +39,7 @@ final class IntelligenceAssistantService
             if($financeIntent==='finance_action_boundary'||(!isset($v['entity'])&&!isset($v['customer_id'])))return $finance->reply($financeIntent,$v['question'],$id,$sq);
             $finance->clear($id);
         }
+        if(in_array($factIntent,['inventory_health','incoming_supply','stock_commitments'],true))return app(InventoryAssistantFacts::class)->reply($factIntent,$id,$sq);
         if(in_array($factIntent,['low_stock','onboarding_status'],true))return app(OpeningFactsService::class)->reply($factIntent,$v['question'],$id,$sq);
         app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational();
         if(isset($v['simulation_id'])){app(StrategicSimulationService::class)->get($v['simulation_id']);$context['strategic_simulation_id']=$v['simulation_id'];unset($context['optimization_plan_id']);}
@@ -49,7 +57,7 @@ final class IntelligenceAssistantService
                 $reply = ['intent'=>'strategic_simulation','text'=>$message,'cards'=>[],'sources'=>[],'limitations'=>[],'choices'=>[],'provider'=>'deterministic','read_only'=>true,'scenario'=>true,'context'=>null,'state'=>'needs_clarification'];
                 if ($reference !== null) $reply['reference'] = $reference;
             }
-            $reply['id']=(string)Str::uuid();$reply['conversation_id']=$id;$this->contextCache()->put($this->key($id),$context,config('assistant.context_minutes')*60);app(AnalyticsDataService::class)->audit('assistant.query',['response_id'=>$reply['id'],'conversation_id'=>$id,'question'=>$v['question'],'intent'=>'strategic_simulation','tools'=>[],'response_state'=>$reply['state'],'provider'=>'deterministic','follow_up'=>isset($v['conversation_id']),'scenario_isolated'=>true]);return $reply;
+            $reply['id']=(string)Str::uuid();$reply['conversation_id']=$id;$this->contextCache()->put($this->key($id),$context,config('assistant.context_minutes')*60);app(AnalyticsDataService::class)->audit('assistant.query',['response_id'=>$reply['id'],'conversation_id'=>$id,'question_length'=>mb_strlen($v['question']),'intent'=>'strategic_simulation','tools'=>[],'response_state'=>$reply['state'],'provider'=>'deterministic','follow_up'=>isset($v['conversation_id']),'scenario_isolated'=>true]);return $reply;
         }
         $runner=app(AssistantToolRunner::class);$plan=app(AssistantPlanner::class)->plan($v['question'],$context);$provider=['state'=>'deterministic'];
         // Only unknown phrasing can ask the local classifier. It never receives stored notes or records.
@@ -173,7 +181,7 @@ final class IntelligenceAssistantService
                 if($candidate)$entity=$context['entity']=$this->authorizeEntity(['type'=>'decision','id'=>$candidate]);
             }
             if(!$needEntity(['product','customer','supplier','shipment','decision','task','purchase_order','sales_order','warehouse'])) {
-                $type=$entity['type'];$tool=match($type){'product'=>$intent==='movements'?'get_stock_movements':($intent==='forecast'?'get_demand_forecast':($intent==='compare'?'get_supplier_options':($intent==='explain'?'get_inventory_plan':'get_product_availability'))),'customer'=>$intent==='record'?'get_customer':'get_customer_intelligence','supplier'=>$intent==='explain'?'get_supplier_performance':'get_supplier','shipment'=>'get_shipment_intelligence','decision'=>$intent==='compare'?'compare_decision_alternatives':'get_decision','task'=>'get_task','purchase_order'=>'get_purchase_order','sales_order'=>'get_sales_order','warehouse'=>'get_warehouse_stock'};
+                $type=$entity['type'];$tool=match($type){'product'=>$intent==='movements'?'get_stock_movements':($intent==='forecast'?'get_demand_forecast':($intent==='compare'?'get_supplier_options':($intent==='explain' && !preg_match('/available|physical|reserved|quality hold|disponuesh|rezervuar/',app(AssistantLanguage::class)->normalize($v['question']))?'get_inventory_plan':'get_product_availability'))),'customer'=>$intent==='record'?'get_customer':'get_customer_intelligence','supplier'=>$intent==='explain'?'get_supplier_performance':'get_supplier','shipment'=>'get_shipment_intelligence','decision'=>$intent==='compare'?'compare_decision_alternatives':'get_decision','task'=>'get_task','purchase_order'=>'get_purchase_order','sales_order'=>'get_sales_order','warehouse'=>'get_warehouse_stock'};
                 $read($tool,[$type.'_id'=>$entity['id'], ...($tool === 'get_product_availability' && !empty($plan['warehouse_term']) ? ['warehouse_term'=>$plan['warehouse_term']] : [])]);
                 if($intent==='explain'&&$type==='decision')$read('get_decision_changes',['decision_id'=>$entity['id']]);
             }
@@ -261,7 +269,8 @@ final class IntelligenceAssistantService
         $context['last_intent']=$intent;
         $this->contextCache()->put($this->key($id),$context,config('assistant.context_minutes')*60);
         $state=$failures?'partial':($answer['choices']?'needs_clarification':($answer['cards']?'success':'insufficient'));
-        app(AnalyticsDataService::class)->audit('assistant.query',['response_id'=>$answer['id'],'conversation_id'=>$id,'question'=>$v['question'],'intent'=>$intent,'entities'=>$answer['context'],'tools'=>$runner->executions,'scenario'=>$context['scenario']??null,'action_preview'=>isset($answer['action']),'response_state'=>$state,'provider'=>$provider['state'],'follow_up'=>isset($v['conversation_id']),'duration_ms'=>(int)((microtime(true)-$start)*1000),'language'=>$sq?'sq':'en']);
+        app(AnalyticsDataService::class)->audit('assistant.query',['response_id'=>$answer['id'],'conversation_id'=>$id,'question_length'=>mb_strlen($v['question']),'intent'=>$intent,'entities'=>$answer['context'],'tools'=>array_map(fn($run)=>array_intersect_key($run,array_flip(['tool','status'])),$runner->executions),'scenario'=>$context['scenario']??null,'action_preview'=>isset($answer['action']),'response_state'=>$state,'provider'=>$provider['state'],'follow_up'=>isset($v['conversation_id']),'duration_ms'=>(int)((microtime(true)-$start)*1000),'language'=>$sq?'sq':'en']);
+        $answer['cards']=array_map(fn($card)=>$card+['operation_kind'=>AimsToolRegistry::operationKind($card['tool'] ?? '')],$answer['cards']);
         $answer['state']=$state;$answer['limitations']=array_values(array_unique($answer['limitations']));
         return $answer;
     }

@@ -178,6 +178,7 @@ class DC2ControlCenterTest extends TestCase
         $this->assertFalse($permissions->roleHasPermission('manager', 'accounting.journal.post'));
         $this->assertFalse($permissions->roleHasPermission('manager', 'accounting.periods.reopen'));
         config(['system.operation_mode' => 'offline']);
+        $this->withHeader('Authorization','Bearer '.app(\App\Services\JwtService::class)->createAccessToken(Auth::user()));
         $this->postJson('/api/users', ['name' => 'Synthetic accountant', 'email' => 'dc2-accountant@example.test', 'role' => 'accountant',
             'temporary_password' => 'Synthetic-test-only-42', 'temporary_password_confirmation' => 'Synthetic-test-only-42'])->assertCreated()->assertJsonPath('user.role', 'accountant');
     }

@@ -1,0 +1,152 @@
+{
+  "phase": "DC6",
+  "date": "2026-10-21",
+  "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+  "branch": "main",
+  "working_tree": "uncommitted; prior DC5 changes preserved",
+  "scope": "controlled review, task, approval-request and procurement-draft orchestration",
+  "required_results": {
+    "Existing authoritative business services preserved": "YES",
+    "One automation engine used": "YES",
+    "Business events canonicalized/reused": "YES",
+    "Duplicate task/action prevention verified": "YES",
+    "Resolved conditions close correctly": "YES",
+    "Recurring future occurrences work": "YES",
+    "High-risk actions require human approval": "YES",
+    "Prepared actions revalidate stale state": "YES",
+    "Worker retries idempotent": "YES",
+    "Automation cannot bypass accounting authority": "YES",
+    "Automation cannot bypass inventory authority": "YES",
+    "Automation cannot bypass payroll authority": "YES",
+    "Automation cannot bypass fiscalization authority": "YES",
+    "Ask AIMS cannot silently execute high-risk operations": "YES",
+    "Two-company isolation verified": "YES",
+    "Global/company automation pause works": "YES",
+    "Manual ERP operation remains available if automation is paused": "YES",
+    "Ready for controlled automation pilot": "YES"
+  },
+  "tests": {
+    "focused_sqlite": {
+      "passed": 50,
+      "assertions": 728
+    },
+    "final_assistant_and_dc6": {
+      "passed": 25,
+      "assertions": 286
+    },
+    "final_engine_and_dc6": {
+      "passed": 19,
+      "assertions": 297
+    },
+    "frontend": {
+      "passed": 12
+    },
+    "production_build": "PASS; existing PDF/3D large-chunk warnings",
+    "chromium_journey": {
+      "passed": 1,
+      "database": "isolated dc6-preview.sqlite",
+      "ports": [
+        8016,
+        4179
+      ]
+    },
+    "mariadb_concurrency": {
+      "result": "PASS",
+      "engine": "MariaDB 11.8.9/InnoDB",
+      "port": 3315,
+      "checks": [
+        "two workers: one event/execution/task",
+        "two claimants: one owner, one conflict"
+      ],
+      "test_server_stopped": true
+    }
+  },
+  "populated_sqlite_upgrade": {
+    "result": "PASS",
+    "tables_preserved": 204,
+    "existing_rows_preserved": 1692,
+    "new_company_controls": true,
+    "migrate_fresh_used": false
+  },
+  "local_upgrade": {
+    "backup": "C:\\Users\\anisi\\Lab2/backups/before-dc6-20261021-d3a7647a.sql",
+    "backup_bytes": 8792667,
+    "preserved_business_tables": 17,
+    "result": "PASS"
+  },
+  "preservation": {
+    "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+    "baseline_files": 32,
+    "unchanged_baseline_files": [
+      "backend/app/Services/InventoryAssistantFacts.php",
+      "docs/dc5/DC5-2.0-COMPLETION.md",
+      "docs/dc5/VALIDATION-2.0.json",
+      "frontend/src/components/InventoryHealth.jsx",
+      "frontend/src/components/InventoryOperations.jsx",
+      "frontend/src/hooks/useInventoryResource.js",
+      "backend/app/Http/Controllers/Api/InventoryController.php",
+      "backend/app/Http/Controllers/Api/MobileWarehouseController.php",
+      "backend/app/Models/ShipmentItem.php",
+      "backend/app/Services/AssistantLanguage.php",
+      "backend/app/Services/AssistantPlanner.php",
+      "backend/app/Services/InventoryIntegrityService.php",
+      "backend/app/Services/InventorySnapshotService.php",
+      "backend/app/Services/MobileWarehouseService.php",
+      "backend/app/Services/ShipmentCargoPresentation.php",
+      "backend/tests/Feature/DC5InventoryControlTest.php",
+      "docs/dc5/README.md",
+      "frontend/e2e/specs/dc5-inventory.spec.js",
+      "frontend/src/components/InventoryPosition.css",
+      "frontend/src/components/InventoryPosition.jsx",
+      "frontend/src/components/ShipmentWorkspace.css",
+      "frontend/src/components/ShipmentWorkspace.jsx",
+      "frontend/src/pages/MobileWarehouse.css",
+      "frontend/src/pages/MobileWarehouse.jsx"
+    ],
+    "extended_shared_files": [
+      "backend/app/Services/ActionCenterService.php",
+      "backend/app/Services/AimsToolRegistry.php",
+      "backend/app/Services/AutomationRegistry.php",
+      "backend/app/Services/AutomationScheduler.php",
+      "backend/app/Services/AutomationService.php",
+      "backend/app/Services/IntelligenceAssistantService.php",
+      "backend/routes/api.php",
+      "backend/tests/Feature/AutomationStudioTest.php"
+    ],
+    "core_authorities_unchanged_from_head": {
+      "backend/app/Services/StockMovementService.php": true,
+      "backend/app/Services/AccountingService.php": true,
+      "backend/app/Services/CustomerDebtService.php": true,
+      "backend/app/Services/ProcurementService.php": true,
+      "backend/app/Services/InventoryPlanningService.php": true,
+      "backend/app/Services/BusinessEventService.php": true,
+      "backend/app/Services/Workforce/PayrollService.php": true,
+      "backend/app/Services/FiscalWorkspace.php": true,
+      "backend/app/Integrations/Sef/AtkTestClient.php": true,
+      "backend/app/Integrations/Sef/FiscalizationPolicy.php": true,
+      "backend/app/Integrations/Sef/FiscalizationService.php": true,
+      "backend/app/Integrations/Sef/SefConfigurationService.php": true,
+      "backend/app/Integrations/Sef/SefPayloadBuilder.php": true,
+      "backend/app/Integrations/Sef/SefSigner.php": true
+    }
+  },
+  "evidence_sha256": {
+    "dc6-focused-backend.log": "cbca31f09ac74819956b389ede53b487566dfc81e386ad75435882cbe1e8aa1b",
+    "dc6-final-controls.log": "edf09fc673051a3d688dec7941e8f3d8924afdbd83bcc798cb28813ab54881f8",
+    "dc6-final-engine.log": "08224235e9588fc2f2b9ef1126548d7e2897d6cf7c279208bb92f97b2a211f77",
+    "dc6-concurrency.log": "3b03f79baf1f44fe48fad212225ced23e6bc61fb3ccb4052cb8ed45ebe2f7f96",
+    "dc6-frontend-tests.log": "36d3f5d2c5ae2f1cf31191c67cfe07390eeadeb80462de6f8f2d4fbe6fefbf9f",
+    "dc6-build.log": "a621f493ed09cc9eacd56ae817ab8f9cc5276c5879190ae7f9ae9d06226c8fa9",
+    "dc6-browser.log": "92dbcf9b632d284713c48012a2d071d0a6d8e230cd189366b59d323d2200d1a4"
+  },
+  "limitations": [
+    "Review/draft pilot only; high-risk actions remain in authorized source modules.",
+    "No external payment, official fiscal, tax filing or payroll recertification.",
+    "Company execution-ledger queue counts only; raw worker telemetry unavailable.",
+    "Bounded recent-event preview and incremental scheduled scan; no large-tenant performance certification.",
+    "In-app notices and optional current-inbox reminder; no external delivery or email bundling.",
+    "Some business examples and general graphical workflow editing are outside the bounded implementation.",
+    "Windows development server serializes bootstrap requests; browser awaits bounded actual API responses."
+  ],
+  "dc7_started": false
+}

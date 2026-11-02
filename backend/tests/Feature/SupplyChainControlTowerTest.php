@@ -151,6 +151,9 @@ class SupplyChainControlTowerTest extends TestCase
             'subscribed_event_types' => ['shipment.created'],
         ]));
         app(BusinessEventService::class)->record('shipment.created', $this->shipment('HOOK-1'), 'HOOK-1', ['safe' => true], 'hook-event-1');
+        // External delivery is queued independently of the committed business transaction.
+        $this->instance(\App\Services\Platform\WebhookNetworkPolicy::class, \Mockery::mock(\App\Services\Platform\WebhookNetworkPolicy::class)->shouldReceive('addresses')->andReturn(['93.184.216.34'])->getMock());
+        (new \App\Jobs\DeliverBusinessEventWebhooks(\App\Models\BusinessEvent::where('idempotency_key','hook-event-1')->value('id'),WebhookEndpoint::where('name','Test hook')->value('id')))->handle();
         Http::assertSent(fn ($request) => str_starts_with($request->url(), 'https://hooks.example.test/')
             && str_starts_with($request->header('X-AIMS-Signature')[0] ?? '', 'sha256='));
         $this->assertDatabaseHas('webhook_deliveries', ['status' => 'delivered', 'attempts' => 1]);

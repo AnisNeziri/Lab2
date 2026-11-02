@@ -33,7 +33,7 @@ jobs:
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
+          php-version: '8.3.36'
           extensions: mbstring, openssl, pdo_sqlite, sqlite3, fileinfo, curl, zip
           tools: composer:2.9.8
 
@@ -58,6 +58,10 @@ jobs:
         working-directory: desktop
         run: npm ci
 
+      - name: Block vulnerable desktop runtime/build dependencies
+        working-directory: desktop
+        run: npm audit --audit-level=high
+
       - name: Test desktop recovery guards
         working-directory: desktop
         run: npm test
@@ -65,6 +69,9 @@ jobs:
       - name: Verify self-contained desktop startup
         working-directory: desktop
         run: npm run test:startup
+
+      - name: Generate dependency inventory
+        run: node scripts/dependency-inventory.cjs output/dependency-inventory.json
 
       - name: Build and sign without publishing
         working-directory: desktop
@@ -91,4 +98,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $version = (Get-Content package.json | ConvertFrom-Json).version
-          gh release create "v$version" "dist/AIMS-Setup-$version.exe" "dist/AIMS-Setup-$version.exe.blockmap" "dist/latest.yml" --title "AIMS $version" --generate-notes
+          gh release create "v$version" "dist/AIMS-Setup-$version.exe" "dist/AIMS-Setup-$version.exe.blockmap" "dist/latest.yml" "../output/dependency-inventory.json" --title "AIMS $version" --generate-notes

@@ -240,6 +240,10 @@ class AccountingController extends Controller
         return response()->json($recovery->retry($exception, $d));
     }
 
+    public function openingReview(FinancialControlService $controls): JsonResponse { return response()->json($controls->openingReview()); }
+
+    public function reviewOpeningControl(Request $r, string $control, FinancialControlService $controls): JsonResponse { return response()->json($controls->reviewOpeningControl($control,$r->all())); }
+
     public function openingSetup(): JsonResponse
     {
         return response()->json($this->accounting->openingSetup());

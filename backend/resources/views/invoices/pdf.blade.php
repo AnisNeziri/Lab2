@@ -1,11 +1,15 @@
 <!DOCTYPE html>
-<html lang="sq">
+<html lang="{{ $locale === 'sq' ? 'sq' : 'en' }}">
 <head>
     <meta charset="utf-8">
+    <meta name="color-scheme" content="light">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
     <title>{{ $invoice->invoice_number ?: 'Draft invoice' }}</title>
     <style>
-        @page { margin: 24px 28px; }
-        body { font-family: DejaVu Sans, sans-serif; color: #14213d; font-size: 10px; line-height: 1.35; }
+        @page { size: A4 portrait; margin: 12mm 14mm; }
+        * { box-sizing: border-box; }
+        html { background: #fff; color-scheme: light; }
+        body { font-family: DejaVu Sans, Arial, sans-serif; color: #14213d; background: #fff; font-size: 10px; line-height: 1.45; margin: 0; }
         table { width: 100%; border-collapse: collapse; }
         td, th { vertical-align: top; }
         .header { border-bottom: 3px solid #1574d1; padding-bottom: 12px; margin-bottom: 16px; }
@@ -17,11 +21,16 @@
         .spacer { width: 2%; }
         .meta { margin: 14px 0; background: #f3f8fd; }
         .meta td { border: 1px solid #d9e5f2; padding: 6px; }
-        .items th { color: #fff; background: #0a4f96; padding: 7px 4px; font-size: 8px; }
+        .items { table-layout: fixed; }
+        .items thead { display: table-header-group; }
+        .items th { color: #14213d; background: #edf3fa; padding: 7px 3px; font-size: 8px; text-align: left; border-bottom: 1px solid #91a4ba; }
+        .items tr { page-break-inside: avoid; break-inside: avoid; }
+        .items td, .items th, .party, .info, .footer { overflow-wrap: anywhere; word-wrap: break-word; }
+        .items .right, .items .quantity, .items .unit { white-space: nowrap; overflow-wrap: normal; word-wrap: normal; }
         .items td { border-bottom: 1px solid #dfe8f2; padding: 7px 4px; }
         .right { text-align: right; }
         .center { text-align: center; }
-        .totals { width: 45%; margin-left: 55%; margin-top: 12px; }
+        .totals { width: 48%; margin-left: 52%; margin-top: 12px; page-break-inside: avoid; break-inside: avoid; }
         .totals td { padding: 5px 7px; border-bottom: 1px solid #dfe8f2; }
         .grand td { font-size: 13px; font-weight: 700; color: #0a4f96; border-top: 2px solid #0a4f96; }
         .summary { margin-top: 14px; }
@@ -31,6 +40,12 @@
         .warning { margin-top: 14px; padding: 8px; border: 1px solid #d69e2e; background: #fff8dd; color: #684b00; }
         .watermark { position: fixed; top: 38%; left: 12%; color: #d9e5f2; font-size: 75px; font-weight: 700; transform: rotate(-30deg); z-index: -1; }
         .footer { margin-top: 18px; border-top: 1px solid #d9e5f2; padding-top: 7px; color: #60738b; font-size: 8px; }
+        .items .page-trace-row th { color: #60738b; background: #fff; border: 0; font-size: 8px; font-weight: normal; padding: 5px 3px; }
+        .summary { page-break-inside: avoid; break-inside: avoid; }
+        .invoice-summary-block { page-break-inside: avoid; break-inside: avoid; }
+        .header, .meta, .warning { page-break-inside: avoid; break-inside: avoid; }
+        @media screen { body { width: 182mm; min-width: 182mm; max-width: none; margin: 0 auto; padding: 12mm 0; } }
+        @media print { body { width: auto; max-width: none; margin: 0; padding: 0; } * { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
     </style>
 </head>
 <body>
@@ -94,7 +109,7 @@
         <td><strong>{{ $labels['issue_date'] }}</strong><br>{{ $invoice->issued_at?->format('d.m.Y H:i') ?: $invoice->invoice_date?->format('d.m.Y') }}</td>
         <td><strong>{{ $labels['supply_date'] }}</strong><br>{{ $invoice->supply_date?->format('d.m.Y') }} {{ $invoice->supply_time ? substr((string) $invoice->supply_time, 0, 5) : '' }}</td>
         <td><strong>{{ $labels['due_date'] }}</strong><br>{{ $invoice->due_at?->format('d.m.Y') ?: '—' }}</td>
-        <td><strong>Currency / Valuta</strong><br>EUR</td>
+        <td><strong>Currency / Valuta</strong><br>{{ $invoice->currency ?: 'EUR' }}</td>
         <td><strong>Status</strong><br>{{ strtoupper($invoice->payment_status ?: $invoice->status) }}</td>
     </tr>
 </table>
@@ -107,34 +122,34 @@
 @endif
 
 <table class="items">
+    <colgroup><col style="width:4%"><col style="width:32%"><col style="width:6%"><col style="width:9%"><col style="width:11%"><col style="width:8%"><col style="width:11%"><col style="width:7%"><col style="width:12%"></colgroup>
     <thead>
+        @unless($forPdf)<tr class="page-trace-row"><th colspan="9">{{ $invoice->invoice_number ?: $labels['draft'].' #'.$invoice->id }} · {{ $seller['legal_name'] ?? '' }} · {{ $invoice->currency ?: 'EUR' }}</th></tr>@endunless
         <tr>
-            <th style="width:4%">#</th><th style="width:26%">{{ $labels['description'] }}</th><th style="width:8%">{{ $labels['sku'] }}</th>
-            <th style="width:6%">{{ $labels['unit'] }}</th><th style="width:7%">{{ $labels['quantity'] }}</th>
-            <th style="width:11%">{{ $labels['unit_price'] }}</th><th style="width:9%">{{ $labels['discount'] }}</th>
-            <th style="width:10%">{{ $labels['taxable'] }}</th><th style="width:7%">{{ $labels['vat_rate'] }}</th><th style="width:12%">{{ $labels['total'] }}</th>
+            <th style="width:4%">#</th><th style="width:32%">{{ $labels['description'] }}</th>
+            <th style="width:6%">{{ $labels['unit'] }}</th><th style="width:9%">{{ $labels['quantity'] }}</th>
+            <th style="width:11%">{{ $labels['unit_price'] }}</th><th style="width:8%">{{ $labels['discount'] }}</th>
+            <th style="width:11%">{{ $labels['taxable'] }}</th><th style="width:7%">{{ $labels['vat_rate'] }}</th><th style="width:12%">{{ $labels['total'] }}</th>
         </tr>
     </thead>
     <tbody>
     @foreach($invoice->items as $index => $item)
         <tr>
             <td class="center">{{ $index + 1 }}</td>
-            <td><strong>{{ $item->description }}</strong>@if($item->tax_treatment !== 'standard')<br><span class="muted">{{ str_replace('_', ' ', strtoupper($item->tax_treatment)) }}</span>@endif</td>
-            <td>{{ $item->sku_snapshot ?: '—' }}</td><td class="center">{{ $item->unit }}</td>
-            <td class="right">{{ rtrim(rtrim(number_format((float)$item->quantity, 3, '.', ''), '0'), '.') }}</td>
+            <td>{{ $item->description }}@if($item->sku_snapshot)<br><span class="muted">{{ $labels['sku'] }}: {{ $item->sku_snapshot }}</span>@endif @if($item->tax_treatment !== 'standard')<br><span class="muted">{{ str_replace('_', ' ', strtoupper($item->tax_treatment)) }}</span>@endif @if($item->tax_legal_reference)<br><span class="muted">{{ $labels['legal_basis'] }}: {{ $item->tax_legal_reference }}</span>@endif</td>
+            <td class="center unit">{{ $item->unit }}</td>
+            <td class="right quantity">{{ rtrim(rtrim(number_format((float)$item->quantity, 3, '.', ''), '0'), '.') }}</td>
             <td class="right">€{{ number_format((float)$item->unit_price, 2) }}</td>
             <td class="right">€{{ number_format((float)$item->discount_amount, 2) }}</td>
             <td class="right">€{{ number_format((float)$item->taxable_amount, 2) }}</td>
             <td class="right">{{ number_format((float)$item->vat_rate, 0) }}%</td>
             <td class="right"><strong>{{ $amountSign }}€{{ number_format((float)$item->line_total, 2) }}</strong></td>
         </tr>
-        @if($item->tax_legal_reference)
-        <tr><td></td><td colspan="9" class="muted">{{ $labels['legal_basis'] }}: {{ $item->tax_legal_reference }}</td></tr>
-        @endif
     @endforeach
     </tbody>
 </table>
 
+<div class="invoice-summary-block">
 <table class="totals">
     <tr><td>{{ $labels['subtotal'] }}</td><td class="right">{{ $amountSign }}€{{ number_format((float)$invoice->subtotal, 2) }}</td></tr>
     <tr><td>{{ $labels['discount'] }}</td><td class="right">{{ $invoice->document_type === 'credit_note' ? '' : '− ' }}€{{ number_format((float)$invoice->discount_total, 2) }}</td></tr>
@@ -177,6 +192,7 @@
     @if($invoice->external_fiscal_code)External fiscal code: {{ $invoice->external_fiscal_code }} · @endif
     @if($invoice->integrity_hash)AIMS internal document checksum (not a digital signature): {{ $invoice->integrity_hash }} · @endif
     Retain until / Ruaj deri më: {{ $invoice->retention_until?->format('d.m.Y') ?: '—' }}
+</div>
 </div>
 </body>
 </html>

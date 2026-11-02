@@ -32,7 +32,7 @@ class FinanceService
         $invoiceSalesGross = round((float) $salesRows->sum('gross_amount'), 2);
         $invoiceSalesNet = round((float) $salesRows->sum('taxable_amount'), 2);
         $dailySales = round((float) DailySale::query()->finalized()
-            ->whereBetween('sale_date', [$from, $to])->sum('total_amount'), 2);
+            ->where('sale_date', '>=', $from)->where('sale_date', '<', CarbonImmutable::parse($to)->addDay()->toDateString())->sum('total_amount'), 2);
         $missingProof = Expense::query()->where('document_type','!=','opening_balance')->whereIn('status', ['posted', 'reversed'])
             ->whereBetween('received_date', [$from, $to])->whereNull('proof_filename')->count();
         $unclassified = Expense::query()->where('document_type','!=','opening_balance')->whereIn('status', ['posted', 'reversed'])
@@ -92,7 +92,7 @@ class FinanceService
         $purchases = $this->purchaseRows($from, $to);
         $outputVat = round((float) $sales->sum('vat_amount') + (float) $purchases->sum('self_assessed_vat_amount_eur'), 2);
         $inputVat = round((float) $purchases->sum('deductible_vat_amount_eur'), 2);
-        $dailySalesCount = DailySale::query()->finalized()->whereBetween('sale_date', [$from, $to])->count();
+        $dailySalesCount = DailySale::query()->finalized()->where('sale_date', '>=', $from)->where('sale_date', '<', CarbonImmutable::parse($to)->addDay()->toDateString())->count();
 
         return [
             'summary' => [
@@ -137,7 +137,7 @@ class FinanceService
             }
         }
 
-        $dailySales = DailySale::query()->finalized()->whereBetween('sale_date', [$from, $to])
+        $dailySales = DailySale::query()->finalized()->where('sale_date', '>=', $from)->where('sale_date', '<', CarbonImmutable::parse($to)->addDay()->toDateString())
             ->whereDoesntHave('outboundDispatch.order', fn ($order) => $order->where('payment_type', '!=', 'cash'))->get();
         // Daily Sales can contain the same transactions later represented by
         // invoices. Until that linkage is immutable, disclose their receipts
@@ -181,6 +181,7 @@ class FinanceService
         })->sortKeys()->values();
         $cashIn = round((float) $events->sum('cash_in'), 2);
         $cashOut = round((float) $events->sum('cash_out'), 2);
+        $baseCurrency = \App\Support\CompanyCurrency::forCompanyId(Auth::user()->company_id);
 
         return [
             'summary' => [
@@ -198,6 +199,12 @@ class FinanceService
             ],
             'periods' => $timeline->all(),
             'events' => $events->sortBy('date')->values()->all(),
+            'basis' => 'operational_activity',
+            'reconciliation_status' => 'unreconciled',
+            'exclusions' => [
+                ['source'=>'daily_sales','examples'=>$dailySales->take(20)->map(fn($sale)=>['id'=>$sale->id,'reference'=>$sale->sale_number,'date'=>$sale->sale_date?->toDateString(),'amount'=>$sale->paid_amount,'currency'=>$baseCurrency,'url'=>'/daily-sales?date='.$sale->sale_date?->toDateString().'&sale='.$sale->id])->values()->all(),'count'=>$dailySales->count(),'amounts'=>[['currency'=>$baseCurrency,'amount'=>\App\Support\Money::normalize($dailySales->sum('paid_amount'))]],'url'=>'/daily-sales?date='.$from,'reason'=>'Potential overlap with invoice receipts; no combined cash assertion.'],
+                ['source'=>'purchase_order_payments','examples'=>$purchasePayments->take(20)->map(fn($payment)=>['id'=>$payment->id,'reference'=>$payment->reference_number,'date'=>$payment->payment_date?->toDateString(),'amount'=>$payment->amount,'currency'=>$payment->currency ?: 'UNKNOWN','exchange_rate'=>$payment->exchange_rate,'exchange_rate_date'=>$payment->exchange_rate_date?->toDateString(),'exchange_rate_source'=>$payment->exchange_rate_source,'url'=>$payment->financial_account_transaction_id?'/accounting?tab=bank&transaction='.$payment->financial_account_transaction_id:($payment->purchase_order_id?'/purchase-orders?po='.$payment->purchase_order_id:'/accounting?tab=ap')])->values()->all(),'count'=>$purchasePayments->count(),'amounts'=>$purchasePayments->groupBy('currency')->map(fn($rows,$currency)=>['currency'=>$currency ?: 'UNKNOWN','amount'=>\App\Support\Money::normalize($rows->sum('amount'))])->values()->all(),'url'=>'/accounting?tab=ap','reason'=>'Potential overlap with expense payments. Transaction currencies are separate; historical FX is not inferred.'],
+            ],
             'warning' => 'Cash sources are operational and not bank-reconciled. Daily Sales receipts and purchase-order payments are disclosed separately but excluded from canonical cash totals because they cannot yet be reliably reconciled to invoice/expense payments.',
             'period' => compact('from', 'to'),
         ];

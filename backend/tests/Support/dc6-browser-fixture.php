@@ -1,0 +1,47 @@
+<?php
+
+use App\Models\AnalyticsSnapshot;
+use App\Models\Category;
+use App\Models\Company;
+use App\Models\OperationalTask;
+use App\Models\Product;
+use App\Models\ProductSupplier;
+use App\Models\Supplier;
+use App\Models\User;
+use App\Services\AccountingService;
+use App\Services\AutomationService;
+use App\Services\StockMovementService;
+use Database\Seeders\RolePermissionSeeder;
+use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Support\Facades\Auth;
+
+require __DIR__.'/../../vendor/autoload.php';
+$app = require __DIR__.'/../../bootstrap/app.php';
+$app->make(Kernel::class)->bootstrap();
+if (! app()->environment('e2e') || config('database.default') !== 'sqlite' || basename(config('database.connections.sqlite.database')) !== 'dc6-preview.sqlite') {
+    throw new RuntimeException('Requires isolated DC6 browser database.');
+}
+$company = Company::factory()->create(['name' => 'DC6 Synthetic Operations', 'base_currency' => 'EUR', 'timezone' => 'Europe/Budapest']);
+$owner = User::factory()->create(['email' => 'dc6-owner-'.$company->id.'@e2e.example', 'name' => 'DC6 Purchasing Reviewer', 'password' => bcrypt('dc6-local-test-secret'),
+    'role' => 'admin', 'company_id' => $company->id, 'must_change_password' => false, 'is_active' => true, 'email_verified_at' => now()]);
+Auth::setUser($owner);
+(new RolePermissionSeeder)->run(true);
+app(AccountingService::class)->initialize();
+$category = Category::create(['name' => 'DC6 Fabric']);
+$supplier = Supplier::create(['name' => 'DC6 Textiles', 'is_active' => true]);
+$p = Product::create(['name' => 'Milano 04', 'sku' => 'DC6-M04', 'unit' => 'm', 'quantity' => 0, 'category_id' => $category->id, 'supplier_id' => $supplier->id,
+    'price' => 5, 'selling_price' => 5, 'purchase_price' => 2, 'min_quantity' => 2000]);
+$p->forceFill(['created_at' => now()->subYear()])->save();
+ProductSupplier::create(['product_id' => $p->id, 'supplier_id' => $supplier->id, 'purchase_price' => 2, 'currency' => 'EUR', 'exchange_rate_to_base' => 1, 'usual_lead_time_days' => 3, 'pack_size' => 50, 'minimum_order_quantity' => 100, 'is_active' => true]);
+for ($d = 1; $d <= 90; $d++) {
+    AnalyticsSnapshot::create(['entity_type' => 'demand_observation', 'entity_id' => $p->id, 'warehouse_id' => 0, 'snapshot_date' => today()->subDays($d),
+        'observed_at' => today()->subDays($d)->endOfDay(), 'feature_version' => 'observed-v2', 'facts' => ['unit' => 'm', 'demand' => 100, 'sales_quantity' => 100, 'returns_quantity' => 0, 'available' => 5000, 'stockout' => false, 'quality' => 'observed', 'complete' => true, 'potentially_censored' => false]]);
+}
+$stock = app(StockMovementService::class);
+$stock->store(['product_id' => $p->id, 'type' => 'in', 'quantity' => 5000, 'movement_code' => 'import_adjustment_in', 'reason' => 'Synthetic DC6 opening', 'idempotency_key' => 'dc6-start-'.$company->id]);
+$rule = app(AutomationService::class)->save(['name' => 'Low Stock Purchasing Review', 'trigger' => 'inventory.low_stock', 'priority' => 'high', 'conditions' => ['all' => [['field' => 'shortage', 'operator' => 'gt', 'value' => 0]]],
+    'actions' => [['type' => 'create_task', 'title' => 'Review Milano replenishment', 'assigned_team' => 'purchasing', 'due_days' => 1, 'escalate_after_days' => 2]]]);
+app(AutomationService::class)->toggle($rule, true);
+$stock->store(['product_id' => $p->id, 'type' => 'out', 'quantity' => 3550, 'movement_code' => 'import_adjustment_out', 'reason' => 'Synthetic DC6 depletion', 'idempotency_key' => 'dc6-deplete-'.$company->id]);
+$task = OperationalTask::where('automation_id', $rule->id)->firstOrFail();
+echo json_encode(['company' => $company->id, 'email' => $owner->email, 'product' => $p->id, 'task' => $task->id, 'rule' => $rule->id], JSON_PRETTY_PRINT)."\n";

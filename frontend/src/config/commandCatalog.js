@@ -82,7 +82,7 @@ export const commandLabelsSq = {
 export function matchingCommands(query, permissions = [], language = 'en', navigationOptions = {}) {
   const needle = query.trim().toLocaleLowerCase()
   const commands = permittedCommands(permissions).map((command) => ({ ...command, label: language === 'sq' ? commandLabelsSq[command.id] || command.label : command.label, keywords: `${command.keywords} ${command.label}` }))
-  const pages = permittedNavigation(permissions,navigationOptions.enable3dMap??false,navigationOptions.role).flatMap(g=>g.items)
+  const pages = permittedNavigation(permissions,navigationOptions.enable3dMap??false,navigationOptions.role,navigationOptions.capabilities).flatMap(g=>g.items)
   for(const page of pages) {
     if(commands.some(c=>c.path===page.path))continue
     const label=page.label?(language==='sq'?sq[page.label]:en[page.label]):language==='sq'?page.sq:page.en

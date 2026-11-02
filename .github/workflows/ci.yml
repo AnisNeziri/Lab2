@@ -43,7 +43,7 @@ jobs:
           fetch-depth: 0
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3.35'
+          php-version: '8.3.36'
           tools: composer:2.9.8
           extensions: bcmath, curl, dom, fileinfo, mbstring, openssl, pdo_mysql, pdo_sqlite, sqlite3, zip
       - uses: actions/setup-python@v5
@@ -84,7 +84,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3.35'
+          php-version: '8.3.36'
           tools: composer:2.9.8
           extensions: bcmath, curl, dom, fileinfo, mbstring, openssl, pdo_mysql, pdo_sqlite, sqlite3, zip
       - uses: actions/setup-python@v5
@@ -117,7 +117,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3.35'
+          php-version: '8.3.36'
           tools: composer:2.9.8
           extensions: bcmath, curl, openssl, zip, mbstring, dom, fileinfo, pdo_sqlite, sqlite3
           coverage: none
@@ -188,7 +188,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3.35'
+          php-version: '8.3.36'
           tools: composer:2.9.8
           extensions: bcmath, curl, openssl, zip, mbstring, dom, fileinfo, pdo_mysql, pdo_sqlite, sqlite3
           coverage: none
@@ -264,7 +264,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3.35'
+          php-version: '8.3.36'
           tools: composer:2.9.8
           extensions: bcmath, curl, openssl, zip, mbstring, dom, fileinfo, pdo_sqlite, sqlite3
           coverage: none
@@ -302,7 +302,7 @@ jobs:
           python-version: '3.12.2'
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3.35'
+          php-version: '8.3.36'
           tools: composer:2.9.8
           extensions: bcmath, curl, openssl, zip, mbstring, dom, fileinfo, pdo_sqlite, sqlite3
           coverage: none
@@ -341,7 +341,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3.35'
+          php-version: '8.3.36'
           tools: composer:2.9.8
           extensions: bcmath, curl, openssl, zip, mbstring, dom, fileinfo, pdo_sqlite, sqlite3, sodium
           coverage: none
@@ -360,7 +360,7 @@ jobs:
       - run: npm install --global npm@10.9.2
       - run: npm ci
         working-directory: desktop
-      - run: npm audit --omit=dev --audit-level=high
+      - run: npm audit --audit-level=high
         working-directory: desktop
       - run: python -m pip install --target backend/ml/optimizer_vendor -r backend/ml/supply_optimizer_requirements.txt
       - run: ./scripts/download-desktop-php.ps1
@@ -383,6 +383,7 @@ jobs:
         working-directory: frontend
       - run: |
           mkdir -p output
+          node scripts/dependency-inventory.cjs output/dependency-inventory.json
           git archive --format=tar --output=output/aims-web-source.tar HEAD backend deploy scripts RELEASE.json docs
           tar --append --file=output/aims-web-source.tar frontend/dist
           gzip -n output/aims-web-source.tar
@@ -393,6 +394,7 @@ jobs:
           name: aims-web-uncertified-candidate-${{ github.sha }}
           path: |
             output/aims-web-source.tar.gz
+            output/dependency-inventory.json
             output/SHA256SUMS
             RELEASE.json
   desktop-artifact:
@@ -403,7 +405,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3.35'
+          php-version: '8.3.36'
           tools: composer:2.9.8
           extensions: bcmath, curl, dom, fileinfo, mbstring, openssl, pdo_sqlite, sqlite3, zip, sodium
       - uses: actions/setup-node@v4

@@ -18,7 +18,7 @@ class CmsService
 
     public function listPublished(): \Illuminate\Database\Eloquent\Collection
     {
-        return CmsPage::where('is_published', true)
+        return CmsPage::withoutGlobalScope('company')->where('is_published', true)
             ->whereNull('company_id')
             ->whereIn('slug', self::LANDING_SLUGS)
             ->orderBy('title')
@@ -27,7 +27,8 @@ class CmsService
 
     public function listEditable(): \Illuminate\Database\Eloquent\Collection
     {
-        return CmsPage::whereNull('company_id')
+        $this->authorizePlatformEditor();
+        return CmsPage::withoutGlobalScope('company')->whereNull('company_id')
             ->whereIn('slug', self::LANDING_SLUGS)
             ->orderBy('title')
             ->get();
@@ -39,11 +40,18 @@ class CmsService
             return null;
         }
 
-        return CmsPage::where('slug', $slug)->whereNull('company_id')->first();
+        return CmsPage::withoutGlobalScope('company')->where('slug', $slug)->whereNull('company_id')->where('is_published', true)->first();
+    }
+
+    private function authorizePlatformEditor(): void
+    {
+        abort_unless(Auth::user()?->role === 'superadmin' && Auth::user()?->company_id === null, 403, 'Public site content is managed by platform administration.');
     }
 
     public function update(CmsPage $page, array $data): CmsPage
     {
+        $this->authorizePlatformEditor();
+        abort_unless($page->company_id === null, 403);
         if (! in_array($page->slug, self::LANDING_SLUGS, true)) {
             abort(422, 'This content block cannot be edited.');
         }

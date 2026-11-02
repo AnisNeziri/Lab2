@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Schema;
 class DocumentEntityRegistry
 {
     public const TYPES = [
+        'customer-quotation'=>['CustomerQuotation','customer_quotations','fulfillment.view','number','/customers?quote='],
         'employee'=>['Employee','employees','employees.documents','employee_number','/workforce?employee='],
         'employment-term'=>['EmploymentTerm','employment_terms','employees.compensation','id','/workforce?term='],
         'payroll-run'=>['PayrollRun','payroll_runs','payroll.view','id','/payroll?run='],
@@ -46,8 +47,10 @@ class DocumentEntityRegistry
     {
         abort_unless(isset(self::TYPES[$type]) && Auth::user()?->company_id, 404);
         [$model,,$permission] = self::TYPES[$type];
+        if($type==='customer-quotation')abort_unless(app(CustomerWorkspaceService::class)->installed(),503,'The customer relationship migration is required.');
         if ($authorize) {
             abort_unless(app(PermissionService::class)->roleHasPermission(Auth::user()->role, $permission), 403, 'You cannot access this business entity.');
+            if($type==='customer-quotation')abort_unless(app(PermissionService::class)->roleHasPermission(Auth::user()->role,'customers.manage'),403);
         }
         $class = 'App\\Models\\'.$model;
 

@@ -1,4 +1,5 @@
 export const sq = {
+  "nav.integrations": "Integrimet",
   "common.close": "Mbyll",
   "nav.analytics": "Analitika",
   "nav.inventoryIntelligence": "Inteligjenca e inventarit",
@@ -715,6 +716,8 @@ export const sq = {
   "shipments.status": "Statusi",
   "shipments.location": "Vendndodhja aktuale",
   "shipments.empty": "Nuk ka dërgesa ende.",
+  "shipments.emptyTracked": "Në këtë pamje nuk ka anije me gjurmim të verifikuar. Hap Inteligjencën e dërgesave për ngarkesën dhe etapat e regjistruara.",
+  "shipments.trackingScope": "Gjurmimi i verifikuar i anijeve. Shqyrto ngarkesën, etapat manuale dhe pasigurinë e mbërritjes te Inteligjenca e dërgesave.",
   "shipments.mode": "Modaliteti i gjurmimit",
   "shipments.active": "Aktive",
   "shipments.archived": "Arkivuar",

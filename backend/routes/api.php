@@ -266,6 +266,15 @@ Route::middleware('auth.token')->group(function () {
                 Route::get('/datasets/{dataset}/export',[$a,'export'])->middleware('permission:analytics.export');
                 Route::get('/{area}',[$a,'show']);
             });
+            Route::get('/automation-health', [\App\Http\Controllers\Api\AutomationController::class,'health'])->middleware('permission:automations.health.view');
+            Route::post('/automation-controls', [\App\Http\Controllers\Api\AutomationController::class,'pause'])->middleware('permission:automations.pause');
+            Route::get('/operating-brief', [\App\Http\Controllers\Api\AutomationController::class,'brief'])->middleware('permission:tasks.view');
+            Route::post('/automations/{automation}/archive', [\App\Http\Controllers\Api\AutomationController::class,'archive'])->middleware('permission:automations.disable');
+            Route::get('/operational-tasks/{task}/review', [\App\Http\Controllers\Api\AutomationController::class,'taskReview'])->middleware('permission:tasks.view');
+            Route::post('/operational-tasks/{task}/claim', [\App\Http\Controllers\Api\AutomationController::class,'claim'])->middleware('permission:tasks.claim');
+            Route::post('/operational-tasks/{task}/prepare', [\App\Http\Controllers\Api\AutomationController::class,'prepareTask'])->middleware('permission:tasks.complete');
+            Route::post('/operational-tasks/{task}/confirm-draft', [\App\Http\Controllers\Api\AutomationController::class,'confirmTask'])->middleware('permission:tasks.complete');
+            Route::post('/operational-tasks/{task}/promise', [\App\Http\Controllers\Api\AutomationController::class,'promise'])->middleware('permission:tasks.complete');
             Route::get('/automation-catalog', [\App\Http\Controllers\Api\AutomationController::class,'catalog'])->middleware('permission:automations.view');
             Route::get('/automations', [\App\Http\Controllers\Api\AutomationController::class,'index'])->middleware('permission:automations.view');
             Route::post('/automations', [\App\Http\Controllers\Api\AutomationController::class,'store'])->middleware('permission:automations.create');
@@ -275,7 +284,8 @@ Route::middleware('auth.token')->group(function () {
             Route::post('/automations/{automation}/simulate', [\App\Http\Controllers\Api\AutomationController::class,'simulate'])->middleware('permission:automations.test');
             Route::post('/automations/{automation}/duplicate', [\App\Http\Controllers\Api\AutomationController::class,'duplicate'])->middleware('permission:automations.create');
             Route::get('/automations/{automation}/executions', [\App\Http\Controllers\Api\AutomationController::class,'executions'])->middleware('permission:automations.executions.view');
-            Route::post('/automation-executions/{execution}/retry', [\App\Http\Controllers\Api\AutomationController::class,'retry'])->middleware('permission:automations.edit');
+            Route::post('/automation-executions/{execution}/verification', [\App\Http\Controllers\Api\AutomationController::class,'verifyOutcome'])->middleware('permission:automations.retry');
+            Route::post('/automation-executions/{execution}/retry', [\App\Http\Controllers\Api\AutomationController::class,'retry'])->middleware('permission:automations.retry');
             Route::get('/action-center', [\App\Http\Controllers\Api\AutomationController::class,'center'])->middleware('permission:tasks.view');
             Route::get('/task-assignees', [\App\Http\Controllers\Api\AutomationController::class,'assignees'])->middleware('permission:tasks.assign');
             Route::get('/operational-tasks', [\App\Http\Controllers\Api\AutomationController::class,'tasks'])->middleware('permission:tasks.view');
@@ -377,6 +387,7 @@ Route::middleware('auth.token')->group(function () {
             Route::get('/search', [SearchController::class, 'index'])->middleware('permission:dashboard.view');
             Route::get('/entity-context/{type}/{id}', [EntityContextController::class, 'show'])->middleware('permission:dashboard.view');
             Route::get('/system-integrity', [SystemIntegrityController::class, 'show'])->middleware('permission:system_integrity.view');
+            Route::get('/system-integrity/references', [SystemIntegrityController::class, 'references'])->middleware('permission:system_integrity.view');
             Route::get('/capabilities', [AimsCapabilityController::class, 'index']);
             Route::post('/capabilities/{tool}/execute', [AimsCapabilityController::class, 'execute'])->middleware('throttle:60,1');
 
@@ -397,6 +408,8 @@ Route::middleware('auth.token')->group(function () {
 
             Route::get('/inventory/locator', [InventoryController::class, 'locator'])->middleware('permission:inventory.view');
             Route::get('/inventory/control-center', [InventoryController::class, 'control'])->middleware('permission:inventory.view');
+            Route::get('/inventory/health', [InventoryController::class, 'health'])->middleware('permission:inventory.view');
+            Route::get('/inventory/products/{product}/operations', [InventoryController::class, 'operations'])->middleware('permission:inventory.view');
             Route::get('/inventory/products/{product}', [InventoryController::class, 'product'])->middleware('permission:inventory.view');
             Route::get('/inventory/expiring', [InventoryController::class, 'expiring'])->middleware('permission:inventory.view');
             Route::get('/inventory/products/{product}/fefo', [InventoryController::class, 'fefo'])->middleware('permission:inventory.view');
@@ -533,6 +546,8 @@ Route::middleware('auth.token')->group(function () {
                 Route::get('/cash-flow', [AccountingController::class, 'cashFlow'])->middleware('permission:accounting.reports.view');
                 Route::get('/integrity', [AccountingController::class, 'integrity'])->middleware('permission:accounting.integrity.view');
                 Route::get('/exceptions', [AccountingController::class, 'exceptions'])->middleware('permission:accounting.integrity.view');
+                Route::get('/opening-review', [AccountingController::class,'openingReview'])->middleware('permission:accounting.integrity.view');
+                Route::put('/opening-review/{control}', [AccountingController::class,'reviewOpeningControl'])->middleware(['permission:accounting.integrity.view','permission:onboarding.review']);
                 Route::get('/reconciliation', [AccountingController::class, 'reconciliation'])->middleware('permission:accounting.integrity.view');
                 Route::post('/exceptions/{exception}/retry', [AccountingController::class, 'retryException'])->middleware('permission:accounting.integrity.retry');
                 Route::get('/opening', [AccountingController::class, 'openingSetup'])->middleware('permission:accounting.settings.manage');
@@ -587,6 +602,33 @@ Route::middleware('auth.token')->group(function () {
             Route::post('/products', [ProductController::class, 'store'])->middleware('permission:products.manage');
             Route::match(['put', 'patch'], '/products/{product}', [ProductController::class, 'update'])->middleware('permission:products.manage');
 
+            Route::prefix('customer-workspace')->middleware('permission:customers.manage')->group(function () {
+                Route::middleware(\App\Http\Middleware\CustomerWorkspaceReady::class)->group(function () {
+                $c=\App\Http\Controllers\Api\CustomerWorkspaceController::class;
+                Route::get('/',[$c,'index']);
+                Route::get('/opportunities',[$c,'opportunities']);
+                Route::post('/opportunities',[$c,'opportunity']);
+                Route::put('/opportunities/{opportunity}',[$c,'opportunity']);
+                Route::get('/channels',[$c,'channels'])->middleware('permission:fulfillment.view');
+                Route::get('/quotations',[$c,'quotations'])->middleware('permission:fulfillment.view');
+                Route::post('/quotations/preview',[$c,'preview'])->middleware(['permission:fulfillment.manage','permission:fulfillment.view']);
+                Route::post('/quotations',[$c,'createQuote'])->middleware(['permission:fulfillment.manage','permission:fulfillment.view']);
+                Route::get('/quotations/{quotation}',[$c,'quotation'])->middleware('permission:fulfillment.view');
+                Route::put('/quotations/{quotation}',[$c,'updateQuote'])->middleware(['permission:fulfillment.manage','permission:fulfillment.view']);
+                Route::get('/quotations/{quotation}/pdf',[$c,'pdf'])->middleware('permission:fulfillment.view');
+                Route::post('/quotations/{quotation}/{action}',[$c,'quoteAction'])->whereIn('action',['send','accept','reject','cancel','convert'])->middleware(['permission:fulfillment.manage','permission:fulfillment.view']);
+                Route::get('/customers/{customer}',[$c,'show']);
+                Route::get('/customers/{customer}/timeline',[$c,'timeline']);
+                Route::put('/customers/{customer}/owner',[$c,'owner']);
+                Route::get('/customers/{customer}/relationships',[$c,'relationships']);
+                Route::post('/customers/{customer}/contacts',[$c,'contact']);
+                Route::put('/customers/{customer}/contacts/{contact}',[$c,'contact']);
+                Route::post('/customers/{customer}/locations',[$c,'location']);
+                Route::put('/customers/{customer}/locations/{location}',[$c,'location']);
+                Route::post('/customers/{customer}/interactions',[$c,'note']);
+                Route::post('/customers/{customer}/followups',[$c,'followup']);
+                });
+            });
             Route::get('/customers', [CustomerController::class, 'index'])->middleware('permission:debts.view');
             Route::post('/customers', [CustomerController::class, 'store'])->middleware('permission:customers.manage');
             Route::put('/customers/{customer}', [CustomerController::class, 'update'])->middleware('permission:customers.manage');
@@ -626,6 +668,7 @@ Route::middleware('auth.token')->group(function () {
             Route::post('/invoices/{invoice}/void', [InvoiceController::class, 'void'])->middleware('permission:invoices.manage');
             Route::post('/invoices/{invoice}/credit-note', [InvoiceController::class, 'creditNote'])->middleware('permission:invoices.manage');
             Route::get('/invoices/{invoice}/pdf', [InvoiceController::class, 'downloadPdf'])->middleware('permission:invoices.manage');
+            Route::get('/invoices/{invoice}/print', [InvoiceController::class, 'print'])->middleware('permission:invoices.manage');
             Route::get('/invoices/{invoice}/excel', [InvoiceController::class, 'downloadExcel'])->middleware('permission:invoices.manage');
 
             Route::get('/finance/overview', [FinanceController::class, 'overview'])->middleware('permission:finance.view');
@@ -709,8 +752,6 @@ Route::middleware('auth.token')->group(function () {
                 Route::post('/users', [UserController::class, 'store'])->middleware('permission:users.manage');
                 Route::put('/users/{user}', [UserController::class, 'update'])->middleware('permission:users.manage');
                 Route::delete('/users/{user}', [UserController::class, 'destroy'])->middleware('permission:users.manage');
-                Route::get('/cms', [CmsController::class, 'index'])->middleware('permission:cms.manage');
-                Route::put('/cms/{cmsPage}', [CmsController::class, 'update'])->middleware('permission:cms.manage');
             });
 
             Route::middleware('role:admin,manager')->group(function () {
@@ -720,8 +761,12 @@ Route::middleware('auth.token')->group(function () {
             });
         });
 
+        // Compatibility paths: platform-only public content, outside tenant context.
+        Route::get('/cms', [CmsController::class, 'index'])->middleware(['role:superadmin', 'permission:cms.manage']);
+        Route::put('/cms/{cmsPage}', [CmsController::class, 'update'])->middleware(['role:superadmin', 'permission:cms.manage']);
+
         Route::middleware('role:superadmin')->prefix('superadmin')->group(function () {
-            Route::get('/health', [HealthController::class, 'show']);
+            Route::get('/health', [HealthController::class, 'show'])->middleware('permission:deployment.view');
             Route::get('/dashboard', [SuperadminController::class, 'dashboard']);
             Route::get('/companies', [SuperadminController::class, 'companies']);
             Route::post('/companies', [SuperadminController::class, 'storeCompany']);
@@ -732,4 +777,36 @@ Route::middleware('auth.token')->group(function () {
             Route::delete('/users/{user}', [SuperadminController::class, 'destroyUser']);
         });
     });
+});
+
+// DC7 versioned machine contract; internal frontend routes remain unchanged.
+Route::prefix('integration-api/v1')->middleware([\App\Http\Middleware\AuthenticateIntegration::class,'throttle:60,1'])->group(function(){
+ Route::get('tools',[\App\Http\Controllers\Api\PlatformController::class,'catalog']);
+ Route::post('tools/call',[\App\Http\Controllers\Api\PlatformController::class,'call']);
+});
+Route::prefix('platform')->middleware(['auth.token','password.changed','company.context'])->group(function(){
+ Route::get('/',[\App\Http\Controllers\Api\PlatformController::class,'show'])->middleware('permission:integrations.view');
+ Route::put('settings',[\App\Http\Controllers\Api\PlatformController::class,'settings'])->middleware('permission:integrations.manage');
+ Route::post('service-accounts',[\App\Http\Controllers\Api\PlatformController::class,'create'])->middleware('permission:integrations.manage');
+ Route::post('service-accounts/{serviceAccount}/rotate',[\App\Http\Controllers\Api\PlatformController::class,'rotate'])->middleware('permission:integrations.manage');
+ Route::post('service-accounts/{serviceAccount}/revoke',[\App\Http\Controllers\Api\PlatformController::class,'revoke'])->middleware('permission:integrations.manage');
+ Route::get('traces/otlp',[\App\Http\Controllers\Api\PlatformController::class,'export'])->middleware('permission:integrations.view');
+ Route::post('search/reindex',[\App\Http\Controllers\Api\PlatformController::class,'reindex'])->middleware('permission:integrations.manage');
+});
+
+// DC8: personal security remains available independently of paid modules.
+Route::post('/passkeys/login/options',[\App\Http\Controllers\Api\SecurityController::class,'loginOptions'])->middleware('throttle:passkey-options');
+Route::post('/passkeys/login/verify',[\App\Http\Controllers\Api\SecurityController::class,'loginFinish'])->middleware('throttle:passkey-verify');
+Route::prefix('security')->middleware(['auth.token','password.changed','throttle:60,1'])->group(function(){
+    $c=\App\Http\Controllers\Api\SecurityController::class;
+    Route::get('/',[$c,'show']); Route::post('/confirm',[$c,'confirm'])->middleware('throttle:5,1');
+    Route::post('/passkeys/{purpose}/options',[$c,'options']); Route::post('/passkeys/{purpose}/verify',[$c,'finish']);
+    Route::patch('/passkeys/{id}',[$c,'name'])->whereNumber('id'); Route::delete('/passkeys/{id}',[$c,'revokePasskey'])->whereNumber('id');
+    Route::delete('/sessions/{id}',[$c,'revokeSession'])->whereUuid('id'); Route::post('/sessions/revoke-others',[$c,'revokeOthers']);
+    Route::put('/policy',[$c,'policy']); Route::put('/roles/{role}',[$c,'role']); Route::get('/audit-export',[$c,'export']);
+});
+Route::prefix('commercial')->middleware(['auth.token','password.changed','throttle:30,1'])->group(function(){
+    $c=\App\Http\Controllers\Api\CommercialController::class;
+    Route::get('/',[$c,'show']); Route::post('/support-bundle',[$c,'support']); Route::put('/capabilities',[$c,'configure']);
+    Route::post('/license',[$c,'license']); Route::post('/backup-checkpoint',[$c,'backup'])->middleware('throttle:3,1'); Route::post('/update-preflight',[$c,'preflight']);
 });

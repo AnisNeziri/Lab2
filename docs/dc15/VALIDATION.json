@@ -1,0 +1,96 @@
+{
+  "phase": "DC15",
+  "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+  "branch": "main",
+  "environment": "Existing isolated rehearsal / synthetic Company 8",
+  "active_database_modified": false,
+  "committed": false,
+  "pushed": false,
+  "deployed": false,
+  "tests": {
+    "backend": {
+      "tests": 67,
+      "assertions": 894,
+      "result": "PASS",
+      "log": "output/dc15-backend-tests.log"
+    },
+    "final_print_regression": {
+      "tests": 4,
+      "assertions": 72,
+      "result": "PASS",
+      "log": "output/dc15-final-print-tests.log"
+    },
+    "frontend": {
+      "tests": 29,
+      "result": "PASS",
+      "log": "output/dc15-frontend-tests.log"
+    },
+    "build": {
+      "result": "PASS",
+      "log": "output/dc15-build.log"
+    },
+    "business_browser": {
+      "result": "PASS",
+      "log": "output/dc15-business-browser.log",
+      "evidence": "output/dc15/business-browser.json"
+    },
+    "owner_browser": {
+      "result": "PASS",
+      "log": "output/dc15-owner-browser.log",
+      "evidence": "output/dc15/owner-browser.json"
+    }
+  },
+  "performance": {
+    "dc14_kernel_replay": {
+      "brief": [
+        1025,
+        173
+      ],
+      "executive_ask": [
+        2042,
+        176
+      ]
+    },
+    "http": {
+      "brief": [
+        456,
+        169
+      ],
+      "executive_ask": [
+        792,
+        170
+      ]
+    },
+    "evidence": [
+      "output/dc15/performance-before-cli.json",
+      "output/dc15/performance-after-cli.json",
+      "output/dc15/performance-before-traces.json",
+      "output/dc15/performance-final-traces.json"
+    ]
+  },
+  "print": {
+    "server_pages": 9,
+    "chromium_pages": 7,
+    "line_count": 72,
+    "native_dialog_hardware": "NOT TESTED",
+    "electron": "NOT TESTED",
+    "evidence": [
+      "output/dc15/pdf-validation-final.json",
+      "output/dc15/invoice-server.pdf",
+      "output/dc15/invoice-browser.pdf"
+    ]
+  },
+  "preservation": "output/dc15/preservation-final.json",
+  "visual_review": [
+    "output/dc15/after/screens.json",
+    "output/dc15/responsive.json",
+    "output/dc15-1/navigation.json"
+  ],
+  "readiness": {
+    "dc16_isolated_validation": true,
+    "dc16_started": false,
+    "real_company": false,
+    "commercial": false
+  },
+  "temporary_services_stopped": true
+}

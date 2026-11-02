@@ -1,0 +1,297 @@
+{
+  "phase": "PX2",
+  "completed_on": "2026-11-01",
+  "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+  "branch": "main",
+  "committed": false,
+  "explicit_results": {
+    "Core pages visually consistent": "YES",
+    "DC6–DC8 pages match core design language": "YES",
+    "Canonical buttons/forms/tables/statuses reused": "YES",
+    "Major one-off styling removed": "YES",
+    "Light mode reviewed": "YES",
+    "Dark mode reviewed": "YES",
+    "1366×768 reviewed": "YES",
+    "768px reviewed": "YES",
+    "390px reviewed": "YES",
+    "EN reviewed": "YES",
+    "SQ reviewed": "YES",
+    "Known broken responsive layout in reviewed screens": "NONE",
+    "Known visually unfinished core screen": "NONE in the reviewed set",
+    "Production frontend build": "PASS"
+  },
+  "validation": {
+    "production_build": "PASS",
+    "focused_frontend_tests": {
+      "result": "PASS",
+      "tests": 32,
+      "added_behavior_test": "Full-document destinations no longer share the default scroll key; Back history keys remain stable."
+    },
+    "browser": {
+      "owner_admin": "PASS",
+      "operational_staff": "PASS",
+      "representative_visual_matrix": "PASS",
+      "mobile_approval_source": "PASS",
+      "final_mobile_header_review": "PASS",
+      "engine": "Playwright Chromium",
+      "note": "Targeted runs. The matrix run passed the operational and visual cases. Its original owner assertion expected Start after Claim, although the existing authority starts on claim; the corrected owner journey passed on rerun. The final shared-header layout and mobile approval follow-ups also passed."
+    },
+    "review_matrix_entries": 49,
+    "manual_review": "12 representative screens at three widths; additional module/settings and 1920px captures; final phone header, Security policies, Updates and approval review. EN/light and SQ/dark.",
+    "intentional_horizontal_scrolling": "Dense finance, payroll and order table containers only.",
+    "backend_suite": "Not run: existing backend code and business authorities unchanged.",
+    "live_local_app": {
+      "frontend": 200,
+      "backend": 200
+    }
+  },
+  "preservation": "PRESERVATION.json",
+  "limitations": [
+    "Legacy module CSS and advanced chart/3D editors remain; no exhaustive review of every state, role, error variant or physical device.",
+    "Locally configured licensing and disabled/test fiscalization reviewed; no production fiscal or commercial certification.",
+    "Existing PDF and 3D chunk-size warnings remain. Earlier DC8 commercial/dependency blockers remain."
+  ],
+  "next_phase_started": false,
+  "evidence": [
+    {
+      "path": "output/px2-build.log",
+      "sha256": "acf29f76b6153ec414cdea6f8201488797c0e3bf58a41e46b7b0cc5cb7192528"
+    },
+    {
+      "path": "output/px2-frontend.log",
+      "sha256": "6a734348431933f78203eb4b7ff62921406e1895659a7b267cd8434adccea717"
+    },
+    {
+      "path": "output/px2-browser-matrix.log",
+      "sha256": "ff9c905f643182c8f62fe770ce7efcae15dfd56893b2da564d686855e7b6063b"
+    },
+    {
+      "path": "output/px2-owner.log",
+      "sha256": "2371ad11817009b679239c0e7a32813f8966c9e39b73192a08cc625bf030c26d"
+    },
+    {
+      "path": "output/px2-mobile-approval.log",
+      "sha256": "25972c2e8e34b312822cff7f1ea9e0e088ce1ccf978e38c7d01eb3fe6fed961d"
+    },
+    {
+      "path": "output/px2-final-review.log",
+      "sha256": "c8aa81a849f17349ac3001d0d64e427778a9b153ce6783896ab9d59efa7c28b9"
+    },
+    {
+      "path": "output/px2/accounting-1366-en-light.png",
+      "sha256": "093437faf962d21a637e75ce192840e9f676815df06c883eb447bf86f344e826"
+    },
+    {
+      "path": "output/px2/accounting-390-en-light.png",
+      "sha256": "f98c54783a3f31bda1f5cad9798541e068f52108ba374e0cda5ddd16c245e078"
+    },
+    {
+      "path": "output/px2/accounting-768-sq-dark.png",
+      "sha256": "1fe71755c5a482b1a945418d69fc6ba06b9a7b5819aa3589eb6d4d09e2d5a721"
+    },
+    {
+      "path": "output/px2/action-center-1366-en-light.png",
+      "sha256": "b20adf5832fce3d84ea95d3f81c975c382636b9b3ab1f4628d08be2e629c1b0b"
+    },
+    {
+      "path": "output/px2/action-center-390-en-light.png",
+      "sha256": "4f4e81c22a64d83b897da5ba1510e24c38072b59d1ed482786ea9438ba2ec760"
+    },
+    {
+      "path": "output/px2/action-center-768-sq-dark.png",
+      "sha256": "469c7dbe07fad3176ef96767c69c74bcf5bc1f7a37d2e0831ba8c64bae417040"
+    },
+    {
+      "path": "output/px2/ask-aims-1366-en-light.png",
+      "sha256": "aa4c177eccdbf1f3f24630b5a33213397f6132fe81f0a4959cdf20f8e084e73f"
+    },
+    {
+      "path": "output/px2/ask-aims-390-en-light.png",
+      "sha256": "2233989db52e3081ddfd43b528aec67b70624c8bb10b0a4628a596761a4081f3"
+    },
+    {
+      "path": "output/px2/ask-aims-768-sq-dark.png",
+      "sha256": "85d2617e4e512674d58e71e82b585d1893d8cfd11d70275b480b3bf39e1e14c1"
+    },
+    {
+      "path": "output/px2/automation-studio-1366-en-light.png",
+      "sha256": "f1f2f90aac395c79aae8553b1fb29efbde8e4105ec6f3ce526adf83dd73d8a34"
+    },
+    {
+      "path": "output/px2/customer-1366-en-light.png",
+      "sha256": "c157d15697d4fb463513836641cc737563b85058c092634064a1a295c299c1f1"
+    },
+    {
+      "path": "output/px2/customer-390-en-light.png",
+      "sha256": "b8e1c5047cd64e93c9175340fa629b0d36f34f7d49b68a2c24ef38f587601149"
+    },
+    {
+      "path": "output/px2/customer-768-sq-dark.png",
+      "sha256": "d7d6b8868ce6f6f172c0cb5b8dea5225cb40462ce18cbaf988d32509b7467fbc"
+    },
+    {
+      "path": "output/px2/dashboard-1366-en-light.png",
+      "sha256": "65535c73a78b50b21ce1ba2c05235498828c0088c534d3c935d5dea72117f4df"
+    },
+    {
+      "path": "output/px2/dashboard-1920-en-light.png",
+      "sha256": "082098411b033e2099d3f35302397220f0c19c419813a1fb5bbadf26e0897975"
+    },
+    {
+      "path": "output/px2/dashboard-390-en-light.png",
+      "sha256": "67ee70b1c3918f7ef20836fd71e0825d7b03f3783190907ae97fb5f3e8bb28b5"
+    },
+    {
+      "path": "output/px2/dashboard-768-sq-dark.png",
+      "sha256": "c74a2403099ce52b09c2c7ad89791e2f22ab126090a52b1c9652f781e95c1969"
+    },
+    {
+      "path": "output/px2/fiscalization-1366-en-light.png",
+      "sha256": "80616a464024470d57d9f39ec9aa3deda787204c6a144506be17342de01cf93d"
+    },
+    {
+      "path": "output/px2/integrations-1366-en-light.png",
+      "sha256": "4383aebf3d74c69180393086e5e311499c17c0fc69464e45022fee8709ec8bbc"
+    },
+    {
+      "path": "output/px2/integrations-390-en-light.png",
+      "sha256": "b2fc4d2cbb2dc3515902049415ba229c6570beffe5ee2ead7d27a736805bc762"
+    },
+    {
+      "path": "output/px2/integrations-768-sq-dark.png",
+      "sha256": "30bac0c4e3b757c32dc31540675567bcc90a821c7dc8d10bf1c09c240801bd68"
+    },
+    {
+      "path": "output/px2/inventory-intelligence-1366-en-light.png",
+      "sha256": "9b2cf6a469dda33a0e95ddf5158c6b675637362ac44c8cdb2b2d41811accd902"
+    },
+    {
+      "path": "output/px2/license-1366-en-light.png",
+      "sha256": "1b88c15a11b38b1b177264f8dd2d5be88be7dedf4f357ba99f99f93122d1277a"
+    },
+    {
+      "path": "output/px2/license-390-en-light.png",
+      "sha256": "0e8b0e90fa60201e5138f685cded40df832e7430e482c6253f8fcb7e26ec88bf"
+    },
+    {
+      "path": "output/px2/license-768-sq-dark.png",
+      "sha256": "781ee35a20ae5be9252c8631ca7a47148de5678c09a51ca8dabb9e22acca8b32"
+    },
+    {
+      "path": "output/px2/mobile-approval-390.png",
+      "sha256": "775a79f9be1cb3fd8066765588c8532f5e945491f321e7936644ed4bdd04b813"
+    },
+    {
+      "path": "output/px2/operational-staff-768.png",
+      "sha256": "29540eb7f93dec556db83f45a81bf746dd3e411626aab550e92a5e2770ad1e7e"
+    },
+    {
+      "path": "output/px2/order-1366-en-light.png",
+      "sha256": "fe46e44eb6c6e6479c1c518167698fbb9d65ce3c7a1b199bac6f56f2fef7b1d4"
+    },
+    {
+      "path": "output/px2/order-390-en-light.png",
+      "sha256": "9be0afbad0dc05d88ddc39e661e506e0b98ee48ab8bc7c2f1d0903f766e8ad81"
+    },
+    {
+      "path": "output/px2/order-768-sq-dark.png",
+      "sha256": "79155d586491f853e949971da4cdc5270ca3c1b621d2b2b8bd4c4ea22b259cf9"
+    },
+    {
+      "path": "output/px2/payroll-1366-en-light.png",
+      "sha256": "cb825fa84e9d9831df802604e151bb75c80ac8592f88340a1167b493ef3b18af"
+    },
+    {
+      "path": "output/px2/payroll-390-en-light.png",
+      "sha256": "b1a42bd5343c4dd00e1e0e6b06d271452e8a3b219900a690783c64afdaa47a84"
+    },
+    {
+      "path": "output/px2/payroll-768-sq-dark.png",
+      "sha256": "7941740c2cf7f5f6b54a61d61468d64baaddcfed4033194341e5594ddc99bff6"
+    },
+    {
+      "path": "output/px2/procurement-1366-en-light.png",
+      "sha256": "aa5fe577bba660111ced9465d936530989f730be66434d0d12ad908b44d1a22d"
+    },
+    {
+      "path": "output/px2/products-1366-en-light.png",
+      "sha256": "c9010ca484031666d66c4deea87f0f3782beda1515716ecc13b33a9905e18f5b"
+    },
+    {
+      "path": "output/px2/products-1920-sq-dark.png",
+      "sha256": "0514958ec82ae4ea05ce1ccb5defe75fe50d1bc21cc449865c6b914ceda025ea"
+    },
+    {
+      "path": "output/px2/purchase-orders-1366-en-light.png",
+      "sha256": "e54b54a5dcb89ca0d31ab5189c6a0af1c36bf6b9bee65f10b4ee9e56234b5bab"
+    },
+    {
+      "path": "output/px2/security-1366-en-light.png",
+      "sha256": "8575bc2239dbbf1a38648891a316b4375aea258f1c372328f7357ab692a21f56"
+    },
+    {
+      "path": "output/px2/security-390-en-light.png",
+      "sha256": "11d36a2207bd6b31a50d461ccd5f696c2e433085d1a658ba300a7728a910f65c"
+    },
+    {
+      "path": "output/px2/security-768-sq-dark.png",
+      "sha256": "28a30d26f22dc69ea30c4b1d658989495d8b75b54b7d567054271eb38be76f22"
+    },
+    {
+      "path": "output/px2/security-policies-1366-en-light.png",
+      "sha256": "12351722e83ba7d1d27b9a2fb350176856f5b10a1ff2061493ff4132f970d95f"
+    },
+    {
+      "path": "output/px2/settings-1366-en-light.png",
+      "sha256": "f64cefee0a05c899985d95159b3047b005952f6f8cf010fe3b24f3b63339c863"
+    },
+    {
+      "path": "output/px2/shipment-1366-en-light.png",
+      "sha256": "612a52a6279794274f30b39b6744e8392f58827e16dff9f2a0346d4e9d8ea982"
+    },
+    {
+      "path": "output/px2/shipment-390-en-light.png",
+      "sha256": "96fe8823f1f757b5cbef263affd7dac92c1fa2025db377a5974eae7f95b90f4e"
+    },
+    {
+      "path": "output/px2/shipment-768-sq-dark.png",
+      "sha256": "77c6890ff497f4291983811de15ddc6161fd9f54382bd91a932687d82b82fd98"
+    },
+    {
+      "path": "output/px2/stock-1366-en-light.png",
+      "sha256": "a7db4b4ce27817cdcf99f01701e36c53baeeb97807327dda67d8180bfba870b5"
+    },
+    {
+      "path": "output/px2/suppliers-1366-en-light.png",
+      "sha256": "bd689049bc6c263cb16f134a0e4030a697ce8cc8f961f4a921f4cf10f569312b"
+    },
+    {
+      "path": "output/px2/system-health-1366-en-light.png",
+      "sha256": "134c72da1aea7bceb1f0c796d6ee99a199a942cc996f99f728e8b3a999854fe2"
+    },
+    {
+      "path": "output/px2/system-health-390-en-light.png",
+      "sha256": "0e580a5a8aab034605e3fd0e3ec521d807a44d269809df5fd2929c0545892304"
+    },
+    {
+      "path": "output/px2/system-health-768-sq-dark.png",
+      "sha256": "51ef302521786cad955198fa0d05e0f77b32b81bc8eea2a6093d579c87ae7085"
+    },
+    {
+      "path": "output/px2/tax-1366-en-light.png",
+      "sha256": "a43b3420b716ca3efa51a6b0b508a8b2790cb3c8587c40c2b7209401a25ec205"
+    },
+    {
+      "path": "output/px2/updates-1366-en-light.png",
+      "sha256": "69ecdf0f5e507ba2579d52909442e3f68ae817897a8c91739a7481aa83c4b97e"
+    },
+    {
+      "path": "output/px2/warehouse-operations-1366-en-light.png",
+      "sha256": "86a533c7b9bd943e2ada278e0e1f5b5129559a67213d802a3a9cf7401dd8a5c5"
+    },
+    {
+      "path": "output/px2/workforce-1366-en-light.png",
+      "sha256": "7e408964b36f68fce1b7f4518b5881e1b3bf60eceb0a8f0873142c45fb2f5024"
+    }
+  ]
+}

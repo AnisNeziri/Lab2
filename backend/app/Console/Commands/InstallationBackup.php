@@ -7,12 +7,18 @@ use Illuminate\Console\Command;
 
 class InstallationBackup extends Command
 {
-    protected $signature = 'aims:installation-backup {operation=create : create, verify or restore} {--file=} {--key-file=} {--scheduled}';
+    protected $signature = 'aims:installation-backup {operation=create : create, verify, restore or references} {--file=} {--key-file=} {--scheduled}';
     protected $description = 'Encrypted, verified installation recovery; restore into a separate empty target only';
 
     public function handle(InstallationBackupService $service): int
     {
         try {
+            if ($this->argument('operation') === 'references') {
+                $audit=$service->referenceAudit(true);
+                app(\App\Services\SystemIntegrityService::class)->recordReferenceAudit($audit);
+                $this->line(json_encode(['constraints_checked'=>$audit['constraints_checked'],'violated_constraints'=>$audit['violated_constraints'],'ownership_violations'=>count($audit['ownership_violations']),'migration_approved'=>false]));
+                return $audit['healthy'] ? self::SUCCESS : self::FAILURE;
+            }
             $keyFile = $this->option('key-file') ?: config('production.backup_passphrase_file');
             if (! $keyFile || ! is_readable($keyFile)) throw new \RuntimeException('Provide a protected passphrase file with --key-file; never pass the secret as a command argument.');
             $root = config('production.backup_root');

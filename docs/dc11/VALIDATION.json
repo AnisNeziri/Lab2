@@ -1,0 +1,147 @@
+{
+  "phase": "DC11",
+  "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+  "branch": "main",
+  "active_database_cutover": false,
+  "source_data": {
+    "all_215_source_tables_unchanged": true,
+    "changed_tables": [],
+    "metadata_unchanged": true,
+    "checked_at": "2026-11-01T22:17:02+00:00"
+  },
+  "preservation": {
+    "entry_files": 292,
+    "byte_identical": 283,
+    "intentionally_extended": [
+      "backend/app/Services/Commercial/CommercialReadiness.php",
+      "backend/app/Services/FinancialControlService.php",
+      "backend/app/Services/InstallationBackupService.php",
+      "backend/app/Services/SystemIntegrityService.php",
+      "backend/storage/framework/aims-recovery-rehearsal.json",
+      "frontend/src/components/finance/OpeningReconciliationReview.jsx",
+      "frontend/src/pages/CommercialCenter.jsx",
+      "frontend/src/pages/SystemIntegrity.jsx",
+      "frontend/src/styles/ProductExperience.css"
+    ],
+    "removed": [],
+    "active_env_unchanged": true
+  },
+  "source_reference_audit": {
+    "fk_groups_checked": 707,
+    "violated_constraints": 13,
+    "source_data_repaired": false
+  },
+  "encrypted_synthetic_fixture": {
+    "synthetic_fixture_only": true,
+    "source_company_certified": false,
+    "archive_integrity": true,
+    "decryption": true,
+    "wrong_passphrase_denied": true,
+    "tamper_denied": true,
+    "wrong_application_key_denied": true,
+    "nonempty_restore_denied": true,
+    "database_restored": true,
+    "key_identity_preserved": true,
+    "documents_verified": 1,
+    "business_reconciled": true,
+    "scope_bound_receipt": true,
+    "restore_stages": {
+      "archive_integrity": "passed",
+      "archive_decryption": "passed",
+      "database_restoration": "passed",
+      "application_key_restoration": "passed",
+      "files_preservation": "passed",
+      "business_reconciliation": "passed"
+    }
+  },
+  "real_company_archive_created": false,
+  "company_recovery_blockers": [
+    "financial_reconciliation",
+    "legacy_relational_integrity"
+  ],
+  "pilot_fixture": {
+    "company_id": 8,
+    "source_company_id": 1,
+    "checks": {
+      "physical_quantity": true,
+      "no_duplicate_receipt_dispatch_effect": true,
+      "incoming_fully_received": true,
+      "partial_payment_balance": true,
+      "source_gl_still_empty": true,
+      "controls_reconciled": true,
+      "payment_and_journal_links": true
+    },
+    "initial_stock": 5,
+    "received": 4,
+    "dispatched": 3,
+    "remaining_stock": 6,
+    "invoice_total": "15.00",
+    "invoice_remaining": "7.50",
+    "source_company_writes": false
+  },
+  "process_smoke": {
+    "isolated_only": true,
+    "one_shot_worker_exit": 0,
+    "pending_jobs": 0,
+    "scheduler_initialization_exit": 0,
+    "live_scheduler_executed": false,
+    "supervision_commissioned": false,
+    "actual_runtime_identity": "aims_runtime@localhost"
+  },
+  "validation": {
+    "unique_backend_methods": 9,
+    "initial_assertions": 202,
+    "final_affected_methods": 3,
+    "final_affected_assertions": 50,
+    "production_build": "PASS",
+    "browser_journey": {
+      "fixture_company": 8,
+      "commissioning_blocked": true,
+      "review_notes_only": true,
+      "operational_connections_verified": true,
+      "scope_checks_prepared": true,
+      "errors": []
+    },
+    "full_certification_run": false,
+    "mariadb_encrypted_full_restore_verified": false
+  },
+  "required_results": {
+    "clean_mariadb_target_preserved": "YES",
+    "active_cutover_authorized_and_performed": "NO",
+    "least_privilege_active_runtime": "NO",
+    "complete_encrypted_restoration_verified": "NO",
+    "opening_financial_balances_reconciled": "NO",
+    "accountant_approval_obtained": "NO",
+    "workers_scheduler_operationally_verified": "NO",
+    "pilot_workflow_validated": "YES — isolated synthetic journey only",
+    "ready_for_supervised_real_company_pilot": "NO",
+    "ready_for_commercial_deployment": "NO"
+  },
+  "evidence": [
+    "output/dc11-recovery-inspection.json",
+    "output/dc11-source-reference-audit.json",
+    "output/dc11-reference-inspection.json",
+    "output/dc11-encrypted-fixture.json",
+    "output/dc11-operational-journey.json",
+    "output/dc11-operations-smoke.json",
+    "output/dc11-focused.log",
+    "output/dc11-boundary-final.log",
+    "output/dc11-build.log",
+    "output/dc11-browser.log",
+    "output/dc11/browser.json",
+    "output/dc11-source-final.json",
+    "output/dc11-preservation.json"
+  ],
+  "next_phase_started": false,
+  "final_state": {
+    "isolated_ui_api_stopped": true,
+    "isolated_database_clean_shutdown": true,
+    "original_ports_running": [
+      3306,
+      8000,
+      5173,
+      8080
+    ],
+    "diff_check_exit": 0
+  }
+}

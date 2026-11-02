@@ -25,6 +25,8 @@ class BusinessEventService
         if(app(\App\Services\Onboarding\OnboardingGuard::class)->isPosting())return null;
         try {
             $metadata=array_merge($metadata, AutomationService::eventTrace());
+            $trace=app(\App\Services\Platform\PlatformTrace::class)->context();
+            if(isset($trace['traceparent'])) $metadata['traceparent']=$trace['traceparent'];
             $companyId = (int) ($entity->company_id ?: Auth::user()?->company_id);
             if ($companyId <= 0) {
                 return null;
@@ -95,7 +97,10 @@ class BusinessEventService
                     catch (Throwable $e) { Log::warning('Automation dispatch deferred to scheduler.', ['event_id'=>$event->id]); }
                 };
                 DB::transactionLevel() > 0 ? DB::afterCommit($automate) : $automate();
-                $dispatch = static fn () => DeliverBusinessEventWebhooks::dispatch($event->id);
+                $dispatch = static function () use ($event) {
+                    try { DeliverBusinessEventWebhooks::dispatch($event->id); }
+                    catch (Throwable $e) { Log::warning('Optional webhook queue unavailable.', ['event_id'=>$event->id]); }
+                };
                 DB::transactionLevel() > 0 ? DB::afterCommit($dispatch) : $dispatch();
             }
 

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from 'react'
 import { useLocation, useNavigationType } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
-import { readSession, sessionKey, writeSession } from '../lib/sessionWorkspace'
+import { historyEntryKey, readSession, sessionKey, writeSession } from '../lib/sessionWorkspace'
 
 export function useWorkspaceHistory() {
   const location = useLocation(), navigation = useNavigationType()
@@ -9,9 +9,10 @@ export function useWorkspaceHistory() {
   const positions = useRef({}), previous = useRef(null)
   useLayoutEffect(() => {
     const key = sessionKey(scope, 'history'), saved = readSession(sessionStorage, key, {})
+    const positionKey = historyEntryKey(location)
     positions.current = saved
     const samePage = previous.current?.scope === scope && previous.current?.path === location.pathname
-    const target = navigation === 'POP' ? Number(saved[location.key] || 0) : samePage ? window.scrollY : 0
+    const target = navigation === 'POP' ? Number(saved[positionKey] || 0) : samePage ? window.scrollY : 0
     previous.current = { scope, path: location.pathname }
     let restoring = navigation === 'POP', timer, observer
     const restore = () => {
@@ -21,8 +22,8 @@ export function useWorkspaceHistory() {
     const stop = () => { restoring = false; observer?.disconnect(); clearTimeout(timer) }
     const remember = () => {
       if (restoring) return
-      const entries = Object.entries(positions.current).filter(([id]) => id !== location.key).slice(-49)
-      positions.current = { ...Object.fromEntries(entries), [location.key]: window.scrollY }
+      const entries = Object.entries(positions.current).filter(([id]) => id !== positionKey).slice(-49)
+      positions.current = { ...Object.fromEntries(entries), [positionKey]: window.scrollY }
       writeSession(sessionStorage, key, positions.current)
     }
     if (restoring) {

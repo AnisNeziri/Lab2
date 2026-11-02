@@ -16,7 +16,7 @@ const {
 const backendPort = 18765
 const frontendPort = 18766
 const backendUrl = `http://127.0.0.1:${backendPort}`
-const frontendUrl = `http://127.0.0.1:${frontendPort}`
+const frontendUrl = `http://localhost:${frontendPort}`
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 
 let backendProcess
@@ -193,23 +193,15 @@ async function checkForUpdates(interactive = false) {
     return updateStatus
   }
 
-  updateCheckRunning = true
-  sendUpdateStatus({ state: 'checking', message: 'Checking for a signed AIMS update…' })
-  try {
-    autoUpdater.setFeedURL(configuration)
-    await autoUpdater.checkForUpdates()
-  } catch (error) {
-    log('Automatic update check failed', error.message)
-    sendUpdateStatus({ state: 'error', message: interactive ? error.message : 'The update service is temporarily unavailable.' })
-  } finally {
-    updateCheckRunning = false
-  }
+  sendUpdateStatus({ state: 'manual_review', message: 'Updates require a verified signed manifest, backup checkpoint and administrator-approved maintenance. Use System Health → Updates & recovery.' })
   return updateStatus
+
+
 }
 
 function configureAutomaticUpdates() {
-  autoUpdater.autoDownload = true
-  autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.autoDownload = false
+  autoUpdater.autoInstallOnAppQuit = false
   autoUpdater.allowDowngrade = false
 
   autoUpdater.on('checking-for-update', () => {
@@ -245,16 +237,14 @@ function configureAutomaticUpdates() {
       type: 'info',
       title: 'AIMS update ready',
       message: `A signed AIMS ${info?.version || 'update'} has been downloaded.`,
-      detail: 'Restart now to install it, or choose Later and AIMS will install it when the application closes.',
-      buttons: ['Restart and install', 'Later'],
+      detail: 'A reviewed maintenance window, verified backup and update preflight are required. Automatic installation is disabled.',
+      buttons: ['Close'],
       defaultId: 0,
-      cancelId: 1,
+      cancelId: 0,
       noLink: true,
     })
-    if (result.response === 0) {
-      shuttingDown = true
-      autoUpdater.quitAndInstall(false, true)
-    }
+    // Installation is deliberately manual until the signed preflight and recovery gate are integrated.
+    sendUpdateStatus({ state: 'manual_review', message: 'Use the approved maintenance process to install this release.' })
   })
   autoUpdater.on('error', (error) => {
     log('Automatic updater error', error.message)
@@ -557,6 +547,11 @@ function localEnvironment() {
     APP_ENV: 'production',
     APP_DEBUG: 'false',
     APP_KEY: appKey,
+    AIMS_LICENSE_PUBLIC_KEY_FILE: app.isPackaged ? licencePublicKeyPath() : '',
+    AIMS_UPDATE_PUBLIC_KEY_FILE: app.isPackaged && fs.existsSync(resourcePath('update-public.pem')) ? resourcePath('update-public.pem') : '',
+    AIMS_DESKTOP_LICENSE_FILE: app.isPackaged ? licenceFilePath() : '',
+    AIMS_DESKTOP_LICENSE_PUBLIC_KEY: app.isPackaged ? licencePublicKeyPath() : '',
+    AIMS_DESKTOP_LICENSE_MACHINE_ID: app.isPackaged ? commercialMachineFingerprint() : '',
     APP_URL: backendUrl,
     APP_OPERATION_MODE: 'offline',
     TRACKING_EXTERNAL_ENABLED: aisStreamKey ? 'true' : 'false',
@@ -567,6 +562,8 @@ function localEnvironment() {
     DB_URL: '',
     REDIS_ENABLED: 'false',
     FRONTEND_URL: frontendUrl,
+    AIMS_PASSKEY_RP_ID: 'localhost',
+    AIMS_PASSKEY_ORIGINS: frontendUrl,
     APP_TIMEZONE: 'UTC',
     AIMS_COMPANY_TIMEZONE: Intl.DateTimeFormat().resolvedOptions().timeZone,
     APP_LOCALE: 'en',

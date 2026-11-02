@@ -14,4 +14,9 @@ class SystemIntegrityController extends Controller
     {
         return response()->json($this->integrity->snapshot());
     }
+
+    public function references(): JsonResponse
+    {
+        return response()->json($this->integrity->referenceReview());
+    }
 }

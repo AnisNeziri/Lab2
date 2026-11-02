@@ -1,3 +1,4 @@
+import PageHeader from '../components/PageHeader';
 import { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useSessionState } from '../hooks/useSessionState';
@@ -618,21 +619,12 @@ export default function PurchaseOrders() {
         reference={shipmentSuccess?.reference}
         onClose={() => setShipmentSuccess(null)}
       />
-      <section className="card">
-        <div className="section-header">
-          <h1>
-            <Truck size={20} />
-            {t("po.title")}
-          </h1>
-          <button onClick={beginNew}>
+      <PageHeader title={t("po.title")} description={t("po.subtitle")} actions={<button className="workspace-primary" onClick={beginNew}>
             <Plus size={16} />
             {t("po.new")}
-          </button>
-        </div>
-        <p className="page-intro">{t("po.subtitle")}</p>
-        {error && <div className="form-error-banner">{error}</div>}
-        {message && <div className="success-banner">{message}</div>}
-      </section>
+          </button>}/>
+      {error && <div className="form-error-banner" role="alert">{error}</div>}
+      {message && <div className="success-banner" role="status">{message}</div>}
 
       {mode === "order" && (
         <section className="card">

@@ -35,7 +35,7 @@ class PasswordResetController extends Controller
         $validated = $request->validate([
             'email' => ['required', 'email'],
             'token' => ['required', 'string'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'password' => [...\App\Services\Security\PasswordPolicy::rules(), 'confirmed'],
         ]);
 
         $user = $this->passwordReset->reset(

@@ -1,5 +1,10 @@
 const MAX_AGE = 8 * 60 * 60 * 1000
 export const sessionKey = (scope, key) => `aims:work-session:${scope}:${key}`
+// Full document navigations share React Router's "default" key. Keep those
+// positions tied to the actual destination; client history keys stay stable.
+export const historyEntryKey = location => location.key === 'default'
+  ? `default:${location.pathname}${location.search || ''}`
+  : location.key
 export function readSession(storage, key, fallback, now = Date.now()) {
   try {
     const saved = JSON.parse(storage?.getItem(key) || 'null')

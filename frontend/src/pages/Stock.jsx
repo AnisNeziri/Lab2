@@ -1,3 +1,4 @@
+import PageHeader from '../components/PageHeader'
 import EvidencePagination from '../components/EvidencePagination'
 import { useUiText } from '../hooks/useUiText'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -85,9 +86,9 @@ const emptyForm = {
   expiry_at: '',
 }
 
-function productStockSummary(product) {
+function productStockSummary(product, tx) {
   const unit = product.unit || 'units'
-  return `${formatQuantity(getInventoryQuantity(product, 'on_hand'), product.unit)} ${unit} on hand; ${formatQuantity(getInventoryQuantity(product, 'available'), product.unit)} ${unit} available`
+  return `${formatQuantity(getInventoryQuantity(product, 'on_hand'), product.unit)} ${unit} ${tx('on hand')}; ${formatQuantity(getInventoryQuantity(product, 'available'), product.unit)} ${unit} ${tx('available')}`
 }
 
 function Stock() {
@@ -413,14 +414,13 @@ function Stock() {
   }
 
   return (
-    <main className="stock-page">
-      <section className="card">
+    <main className="stock-page"><PageHeader title={tx("Stock Movements")} description={tx("Record stock coming in or going out. On-hand and available balances update automatically.")}/>
+      <section className="card stock-adjustment-panel">
+        <h2>{tx("Adjust stock")}</h2>
         <label>{tx("Search products")}
           <input type="search" value={productSearch} onChange={event => setProductSearch(event.target.value)}
-            placeholder="Name or SKU" aria-label="Search stock products" />
+            placeholder={tx("Name or SKU")} aria-label={tx("Search stock products")} />
         </label>
-        <h1>{tx("Adjust stock")}</h1>
-        <p className="card-description"> {tx("Record stock coming in or going out. On-hand and available balances update automatically.")} </p>
 
         <form className="sku-lookup-form" onSubmit={handleSkuLookup}>
           <label> {tx("Find by SKU")} <div className="form-row">
@@ -440,7 +440,7 @@ function Stock() {
               <option value="">{tx("Select a product")}</option>
               {products.map((product) => (
                 <option key={product.id} value={product.id}>
-                  {product.name} ({product.sku}) - {productStockSummary(product)}
+                  {product.name} ({product.sku}) - {productStockSummary(product, tx)}
                 </option>
               ))}
             </select>
@@ -473,7 +473,7 @@ function Stock() {
 
             <label> {tx("Stock state")} <select name="stock_state" value={form.stock_state} onChange={handleChange} required>
                 {['available', 'reserved', 'damaged', 'quarantine', 'blocked'].map((state) => (
-                  <option key={state} value={state}>{state.charAt(0).toUpperCase() + state.slice(1)}</option>
+                  <option key={state} value={state}>{tx(({available:'Available',reserved:'Reserved',damaged:'Damaged',quarantine:'Quality hold',blocked:'Blocked'})[state])}</option>
                 ))}
               </select>
             </label>

@@ -11,6 +11,13 @@ test('Redis failures identify connectivity and preserve actionable text', () => 
   const status = systemStatus({ mode: 'online', redis: { status: 'unavailable', message: 'Start Redis' } })
   assert.equal(status.title, 'Redis connection problem')
   assert.equal(status.message, 'Start Redis')
+  assert.equal(status.tone, 'is-attention')
+  assert.equal(status.kind, 'redis')
+})
+test('an actual cache failure takes priority over an optional Redis warning',()=>{
+ const status=systemStatus({mode:'online',cache_available:false,redis:{status:'unavailable'}})
+ assert.equal(status.kind,'cache')
+ assert.equal(status.tone,'is-offline')
 })
 test('disabled, connected, cache failure and endpoint failure remain distinct', () => {
   assert.equal(systemStatus({ mode: 'online', redis: { status: 'disabled' } }).title, 'Redis optional: disabled')

@@ -1,0 +1,314 @@
+{
+  "phase": "DC12",
+  "date": "2026-11-02",
+  "timezone": "Europe/Budapest",
+  "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+  "branch": "main",
+  "baseline": {
+    "constraints_checked": 707,
+    "violated_constraints": 13,
+    "unique_affected_records": 182,
+    "all_identifiers_complete": true,
+    "known_parent_ownership_violations": []
+  },
+  "isolated_after": {
+    "constraints_checked": 707,
+    "violated_constraints": 12,
+    "unique_affected_records": 180,
+    "known_parent_ownership_violations": []
+  },
+  "corrections": [
+    {
+      "record": {
+        "id": 4
+      },
+      "original": {
+        "id": 4,
+        "user_id": 5,
+        "role_id": 9,
+        "assigned_at": "2026-07-18 22:54:09"
+      },
+      "new": {
+        "id": 4,
+        "user_id": 5,
+        "role_id": 4,
+        "assigned_at": "2026-07-18 22:54:09"
+      },
+      "evidence": "SHA256-verified historical export; same user id/company/email/name/role/creation time; exact historical role slug",
+      "effective_permissions_unchanged": true,
+      "effective_permissions_sha256": "b6f8481d1d9befad9327a48a5363f01c62ac3db50c49ddbaabb1d6d0e2755fb8",
+      "business_consequence": "Canonical reference only; no user role, grant, token or balance changed",
+      "related_user_id": 5,
+      "company_id": null,
+      "approval_required": "Security owner and migration operator approval before any active correction",
+      "rollback": "Restore the untouched source snapshot into a new disposable schema; do not reintroduce invalid references with checks disabled."
+    },
+    {
+      "record": {
+        "id": 5
+      },
+      "original": {
+        "id": 5,
+        "user_id": 6,
+        "role_id": 10,
+        "assigned_at": "2026-07-18 22:54:10"
+      },
+      "new": {
+        "id": 5,
+        "user_id": 6,
+        "role_id": 1,
+        "assigned_at": "2026-07-18 22:54:10"
+      },
+      "evidence": "SHA256-verified historical export; same user id/company/email/name/role/creation time; exact historical role slug",
+      "effective_permissions_unchanged": true,
+      "effective_permissions_sha256": "1ed78d9b4f720d603cc30915cdb100c7021ce5067340931ccd6cea1581b98c69",
+      "business_consequence": "Canonical reference only; no user role, grant, token or balance changed",
+      "related_user_id": 6,
+      "company_id": 5,
+      "approval_required": "Security owner and migration operator approval before any active correction",
+      "rollback": "Restore the untouched source snapshot into a new disposable schema; do not reintroduce invalid references with checks disabled."
+    }
+  ],
+  "corrected_data_table_differences": [
+    "audit_logs",
+    "user_roles"
+  ],
+  "schema_metadata_unchanged": true,
+  "financial_recovery": {
+    "isolated_only": true,
+    "attachment_files_preserved": 1975,
+    "key_compatible": true,
+    "financial_controls_unchanged": true,
+    "controls": {
+      "accounts_receivable": "868.86",
+      "customer_advances": "0.00",
+      "accounts_payable": "0.00",
+      "supplier_advances": "445000.00",
+      "inventory": "2226.82",
+      "cash_bank": "3190.94"
+    },
+    "source_gl_journals": 0,
+    "backup_failure": "Installation integrity/reconciliation failed. Resolve inventory, finance, tenant or document issues before certifying a backup.",
+    "certified_archive_created": false,
+    "recovery_status": {
+      "status": "NOT_VERIFIED",
+      "verified_at": null,
+      "restore_stages": {
+        "archive_integrity": "not_tested",
+        "archive_decryption": "not_tested",
+        "database_restoration": "not_tested",
+        "application_key_restoration": "not_tested",
+        "files_preservation": "not_tested",
+        "business_reconciliation": "not_tested"
+      },
+      "last_restore_attempt": [],
+      "last_backup_attempt": {
+        "at": "2026-11-01T23:46:11+00:00",
+        "stages": {
+          "application_key": "passed",
+          "database_export": "passed",
+          "files_snapshot": "passed",
+          "business_reconciliation": "blocked"
+        }
+      },
+      "incomplete_restore": false,
+      "verified_stages": []
+    }
+  },
+  "native_constraint_checks": {
+    "isolated_only": true,
+    "version": "11.4.13-MariaDB",
+    "match_simple_nullable_child_accepted": true,
+    "soft_deleted_parent_is_present": true,
+    "re_enabled_checks_do_not_revalidate": true,
+    "new_invalid_insert_denied": true,
+    "historical_parent_delete_denied": true,
+    "check_table_reports_ok_despite_orphan": true,
+    "foreign_key_checks_restored": true,
+    "historical_catalog_table_checks": [
+      {
+        "Table": "aims_dc12_history.users",
+        "Op": "check",
+        "Msg_type": "status",
+        "Msg_text": "OK"
+      },
+      {
+        "Table": "aims_dc12_history.roles",
+        "Op": "check",
+        "Msg_type": "status",
+        "Msg_text": "OK"
+      },
+      {
+        "Table": "aims_dc12_history.permissions",
+        "Op": "check",
+        "Msg_type": "status",
+        "Msg_text": "OK"
+      },
+      {
+        "Table": "aims_dc12_history.user_roles",
+        "Op": "check",
+        "Msg_type": "status",
+        "Msg_text": "OK"
+      },
+      {
+        "Table": "aims_dc12_history.role_permissions",
+        "Op": "check",
+        "Msg_type": "status",
+        "Msg_text": "OK"
+      }
+    ]
+  },
+  "native_po_regression": {
+    "isolated_only": true,
+    "existing_company_reused": true,
+    "new_company_created": false,
+    "temporary_review_credentials_copy_only": true,
+    "po_id_reuse_blocked": true,
+    "before": {
+      "orders": 1,
+      "items": 3,
+      "payments": 4,
+      "journals": 0,
+      "stocks": 55
+    },
+    "after": {
+      "orders": 1,
+      "items": 3,
+      "payments": 4,
+      "journals": 0,
+      "stocks": 55
+    },
+    "preserved_po2_child_ids": [
+      2
+    ],
+    "history_not_deleted": true
+  },
+  "final_copy": {
+    "repaired_references": [
+      {
+        "id": 4,
+        "new_reference_matches": true,
+        "assigned_time_preserved": true
+      },
+      {
+        "id": 5,
+        "new_reference_matches": true,
+        "assigned_time_preserved": true
+      }
+    ],
+    "orders": 1,
+    "order_items": 3,
+    "payments": 4,
+    "stock_movements": 55,
+    "journals": 0,
+    "old_audit_rows_preserved": true,
+    "original_sql_preserved": true
+  },
+  "source_preservation": {
+    "changed_tables_since_fresh_source_comparison": [
+      "auth_challenges",
+      "auth_sessions",
+      "business_events",
+      "inventory_count_items",
+      "inventory_count_sessions",
+      "jobs",
+      "security_events"
+    ],
+    "critical_business_tables_unchanged": true,
+    "schema_metadata_unchanged": true,
+    "active_env_sha256": "87c2f48f468200f7d56216e2a43273fcaca0953944f533572e14cd8bd479acb2",
+    "dc12_source_business_writes": false,
+    "checked_at": "2026-11-01T23:58:56+00:00"
+  },
+  "working_tree": {
+    "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+    "entry_files": 307,
+    "byte_identical": 301,
+    "intentionally_extended": [
+      ".gitignore",
+      "backend/app/Services/InstallationBackupService.php",
+      "backend/app/Services/SystemIntegrityService.php",
+      "backend/routes/api.php",
+      "frontend/src/pages/SystemIntegrity.jsx",
+      "frontend/src/styles/ProductExperience.css"
+    ],
+    "removed": [],
+    "active_env_unchanged": true
+  },
+  "tests": {
+    "focused_backend_methods": 3,
+    "assertions": 31,
+    "backend": "PASS",
+    "production_build": "PASS",
+    "browser": {
+      "isolated": true,
+      "company_id": 1,
+      "source_violations": 13,
+      "rehearsal_violations": 12,
+      "source_repair_authorized": false,
+      "tenant_records_restricted": true,
+      "read_only_review": true,
+      "languages": [
+        "en",
+        "sq"
+      ],
+      "widths": [
+        1366,
+        390
+      ],
+      "errors": []
+    },
+    "full_pm_pr_suite": false,
+    "real_data_full_reference_scans": 2
+  },
+  "required_status": {
+    "all_original_violations_identified": "YES",
+    "exact_affected_records_identified": "YES",
+    "confirmed_root_causes_addressed": "NO — partial namespace correction; original destructive operation unproven",
+    "isolated_data_corrections_successful": "PARTIAL",
+    "remaining_violated_constraints": 12,
+    "active_source_original_violated_constraints": 13,
+    "historical_business_data_preserved": "YES",
+    "accounting_balances_not_artificially_modified": "YES",
+    "cross_company_relationships_verified": "NO — known-parent joins pass; absent owners unverified",
+    "old_po_history_protected_from_id_reuse": "YES",
+    "referential_integrity_ready_for_approved_cutover": "NO",
+    "active_database_modified_by_dc12": "NO",
+    "active_cutover_performed": "NO",
+    "real_encrypted_installation_recovery_verified": "NO",
+    "opening_accountant_approval_obtained": "NO",
+    "ready_for_supervised_real_company_pilot": "NO",
+    "ready_for_commercial_deployment": "NO"
+  },
+  "evidence": [
+    "output/dc12-baseline-audit.json",
+    "output/dc12-after-audit.json",
+    "output/dc12-violation-inventory.json",
+    "output/dc12-parent-catalogs.json",
+    "output/dc12-rehearsal-changes.json",
+    "output/dc12-restore-fingerprints.json",
+    "output/dc12-correction-fingerprints.json",
+    "output/dc12-final-copy-checks.json",
+    "output/dc12-source-final.json",
+    "output/dc12-financial-recovery.json",
+    "output/dc12-mariadb-checks.json",
+    "output/dc12-po-regression.json",
+    "output/dc12-focused.log",
+    "output/dc12-build.log",
+    "output/dc12-browser.log",
+    "output/dc12/browser.json"
+  ],
+  "next_phase_started": false,
+  "final_state": {
+    "isolated_review_servers_stopped": true,
+    "isolated_database_clean_shutdown": true,
+    "original_ports_running": [
+      3306,
+      8000,
+      5173,
+      8080
+    ],
+    "diff_check_exit": 0,
+    "active_cutover": false
+  }
+}

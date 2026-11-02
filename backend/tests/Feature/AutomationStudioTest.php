@@ -55,7 +55,7 @@ class AutomationStudioTest extends TestCase
         $this->putJson('/api/automations/'.$rule->id,$definition)->assertOk()->assertJsonPath('enabled',false)->assertJsonPath('version',2);
         $this->assertDatabaseCount('automation_versions',2);
         app(AutomationService::class)->run($rule->fresh(),$event);
-        $this->assertDatabaseHas('automation_executions',['status'=>'skipped','version'=>2]);
+        $this->assertDatabaseHas('automation_executions',['status'=>'blocked','version'=>2]);
         $this->assertDatabaseCount('operational_tasks',0);
     }
 
@@ -121,13 +121,23 @@ class AutomationStudioTest extends TestCase
 
     public function test_scheduler_deduplicates_unresolved_tasks_and_records_draft_without_approval(): void
     {
-        [$p,$rule]=$this->setupRule('inventory.low_stock',[['type'=>'purchase_request_draft','title'=>'Restock handles','quantity'=>'10']]);
+        [$p,$rule,$definition]=$this->setupRule('inventory.low_stock',[['type'=>'purchase_request_draft','title'=>'Restock handles','quantity'=>'10']]);
         app(AutomationScheduler::class)->tick(); app(AutomationScheduler::class)->tick();
         $this->assertSame('succeeded',AutomationExecution::first()?->status,AutomationExecution::first()?->toJson() ?? 'No execution: '.BusinessEvent::all()->toJson());
         $this->assertDatabaseCount('purchase_requests',1);
         $this->assertDatabaseHas('purchase_requests',['status'=>'draft']);
         $this->assertDatabaseCount('purchase_orders',0);
         $this->assertDatabaseCount('approval_decisions',0);
+        $this->assertDatabaseCount('operational_tasks',1);
+        // Procurement conversion itself is exercised by the DC6 full journey.
+        // Here a later observation/revision must retain the same stock occurrence.
+        $request=\App\Models\PurchaseRequest::firstOrFail(); $request->update(['status'=>'converted']);
+        app(AutomationService::class)->consume($this->event($p,'still-low-after-conversion'));
+        $definition['description']='Revised purchasing review guidance';
+        $this->putJson('/api/automations/'.$rule->id,$definition)->assertOk();
+        $this->postJson('/api/automations/'.$rule->id.'/toggle',['enabled'=>true])->assertOk();
+        app(AutomationService::class)->consume($this->event($p,'still-low-after-revision'));
+        $this->assertDatabaseCount('purchase_requests',1);
         $this->assertDatabaseCount('operational_tasks',1);
     }
 
@@ -235,4 +245,51 @@ class AutomationStudioTest extends TestCase
         $this->assertDatabaseCount('journal_entries',0);
         $this->assertEquals('0.00',$customer->fresh()->current_debt);
     }
+
+    public function test_inventory_issue_acknowledgement_versions_recovery_and_same_day_recurrence(): void
+    {
+        [$p,$rule,$definition]=$this->setupRule('inventory.low_stock',[['type'=>'create_task','title'=>'Review current stock']]);
+        app(AutomationScheduler::class)->tick(); app(AutomationScheduler::class)->tick();
+        $this->assertDatabaseCount('operational_tasks',1);
+        $task=OperationalTask::first();
+        $task->update(['dedupe_key'=>hash('sha256',$rule->id.':1:0:Product:'.$p->id)]); // pre-upgrade identity
+        $this->patchJson('/api/operational-tasks/'.$task->id,['status'=>'completed','outcome_note'=>'Supplier contacted'])->assertOk();
+        $this->assertNotNull($task->fresh()->dedupe_key);
+        $definition['name']='Renamed review';
+        $this->putJson('/api/automations/'.$rule->id,$definition)->assertOk();
+        $this->postJson('/api/automations/'.$rule->id.'/toggle',['enabled'=>true])->assertOk();
+        app(AutomationScheduler::class)->tick();
+        $this->assertDatabaseCount('operational_tasks',1);
+        // Test fixture starts as a legacy product without warehouse balances.
+        // Use the established stock authority for replenishment and depletion.
+        app(\App\Services\StockMovementService::class)->store(['product_id'=>$p->id,'type'=>'in','quantity'=>30,'movement_code'=>'import_adjustment_in','reason'=>'Synthetic replenishment','idempotency_key'=>'auto-recover']);
+        app(AutomationScheduler::class)->tick();
+        $this->assertNull($task->fresh()->dedupe_key);
+        $this->assertEquals('Supplier contacted',$task->fresh()->outcome['note']);
+        app(\App\Services\StockMovementService::class)->store(['product_id'=>$p->id,'type'=>'out','quantity'=>30,'movement_code'=>'import_adjustment_out','reason'=>'Synthetic depletion','idempotency_key'=>'auto-recur']);
+        app(AutomationScheduler::class)->tick(); app(AutomationScheduler::class)->tick();
+        $this->assertDatabaseCount('operational_tasks',2);
+        $this->assertEquals(1,OperationalTask::where('status','open')->count());
+        $this->assertDatabaseHas('audit_logs',['action'=>'task.source_resolved']);
+    }
+
+
+    public function test_quality_hold_rule_uses_existing_source_and_closes_only_after_release(): void
+    {
+        [$p,$rule]=$this->setupRule('inventory.quality_hold',[['type'=>'create_task','title'=>'Review quality disposition']]);
+        $stock=app(\App\Services\StockMovementService::class);
+        $stock->store(['product_id'=>$p->id,'type'=>'in','quantity'=>1,'movement_code'=>'import_adjustment_in','reason'=>'Synthetic stock','idempotency_key'=>'quality-start']);
+        $balance=\App\Models\WarehouseStock::first();
+        $transition=['product_id'=>$p->id,'warehouse_id'=>$balance->warehouse_id,'location_id'=>$balance->location_id,'quantity'=>2,'from_state'=>'available','to_state'=>'quarantine','reason'=>'Synthetic hold','idempotency_key'=>'quality-hold'];
+        $stock->transitionState($transition);
+        app(AutomationScheduler::class)->tick(); app(AutomationScheduler::class)->tick();
+        $this->assertDatabaseCount('operational_tasks',1);
+        $this->assertDatabaseHas('operational_tasks',['source_type'=>'WarehouseStock','source_id'=>$balance->id]);
+        $this->getJson('/api/action-center')->assertOk()->assertJsonPath('tasks.data.0.url','/warehouse-operations?product='.$p->id.'&warehouse='.$balance->warehouse_id);
+        $stock->transitionState([...$transition,'from_state'=>'quarantine','to_state'=>'available','idempotency_key'=>'quality-release']);
+        app(AutomationScheduler::class)->tick();
+        $this->assertDatabaseHas('operational_tasks',['status'=>'completed','dedupe_key'=>null]);
+        $this->assertEquals(11,$p->fresh()->quantity);
+    }
+
 }

@@ -1,3 +1,4 @@
+import PageHeader from '../components/PageHeader';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
@@ -98,9 +99,7 @@ export default function WorkforceCenter({
         type: 'advance'
       });
     };
-  return <main className="wf-workspace"><header className="wf-heading"><div><span className="wf-eyebrow">AIMS · {t('Workforce core', 'Personeli')}</span><h1>{self ? t('My workforce', 'Hapësira ime e punës') : t('Employees & Employment', 'Punonjësit dhe punësimi')}</h1><p>{t('People, effective employment terms and approved workforce records.', 'Personeli, kushtet historike dhe regjistrimet e miratuara.')}</p></div>{can('payroll.view') && <Link to="/payroll">{t('Payroll Control Center', 'Qendra e kontrollit të pagave')}</Link>}{!self && can('employees.manage') && <button disabled={busy} onClick={() => setDialog({
-        type: 'employee'
-      })}>{t('Add employee', 'Shto punonjës')}</button>}</header>
+  return <main className="wf-workspace"><PageHeader title={self?t('My workforce','Hapësira ime e punës'):t('Employees & Employment','Punonjësit dhe punësimi')} description={t('People, effective employment terms and approved workforce records.','Personeli, kushtet historike dhe regjistrimet e miratuara.')} actions={<>{can('payroll.view')&&<Link to="/payroll">{t('Payroll Control Center','Qendra e kontrollit të pagave')}</Link>}{!self&&can('employees.manage')&&<button className="workspace-primary" disabled={busy} onClick={()=>setDialog({type:'employee'})}>{t('Add employee','Shto punonjës')}</button>}</>}/>
     {error && <p role="alert" className="wf-error">{error}</p>}
     {!self && <section className="wf-panel"><div className="wf-toolbar"><Field label={t('Search name, number, department or position', 'Kërko emrin, numrin, departamentin ose pozitën')} value={q} onChange={e => {
           setQ(e.target.value);

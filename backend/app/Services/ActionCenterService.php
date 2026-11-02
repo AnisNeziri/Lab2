@@ -10,50 +10,68 @@ class ActionCenterService
     public function tasks(array $filters=[])
     {
         $q=OperationalTask::query();
-        $allowed=array_values(array_filter(array_keys(AutomationRegistry::SOURCES),fn($type)=>app(AutomationRegistry::class)->canAccessSource($type)));
+        // A source-filtered workspace need not authorize every unrelated source type.
+        $sources=isset($filters['source_type'])&&$filters['source_type']!==''?array_intersect_key(AutomationRegistry::SOURCES,[$filters['source_type']=>true]):AutomationRegistry::SOURCES;
+        $allowed=array_values(array_filter(array_keys($sources),fn($type)=>app(AutomationRegistry::class)->canAccessSource($type)));
         $q->where(fn($q)=>$q->whereNull('source_type')->orWhereIn('source_type',$allowed));
-        if ($this->can('documents.view')) $q->where(fn($q)=>$q->whereNull('source_type')->orWhere('source_type','!=','Document')->orWhereIn('source_id',app(DocumentService::class)->visibleQuery()->select('id')));
-        if (!$this->can('tasks.manage') || ($filters['view'] ?? '')==='mine') $q->where(fn($q)=>$q->where('assigned_user_id',Auth::id())->orWhere('created_by',Auth::id())->orWhere(fn($q)=>$q->whereNull('assigned_user_id')->where('assigned_role',Auth::user()->role)));
+        if ((!isset($filters['source_type'])||$filters['source_type']===''||$filters['source_type']==='Document')&&$this->can('documents.view')) $q->where(fn($q)=>$q->whereNull('source_type')->orWhere('source_type','!=','Document')->orWhereIn('source_id',app(DocumentService::class)->visibleQuery()->select('id')));
+        $teams=array_keys(array_filter(AutomationOperations::TEAMS,fn($p)=>$this->can($p)));
+        if (($filters['view']??'')==='mine') $q->where(fn($q)=>$q->where('assigned_user_id',Auth::id())->orWhere(fn($q)=>$q->whereNull('assigned_user_id')->whereNull('assigned_role')->whereNull('assigned_team')->where('created_by',Auth::id())));
+        elseif (!$this->can('tasks.manage')) $q->where(fn($q)=>$q->where('assigned_user_id',Auth::id())->orWhere(fn($q)=>$q->whereNull('assigned_user_id')->where(fn($q)=>$q->where('created_by',Auth::id())->orWhere('assigned_role',Auth::user()->role)->orWhereIn('assigned_team',$teams))));
+        if (!empty($filters['team'])) { abort_unless(in_array($filters['team'],$teams,true),403); $q->where('assigned_team',$filters['team']); }
+
         if (!empty($filters['source_type'])) $q->where('source_type',$filters['source_type']);
         if (!empty($filters['source_id'])) $q->where('source_id',(int)$filters['source_id']);
         if (!empty($filters['task'])) $q->whereKey((int)$filters['task']);
         if (($filters['status'] ?? 'active')==='active') $q->whereIn('status',['open','in_progress']);
         elseif (!empty($filters['status']) && $filters['status']!=='all') $q->where('status',$filters['status']);
         if (!empty($filters['priority'])) $q->where('priority',$filters['priority']);
+        if (!empty($filters['overdue'])) $q->whereIn('status',['open','in_progress'])->where('due_at','<',now());
         if (!empty($filters['q'])) $q->where('title','like','%'.mb_substr($filters['q'],0,100).'%');
         return $q->orderByRaw("CASE WHEN status IN ('open','in_progress') AND due_at < ? THEN 0 ELSE 1 END", [now()])
             ->orderByRaw("CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END")
-            ->orderByRaw('CASE WHEN due_at IS NULL THEN 1 ELSE 0 END')->orderBy('due_at')->latest('id')->paginate(50)->through(fn($task)=>$this->present($task));
+            ->orderByRaw('CASE WHEN due_at IS NULL THEN 1 ELSE 0 END')->orderBy('due_at')->latest('id')->paginate(min(50,max(1,(int)($filters['per_page']??50))))->through(fn($task)=>$this->present($task));
     }
 
     public function present(OperationalTask $task): array
     {
         if ($task->source_type && !(app(AutomationRegistry::class)->url($task->source_type,(int)$task->source_id))) abort(403);
         if ($task->source_type==='Document' && !app(DocumentService::class)->visibleQuery()->whereKey($task->source_id)->exists()) abort(403);
-        return $task->toArray()+['url'=>app(AutomationRegistry::class)->url($task->source_type ?? '',(int)$task->source_id),
+        $row=$task->toArray();
+        if (!$this->can('analytics.finance') && $task->source_type==='Product') unset($row['outcome']['workflow']['prepared']['unit_price']);
+        $sourceUrl=$task->source_type==='Customer'&&isset($task->outcome['crm'])&&$this->can('customers.manage')?'/customers?customer='.$task->source_id:app(AutomationRegistry::class)->url($task->source_type ?? '',(int)$task->source_id);
+        return $row+['url'=>$sourceUrl,
             'overdue'=>$task->due_at?->isPast() && in_array($task->status,['open','in_progress']),
+            'assigned_user_name'=>$task->assigned_user_id ? \App\Models\User::whereKey($task->assigned_user_id)->value('name') : null,
+            'can_claim'=>$this->can('tasks.claim') && !$task->assigned_user_id && in_array($task->status,['open','in_progress'],true) && ((!$task->assigned_role&&!$task->assigned_team) || $task->assigned_role===Auth::user()->role || ($task->assigned_team && $this->can(AutomationOperations::TEAMS[$task->assigned_team]??'never'))),
             'can_complete'=>$this->can('tasks.complete') && ($this->can('tasks.manage') || $task->assigned_user_id===Auth::id() || $task->created_by===Auth::id() || (!$task->assigned_user_id && $task->assigned_role===Auth::user()->role))];
     }
 
     public function save(array $data, ?OperationalTask $task=null): OperationalTask
     {
+        return \Illuminate\Support\Facades\DB::transaction(function()use($data,$task){
+        \App\Models\Company::whereKey(Auth::user()->company_id)->sharedLock()->firstOrFail();
+        if ($task) $task=OperationalTask::whereKey($task->id)->lockForUpdate()->firstOrFail();
         $service=app(AutomationService::class);
         $service->authorize($task?'tasks.complete':'tasks.create');
         if ($task && !$this->present($task)['can_complete']) abort(403);
         $data=validator($data,[
             'title'=>($task?'sometimes':'required').'|string|max:240','description'=>'nullable|string|max:2000',
             'status'=>'sometimes|in:open,in_progress,completed,cancelled','priority'=>'sometimes|in:low,normal,high,urgent',
-            'assigned_user_id'=>'nullable|integer','assigned_role'=>'nullable|in:admin,manager,staff',
+            'assigned_user_id'=>'nullable|integer','assigned_role'=>'nullable|string|exists:roles,slug','assigned_team'=>'nullable|in:sales,purchasing,warehouse,finance,hr,management',
             'due_at'=>'nullable|date','source_type'=>'nullable|string','source_id'=>'nullable|integer',
             'outcome_note'=>'nullable|string|max:2000',
         ])->validate();
         if ($task && array_diff(array_keys($data),['status','outcome_note'])) $service->authorize('tasks.manage');
         $service->validateAssignee($data);
+        if (array_key_exists('source_type',$data) || array_key_exists('source_id',$data)) { $data['source_type']=$data['source_type']??$task?->source_type; $data['source_id']=$data['source_id']??$task?->source_id; }
         if (!empty($data['source_type']) && (!app(AutomationRegistry::class)->url($data['source_type'],(int)($data['source_id']??0)) || !app(AutomationRegistry::class)->source($data['source_type'],(int)($data['source_id']??0)))) throw ValidationException::withMessages(['source'=>['Select an authorized existing company record.']]);
         $note=$data['outcome_note'] ?? null; unset($data['outcome_note']);
         if (in_array($data['status']??null,['completed','cancelled'])) {
             $data['completed_at']=now();
-            if (empty($task?->outcome['draft'])) $data['dedupe_key']=null;
+            $inventoryIssue = $task?->automation_id && in_array(\App\Models\Automation::find($task->automation_id)?->trigger, AutomationRegistry::ISSUE_TRIGGERS, true);
+            // Acknowledgement does not make an unresolved stock issue a new issue.
+            if (empty($task?->outcome['draft']) && !$inventoryIssue) $data['dedupe_key']=null;
             $data['outcome']=array_merge($task?->outcome ?? [],['decision'=>$data['status'],'note'=>$note,'user_id'=>Auth::id(),'at'=>now()->toIso8601String()]);
         }
         elseif (in_array($data['status']??null,['open','in_progress'])) $data['completed_at']=null;
@@ -61,9 +79,15 @@ class ActionCenterService
         else $task=OperationalTask::create($data+['company_id'=>Auth::user()->company_id,'created_by'=>Auth::id(),'assigned_user_id'=>Auth::id()]);
         $service->audit('task.'.($data['status'] ?? 'saved'),$task,$data);
         return $task;
+        });
     }
 
-    public function snapshot(array $filters=[]): array
+    public function snapshot(array $filters=[], ?array $financialSummary=null): array
+    {
+        return app(PermissionService::class)->readScope(fn()=> $this->readSnapshot($filters,$financialSummary));
+    }
+
+    private function readSnapshot(array $filters, ?array $financialSummary): array
     {
         $tasks=$this->tasks($filters);
         if (!empty($filters['summary_only'])) return ['summary'=>[
@@ -71,8 +95,13 @@ class ActionCenterService
             'approvals'=>$this->can('approvals.view')?app(ApprovalService::class)->pendingForUser(Auth::user())->count():0,
             'issues'=>OperationalTask::whereIn('id',collect($tasks->items())->pluck('id'))->whereIn('priority',['high','urgent'])->count(),
         ]];
-        $items=app(\App\Services\Workforce\PayrollReadService::class)->attention();$intelligentProducts=[];
-        if($this->can('accounting.reports.view')&&$this->can('accounting.integrity.view'))foreach(app(FinancialControlService::class)->summary()['attention'] as $issue){
+        $items=[...app(\App\Services\Workforce\PayrollReadService::class)->attention(),...app(CustomerWorkspaceService::class)->attention()];$intelligentProducts=[];
+        if ($this->can('inventory.view')) foreach(app(InventoryIntegrityService::class)->operationalHealth()['attention'] as $issue) {
+            // Overdue POs already have a canonical item below; do not repeat them.
+            if ($issue['entity_type'] === 'PurchaseOrder') continue;
+            $items[] = $issue;
+        }
+        if($this->can('accounting.reports.view')&&$this->can('accounting.integrity.view'))foreach(($financialSummary ?? app(FinancialControlService::class)->summary())['attention'] as $issue){
             $items[]=['kind'=>'finance','id'=>'dc2-'.$issue['code'],'title'=>$issue['label'],'description'=>($issue['count']??1).' items require review','url'=>$issue['url'],'due_at'=>null,'values'=>['count'=>$issue['count']??1,'difference'=>$issue['difference']??null],'severity'=>$issue['severity']];
         }
         if($this->can('onboarding.view'))foreach(\App\Models\OnboardingSession::whereNotIn('status',['locked','cancelled'])->latest('id')->limit(10)->get() as $session){
@@ -100,7 +129,12 @@ class ActionCenterService
             foreach(\App\Models\InventoryRecommendation::with('product')->whereNotNull('planning_key')->whereIn('status',['open','viewed'])->whereIn('explanation->optimization_state',['critical','potential_stockout','reorder_now','reorder_soon'])->whereHas('prediction',fn($q)=>$q->where('valid_until','>',now()))->latest('id')->limit(20)->get() as $r){
                 if(in_array($r->product_id,$intelligentProducts,true))continue;$intelligentProducts[]=$r->product_id;
                 $transfer=\App\Models\BusinessEvent::where('entity_type','InventoryRecommendation')->where('entity_id',$r->id)->where('event_type','inventory.optimization.transfer_opportunity')->exists();
-                $items[]=['kind'=>'stock','id'=>'planning-'.$r->id,'title'=>$r->product?->name,'description'=>$transfer?'Review warehouse transfer opportunity':'Review inventory purchasing plan','url'=>'/inventory-intelligence?view=planning&product='.$r->product_id.($r->warehouse_id?'&warehouse_id='.$r->warehouse_id:''),'due_at'=>$r->explanation['reorder_date']??null];
+                $plan=$r->explanation;
+                $items[]=['kind'=>'stock','id'=>'planning-'.$r->id,'title'=>$r->product?->name,'description'=>$transfer?'Review warehouse transfer opportunity':'Review inventory purchasing plan',
+                    'values'=>['available'=>$plan['stock']['available']??null,'reserved'=>$plan['stock']['reserved']??null,'incoming'=>$plan['stock']['incoming']??null,
+                        'recommended_quantity'=>$plan['base_quantity']??null,'unit'=>$r->product?->unit,'observed_days'=>$plan['quality']['observed_days']??null,'qualified'=>$plan['quality']['qualified']??false,
+                        'estimated_cost'=>$this->can('analytics.finance')?($plan['estimated_cost']??null):null,'currency'=>$this->can('analytics.finance')?($plan['currency']??null):null],
+                    'url'=>'/inventory-intelligence?view=planning&product='.$r->product_id.($r->warehouse_id?'&warehouse_id='.$r->warehouse_id:''),'due_at'=>$plan['reorder_date']??null];
             }
             foreach(\App\Models\InventoryIntelligenceAlert::with('product')->where('status','open')->latest()->limit(20)->get() as $a)
                 $items[]=['kind'=>'stock','id'=>'intelligence-'.$a->id,'title'=>$a->product?->name,'description'=>'Review forecast performance and data quality','url'=>'/inventory-intelligence?product='.$a->product_id.'&horizon='.($a->horizon?:30),'due_at'=>null];
@@ -135,10 +169,10 @@ class ActionCenterService
         if ($this->can('control_tower.view')) foreach(OperationalException::whereIn('status',['active','open'])->latest()->limit(25)->get() as $e) $items[]=['kind'=>'shipment','id'=>$e->id,'title'=>$e->exception_type,'description'=>$e->description,'url'=>$e->next_action['url'] ?? '/control-tower','due_at'=>null];
         if ($this->can('accounting.integrity.view')&&!$this->can('accounting.reports.view')) foreach(AccountingException::where('status','open')->latest()->limit(25)->get() as $e) $items[]=['kind'=>'finance','id'=>$e->id,'title'=>$e->type,'description'=>$e->message,'url'=>'/accounting?tab=integrity','due_at'=>null];
         if ($this->can('fulfillment.view')) foreach(\App\Models\OrderIntake::where('state','attention')->latest()->limit(25)->get() as $o) $items[]=['kind'=>'order','id'=>$o->id,'title'=>$o->external_id ?: '#'.$o->id,'description'=>'Review order','url'=>'/order-hub?intake='.$o->id,'due_at'=>null];
-        if ($this->can('automations.executions.view')) foreach(app(AutomationService::class)->visibleExecutions()->whereIn('status',['failed','blocked'])->latest()->limit(25)->get() as $e) $items[]=['kind'=>'system','id'=>$e->id,'title'=>'Automation #'.$e->automation_id,'description'=>$e->error,'url'=>'/automation-studio?automation='.$e->automation_id,'due_at'=>$e->next_retry_at];
+        if ($this->can('automations.executions.view')) foreach(app(AutomationService::class)->visibleExecutions()->whereIn('status',['failed','blocked','needs_verification'])->latest()->limit(25)->get() as $e) $items[]=['kind'=>'system','id'=>$e->id,'title'=>($e->status==='needs_verification'?'Verify automation outcome #':'Automation #').$e->automation_id,'description'=>$e->error,'url'=>'/automation-studio?automation='.$e->automation_id,'due_at'=>$e->next_retry_at,'severity'=>$e->status==='needs_verification'?'urgent':'attention'];
         $summary=['tasks'=>$tasks->total(),'approvals'=>count(array_filter($items,fn($x)=>$x['kind']==='approval')),'issues'=>count($items)];
         if (!empty($filters['area'])) $items=array_values(array_filter($items,fn($x)=>$x['kind']===$filters['area']));
-        return ['tasks'=>$tasks,'attention'=>$items,'summary'=>$summary,'preview_limits'=>['per_area'=>25,'customer_candidates'=>100]];
+        return ['tasks'=>$tasks,'attention'=>$items,'summary'=>$summary,'automation_controls'=>app(AutomationOperations::class)->controls(),'preview_limits'=>['per_area'=>25,'customer_candidates'=>100]];
     }
     private function can(string $permission): bool { return app(PermissionService::class)->roleHasPermission(Auth::user()->role,$permission); }
 }

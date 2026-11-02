@@ -1,0 +1,189 @@
+{
+  "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+  "branch": "main",
+  "entry_files": 206,
+  "byte_identical_entry_files": 195,
+  "intentionally_extended_entry_files": [
+    ".gitignore",
+    "frontend/e2e/specs/dc8-security.spec.js",
+    "frontend/src/components/SecurityConfirmation.jsx",
+    "frontend/src/locales/uiCopy.js",
+    "frontend/src/pages/ActionCenter.jsx",
+    "frontend/src/pages/AutomationStudio.jsx",
+    "frontend/src/pages/CommercialCenter.jsx",
+    "frontend/src/pages/IntegrationCenter.css",
+    "frontend/src/pages/IntegrationCenter.jsx",
+    "frontend/src/pages/SecurityCenter.css",
+    "frontend/src/pages/SecurityCenter.jsx"
+  ],
+  "removed_entry_files": [],
+  "existing_backend_files_changed": [],
+  "px2_source_and_test_files": [
+    {
+      "path": ".gitignore",
+      "sha256": "ee3f972e24fda5144cb87e663eb933c3b25131cd2f11801544a7918b31bfc48e"
+    },
+    {
+      "path": "backend/tests/Support/px2-browser-fixture.php",
+      "sha256": "687bf2d7979dd16671af6852b6fb7186a762b91c718df78ef7466902aeea0987"
+    },
+    {
+      "path": "frontend/e2e/px2-setup.mjs",
+      "sha256": "1c16696ef00a6fdfe5b06596d569e0dbced6ba94fcfc8646dc65801a83989bca"
+    },
+    {
+      "path": "frontend/e2e/specs/dc8-security.spec.js",
+      "sha256": "2e5dab534864d8d548ba403d340883e0f5f46be6e8c66a4f1e98d4326ceecfa3"
+    },
+    {
+      "path": "frontend/e2e/specs/px2-experience.spec.js",
+      "sha256": "0e092bf2ddd2d13ef36e204c4484f6f3daae9eef3215216ca914d12a29f351a7"
+    },
+    {
+      "path": "frontend/playwright.px2.config.js",
+      "sha256": "d31b49bacd459e8702bd5af366b5ffb5e3107b67940bce1c4731e8d32bfecb0c"
+    },
+    {
+      "path": "frontend/src/App.css",
+      "sha256": "65742cdcf6d27bcd718e5ef36fc159f3c66b2e80538e4375dd06c4733131d388"
+    },
+    {
+      "path": "frontend/src/components/ConfirmDialog.jsx",
+      "sha256": "ddbab4f349c07de459aec9c594bb9852fd9bc1c85e3576e7de6dbf506e8ea7a5"
+    },
+    {
+      "path": "frontend/src/components/OrderOverview.jsx",
+      "sha256": "cebf01dffa45ec8d1df4e1d91daaf571815ce8117ebb8c07743fdafd1491c661"
+    },
+    {
+      "path": "frontend/src/components/PageHeader.jsx",
+      "sha256": "25245baa974a932f01c874bcbfcc09a91fde921a06e8a6596f5d9cc30747b2f1"
+    },
+    {
+      "path": "frontend/src/components/SecurityConfirmation.jsx",
+      "sha256": "eb571a1ae14d9855078e81bf71d054b17a287a5fb57121b4f97903850ef7cf79"
+    },
+    {
+      "path": "frontend/src/components/StatusBadge.jsx",
+      "sha256": "0bdc1f1a5767b9163a787d7f0e2ae00cf904fc2c49411c2d06170d6136328cb9"
+    },
+    {
+      "path": "frontend/src/components/WorkspaceTabs.jsx",
+      "sha256": "62d0dee41150b7e0a2784f74e10bafa172033b7847a8b39ce88109f1cd2f5ce0"
+    },
+    {
+      "path": "frontend/src/components/finance/FinanceShared.jsx",
+      "sha256": "7515cf7bf79748c42f794ccfc8a9909bc8d33a05592e1e2cb797994f3aa23ce6"
+    },
+    {
+      "path": "frontend/src/hooks/useWorkspaceHistory.js",
+      "sha256": "f45a7b7f54873f8e7f5cc689751c1f0484a1bf51b3cff2a12a40f4802d1963e8"
+    },
+    {
+      "path": "frontend/src/index.css",
+      "sha256": "bfb64688d037ae1e9d3df4464b960996f6871f2a1833cc606bc73dc083acdcfe"
+    },
+    {
+      "path": "frontend/src/lib/sessionWorkspace.js",
+      "sha256": "a4ab0c4c7a93d379d0c8acfea17fe0ef019b0f68d180984a77b8199ad770db97"
+    },
+    {
+      "path": "frontend/src/locales/uiCopy.js",
+      "sha256": "58914c619a2bca31e9f14cbc234306dbc396ea88194c63d533d1b72432528336"
+    },
+    {
+      "path": "frontend/src/pages/ActionCenter.jsx",
+      "sha256": "17d00912c8af2ffdd543c5411cb44eba7268b1fd1b88a7cd7fb2bac50e396bc9"
+    },
+    {
+      "path": "frontend/src/pages/AutomationStudio.jsx",
+      "sha256": "c34755752a65e2d068633588a3123669d8a4f3f9de10d63d80f88f9f97362674"
+    },
+    {
+      "path": "frontend/src/pages/CommercialCenter.jsx",
+      "sha256": "6a12e22cb02ab6c7db4131e98669e2b07d273745b571712ac9795e4f2c7c83cf"
+    },
+    {
+      "path": "frontend/src/pages/CustomerDebts.jsx",
+      "sha256": "fb72becde08ff226df48993610f50b6dc68304daff661b559e484cb6be1b650c"
+    },
+    {
+      "path": "frontend/src/pages/IntegrationCenter.css",
+      "sha256": "efe9b7b53daa840b0ad208b0edf0a7d6e9d56741d6be46c3c18dafb270640411"
+    },
+    {
+      "path": "frontend/src/pages/IntegrationCenter.jsx",
+      "sha256": "0e475b41ca3ef0d079947ebdcd41673b93f109dc658e0313779cbf8df3d5f883"
+    },
+    {
+      "path": "frontend/src/pages/OrderHub.css",
+      "sha256": "726878cd7da3e37783e8c3be7a1c3a87dd507be4a696d448d86ec3d09bbe43ff"
+    },
+    {
+      "path": "frontend/src/pages/PayrollCenter.jsx",
+      "sha256": "0571d261e146a2eb24b941d41d27c69a806e808ab560e110026408b187035698"
+    },
+    {
+      "path": "frontend/src/pages/Procurement.css",
+      "sha256": "3fd83f9a9f6880453c2a3b4e83e155969ff2a983b1d9a020a840859ca0a25316"
+    },
+    {
+      "path": "frontend/src/pages/Procurement.jsx",
+      "sha256": "9241d386f7f5b6803c5b97665779146e666539486671f11e14c6e3c766a63647"
+    },
+    {
+      "path": "frontend/src/pages/PurchaseOrders.jsx",
+      "sha256": "5d3e40af9fbffc8c47ba3a40ada9e6c3a50544b4deb87fe0fe060a1cf61d3726"
+    },
+    {
+      "path": "frontend/src/pages/SecurityCenter.css",
+      "sha256": "55ebb6a4db4e778de0393cbe6e05eef86890b6f0498a8d598c9e6c4d8f3820b3"
+    },
+    {
+      "path": "frontend/src/pages/SecurityCenter.jsx",
+      "sha256": "8766a4121167d44540cd7c5439550a83e2bfde2fc80612d0e1bb0cb8d6b22da2"
+    },
+    {
+      "path": "frontend/src/pages/Stock.jsx",
+      "sha256": "641677e6afe890c37842916fbdbc49d5e1c4747bf1ecc3f0ffdea6fe1e224ecd"
+    },
+    {
+      "path": "frontend/src/pages/TaxWorkspace.css",
+      "sha256": "4a9f183e855fe2403eff0c9422e27a68e74773d7e622dce3df8d1cc712647604"
+    },
+    {
+      "path": "frontend/src/pages/TaxWorkspace.jsx",
+      "sha256": "37510dc7f7bed29f54242309192cfad2d80f3935e15558663f14ac99d0aefd09"
+    },
+    {
+      "path": "frontend/src/pages/WorkforceCenter.jsx",
+      "sha256": "ced4dfaf9f0561222e791de417dddb54d4697c61d69d6a90b4d4368b5c1f74be"
+    },
+    {
+      "path": "frontend/src/pages/WorkforceShared.jsx",
+      "sha256": "f2b74110c75687a099757a1fcf557f514ea38925d580825c068237b823737882"
+    },
+    {
+      "path": "frontend/src/styles/ProductExperience.css",
+      "sha256": "3533ca84007b46ca1c1fac335680e8ef6c2db3686e239b2dcc44e2c45ef33982"
+    },
+    {
+      "path": "frontend/src/utils/administrationPresentation.js",
+      "sha256": "def7dbccb1a77f6b334185b359c4efcc2490a6c8de496098619e45faa283be8d"
+    },
+    {
+      "path": "frontend/src/utils/businessStatus.js",
+      "sha256": "54eeeec1a732481ba4faad4f2fefa6ced293f8bcc34ccdabff101e9720a38a82"
+    },
+    {
+      "path": "frontend/tests/product-maturity-session.test.mjs",
+      "sha256": "1ad163901286002ab6e2ce1bdb2952cdcdb9430f08c03c02de5ba7a45cbc330c"
+    },
+    {
+      "path": "scripts/serve-px2-e2e.cjs",
+      "sha256": "fac4a0f1cf1f1da410e96e32d18e0c5813f5cd95f706628636cfa89e062d503e"
+    }
+  ],
+  "review_patch": "output/px2/PX2.patch",
+  "baseline": "output/px2-baseline/manifest.json"
+}

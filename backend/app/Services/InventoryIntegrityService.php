@@ -7,6 +7,7 @@ use App\Models\Warehouse;
 use App\Models\WarehouseStock;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -20,6 +21,65 @@ use Illuminate\Validation\ValidationException;
 class InventoryIntegrityService
 {
     private const EPSILON = 0.0005;
+
+    /** Current, bounded review facts. This method never repairs stock or creates tasks. */
+    public function operationalHealth(?int $warehouseId = null): array
+    {
+        $company = (int) Auth::user()->company_id;
+        $today = \App\Support\CompanyClock::today()->toDateString();
+        $checks = []; $attention = [];
+        $add = function ($key, $label, $permission, $query, $fields, $present, $severity = 'attention') use (&$checks, &$attention) {
+            if (!app(PermissionService::class)->roleHasPermission(Auth::user()->role, $permission)) {
+                $checks[$key] = ['label'=>$label, 'count'=>null, 'status'=>'restricted']; return;
+            }
+            $count = (clone $query)->count();
+            $checks[$key] = ['label'=>$label, 'count'=>$count, 'status'=>$count ? $severity : 'healthy'];
+            if (!$count) return;
+            foreach ((clone $query)->limit(10)->get($fields) as $row) $attention[] = ['key'=>'inventory:'.$key.':'.$row->id,
+                'kind'=>'stock', 'id'=>'inventory:'.$key.':'.$row->id, 'severity'=>$severity, 'due_at'=>null, ...$present($row)];
+        };
+        $stock = WarehouseStock::query()->with('product:id,name,unit', 'warehouse:id,name')
+            ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))->orderBy('id');
+        $stockFact = fn ($row) => ['title'=>$row->product?->name ?? 'Inventory position', 'description'=>'Review '.$row->warehouse?->name,
+            'values'=>['available'=>(float)$row->available_quantity, 'quality_hold'=>(float)$row->quarantine_quantity, 'damaged'=>(float)$row->damaged_quantity, 'blocked'=>(float)$row->blocked_quantity, 'unit'=>$row->product?->unit],
+            'url'=>'/warehouse-operations?product='.$row->product_id, 'entity_type'=>'WarehouseStock', 'entity_id'=>$row->id];
+        $add('integrity', 'Negative or inconsistent stock states', 'inventory.view', (clone $stock)->where(fn ($q) => $q
+            ->whereRaw('quantity < 0 OR available_quantity < 0 OR reserved_quantity < 0 OR quarantine_quantity < 0 OR damaged_quantity < 0 OR blocked_quantity < 0')
+            ->orWhereRaw('ABS(quantity - available_quantity - reserved_quantity - quarantine_quantity - damaged_quantity - blocked_quantity) >= 0.0005')),
+            ['warehouse_stock.*'], $stockFact, 'critical');
+        $add('quality_hold', 'Quality holds awaiting disposition', 'inventory.view', (clone $stock)->where('quarantine_quantity', '>', 0), ['warehouse_stock.*'], $stockFact);
+        $add('damaged_blocked', 'Damaged or blocked stock', 'inventory.view', (clone $stock)->where(fn ($q) => $q->where('damaged_quantity','>',0)->orWhere('blocked_quantity','>',0)), ['warehouse_stock.*'], $stockFact);
+        $orders = \App\Models\PurchaseOrder::query()->whereIn('status', ['confirmed','ordered','partially_received'])->where('expected_at','<',$today)
+            ->when($warehouseId, fn ($q) => $q->where('warehouse_id',$warehouseId))->orderBy('expected_at')->orderBy('id');
+        $add('overdue_receipts', 'Purchase receipts past their expected date', 'purchase_orders.view', $orders, ['id','po_number','expected_at'],
+            fn ($row) => ['title'=>$row->po_number, 'description'=>'Purchase order overdue', 'url'=>'/purchase-orders?po='.$row->id,
+                'entity_type'=>'PurchaseOrder','entity_id'=>$row->id,'due_at'=>$row->expected_at?->toDateString()]);
+        $transfers = \App\Models\StockTransfer::query()->whereIn('status',['in_transit','partially_received'])
+            ->where('dispatched_at','<',now()->subDays(7))->when($warehouseId, fn ($q) => $q->where(fn ($q) => $q->where('source_warehouse_id',$warehouseId)->orWhere('destination_warehouse_id',$warehouseId)))
+            ->orderBy('dispatched_at')->orderBy('id');
+        $add('stale_transfers', 'Internal transfers open more than 7 days', 'transfers.view', $transfers, ['id','transfer_number','dispatched_at'],
+            fn ($row) => ['title'=>$row->transfer_number, 'description'=>'Review internal receipt; open more than 7 days',
+                'url'=>'/warehouse-operations?tab=transfers&transfer='.$row->id, 'entity_type'=>'StockTransfer','entity_id'=>$row->id]);
+        $counts = \App\Models\InventoryCountSession::query()->whereIn('status',['in_progress','submitted','recount_required'])
+            ->whereHas('items',fn ($q) => $q->whereNotNull('counted_quantity')->where('variance_quantity','!=',0))
+            ->when($warehouseId,fn ($q) => $q->where('warehouse_id',$warehouseId))->orderBy('id');
+        $add('count_variances', 'Counts with unresolved variances', 'inventory.counts.manage', $counts, ['id','count_number','status'],
+            fn ($row) => ['title'=>$row->count_number,'description'=>'Review count variance / recount', 'url'=>'/operations-center?tab=counts&count='.$row->id,
+                'entity_type'=>'InventoryCountSession','entity_id'=>$row->id]);
+        $invalid = \App\Models\SalesOrder::query()->whereNotIn('status',['cancelled','delivered'])
+            ->whereHas('allocations',fn ($q) => $q->where('status','!=','released')->whereRaw('quantity > dispatched_quantity')
+                ->when($warehouseId,fn ($q) => $q->where('warehouse_id',$warehouseId))
+                ->whereHas('lot',fn ($q) => $q->where('status','!=','active')->orWhereDate('expiry_at','<',$today)))
+            ->orderBy('id');
+        $add('reservation_conflicts', 'Reservations with expired or inactive lots', 'fulfillment.view', $invalid, ['id','order_number'],
+            fn ($row) => ['title'=>$row->order_number,'description'=>'Review invalid lot reservation; release unpicked stock and reallocate through the order',
+                'url'=>'/fulfillment?order='.$row->id, 'entity_type'=>'SalesOrder','entity_id'=>$row->id]);
+        $status = collect($checks)->contains(fn ($c) => $c['status']==='critical') ? 'critical' : (collect($checks)->contains(fn ($c) => $c['status']==='attention') ? 'attention' : 'healthy');
+        return ['generated_at'=>now()->toIso8601String(), 'status'=>$status, 'checks'=>$checks, 'attention'=>$attention,
+            'preview_limit_per_check'=>10, 'transfer_review_days'=>7,
+            'policy'=>'Facts only. Transfer age is a seven-day review window, not an invented promised receipt date. Integrity differences require investigation; counts, quality release and reservation corrections remain human-authorized source actions.',
+            'valuation_url'=>app(PermissionService::class)->roleHasPermission(Auth::user()->role,'accounting.integrity.view') ? '/accounting?tab=reconciliation' : null];
+    }
 
     /**
      * @return array{

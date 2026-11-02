@@ -116,6 +116,11 @@ class OrderWorkflowTest extends TestCase
         $this->postJson($path.'/payment',$payment)->assertOk();
         $this->assertDatabaseCount('financial_account_transactions',1);
         $this->assertDatabaseCount('payment_transactions',0);
+        $links=$this->getJson($path)->assertOk()->json('connections');
+        $this->assertCount(1,$links['financial_transactions']);
+        $this->assertNotEmpty($links['journals']);
+        $this->assertContains($links['financial_transactions'][0]['journal_entry_id'],array_column($links['journals'],'id'));
+
         $this->assertEquals(16,Product::find($p['id'])->quantity);
     }
 }

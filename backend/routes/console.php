@@ -103,3 +103,19 @@ Artisan::command('workforce:setup', function () {
     app(\Database\Seeders\RolePermissionSeeder::class)->run(preserveExisting: true);
     $this->info('Workforce/payroll permissions installed; existing grants and revocations preserved. Initialize company payroll mappings explicitly in Payroll Configuration.');
 })->purpose('Install workforce permissions without resetting customized roles');
+
+Artisan::command('platform:prune',function(){try{\Illuminate\Support\Facades\DB::table('platform_spans')->where('created_at','<',now()->subDays(config('platform.span_retention_days',7)))->delete();}catch(\Throwable $e){$this->warn('Optional trace retention unavailable.');}})->purpose('Prune bounded platform telemetry without touching business records');
+Schedule::command('platform:prune')->daily()->withoutOverlapping();
+Artisan::command('search:reindex {company} {--type=}',function(){
+ $company=(int)$this->argument('company');$type=$this->option('type');$registry=\App\Services\Platform\SearchEntityRegistry::TYPES;
+ if($type&&!isset($registry[$type]))throw new \InvalidArgumentException('Unknown registered search type.');
+ foreach($type?[$type=>$registry[$type]]:$registry as $key=>[$model])$model::withoutGlobalScopes()->where('company_id',$company)->orderBy('id')->chunkById(100,function($rows)use($company,$key){foreach($rows as $row)app(\App\Services\Platform\BusinessSearchIndexer::class)->index($company,$key,(int)$row->id);});
+ $this->info('Company-scoped search metadata rebuilt with the configured provider/version.');
+});
+
+Artisan::command('security:prune-challenges',function(){
+ $ids=\Illuminate\Support\Facades\DB::table('auth_challenges')->where('expires_at','<',now()->subDay())->orderBy('expires_at')->limit(10000)->pluck('id');
+ $count=\Illuminate\Support\Facades\DB::table('auth_challenges')->whereIn('id',$ids)->delete();
+ $this->info('Expired authentication challenges removed: '.$count.'. Security audit history is unchanged.');
+});
+Schedule::command('security:prune-challenges')->hourly()->withoutOverlapping();

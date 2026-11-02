@@ -1,4 +1,7 @@
 const statuses = {
+ purchase_request:['Purchase request approval','Miratimi i kërkesës për blerje'],
+ healthy:['Healthy','Në rregull'],not_configured:['Not configured','Pa konfigurim'],not_probed:['Not probed','Pa kontroll aktiv'],review:['Review','Për shqyrtim'],legacy:['Locally configured','Konfiguruar lokalisht'],configured:['Locally configured','Konfiguruar lokalisht'],valid:['Valid','E vlefshme'],expired:['Expired','E skaduar'],revoked:['Revoked','E revokuar'],grace:['Offline grace','Afati shtesë pa lidhje'],unknown_outcome:['Needs verification','Kërkon verifikim'],enabled:['Enabled','Aktivizuar'],
+
  fiscalized:['Fiscalized','Fiskalizuar'],unknown:['Unknown','E panjohur'],disabled:['Disabled','I çaktivizuar'],'enabled test':['ATK TEST enabled','ATK TEST aktiv'],critical:['Critical','Kritike'],
 
  calculated:['Ready for review','Gati për shqyrtim'],needs_review:['Source correction needed','Nevojitet korrigjimi i burimit'],posted:['Posted','Postuar'],closed:['Closed','Mbyllur'],soft_closed:['Adjustments only','Vetëm korrigjime'],reversed:['Reversed','Anuluar me kundërpostim'],active:['Active','Aktiv'],suspended:['Suspended','Pezulluar'],terminated:['Employment ended','Punësimi përfundoi'],archived:['Archived','Arkivuar'],requested:['Awaiting review','Në pritje shqyrtimi'],partially_delivered:['Partially delivered','Dorëzuar pjesërisht'],ready:['Ready','Gati'],reconciled:['Reconciled','Rakorduar'],not_ready:['Not ready','Jo gati'],

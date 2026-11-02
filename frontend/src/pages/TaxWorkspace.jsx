@@ -1,3 +1,4 @@
+import StatusBadge from '../components/StatusBadge';
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
@@ -17,9 +18,7 @@ export const cash = (v) =>
 export function TaxStatus({ value }) {
   const {language}=useTranslation();
   return (
-    <span className={"tax-status tax-status-" + String(value).toLowerCase()}>
-      {value==='unknown'?(language==='sq'?'Rezultati kërkon verifikim':'Result needs verification'):businessStatus(value,language)}
-    </span>
+    <StatusBadge value={value} tone={value==='unknown'?'warning':undefined} label={value==='unknown'?(language==='sq'?'Rezultati kërkon verifikim':'Result needs verification'):undefined}/>
   );
 }
 export default function TaxWorkspace() {

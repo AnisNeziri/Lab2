@@ -1,0 +1,194 @@
+{
+  "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+  "branch": "main",
+  "active_data_or_schema_modified": false,
+  "commit_push_deploy": false,
+  "baseline_preservation": {
+    "entry_files": 321,
+    "unchanged": 305,
+    "extended": [
+      "backend/app/Services/ActionCenterService.php",
+      "backend/app/Services/AimsToolRegistry.php",
+      "backend/app/Services/AssistantLanguage.php",
+      "backend/app/Services/AutomationRegistry.php",
+      "backend/app/Services/IntelligenceAssistantService.php",
+      "backend/routes/api.php",
+      "frontend/src/App.jsx",
+      "frontend/src/config/navigation.js",
+      "frontend/src/config/pageAccess.js",
+      "frontend/src/config/workProfiles.js",
+      "frontend/src/lib/actionCenterPresentation.js",
+      "frontend/src/pages/CustomerDebts.jsx",
+      "frontend/src/pages/OrderHub.jsx",
+      "backend/app/Services/AutomationOperations.php",
+      "backend/app/Services/Commercial/Entitlements.php",
+      "frontend/src/components/DailyWorkspace.jsx"
+    ],
+    "removed": [],
+    "active_environment_unchanged": true
+  },
+  "migration": "2026_11_02_130000_customer_relationships_and_quotations.php (isolated MariaDB only)",
+  "backend_tests": {
+    "tests": 24,
+    "assertions": 446,
+    "result": "PASS",
+    "suites": [
+      "DC13CustomerWorkspaceTest",
+      "OrderWorkflowTest",
+      "CustomerCreditOverrideTest",
+      "DC3TaxControlTest",
+      "DC6OrchestrationTest"
+    ]
+  },
+  "frontend_tests": {
+    "tests": 22,
+    "result": "PASS",
+    "suites": [
+      "product-maturity-session",
+      "px1-workflows",
+      "navigation",
+      "customer-sales-intelligence"
+    ]
+  },
+  "production_build": "PASS; inherited PDF/3D chunk warnings",
+  "browser": {
+    "company_id": 8,
+    "reviewer": "permission-scoped manager",
+    "quote_id": 1,
+    "order_id": 1,
+    "invoice_id": "7",
+    "ar": "350.00",
+    "physical": "4900.000",
+    "reserved": "0.000",
+    "one_sale": true,
+    "one_invoice": true,
+    "one_payment": true,
+    "quote_creation_retry": false,
+    "conversion_retry": true,
+    "dispatch_retry": false,
+    "payment_retry": false,
+    "languages": [
+      "en",
+      "sq"
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "widths": [
+      1366,
+      1024,
+      390
+    ],
+    "errors": [],
+    "last_run_resumed_fixture": true,
+    "retry_validation_sources": {
+      "creation": "DC13CustomerWorkspaceTest and isolated MariaDB draft probe",
+      "conversion": "browser repeat and DC13CustomerWorkspaceTest",
+      "dispatch": "OrderWorkflowTest and earlier browser execution",
+      "payment": "OrderWorkflowTest and earlier browser execution"
+    }
+  },
+  "mariadb_probe": {
+    "database": "MariaDB 11.4.13 isolated",
+    "draft_edit": "PASS",
+    "stale_edit_rejected": "PASS",
+    "creation_retry_same_document": "PASS",
+    "foreign_customer_denied": "PASS",
+    "financial_customer_model_not_serialized": "PASS",
+    "no_stock_order_payment_or_journal_effect": true
+  },
+  "new_references": {
+    "isolated": true,
+    "new_constraints_checked": 23,
+    "new_orphans": 0,
+    "new_cross_company_parent_links": 0,
+    "original_legacy_constraints_not_repaired": true
+  },
+  "representative_journey": {
+    "isolated": true,
+    "company_id": 8,
+    "runtime_identity": "aims_dc12_runtime@localhost",
+    "database_version": "11.4.13-MariaDB",
+    "performance": {
+      "summary": {
+        "milliseconds": 143.66,
+        "queries": 74,
+        "response_bytes": 1889
+      },
+      "my_customers": {
+        "milliseconds": 54.31,
+        "queries": 35,
+        "response_bytes": 1108
+      },
+      "timeline": {
+        "milliseconds": 34.25,
+        "queries": 21,
+        "response_bytes": 4359
+      }
+    },
+    "counts": {
+      "quotations": 1,
+      "orders": 1,
+      "sales": 1,
+      "invoices": 1,
+      "payments": 1,
+      "customer_tasks": 1
+    },
+    "financial_summary": {
+      "current_debt": "350.00",
+      "committed_exposure": "0.00",
+      "advance": "0.00",
+      "overdue": "0.00",
+      "aging": {
+        "current": "0.00",
+        "1_30": "0.00",
+        "31_60": "0.00",
+        "61_90": "0.00",
+        "90_plus": "0.00",
+        "unknown_due": "350.00"
+      },
+      "oldest_overdue_date": null,
+      "total_exposure": "350.00",
+      "credit_limit": "10000.00",
+      "available_credit": "9650.00",
+      "utilization_percent": 3.5
+    },
+    "physical": 4900,
+    "bank_balance": 400,
+    "journals_balanced": true,
+    "trial_balance_balanced": true,
+    "legacy_company_1_controls": {
+      "accounts_receivable": "868.86",
+      "customer_advances": "0.00",
+      "accounts_payable": "0.00",
+      "supplier_advances": "445000.00",
+      "inventory": "2226.82",
+      "cash_bank": "3190.94"
+    },
+    "legacy_company_1_journals": 0
+  },
+  "source_status": {
+    "fresh_audit": "BLOCKED: original port 3306 refused connection",
+    "dc12_last_verified_source_violations": 13,
+    "dc12_last_verified_rehearsal_violations": 12,
+    "no_recovery_or_financial_gate_changed": true,
+    "runtime_services": "Original 3306/8000/5173 were not listening at final inspection; none was restarted or repaired."
+  },
+  "limitations": [
+    "Company-currency quotations; full invoice journey verified in EUR only. No new FX or customer-group price subsystem.",
+    "No ad-hoc negotiated price or margin-specific approval editor; catalogue/channel price authority and existing order/credit approval remain in control.",
+    "Quotations are marked sent manually; no customer communication is sent.",
+    "Quotation PDFs are on demand; Document Center linking is supported, automatic quote archival is not added.",
+    "Unknown AR due dates remain unknown and are shown for source review.",
+    "Pilot proof uses an isolated synthetic company, not live company operations."
+  ],
+  "ready_for_controlled_crm_pilot": "YES, isolated only",
+  "ready_for_real_company_pilot": "NO",
+  "temporary_test_services_stopped": true,
+  "final_mobile_review": {
+    "overflow_pixels": 0,
+    "page_errors": [],
+    "scope_change_remount": true
+  }
+}

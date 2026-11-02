@@ -25,7 +25,7 @@ class PilotService
 
     public const CATEGORIES = ['confusing', 'missing_action', 'too_many_clicks', 'slow', 'terminology', 'missing_data', 'error', 'feature_request'];
 
-    public const KINDS = ['source_review', 'opening_inventory', 'opening_finance', 'daily_reconciliation', 'weekly_review', 'physical_count', 'goods_receipt', 'order_lifecycle', 'customer_payment', 'supplier_payment', 'supplier_invoice', 'shipment', 'assistant_review', 'automation_review', 'permission_review', 'account_offboarding', 'role_change', 'password_reset', 'smtp_delivery', 'integration', 'backup_restore', 'offline_drill', 'internet_drill', 'server_drill', 'workflow_timing', 'business_baseline', 'business_outcome', 'exit_review'];
+    public const KINDS = ['source_review', 'opening_inventory', 'opening_finance', 'commissioning_scope', 'daily_reconciliation', 'weekly_review', 'physical_count', 'goods_receipt', 'order_lifecycle', 'customer_payment', 'supplier_payment', 'supplier_invoice', 'shipment', 'assistant_review', 'automation_review', 'permission_review', 'account_offboarding', 'role_change', 'password_reset', 'smtp_delivery', 'integration', 'backup_restore', 'offline_drill', 'internet_drill', 'server_drill', 'workflow_timing', 'business_baseline', 'business_outcome', 'exit_review'];
 
     public const FINANCE = ['opening_finance', 'customer_payment', 'supplier_payment', 'supplier_invoice'];
 
@@ -86,6 +86,9 @@ class PilotService
             $profile->fill($data);
             if ($profile->status === 'active') {
                 $errors = [];
+                if (!app(SystemIntegrityService::class)->operationalReadiness()['commissioning']['prerequisites_ready']) {
+                    $errors[] = 'Complete the evidence-based commissioning checklist in System Integrity before authorizing real operations.';
+                }
                 if ((int) config('pilot.company_id') !== (int) Auth::user()->company_id) {
                     $errors[] = 'The operator must select this company with AIMS_PILOT_COMPANY_ID.';
                 }
@@ -166,7 +169,7 @@ class PilotService
         if (! empty($input['document_id'])) {
             $this->document($input['document_id']);
         }
-        if (in_array($input['kind'], ['opening_inventory', 'opening_finance', 'backup_restore', 'source_review', 'business_baseline', 'business_outcome']) && empty($input['document_id'])) {
+        if (in_array($input['kind'], ['opening_inventory', 'opening_finance', 'commissioning_scope', 'backup_restore', 'source_review', 'business_baseline', 'business_outcome']) && empty($input['document_id'])) {
             throw ValidationException::withMessages(['document_id' => 'Attach the authoritative source or drill report from Document Center.']);
         }
         if (! empty($input['entity_type'])) {
@@ -212,6 +215,16 @@ class PilotService
         $latest = PilotEvidence::where('kind', $kind)->where('is_historical', false)->orderByDesc('observed_on')->orderByDesc('id')->first();
 
         return $latest?->outcome === 'confirmed' && $latest->reviewed_at !== null;
+    }
+
+    public function commissioningScope(): array
+    {
+        $row=PilotEvidence::where('kind','commissioning_scope')->where('is_historical',false)->orderByDesc('observed_on')->orderByDesc('id')->first();
+        $valid=$row && $row->outcome==='confirmed' && $row->reviewed_at && $row->document_id && (int)$row->reviewed_by!==(int)$row->prepared_by;
+        $checks=collect($valid?($row->checks ?? []):[])->keyBy('name');
+        return ['fiscalization'=>$valid && in_array($checks->get('Fiscalization scope')['result'] ?? '',['confirmed','not_applicable'],true),
+            'payroll'=>$valid && in_array($checks->get('Payroll scope')['result'] ?? '',['confirmed','not_applicable'],true),
+            'runtime_security'=>$valid && ($checks->get('Runtime security commissioning')['result'] ?? '')==='confirmed', 'evidence_id'=>$valid?$row->id:null];
     }
 
     public function allowedKinds(): array

@@ -1,0 +1,127 @@
+{
+  "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+  "branch": "main",
+  "active_configuration_changed": false,
+  "active_cutover": false,
+  "live_business_writes": false,
+  "database": "isolated MariaDB 11.4.13 / aims_dc12_rehearsal / Company 8 synthetic fixture",
+  "backend": {
+    "tests": 17,
+    "assertions": 294,
+    "status": "PASS",
+    "log": "output/dc14-tests.log"
+  },
+  "frontend": {
+    "tests": 16,
+    "status": "PASS",
+    "log": "output/dc14-frontend-tests.log"
+  },
+  "build": {
+    "status": "PASS",
+    "log": "output/dc14-build.log",
+    "limitation": "Existing bundle size warning"
+  },
+  "browser": {
+    "isolated": true,
+    "company": 8,
+    "owner": true,
+    "three_priorities": true,
+    "customer_source": true,
+    "qualified_plan": true,
+    "shipment_limits": true,
+    "finance_limits": true,
+    "executive_tool": [
+      {
+        "tool": "get_operating_brief",
+        "url": "/dashboard"
+      }
+    ],
+    "english_albanian": true,
+    "light_dark": true,
+    "desktop_mobile": true,
+    "unavailable_source": true,
+    "errors": []
+  },
+  "counts_before": {
+    "operational_tasks": 1,
+    "purchase_requests": 0,
+    "purchase_orders": 0,
+    "sales_orders": 1,
+    "customer_debt_transactions": 4,
+    "journal_entries": 9,
+    "stock_movements": 6,
+    "inventory_recommendations": 2,
+    "business_events": 43
+  },
+  "counts_after": {
+    "operational_tasks": 1,
+    "purchase_requests": 0,
+    "purchase_orders": 0,
+    "sales_orders": 1,
+    "customer_debt_transactions": 4,
+    "journal_entries": 9,
+    "stock_movements": 6,
+    "inventory_recommendations": 2,
+    "business_events": 43
+  },
+  "business_mutation_during_browser_review": false,
+  "http_dc7_traces": [
+    {
+      "endpoint": "operating-brief",
+      "days": 7,
+      "http_status": 200,
+      "wall_ms": 992.86,
+      "bytes": 16305,
+      "query_count": 1025,
+      "db_duration_ms": 487.14
+    },
+    {
+      "endpoint": "operating-brief",
+      "days": 1,
+      "http_status": 200,
+      "wall_ms": 791.65,
+      "bytes": 16305,
+      "query_count": 1025,
+      "db_duration_ms": 431.12
+    },
+    {
+      "endpoint": "intelligence-assistant/ask",
+      "days": null,
+      "http_status": 200,
+      "wall_ms": 1592.48,
+      "bytes": 2299,
+      "query_count": 2042,
+      "db_duration_ms": 820.64
+    }
+  ],
+  "evidence_files": [
+    "output/dc14/http-traces.json",
+    "output/dc14/preserved-company1.json",
+    "output/dc14/preservation.json",
+    "output/dc14/synthetic-plan.json",
+    "output/dc14/synthetic-shipment.json",
+    "output/dc14/owner-1366-en-light.png",
+    "output/dc14/owner-390-en-light.png",
+    "output/dc14/owner-1366-sq-dark.png",
+    "output/dc14/owner-390-sq-dark.png",
+    "output/dc14/qualified-replenishment-en.png",
+    "output/dc14/executive-copilot-en.png"
+  ],
+  "controlled_intelligence_pilot": "YES — isolated supervised review",
+  "real_company_pilot": "NO",
+  "commercial_readiness": "NOT CLAIMED",
+  "next_phase_started": false,
+  "counts_after_final_verification": {
+    "operational_tasks": 1,
+    "purchase_requests": 0,
+    "purchase_orders": 0,
+    "sales_orders": 1,
+    "customer_debt_transactions": 4,
+    "journal_entries": 9,
+    "stock_movements": 6,
+    "inventory_recommendations": 2,
+    "business_events": 43
+  },
+  "temporary_services_stopped": true,
+  "whitespace_check": "PASS"
+}

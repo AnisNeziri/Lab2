@@ -54,6 +54,7 @@ const PurchaseOrders = lazy(() => import("./pages/PurchaseOrders"));
 const Procurement = lazy(() => import("./pages/Procurement"));
 const QualityManagement = lazy(() => import("./pages/QualityManagement"));
 const CustomerDebts = lazy(() => import("./pages/CustomerDebts"));
+const CustomerWorkspace = lazy(() => import("./pages/CustomerWorkspace"));
 const Invoices = lazy(() => import("./pages/Invoices"));
 const FinanceCenter = lazy(() => import("./pages/FinanceCenter"));
 const MobileWarehouse = lazy(() => import("./pages/MobileWarehouse"));
@@ -64,6 +65,9 @@ const WorkforceCenter = lazy(() => import("./pages/WorkforceCenter"));
 const PayrollCenter = lazy(() => import("./pages/PayrollCenter"));
 const FiscalizationCenter = lazy(() => import("./pages/FiscalizationCenter"));
 const AccountingCore = lazy(() => import("./pages/AccountingCore"));
+const SecurityCenter = lazy(() => import("./pages/SecurityCenter"));
+const CommercialCenter = lazy(() => import("./pages/CommercialCenter"));
+const IntegrationCenter = lazy(() => import("./pages/IntegrationCenter"));
 const SystemIntegrity = lazy(() => import("./pages/SystemIntegrity"));
 const CompanyPilot = lazy(() => import("./pages/CompanyPilot"));
 const CompanyOnboarding = lazy(() => import("./pages/CompanyOnboarding"));
@@ -141,7 +145,7 @@ function RoleAppGate({ children }) {
   const role = useAuthStore((state) => state.role);
   const location = useLocation();
 
-  if (role === "superadmin" && location.pathname !== "/superadmin") {
+  if (role === "superadmin" && !["/superadmin", "/cms"].includes(location.pathname)) {
     return <Navigate to="/superadmin" replace />;
   }
 
@@ -547,6 +551,9 @@ function AppRoutes() {
           <Route path="/payroll" element={<PermissionRoute permission="payroll.view"><Suspense fallback={<PageLoader />}><PayrollCenter /></Suspense></PermissionRoute>} />
           <Route path="/fiscalization" element={<PermissionRoute permission="fiscalization.view"><Suspense fallback={<PageLoader />}><FiscalizationCenter /></Suspense></PermissionRoute>} />
           <Route path="/accounting" element={<PermissionRoute permission="accounting.reports.view"><Suspense fallback={<PageLoader />}><AccountingCore /></Suspense></PermissionRoute>} />
+          <Route path="/security" element={<Suspense fallback={<PageLoader/>}><SecurityCenter/></Suspense>}/>
+          <Route path="/system-health" element={<PermissionRoute permission="deployment.view"><Suspense fallback={<PageLoader/>}><CommercialCenter/></Suspense></PermissionRoute>}/>
+          <Route path="/integrations" element={<PermissionRoute permission="integrations.view"><Suspense fallback={<PageLoader />}><IntegrationCenter /></Suspense></PermissionRoute>} />
           <Route path="/system-integrity" element={<PermissionRoute permission="system_integrity.view"><Suspense fallback={<PageLoader />}><SystemIntegrity /></Suspense></PermissionRoute>} />
           <Route path="/pilot" element={<ProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoader />}><CompanyPilot /></Suspense></ProtectedRoute>} />
           <Route path="/onboarding" element={<ProtectedRoute><Suspense fallback={<PageLoader />}><CompanyOnboarding /></Suspense></ProtectedRoute>} />
@@ -579,6 +586,7 @@ function AppRoutes() {
               </Suspense>
             }
           />
+          <Route path="/customers" element={<PermissionRoute permission="customers.manage"><Suspense fallback={<PageLoader />}><CustomerWorkspace /></Suspense></PermissionRoute>} />
           <Route path="/fulfillment" element={<PermissionRoute permission="fulfillment.view"><Suspense fallback={<PageLoader />}><Fulfillment /></Suspense></PermissionRoute>} />
           <Route path="/documents" element={<PermissionRoute permission="documents.view"><Suspense fallback={<PageLoader />}><Documents /></Suspense></PermissionRoute>} />
           <Route path="/procurement" element={<PermissionRoute permission="procurement.view"><Suspense fallback={<PageLoader />}><Procurement /></Suspense></PermissionRoute>} />
@@ -670,7 +678,7 @@ function AppRoutes() {
           <Route
             path="/cms"
             element={
-              <ProtectedRoute adminOnly>
+              <ProtectedRoute allowedRoles={["superadmin"]}>
                 <Suspense fallback={<PageLoader />}>
                   <Cms />
                 </Suspense>

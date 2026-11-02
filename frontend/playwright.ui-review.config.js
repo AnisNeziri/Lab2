@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test'
+export default defineConfig({testDir:'./e2e/specs',testMatch:'ui-review.spec.js',workers:1,retries:0,expect:{timeout:30000},timeout:240000,use:{browserName:'chromium',baseURL:'http://127.0.0.1:4184',viewport:{width:1053,height:884},trace:'retain-on-failure',screenshot:'only-on-failure'},reporter:[['list']],outputDir:'../output/ui-review-browser-results'})

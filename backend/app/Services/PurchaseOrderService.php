@@ -151,6 +151,13 @@ class PurchaseOrderService
                 'created_by' => Auth::id(),
                 'updated_by' => Auth::id(),
             ]);
+            // A recovered legacy orphan must never become a line on a new order
+            // merely because the server reuses its missing parent's identifier.
+            foreach (['purchase_order_items', 'purchase_order_changes', 'purchase_order_payments'] as $table) {
+                if (DB::table($table)->where('purchase_order_id', $order->id)->exists()) {
+                    throw ValidationException::withMessages(['integrity' => 'Legacy records reference this new order identifier. Creation was rolled back; an operator must review the preserved source records.']);
+                }
+            }
             $this->syncItems($order, $data['items']);
             $this->audit($order, 'created', null, $this->snapshot($order->fresh('items')), $data['change_reason'] ?? null);
             if ($approvalRequired) {

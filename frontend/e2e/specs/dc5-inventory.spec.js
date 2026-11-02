@@ -23,12 +23,42 @@ test('warehouse stock → backorder → linked partial receipt → live position
   await expect(page.getByRole('region', { name: 'Order stock availability' })).toContainText('Milano 04')
   await page.goto('/warehouse-operations?tab=control')
   await expect(control.locator('[data-position=in_transit]')).toHaveText('8,000')
-  const receipt = await page.evaluate(async f => {
-    const response = await fetch(`/api/purchase-orders/${f.po}/receive`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: 'Bearer ' + localStorage.getItem('api_token') },
-      body: JSON.stringify({ warehouse_id: f.warehouse, items: [{ id: f.po_item, shipment_item_id: f.cargo, accepted_quantity: 2000 }], idempotency_key: crypto.randomUUID() }) })
-    return response.status
-  }, f)
-  expect(receipt).toBe(200)
+  await page.goto('/warehouse-mobile')
+  await page.getByPlaceholder('Scan barcode or enter SKU').fill('DC5-M04')
+  await page.getByRole('button', { name: 'Find', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Milano 04', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Receive', exact: true }).click()
+  await expect(page.getByLabel(/^Shipment cargo/)).toHaveValue(String(f.cargo))
+  await page.getByLabel('Accepted', { exact: true }).fill('2000')
+  // A background update must not erase an employee's partially entered form.
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('stock-refresh')))
+  await expect(page.getByLabel('Accepted', { exact: true })).toHaveValue('2000')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.getByRole('complementary', { name: 'Main navigation' })).not.toBeInViewport()
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await page.screenshot({ path: fileURLToPath(new URL('../../../output/dc5-mobile-receiving.png', import.meta.url)), fullPage: true })
+  let dropped = false
+  const receiptKeys = []
+  await page.route('**/api/mobile-warehouse/receive', async route => {
+    receiptKeys.push(route.request().postDataJSON().idempotency_key)
+    const response = await route.fetch()
+    if (!dropped) { dropped = true; expect(response.status()).toBe(200); await route.abort(); return }
+    await route.fulfill({ response })
+  })
+  await page.getByRole('button', { name: 'Post receipt', exact: true }).click()
+  await expect(page.getByRole('alert')).toBeVisible()
+  // Changed details after a lost response must be rejected, not posted again.
+  await page.getByRole('textbox', { name: 'Note', exact: true }).fill('Changed after lost response')
+  const rejectedRetry = page.waitForResponse(response => response.url().endsWith('/api/mobile-warehouse/receive') && response.status() === 422)
+  await page.getByRole('button', { name: 'Post receipt', exact: true }).click()
+  await rejectedRetry
+  await expect(page.getByRole('alert')).toBeVisible()
+  await page.getByRole('textbox', { name: 'Note', exact: true }).fill('')
+  await page.getByRole('button', { name: 'Post receipt', exact: true }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Receipt posted and inventory updated.' })).toBeVisible()
+  expect(new Set(receiptKeys).size).toBe(1)
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto('/warehouse-operations?tab=control')
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('stock-refresh')))
   await expect(control.locator('[data-position=physical]')).toHaveText('7,000')
   await expect(control.locator('[data-position=incoming]')).toHaveText('6,000')
@@ -39,8 +69,12 @@ test('warehouse stock → backorder → linked partial receipt → live position
   const position = page.getByRole('dialog').getByRole('region', { name: 'Stock position', exact: true })
   await expect(position.locator('[data-position=physical]')).toHaveText('7,000 m')
   await expect(position.locator('[data-position=reserved]')).toHaveText('6,000 m')
+  await position.getByText('Reservations, commitments & movement timeline', { exact: true }).click()
+  await expect(position.getByRole('region', { name: 'Stock commitments' })).toContainText('Customer reservation')
+  await expect(position.getByText('Recent stock activity', { exact: true })).toBeVisible()
   await page.goto('/warehouse-operations?tab=control')
   await expect(control.locator('[data-position=physical]')).toHaveText('7,000')
+  await expect(control.getByText('Inventory health', { exact: true })).toBeVisible()
   await page.screenshot({ path: fileURLToPath(new URL('../../../output/dc5-inventory-browser.png', import.meta.url)), fullPage: true })
   // Failure keeps the last good numbers and labels them disconnected.
   await page.route('**/api/inventory/control-center**', route => route.abort())

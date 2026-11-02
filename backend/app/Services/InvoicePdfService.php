@@ -8,8 +8,17 @@ class InvoicePdfService
 {
     public function render(Invoice $invoice, string $locale = 'bilingual'): string
     {
-        return Pdf::loadView('invoices.pdf', ['invoice'=>$invoice, 'vatSummary'=>app(InvoiceService::class)->vatSummary($invoice), 'labels'=>$this->labels($locale)])
-            ->setPaper('A4', 'portrait')->setOptions(['isRemoteEnabled'=>false, 'isHtml5ParserEnabled'=>true, 'defaultFont'=>'DejaVu Sans'])->output();
+        $pdf=Pdf::loadHTML($this->html($invoice, $locale, true))
+            ->setPaper('A4', 'portrait')->setOptions(['isRemoteEnabled'=>false, 'isHtml5ParserEnabled'=>true, 'defaultFont'=>'DejaVu Sans','defaultMediaType'=>'print']);
+        $pdf->render();
+        $dompdf=$pdf->getDomPDF();$font=$dompdf->getFontMetrics()->getFont('DejaVu Sans','normal');
+        $dompdf->getCanvas()->page_text(40,818,($invoice->invoice_number?:'Draft #'.$invoice->id).' · '.($locale==='sq'?'Faqja':'Page').' {PAGE_NUM}/{PAGE_COUNT}',$font,7,[.38,.45,.54]);
+        return $pdf->output();
+    }
+
+    public function html(Invoice $invoice, string $locale = 'bilingual', bool $forPdf = false): string
+    {
+        return view('invoices.pdf', ['invoice'=>$invoice, 'vatSummary'=>app(InvoiceService::class)->vatSummary($invoice), 'labels'=>$this->labels($locale),'locale'=>$locale,'forPdf'=>$forPdf])->render();
     }
 
     public function labels(string $locale): array

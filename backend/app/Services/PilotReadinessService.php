@@ -90,6 +90,7 @@ class PilotReadinessService
         ];
 
         return [
+            'commissioning' => app(SystemIntegrityService::class)->operationalReadiness()['commissioning'],
             'captured_at' => now()->toIso8601String(), 'release' => Release::version(), 'source' => $source, 'profile' => $profile,
             'period' => ['start' => $start?->toDateString(), 'end' => $end->toDateString(), 'calendar' => 'Configured ISO weekdays; holidays require owner review.', 'elapsed_days' => $cutover ? max(0, (int) $cutover->diffInDays($end, false) + 1) : 0],
             'sales' => [

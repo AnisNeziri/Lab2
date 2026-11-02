@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test'
+export default defineConfig({testDir:'./e2e/specs',testMatch:'dc13-customer.spec.js',workers:1,retries:0,timeout:240000,expect:{timeout:30000},use:{browserName:'chromium',actionTimeout:30000,baseURL:'http://127.0.0.1:4184',viewport:{width:1366,height:900},trace:'retain-on-failure',screenshot:'only-on-failure'},reporter:[['list']],outputDir:'../output/dc13-browser-results'})

@@ -144,7 +144,7 @@ function Register({ onRegisterSuccess, onBackHome, onLogin }) {
                     type="text"
                     required
                     autoComplete="name"
-                    placeholder="John Doe"
+                    placeholder={text('Name', 'Emri')}
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                   />
@@ -160,7 +160,7 @@ function Register({ onRegisterSuccess, onBackHome, onLogin }) {
                     type="email"
                     required
                     autoComplete="email"
-                    placeholder="admin@company.com"
+                    placeholder={text('Email address', 'Adresa e emailit')}
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                   />
@@ -178,9 +178,9 @@ function Register({ onRegisterSuccess, onBackHome, onLogin }) {
                     name="password"
                     type="password"
                     required
-                    minLength={8}
+                    minLength={15}
                     autoComplete="new-password"
-                    placeholder={text('At least 8 characters', 'Të paktën 8 karaktere')}
+                    placeholder={text('At least 15 characters', 'Të paktën 15 karaktere')}
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                   />
@@ -195,7 +195,7 @@ function Register({ onRegisterSuccess, onBackHome, onLogin }) {
                     name="password_confirmation"
                     type="password"
                     required
-                    minLength={8}
+                    minLength={15}
                     autoComplete="new-password"
                     placeholder={text('Repeat password', 'Përsërit fjalëkalimin')}
                     value={passwordConfirmation}

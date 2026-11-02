@@ -1,0 +1,3 @@
+import {apiRequest,authenticatedFetch,buildApiUrl,parseApiResponse} from './client'
+export const crmRequest=(path='',method='GET',body,signal)=>apiRequest('/customer-workspace'+path,{method,signal,...(body?{body:JSON.stringify(body)}:{})})
+export async function quotationPdf(quote,language){const response=await authenticatedFetch(buildApiUrl(`/customer-workspace/quotations/${quote.id}/pdf`,{language}));if(!response.ok)await parseApiResponse(response,'Could not prepare quotation PDF.');const url=URL.createObjectURL(await response.blob()),link=document.createElement('a');link.href=url;link.download=quote.number+'.pdf';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}

@@ -105,7 +105,7 @@ class SuperadminController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
             'role' => ['required', Rule::in(['admin', 'manager', 'staff'])],
-            'temporary_password' => ['required', 'string', 'min:12', 'confirmed'],
+            'temporary_password' => [...\App\Services\Security\PasswordPolicy::rules(), 'confirmed'],
         ]);
 
         if ($offline) {
@@ -163,7 +163,7 @@ class SuperadminController extends Controller
         }
 
         $data = $request->validate([
-            'temporary_password' => ['required', 'string', 'min:12', 'confirmed'],
+            'temporary_password' => [...\App\Services\Security\PasswordPolicy::rules(), 'confirmed'],
         ]);
 
         $user->forceFill([

@@ -18,6 +18,6 @@ class AuthenticateOrderChannel {
         $previous=Auth::user(); Auth::setUser($actor); $r->setUserResolver(fn()=>$actor);
         $r->attributes->set('order_channel',$channel); $r->attributes->set('order_channel_key',$key);
         $key->update(['last_used_at'=>now()]);
-        try { return $next($r); } finally { $previous ? Auth::setUser($previous) : Auth::forgetUser(); }
+        try { abort_unless(app(\App\Services\Commercial\Entitlements::class)->has('sales',$actor),403); app(\App\Services\Commercial\Entitlements::class)->guardRequest(); return $next($r); } finally { $previous ? Auth::setUser($previous) : Auth::forgetUser(); }
     }
 }

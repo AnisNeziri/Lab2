@@ -21,7 +21,8 @@ class PilotSupportService
     public function record(\Throwable $exception, Request $request, int $status, bool $writeLog = true): string
     {
         $reference = $this->reference($request);
-        $safe = ['reference' => $reference, 'route_key' => substr($request->route()?->uri() ?: 'api/unmatched', 0, 100),
+        $trace=app(\App\Services\Platform\PlatformTrace::class)->context()['traceparent']??null;
+        $safe = ['traceparent'=>$trace,'reference' => $reference, 'route_key' => substr($request->route()?->uri() ?: 'api/unmatched', 0, 100),
             'exception_type' => substr(class_basename($exception), 0, 80), 'http_status' => $status,
             'company_id' => Auth::user()?->company_id, 'user_id' => Auth::id()];
         if ($writeLog) {

@@ -1,0 +1,13 @@
+.aims-glyph{display:inline-block;vertical-align:middle;flex-shrink:0;overflow:visible;transition:color 140ms ease,opacity 140ms ease}
+.aims-glyph[data-active],.aims-glyph[data-accent]{color:var(--primary-color,#2563eb)}
+.aims-glyph[data-disabled]{opacity:.45}
+.sidebar-item.active .aims-glyph{color:currentColor}
+.sidebar-item:hover .aims-glyph-detail,.workspace-tabs button:hover .aims-glyph-detail{color:var(--primary-color,#2563eb)}
+.workspace-tabs button[aria-selected=true] .aims-glyph,.workspace-heading-symbol .aims-glyph{color:currentColor}
+.aims-glyph[data-motion=working]{animation:aims-glyph-working 1.4s ease-in-out infinite}
+@keyframes aims-glyph-working{50%{opacity:.45}}
+@media(prefers-reduced-motion:reduce){.aims-glyph{transition:none}.aims-glyph[data-motion=working]{animation:none}}
+
+.operating-brief-heading h2,.operating-brief-columns h3{display:flex;align-items:center;gap:8px}
+
+.fc-header h1{display:flex;align-items:center;gap:10px}

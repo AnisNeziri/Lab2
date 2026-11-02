@@ -1,3 +1,4 @@
+import PageHeader from '../components/PageHeader';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, Plus, RefreshCw, ShieldAlert, WalletCards } from "lucide-react";
 import {
@@ -531,13 +532,8 @@ export default function CustomerDebts() {
 
   return (
     <main className="page-stack">
-      <section className="card">
-        <div className="section-header">
-          <h1>
-            <WalletCards size={20} />
-            {t("debts.title")}
-          </h1>
-          <div className="table-actions">
+      <PageHeader title={t("debts.title")} description={t("debts.subtitle")} actions={<div className="table-actions">
+            {canManageCustomers&&<Link to={selected?`/customers?customer=${selected.id}`:'/customers'}>{language==='sq'?'Hap pamjen 360 të klientit':'Open Customer 360'}</Link>}
             <button
               className="secondary"
               onClick={() => {
@@ -550,17 +546,14 @@ export default function CustomerDebts() {
               {showCreditReport ? t("debts.customerList") : t("debts.creditReport")}
             </button>
             {canManageCustomers && !showCreditReport && (
-              <button onClick={() => begin("customer")}>
+              <button className="workspace-primary" onClick={() => begin("customer")}>
                 <Plus size={16} />
                 {t("debts.newCustomer")}
               </button>
             )}
-          </div>
-        </div>
-        <p className="page-intro">{t("debts.subtitle")}</p>
-        {error && <div className="form-error-banner">{error}</div>}
-        {message && <div className="success-banner">{message}</div>}
-      </section>
+          </div>}/>
+      {error && <div className="form-error-banner" role="alert">{error}</div>}
+      {message && <div className="success-banner" role="status">{message}</div>}
 
       {mode && (
         <section className="card">

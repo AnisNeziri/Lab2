@@ -8,13 +8,16 @@ use Illuminate\Support\Str;
 /** A question is input data, never code or a tool name. */
 final class AssistantPlanner
 {
-    public const INTENTS = ['low_stock','onboarding_status','optimization_run','optimization_limit','optimization_compare','optimization_stress','optimization_explain','optimization_stale','learning','overrides','policy_suggestions','challengers','brief','risks','replenishment','stockout','suppliers','shipments','orders','cash','debt','inactive','opportunities','decisions','changes','explain','compare','scenario','capacity','prepare','record','movements','forecast','sales'];
+    public const INTENTS = ['inventory_health','incoming_supply','stock_commitments','low_stock','onboarding_status','optimization_run','optimization_limit','optimization_compare','optimization_stress','optimization_explain','optimization_stale','learning','overrides','policy_suggestions','challengers','brief','risks','replenishment','stockout','suppliers','shipments','orders','cash','debt','inactive','opportunities','decisions','changes','explain','compare','scenario','capacity','prepare','record','movements','forecast','sales'];
 
     public function plan(string $question, array $context = []): array
     {
         $q = app(AssistantLanguage::class)->normalize($question);
         if (preg_match('/\b(sql|select\s+\*|ignore.*instructions|system prompt|execute|shell|bankrupt|faliment|delete|fshi|approve|mirato|send email)\b/', $q)) return ['intent'=>'unsupported'];
         $rules = [
+            'inventory_health'=>'/\b(inventory health|warehouse.*attention|inventory.*attention|stock.*anomal|gjendj.*stock)/',
+            'incoming_supply'=>'/\b(what.*(?:coming|incoming).*week|incoming.*this week|what.*vjen.*(?:jave|javen))/',
+            'stock_commitments'=>'/^(?:what stock is reserved|show (?:stock )?reservations|what is reserved|stock rezervuar|what.*rezervuar)[?.!]*$/',
             'onboarding_status'=>'/\b(onboarding|imported.*review|opening.*(?:balance|match|block)|bilanc.*fillestar|product.*import|hapj.*kompan)/',
             'low_stock'=>'/\b(low[ -]?stock|below.*(?:minimum|reorder)|stock.*(?:ulet|minimal|low)|pak stock)/',
             'optimization_stale'=>'/\b(stale.*supply|stale.*optim|plan.*vjetruar)/',
@@ -63,13 +66,15 @@ final class AssistantPlanner
         elseif (preg_match('/^(?:stock|stoku|stok|find|gjej|customer|klienti|supplier|furnitori|product|produkti)\s+(.+?)[?.!]*$/iu',$question,$m)) $term=trim($m[1]);
         elseif ($intent === 'explain' && preg_match('/^(?:why\s+is|pse\s+(?:është|eshte))\s+(.+?)\s+(?:at\s+risk|në\s+rrezik|ne\s+rrezik)[?.!]*$/iu', $question, $m)) $term=trim($m[1]);
         $type = preg_match('/\b(customer|klient)/',$q)?'customer':(preg_match('/\b(supplier|furnitor)/',$q)?'supplier':(preg_match('/\b(shipment|vessel|derges|anije)/',$q)?'shipment':null));
-        if ($intent === 'record' && preg_match('/^(?:how much|sa)\s+(.+?)\s+(?:do we have|kemi)(?:\s+(?:in|ne|në)\s+(.+?))?[?.!]*$/iu', $question, $m)) {
+        if ($intent === 'record' && preg_match('/^(?:how much|sa)\s+(.+?)\s+(?:do we (?:really )?have|kemi)(?:\s+(?:in|ne|në)\s+(.+?))?(?:\s+available)?[?.!]*$/iu', $question, $m)) {
             $term = trim($m[1]); $type = 'product'; $warehouseTerm = isset($m[2]) ? trim($m[2]) : null;
         }
         if ($intent === 'record' && preg_match('/\b(reserved|rezervuar|quality hold|available|disponuesh|where is it|ku eshte)\b/', $q) && ! $type) $type = 'product';
         if (in_array($intent,['forecast','movements','replenishment','stockout','capacity']) && !$type) $type='product';
         if ($intent==='compare' && preg_match('/supplier/', $q)) $type='product';
-        if (preg_match('/\bwarehouse\b/', $q)) $type='warehouse';
+        if (preg_match('/^(?:which warehouses? (?:has|have)|cila depo ka|cilat depo kane)\s+(.+?)[?.!]*$/iu', $question, $m)) {
+            $type='product'; $term=trim($m[1]);
+        } elseif (preg_match('/\bwarehouse\b/', $q)) $type='warehouse';
         if (preg_match('/\bpurchase order\b|\bpo[- ]?\d/', $q)) $type='purchase_order';
         if (!$term) $term=app(AssistantLanguage::class)->entityTerm($question);
         // A controlled draft follow-up uses the authorized conversation decision.

@@ -11,7 +11,7 @@ class WebhookEndpoint extends Model
     use BelongsToCompany;
 
     protected $fillable = [
-        'company_id', 'name', 'endpoint_url', 'secret', 'enabled',
+        'contract_version', 'company_id', 'name', 'endpoint_url', 'secret', 'enabled',
         'subscribed_event_types', 'last_success_at', 'last_failure_at', 'last_error',
     ];
 

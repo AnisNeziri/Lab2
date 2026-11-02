@@ -1,5 +1,6 @@
+import { SearchGlyph as Search, ProductsGlyph as Package, CustomersGlyph as Users, SuppliersGlyph as Truck, ShipmentsGlyph as Ship, WarehouseGlyph as Warehouse, DocumentsGlyph as FileText, TasksGlyph as ClipboardList, AccountingGlyph as Landmark, IntelligenceGlyph as Activity, AskAimsGlyph as MessageCircle } from './icons/AimsGlyph'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Command, Search, X, Package, Users, Truck, Ship, Warehouse, FileText, ClipboardList, Landmark, Activity, ArrowUpRight, MessageCircle } from 'lucide-react'
+import { Command, X, ArrowUpRight } from 'lucide-react'
 import { businessSubtitle } from '../utils/businessStatus'
 import { businessNumber } from '../utils/businessFormat'
 import { useSessionState } from '../hooks/useSessionState'
@@ -35,12 +36,15 @@ const commandIcon = path => {
   return ({ sales: Users, inventory: Package, purchasing: Truck, shipments: Ship, finance: Landmark, intelligence: Activity, operations: ClipboardList, settings: Activity })[group] || Command
 }
 labelsSq.decisions = 'Vendimet'
+labelsSq.business_search = 'Kërkimi i biznesit'
+labels.business_search = 'Business search'
 labelsSq.onboarding_sessions='Hapjet e kompanisë';labelsSq.onboarding_batches='Grupet burimore të hapjes'
 
 export default function GlobalSearch({ onNavigate }) {
   const { t, language } = useTranslation()
   const permissions = useAuthStore((state) => state.permissions)
   const role = useAuthStore(state => state.role)
+  const capabilities=useAuthStore(state=>state.user?.commercial?.capabilities)
   const enable3dMap = useSettingsStore(state => state.enable_3d_map)
   const [query, setQuery] = useState('')
   const [recent,setRecent] = useSessionState('search.recent',[])
@@ -54,9 +58,9 @@ export default function GlobalSearch({ onNavigate }) {
   const dialogRef = useDialog(() => setIsOpen(false), false, isOpen)
   const optionRefs = useRef([])
   const requestRef = useRef(0)
-  const commands = useMemo(() => matchingCommands(query, permissions, language, {role,enable3dMap}), [query, permissions, language,role,enable3dMap])
-  const sections = useMemo(() => searchSections(results,query,path=>canOpenPage(path,permissions)), [results,query,permissions])
-  const visibleCommands = useMemo(() => [...(!query.trim()?recent.filter(item=>canOpenPage(item.path,permissions)).map(item=>({id:'recent-'+item.path,path:item.path,label:item.label,recent:true})):[]),...commands].slice(0,8), [commands,recent,query,permissions])
+  const commands = useMemo(() => matchingCommands(query, permissions, language, {role,enable3dMap,capabilities}), [query, permissions, language,role,enable3dMap,capabilities])
+  const sections = useMemo(() => searchSections(results,query,path=>canOpenPage(path,permissions,capabilities)), [results,query,permissions,capabilities])
+  const visibleCommands = useMemo(() => [...(!query.trim()?recent.filter(item=>canOpenPage(item.path,permissions,capabilities)).map(item=>({id:'recent-'+item.path,path:item.path,label:item.label,recent:true})):[]),...commands].slice(0,8), [commands,recent,query,permissions,capabilities])
   const options = useMemo(() => [
     ...sections.flatMap(([name, items]) => items.map((item) => ({ key: `${name}-${item.id}`, path: item.url }))),
     ...visibleCommands.map((command) => ({ key: `command-${command.id}`, path: command.path })),

@@ -62,7 +62,7 @@ export default function ResetPassword() {
             id="new-password"
             type="password"
             required
-            minLength={8}
+            minLength={15}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
@@ -72,7 +72,7 @@ export default function ResetPassword() {
             id="confirm-password"
             type="password"
             required
-            minLength={8}
+            minLength={15}
             value={passwordConfirmation}
             onChange={(event) => setPasswordConfirmation(event.target.value)}
           />

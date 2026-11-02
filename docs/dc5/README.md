@@ -1,5 +1,7 @@
 # DC5 — Real-Time Inventory Automation & Operational Control
 
+**Latest:** [DC5 2.0 completion, 21 October 2026](DC5-2.0-COMPLETION.md) and [validation manifest](VALIDATION-2.0.json). The remaining text records the earlier 20 October checkpoint. The business database was subsequently upgraded, with backup and preservation checks, when the user asked to run the system.
+
 Review date: 20 October 2026. Current HEAD: `dd3e4e213fd32be824d56357be61744d079c95d3`.
 DC5 implementation is in the working tree, ready for the user's normal commit.
 

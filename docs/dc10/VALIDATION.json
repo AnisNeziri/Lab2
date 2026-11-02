@@ -1,0 +1,294 @@
+{
+  "phase": "DC10",
+  "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+  "branch": "main",
+  "target": {
+    "version": "11.4.13-MariaDB",
+    "port": 3320,
+    "database": "aims_dc10_copy",
+    "separate_installation_and_data": true,
+    "runtime_account": "aims_runtime@localhost",
+    "source_cutover": false
+  },
+  "preservation": {
+    "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+    "entry_files": 282,
+    "byte_identical": 276,
+    "extended_existing_files": [
+      "backend/app/Services/FinancialControlService.php",
+      "backend/app/Services/SystemIntegrityService.php",
+      "backend/routes/api.php",
+      "frontend/src/pages/AccountingControlCenter.jsx",
+      "frontend/src/pages/SystemIntegrity.jsx",
+      "frontend/src/styles/ProductExperience.css"
+    ],
+    "missing_files": [],
+    "source_env_unchanged": true
+  },
+  "source_final": {
+    "all_215_source_tables_unchanged": true,
+    "changed_tables": [],
+    "metadata_unchanged": true,
+    "checked_at": "2026-11-01T18:45:50+00:00"
+  },
+  "logical_restore": {
+    "tables": 215,
+    "engines": [
+      "InnoDB"
+    ],
+    "table_fingerprint_differences": 0,
+    "metadata": {
+      "columns": {
+        "source_count": 3158,
+        "target_count": 3158,
+        "equal": true
+      },
+      "indexes": {
+        "source_count": 1541,
+        "target_count": 1541,
+        "equal": true
+      },
+      "foreign_keys": {
+        "source_count": 707,
+        "target_count": 707,
+        "equal": true
+      },
+      "fk_rules": {
+        "source_count": 707,
+        "target_count": 707,
+        "equal": true
+      }
+    },
+    "check_constraints": 168,
+    "views": 0,
+    "triggers": 0,
+    "routines": 0,
+    "events": 0
+  },
+  "attachments": {
+    "files": 1974,
+    "preserved_and_restored_hashes_match": true,
+    "differences": []
+  },
+  "runtime": {
+    "runtime_db_user": "aims_runtime@localhost",
+    "registration_and_verification": true,
+    "normal_password_login": true,
+    "tenant_isolation": true,
+    "original_key_valid": true,
+    "migrations_exit": 0,
+    "pending_migrations": false,
+    "scheduler_initialized": true,
+    "disposable_company_id": 8,
+    "disposable_user_id": 13,
+    "original_source_credentials_quarantined_only_on_copy": true
+  },
+  "api_statuses": [
+    {
+      "method": "GET",
+      "path": "/me",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/categories",
+      "status": 201
+    },
+    {
+      "method": "POST",
+      "path": "/warehouses",
+      "status": 201
+    },
+    {
+      "method": "POST",
+      "path": "/products",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/products/36",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/products/1",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/accounting/opening-review",
+      "status": 200
+    },
+    {
+      "method": "PUT",
+      "path": "/accounting/opening-review/inventory",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/accounting/control-center",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/system-integrity",
+      "status": 200
+    }
+  ],
+  "worker": {
+    "exit": 0,
+    "pending_jobs_after": 0,
+    "continuous_worker_enabled": false
+  },
+  "restart_cycles": 3,
+  "connection_loss_detected": true,
+  "reconnect": {
+    "version": "11.4.13-MariaDB",
+    "sql_mode": "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION",
+    "timezone": "+00:00",
+    "identity": "aims_runtime@localhost",
+    "quantity_preserved": "5.000"
+  },
+  "backup_restore": {
+    "backup_account_after_public_revoke": true,
+    "export_exit": 0,
+    "restore_exit": 0,
+    "tables": 215,
+    "checksum_differences": [],
+    "check_constraints_equal": true,
+    "check_constraint_count": 168,
+    "sql_sha256": "24ef03058bfb11ed2f53c8e99dde7f005e3c48131201cc9ebd6ed6c94cd1d063"
+  },
+  "installation_certification": {
+    "certification_blocked": true,
+    "reason": "Installation integrity/reconciliation failed. Resolve inventory, finance, tenant or document issues before certifying a backup.",
+    "logical_backup_exit": 0,
+    "logical_backup_sha256": "c6dd405f0ddcad4cb0ee0d31100b5adfc587b64d819fcdf83763c4f665054412",
+    "logical_backup_bytes": 8863468
+  },
+  "financial_opening": {
+    "company_id": 1,
+    "source_journals": 0,
+    "accountant_approved": false,
+    "controls": [
+      {
+        "control": "accounts_receivable",
+        "operational_amount": "868.86",
+        "gl_amount": "0.00",
+        "difference": "868.86",
+        "opening_status": "BLOCKED_SOURCE_REQUIRED"
+      },
+      {
+        "control": "customer_advances",
+        "operational_amount": "0.00",
+        "gl_amount": "0.00",
+        "difference": "0.00",
+        "opening_status": "BLOCKED_SOURCE_REQUIRED"
+      },
+      {
+        "control": "accounts_payable",
+        "operational_amount": "0.00",
+        "gl_amount": "0.00",
+        "difference": "0.00",
+        "opening_status": "BLOCKED_SOURCE_REQUIRED"
+      },
+      {
+        "control": "supplier_advances",
+        "operational_amount": "445000.00",
+        "gl_amount": "0.00",
+        "difference": "445000.00",
+        "opening_status": "BLOCKED_SOURCE_REQUIRED"
+      },
+      {
+        "control": "inventory",
+        "operational_amount": "2226.82",
+        "gl_amount": "0.00",
+        "difference": "2226.82",
+        "opening_status": "BLOCKED_SOURCE_REQUIRED"
+      },
+      {
+        "control": "cash_bank",
+        "operational_amount": "3190.94",
+        "gl_amount": "0.00",
+        "difference": "3190.94",
+        "opening_status": "BLOCKED_SOURCE_REQUIRED"
+      }
+    ],
+    "supplier_advance_currency_verified": false,
+    "legacy_cash_is_not_verified_bank_balance": true,
+    "corrections_posted": false
+  },
+  "tests": {
+    "distinct_backend_methods": 3,
+    "initial_assertions": 38,
+    "final_changed_methods": 2,
+    "final_assertions": 27,
+    "frontend_production_build": "PASS",
+    "representative_browser": "PASS",
+    "browser_viewports": [
+      1366,
+      390
+    ],
+    "browser_errors": [],
+    "full_certification_run": false
+  },
+  "status": {
+    "clean_supported_mariadb_installed": "YES",
+    "all_source_business_data_preserved": "YES",
+    "schema_objects_validated": "YES",
+    "isolated_least_privilege_account_works": "YES",
+    "repeated_clean_restart_passes": "YES",
+    "application_works_against_clean_isolated_instance": "YES",
+    "active_database_cutover_performed": "NO",
+    "encrypted_installation_restore_verified": "NO",
+    "ar_reconciliation": "BLOCKED",
+    "supplier_advance_reconciliation": "BLOCKED",
+    "inventory_reconciliation": "BLOCKED",
+    "cash_bank_reconciliation": "BLOCKED",
+    "opening_balances_accountant_approved": "NO",
+    "ready_for_supervised_real_company_pilot": "NO",
+    "ready_for_commercial_deployment": "NO"
+  },
+  "evidence": [
+    "output/dc10-preservation.json",
+    "output/dc10-integrity.json",
+    "output/dc10-accounts.json",
+    "output/dc10-target-table-checks.json",
+    "output/dc10-api-smoke.json",
+    "output/dc10-restarts.json",
+    "output/dc10-connection-loss.json",
+    "output/dc10-connection-recovered.json",
+    "output/dc10-backup-restore.json",
+    "output/dc10-backup.json",
+    "output/dc10-opening-source-evidence.json",
+    "output/dc10-accountant-findings.json",
+    "output/dc10-recovery-receipt.json",
+    "output/dc10-source-final.json",
+    "output/dc10-attachments-final.json",
+    "output/dc10-backend.log",
+    "output/dc10-backend-final.log",
+    "output/dc10-build.log",
+    "output/dc10-browser.log",
+    "output/dc10/browser-verification.json"
+  ],
+  "limitations": [
+    "Active original 10.4.32 database and root runtime still configured; no cutover approval/execution.",
+    "External opening statements, confirmed cutoff and independent accountant approval missing.",
+    "DC8 encrypted installation backup/recovery certification correctly blocked by reconciliation.",
+    "Source payroll and Document Center records empty; no populated restoration proof.",
+    "Rehearsal includes disposable company and credential quarantine; restore a fresh candidate for cutover.",
+    "Long-running supervised business workers, off-device key escrow and commercial recovery remain unproven."
+  ],
+  "next_phase_started": false,
+  "final_process_state": {
+    "isolated_ui_api_database_stopped": true,
+    "isolated_database_clean_sql_shutdown": true,
+    "original_ports_running": [
+      3306,
+      8000,
+      5173,
+      8080
+    ],
+    "diff_check_exit": 0
+  }
+}

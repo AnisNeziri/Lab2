@@ -9,8 +9,8 @@ export function normalizeNavigation(value) {
 export function defaultNavigation(role) {
   return normalizeNavigation({hidden:role==='staff'?['decision-learning','automation-studio','analytics','supply-optimizer','strategic-simulation','financial-intelligence']:[]})
 }
-export function personalizedNavigation(permissions, enable3d, role, value) {
-  const prefs=normalizeNavigation(value), permitted=permittedNavigation(permissions,enable3d,role)
+export function personalizedNavigation(permissions, enable3d, role, value, capabilities = null) {
+  const prefs=normalizeNavigation(value), permitted=permittedNavigation(permissions,enable3d,role,capabilities)
   const all=permitted.flatMap(g=>g.items), favorites=prefs.favorites.map(id=>all.find(i=>i.id===id)).filter(i=>i&&!prefs.hidden.includes(i.id))
   const groups=permitted.map(g=>{
     const order=prefs.order[g.id]||[],items=g.items.filter(i=>!prefs.hidden.includes(i.id)&&!favorites.some(f=>f.id===i.id))

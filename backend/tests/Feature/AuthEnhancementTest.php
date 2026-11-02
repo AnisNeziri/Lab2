@@ -21,15 +21,15 @@ class AuthEnhancementTest extends TestCase
         $this->postJson('/api/register', [
             'name' => 'Jane Admin',
             'email' => 'jane@acme.test',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
+            'password' => 'Registration-test-2026!',
+            'password_confirmation' => 'Registration-test-2026!',
             'company_name' => 'Acme Corp',
             'company_address' => '456 Industrial Way',
         ])->assertCreated();
 
         $this->postJson('/api/login', [
             'email' => 'jane@acme.test',
-            'password' => 'password123',
+            'password' => 'Registration-test-2026!',
         ])->assertForbidden()
             ->assertJsonPath('code', 'EMAIL_NOT_VERIFIED');
     }
@@ -41,8 +41,8 @@ class AuthEnhancementTest extends TestCase
         $this->postJson('/api/register', [
             'name' => 'Jane Admin',
             'email' => 'jane@acme.test',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
+            'password' => 'Registration-test-2026!',
+            'password_confirmation' => 'Registration-test-2026!',
             'company_name' => 'Acme Corp',
             'company_address' => '456 Industrial Way',
         ])->assertCreated();
@@ -67,7 +67,7 @@ class AuthEnhancementTest extends TestCase
 
         $this->postJson('/api/login', [
             'email' => 'jane@acme.test',
-            'password' => 'password123',
+            'password' => 'Registration-test-2026!',
         ])->assertOk();
     }
 
@@ -89,13 +89,13 @@ class AuthEnhancementTest extends TestCase
         $this->postJson('/api/reset-password', [
             'email' => $email,
             'token' => $plainToken,
-            'password' => 'newpassword123',
-            'password_confirmation' => 'newpassword123',
+            'password' => 'newRegistration-test-2026!',
+            'password_confirmation' => 'newRegistration-test-2026!',
         ])->assertOk();
 
         $this->postJson('/api/login', [
             'email' => $email,
-            'password' => 'newpassword123',
+            'password' => 'newRegistration-test-2026!',
         ])->assertOk();
 
         $this->assertDatabaseMissing('password_reset_tokens', ['email' => $email]);

@@ -22,7 +22,12 @@ class AuthService
         $user = User::where('email', $email)->first();
 
         if (! $user || $user->is_active === false) {
+            Hash::make(bin2hex(random_bytes(32))); // Keep unknown-account work comparable without a stored dummy credential.
             return ['error' => 'not_found'];
+        }
+
+        if (! Hash::check($password, $user->password)) {
+            return ['error' => 'invalid_password'];
         }
 
         if (! $user->email_verified_at) {
@@ -31,10 +36,6 @@ class AuthService
 
         if ($user->must_change_password && $user->temporary_password_consumed) {
             return ['error' => 'temp_expired'];
-        }
-
-        if (! Hash::check($password, $user->password)) {
-            return ['error' => 'invalid_password'];
         }
 
         if ($user->must_change_password && ! $user->temporary_password_consumed) {
@@ -50,6 +51,7 @@ class AuthService
             'logged_in_at' => now(),
         ]);
 
+        app(\App\Services\Security\SecurityEvents::class)->record('authentication.login', $user, ['method'=>'password']);
         return $this->tokenResponse($user);
     }
 
@@ -59,6 +61,8 @@ class AuthService
             $company = Company::create([
                 'name' => $data['company_name'],
                 'address' => $data['company_address'],
+                'timezone'=>$data['timezone']??'Europe/Budapest', 'base_currency'=>$data['currency']??'EUR', 'locale'=>$data['locale']??'en',
+                'capability_settings'=>['package'=>'distribution','capabilities'=>\App\Services\Commercial\Entitlements::PACKAGES['distribution']],
             ]);
 
             $parts = explode(' ', trim($data['name']), 2);
@@ -136,6 +140,7 @@ class AuthService
         $user->save();
         $this->jwt->revokeUserTokens($user);
 
+        app(\App\Services\Security\SecurityEvents::class)->record('password.changed', $user);
         return $user;
     }
 
@@ -152,8 +157,9 @@ class AuthService
             'company_name' => $user->company?->name,
             'must_change_password' => $user->must_change_password,
             'email_verified' => $user->email_verified_at !== null,
-            'permissions' => app(PermissionService::class)->forRole($user->role),
+            'permissions' => app(PermissionService::class)->forUser($user),
             'preferences' => UserPreferences::normalize($user->preferences),
+            'commercial' => $user->company_id ? app(\App\Services\Commercial\Entitlements::class)->state($user->company_id) : null,
         ];
     }
 

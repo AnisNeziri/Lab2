@@ -10,7 +10,9 @@ class WebhookDelivery extends Model
 {
     use BelongsToCompany;
 
+    protected $hidden = ['payload_body'];
     protected $fillable = [
+        'payload_body',
         'company_id', 'webhook_endpoint_id', 'business_event_id', 'status',
         'attempts', 'response_status', 'last_error', 'last_attempt_at',
         'delivered_at', 'next_retry_at',

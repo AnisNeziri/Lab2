@@ -1,0 +1,293 @@
+{
+  "phase": "DC7",
+  "date": "2026-10-31",
+  "head": "fed921ad319d5f360281f11df67fbb5b96e1f656",
+  "branch": "main",
+  "uncommitted": true,
+  "pilot_scope": "Read-only local MCP and machine API, domain-concept metadata search, controlled signed webhooks and local technical tracing",
+  "required_results": {
+    "Existing business authorities preserved": "YES",
+    "External integrations cannot directly mutate models": "YES",
+    "MCP available": "YES",
+    "MCP read tools tenant/permission scoped": "YES",
+    "High-risk MCP writes unavailable/approval-protected": "YES",
+    "Semantic + exact hybrid search available": "YES",
+    "Exact business IDs outrank semantic matches": "YES",
+    "Semantic search respects permissions": "YES",
+    "Documents remain permission-scoped": "YES",
+    "Paid embedding provider required": "NO",
+    "Webhook signatures implemented": "YES",
+    "Webhook retries idempotent": "YES",
+    "Optional integration failure cannot block core ERP operation": "YES",
+    "OpenTelemetry-compatible tracing available": "YES",
+    "Sensitive telemetry protected": "YES",
+    "AI provider coupling reduced/preserved behind abstraction": "YES",
+    "Laravel upgrade performed": "NO",
+    "Ready for controlled integration/MCP pilot": "YES"
+  },
+  "runtime": {
+    "framework": "12.69.3",
+    "php": "8.3.35",
+    "database": "10.4.32-MariaDB",
+    "queue": "sync",
+    "cache": "file",
+    "indexed_records": 46,
+    "mcp_enabled_companies": 0
+  },
+  "tests": {
+    "focused_backend": {
+      "passed": 48,
+      "assertions": 445
+    },
+    "final_boundary_regression": {
+      "passed": 15,
+      "assertions": 209
+    },
+    "frontend": {
+      "passed": 20
+    },
+    "production_build": "PASS; existing PDF/3D chunk-size warnings",
+    "browser": {
+      "passed": 1,
+      "transport_client": "real PHP stdio subprocess",
+      "mobile_width": 390,
+      "horizontal_overflow": false
+    },
+    "real_stdio_client": "PASS in Chromium journey; current stock read and high-risk write rejected",
+    "real_queue_outage": "PASS; after-commit queue unavailable, authoritative stock call succeeds",
+    "sqlite_upgrade": {
+      "result": "PASS",
+      "tables_preserved": 204,
+      "existing_rows_preserved": 1656,
+      "new_company_controls": true,
+      "migrate_fresh_used": false
+    },
+    "mariadb_upgrade": {
+      "backup": "C:\\Users\\anisi\\Lab2/backups/before-dc7-20261031-07b31a27.sql",
+      "backup_bytes": 8795305,
+      "preserved_business_tables": 20,
+      "result": "PASS"
+    },
+    "after_index_preservation": {
+      "result": "PASS",
+      "tables": 20,
+      "after_search_backfill": true
+    }
+  },
+  "performance_before": {
+    "fixture": "isolated synthetic company; one product/customer; not a scale benchmark",
+    "paths": {
+      "Dashboard": {
+        "status": 200,
+        "elapsed_ms": 150.25,
+        "query_count": 16,
+        "db_duration_ms": 3.71,
+        "bytes": 4552,
+        "trace_id": "f570a52bd6116417708ffdb66c8447e8"
+      },
+      "Action Center": {
+        "status": 200,
+        "elapsed_ms": 181.67,
+        "query_count": 105,
+        "db_duration_ms": 30.13,
+        "bytes": 2012,
+        "trace_id": "63d3f25ed1f5574286c50ab584fcd5fa"
+      },
+      "Global Search": {
+        "status": 200,
+        "elapsed_ms": 147.72,
+        "query_count": 122,
+        "db_duration_ms": 33.97,
+        "bytes": 1573,
+        "trace_id": "364faeb10a65af732c300eddce13bc3c"
+      },
+      "Ask AIMS": {
+        "status": 200,
+        "elapsed_ms": 136.99,
+        "query_count": 23,
+        "db_duration_ms": 18.62,
+        "bytes": 2821,
+        "trace_id": "70dfc1e75fa46ab533ff3d83cba1d5b5"
+      },
+      "Inventory Position": {
+        "status": 200,
+        "elapsed_ms": 58.14,
+        "query_count": 16,
+        "db_duration_ms": 2.25,
+        "bytes": 3293,
+        "trace_id": "3431d462e7947551160159aaf1e0eeb5"
+      },
+      "Customer 360": {
+        "status": 200,
+        "elapsed_ms": 16.84,
+        "query_count": 6,
+        "db_duration_ms": 2.29,
+        "bytes": 1124,
+        "trace_id": "c4e77eb689ee3c30901baae5aeb4f551"
+      },
+      "Accounting Control Center": {
+        "status": 200,
+        "elapsed_ms": 80.42,
+        "query_count": 71,
+        "db_duration_ms": 16.88,
+        "bytes": 3530,
+        "trace_id": "4b9d9b7cb01edbed35630092500d1abc"
+      }
+    }
+  },
+  "performance_after": {
+    "fixture": "isolated synthetic company; one product/customer; not a scale benchmark",
+    "paths": {
+      "Dashboard": {
+        "status": 200,
+        "elapsed_ms": 105.75,
+        "query_count": 16,
+        "db_duration_ms": 4.18,
+        "bytes": 5896,
+        "trace_id": "a4f8dc583f1972bb4c74eea0967d2d97"
+      },
+      "Action Center": {
+        "status": 200,
+        "elapsed_ms": 170.83,
+        "query_count": 105,
+        "db_duration_ms": 29.1,
+        "bytes": 2059,
+        "trace_id": "56205d255554bf865ebfcc54c770e088"
+      },
+      "Global Search": {
+        "status": 200,
+        "elapsed_ms": 136.28,
+        "query_count": 108,
+        "db_duration_ms": 26.36,
+        "bytes": 1573,
+        "trace_id": "3d2ddf8987d4194ed4dea0b664021ca3"
+      },
+      "Ask AIMS": {
+        "status": 200,
+        "elapsed_ms": 73.77,
+        "query_count": 23,
+        "db_duration_ms": 8.48,
+        "bytes": 2821,
+        "trace_id": "8a69cd0f2c49ae1c14e7c4a8fe5472eb"
+      },
+      "Inventory Position": {
+        "status": 200,
+        "elapsed_ms": 18.12,
+        "query_count": 16,
+        "db_duration_ms": 2.34,
+        "bytes": 3293,
+        "trace_id": "8ec83c9edadf68f54384d6d8636fe5e4"
+      },
+      "Customer 360": {
+        "status": 200,
+        "elapsed_ms": 20.18,
+        "query_count": 6,
+        "db_duration_ms": 2.31,
+        "bytes": 1124,
+        "trace_id": "4d1a10d8f826e0a9711d7394682d9ab2"
+      },
+      "Accounting Control Center": {
+        "status": 200,
+        "elapsed_ms": 60.23,
+        "query_count": 71,
+        "db_duration_ms": 18.57,
+        "bytes": 3530,
+        "trace_id": "5a98ab52c244f14109a54ad1385f4b88"
+      }
+    }
+  },
+  "preservation": {
+    "baseline_files": 59,
+    "unchanged_files": [
+      "docs/dc6/README.md",
+      "backend/app/Services/AutomationOperations.php",
+      "backend/tests/Support/dc6-browser-fixture.php",
+      "backend/app/Services/InventorySnapshotService.php",
+      "frontend/src/pages/AutomationStudio.jsx",
+      "backend/database/migrations/2026_10_21_000001_extend_business_automation_controls.php",
+      "backend/app/Services/InventoryAssistantFacts.php",
+      "frontend/src/components/AutomationTaskReview.jsx",
+      "backend/app/Http/Controllers/Api/MobileWarehouseController.php",
+      "frontend/src/components/ShipmentWorkspace.jsx",
+      "frontend/src/hooks/useInventoryResource.js",
+      "backend/tests/Feature/IntelligenceAssistantTest.php",
+      "frontend/src/components/InventoryPosition.css",
+      "frontend/src/components/AutomationOutcomeVerification.jsx",
+      "frontend/src/components/ShipmentWorkspace.css",
+      "frontend/e2e/specs/dc6-automation.spec.js",
+      "backend/tests/Feature/AutomationStudioTest.php",
+      "backend/app/Services/AssistantLanguage.php",
+      "backend/tests/Feature/DC6OrchestrationTest.php",
+      "docs/dc5/DC5-2.0-COMPLETION.md",
+      "frontend/src/components/InventoryPosition.jsx",
+      "docs/dc5/VALIDATION-2.0.json",
+      "docs/dc5/README.md",
+      "docs/dc6/VALIDATION.json",
+      "frontend/src/pages/AutomationStudio.css",
+      "frontend/src/components/InventoryHealth.jsx",
+      "backend/app/Services/ShipmentCargoPresentation.php",
+      "frontend/src/pages/MobileWarehouse.jsx",
+      "frontend/src/components/InventoryOperations.jsx",
+      "backend/app/Models/ShipmentItem.php",
+      "frontend/src/pages/MobileWarehouse.css",
+      "backend/app/Services/AutomationTaskWorkflow.php",
+      "backend/app/Services/AutomationRegistry.php",
+      "backend/app/Services/InventoryIntegrityService.php",
+      "backend/app/Services/AssistantPlanner.php",
+      "backend/app/Services/MobileWarehouseService.php",
+      "backend/app/Services/AutomationPermissions.php",
+      "backend/tests/Support/dc6-concurrency.php",
+      "backend/app/Services/OperatingAssistantFacts.php",
+      "backend/tests/Feature/DC5InventoryControlTest.php",
+      "frontend/src/components/AutomationHealth.jsx",
+      "frontend/e2e/dc6-setup.mjs",
+      "scripts/serve-dc6-e2e.cjs",
+      "backend/app/Http/Controllers/Api/AutomationController.php",
+      "backend/app/Models/AutomationExecution.php",
+      "frontend/src/pages/ActionCenter.jsx",
+      "backend/tests/Support/dc6-upgrade.php",
+      "backend/app/Services/ActionCenterService.php",
+      "backend/app/Services/AutomationScheduler.php",
+      "frontend/e2e/specs/dc5-inventory.spec.js",
+      "frontend/playwright.dc6.config.js",
+      "docs/AUTOMATION_STUDIO.md",
+      "backend/app/Http/Controllers/Api/InventoryController.php"
+    ],
+    "extended_shared_files": [
+      "backend/app/Services/AimsToolRegistry.php",
+      ".gitignore",
+      "backend/app/Models/Company.php",
+      "backend/app/Services/IntelligenceAssistantService.php",
+      "backend/app/Services/AutomationService.php",
+      "backend/routes/api.php"
+    ],
+    "business_authorities_unchanged": {
+      "backend/app/Services/StockMovementService.php": true,
+      "backend/app/Services/AccountingService.php": true,
+      "backend/app/Services/CustomerDebtService.php": true,
+      "backend/app/Services/ProcurementService.php": true,
+      "backend/app/Services/InventoryPlanningService.php": true,
+      "backend/app/Services/Workforce/PayrollService.php": true,
+      "backend/app/Integrations/Sef/FiscalizationService.php": true
+    }
+  },
+  "limitations": [
+    "Local stdio MCP only; remote OAuth/Streamable HTTP not implemented.",
+    "Local hashed business-concept/character embeddings; no general pretrained multilingual model.",
+    "Metadata-only documents; no OCR or approved extracted-body ingestion.",
+    "Bounded semantic candidate recall; no large-corpus ANN or production load certification.",
+    "OTLP JSON export, not a full SDK or live collector deployment.",
+    "Older queue jobs without tenant attribution remain unknown at company level.",
+    "Real public webhook receivers, other client products and network delivery require pilot validation.",
+    "No automatic regulatory/financial actions, marketplace, verticals or remote AI provider enabled."
+  ],
+  "dc8_started": false,
+  "evidence_sha256": {
+    "dc7-focused.log": "ed9d5bd237329b135acb32ffac87afe78baa9f08880166bb679a7c87c2706159",
+    "dc7-final-controls.log": "2f206d0b2b6fd5a65f3e1360c4a5e9efa1b9cab8da30ce5297612ea5ac505980",
+    "dc7-frontend.log": "c0909feeb4c19e67f0ce651230f5649b6d196cc55a2a2e7ea3523e5fecee395e",
+    "dc7-build.log": "9b9ed2eab5521579a65964f55d2abecb311df26c6c8982dac6f0c2a74a3e04c7",
+    "dc7-outage.log": "0aab69c61bc0b5a899dc117266c04f0fb3f55b48dbd17063a2d618c99f714205",
+    "dc7-browser.log": "34085bcf61d8a942085e522d7b2604986bb4c9bbc171f7a0b70fc56861a41da0"
+  }
+}
