@@ -23,14 +23,23 @@ final class AssistantEntityResolver
         ];
         $needle = AssistantLanguage::identity($term);
         if (strlen($needle) < 2) return ['entity'=>null,'choices'=>[],'fuzzy'=>false];
+        preg_match_all('/\d+/', $needle, $requestedNumbers);
         // Resolve exact identifiers before the capped fuzzy candidate set.
         // A late SKU must not disappear behind hundreds of common bigrams.
         $exactMatches = [];
         $literal = mb_strtolower(trim($term));
+        $skuVariant = preg_match('/^[a-z]+\d+(?:[ _-]+[a-z]*\d+)+$/D', $literal)
+            ? preg_replace('/[ _-]+/', '-', $literal) : $literal;
         foreach ($definitions as $kind=>[$model,$permission,$fields,$title,$url]) {
             if ($type && $kind !== $type || !app(PermissionService::class)->roleHasPermission(Auth::user()->role,$permission)) continue;
-            $rows = $model::query()->where(function ($query) use ($fields,$literal) {
-                foreach ($fields as $field) $query->orWhereRaw('LOWER('.$query->getQuery()->getGrammar()->wrap($field).') = ?', [$literal]);
+            $rows = $model::query()->where(function ($query) use ($fields,$literal,$skuVariant) {
+                foreach ($fields as $field) {
+                    $column = $query->getQuery()->getGrammar()->wrap($field);
+                    $query->orWhereRaw('LOWER('.$column.') = ?', [$literal]);
+                    if ($field === 'sku' && $skuVariant !== $literal) {
+                        $query->orWhereRaw('LOWER('.$column.') = ?', [$skuVariant]);
+                    }
+                }
             })->orderBy('id')->limit(2)->get();
             foreach ($rows as $row) $exactMatches[] = [
                 'type'=>$kind,'id'=>$row->id,'title'=>$row->$title ?: $row->tracking_number ?: $row->tracking_reference,
@@ -62,14 +71,17 @@ final class AssistantEntityResolver
                     $candidate=AssistantLanguage::identity((string)$row->$field);
                     if (!$candidate) continue;
                     if ($candidate===$needle) {$score=1;$exact=true;break;}
-                    if (str_contains($candidate,$needle)) $score=max($score,.86);
+                    preg_match_all('/\d+/', $candidate, $candidateNumbers);
+                    $sameNumbers = $requestedNumbers[0] === $candidateNumbers[0];
+                    if (str_contains($candidate,$needle)) $score=max($score,$sameNumbers ? .86 : .79);
                     // Damerau distance handles ordinary adjacent-letter transpositions.
                     $distance=levenshtein($needle,$candidate);
                     for($i=0;$i<strlen($needle)-1;$i++){
                         $swap=$needle;$swap[$i]=$needle[$i+1];$swap[$i+1]=$needle[$i];
                         $distance=min($distance,1+levenshtein($swap,$candidate));
                     }
-                    $score=max($score,1-$distance/max(strlen($needle),strlen($candidate)));
+                    $similarity=1-$distance/max(strlen($needle),strlen($candidate));
+                    $score=max($score,$sameNumbers ? $similarity : min(.79,$similarity));
                 }
                 if ($score>=.65) $matches[]=['type'=>$kind,'id'=>$row->id,'title'=>$row->$title?:$row->tracking_number?:$row->tracking_reference,'subtitle'=>$kind==='product'?$row->sku:($kind==='shipment'?($row->origin_port.' â†’ '.$row->destination_port):null),'url'=>$url.$row->id,'score'=>$score,'exact'=>$exact];
             }

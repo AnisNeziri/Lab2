@@ -16,13 +16,14 @@ class SuperadminPlatformTest extends TestCase
     protected function actingAsApiUser(string $role = 'admin'): self
     {
         parent::actingAsApiUser($role);
-        $user=User::where('company_id',$this->apiCompany->id)->firstOrFail();
-        return $this->withHeader('Authorization','Bearer '.app(\App\Services\JwtService::class)->createAccessToken($user));
+        $user = User::where('api_token', hash('sha256', 'test-token-'.$role))->firstOrFail();
+        return $this->withHeader('Authorization', 'Bearer '.app(\App\Services\JwtService::class)->issueTokens($user)['access_token']);
     }
 
 
-    public function test_superadmin_can_manage_platform_users_and_view_usage(): void
+    public function test_online_superadmin_can_provision_the_first_owner_but_cannot_take_over_existing_users(): void
     {
+        Config::set('system.operation_mode', 'online');
         $this->actingAsApiUser('superadmin');
         $company = Company::factory()->create();
 
@@ -44,27 +45,30 @@ class SuperadminPlatformTest extends TestCase
             'email' => 'updated@example.com',
             'role' => 'manager',
             'is_active' => true,
-        ])->assertOk()->assertJsonPath('role', 'manager');
+        ])->assertForbidden();
 
         $this->postJson("/api/superadmin/users/{$user->id}/reset-password", [
             'temporary_password' => 'Replacement.Test.2026!',
             'temporary_password_confirmation' => 'Replacement.Test.2026!',
-        ])->assertOk();
-        $this->assertTrue(Hash::check('Replacement.Test.2026!', $user->fresh()->password));
+        ])->assertForbidden();
+        $this->assertTrue(Hash::check('Temporary.Test.2026!', $user->fresh()->password));
 
         $this->getJson('/api/superadmin/dashboard')
             ->assertOk()
             ->assertJsonPath('total_users', 1)
             ->assertJsonStructure(['companies', 'active_users', 'new_users_30_days', 'logins_30_days']);
 
-        $this->deleteJson("/api/superadmin/users/{$user->id}")->assertOk();
-        $this->assertSoftDeleted('users', ['id' => $user->id]);
+        $this->deleteJson("/api/superadmin/users/{$user->id}")->assertForbidden();
+        $this->assertNotSoftDeleted('users', ['id' => $user->id]);
     }
 
     public function test_offline_superadmin_can_provision_one_desktop_user(): void
     {
         Config::set('system.operation_mode', 'offline');
-        $this->actingAsApiUser('superadmin');
+        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
+        $this->apiCompany = Company::sole();
+        $operator = User::factory()->create(['company_id' => null, 'role' => 'superadmin', 'email_verified_at' => now()]);
+        $this->withHeader('Authorization', 'Bearer '.app(\App\Services\JwtService::class)->issueTokens($operator)['access_token']);
 
         $payload = [
             'company_id' => $this->apiCompany->id,
@@ -75,7 +79,7 @@ class SuperadminPlatformTest extends TestCase
             'temporary_password_confirmation' => 'Desktop.User.123',
         ];
 
-        $this->postJson('/api/superadmin/users', $payload)
+        $response = $this->postJson('/api/superadmin/users', $payload)
             ->assertCreated()
             ->assertJsonPath('email', $payload['email']);
 
@@ -90,5 +94,14 @@ class SuperadminPlatformTest extends TestCase
             ...$payload,
             'email' => 'second.desktop.operator@example.com',
         ])->assertStatus(422)->assertJsonValidationErrors('user');
+
+        $user = User::findOrFail($response->json('id'));
+        $oldToken = app(\App\Services\JwtService::class)->issueTokens($user)['access_token'];
+        $this->postJson("/api/superadmin/users/{$user->id}/reset-password", [
+            'temporary_password' => 'Replacement.Test.2026!',
+            'temporary_password_confirmation' => 'Replacement.Test.2026!',
+        ])->assertOk();
+        $this->assertTrue(Hash::check('Replacement.Test.2026!', $user->fresh()->password));
+        $this->withHeader('Authorization', 'Bearer '.$oldToken)->getJson('/api/me')->assertUnauthorized();
     }
 }

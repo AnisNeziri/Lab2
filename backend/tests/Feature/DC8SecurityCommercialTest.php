@@ -28,6 +28,12 @@ class DC8SecurityCommercialTest extends TestCase
         config(['security.passkeys.rp_id'=>'erp.example.test','security.passkeys.origins'=>['https://erp.example.test']]);
     }
     protected function tearDown(): void { foreach($this->temporary as $file) if(is_file($file))unlink($file);parent::tearDown(); }
+    private function platform(): self
+    {
+        $actor = User::factory()->create(['company_id' => null, 'role' => 'superadmin', 'email_verified_at' => now()]);
+        return $this->withHeader('Authorization', 'Bearer '.app(JwtService::class)->issueTokens($actor)['access_token']);
+    }
+    private function commercial(string $path): string { return '/api/commercial'.$path.'?company_id='.$this->apiCompany->id; }
     private function cborHead(int $major,int $size): string {return $size<24?chr(($major<<5)|$size):($size<256?chr(($major<<5)|24).chr($size):chr(($major<<5)|25).pack('n',$size));}
     private function bytes(string $x): string {return $this->cborHead(2,strlen($x)).$x;}
     private function text(string $x): string {return $this->cborHead(3,strlen($x)).$x;}
@@ -98,10 +104,13 @@ class DC8SecurityCommercialTest extends TestCase
     }
     public function test_entitlements_and_permissions_are_both_required_and_company_scoped(): void
     {
-        $this->putJson('/api/commercial/capabilities',['package'=>'core-accounting','capabilities'=>['core','inventory','accounting']])->assertOk();
+        $this->putJson($this->commercial('/capabilities'),['package'=>'core-accounting','capabilities'=>['core','inventory','accounting']])->assertForbidden();
+        $this->platform()->putJson($this->commercial('/capabilities'),['package'=>'core-accounting','capabilities'=>['core','inventory','accounting']])->assertOk();
+        $this->withHeader('Authorization','Bearer '.$this->tokens['access_token']);
         $this->getJson('/api/payroll')->assertForbidden()->assertJsonPath('code','CAPABILITY_NOT_ENABLED');
         $me=$this->getJson('/api/me')->assertOk()->json();$this->assertNotContains('payroll.view',$me['permissions']);
-        $this->putJson('/api/commercial/capabilities',['package'=>'platform','capabilities'=>['core','inventory','accounting','payroll']])->assertOk();
+        $this->platform()->putJson($this->commercial('/capabilities'),['package'=>'platform','capabilities'=>['core','inventory','accounting','payroll']])->assertOk();
+        $this->withHeader('Authorization','Bearer '.$this->tokens['access_token']);
         $this->getJson('/api/payroll')->assertOk();
         $staff=User::factory()->create(['company_id'=>$this->apiCompany->id,'role'=>'staff','email_verified_at'=>now()]);
         $this->withHeader('Authorization','Bearer '.app(JwtService::class)->createAccessToken($staff))->getJson('/api/payroll')->assertForbidden();
@@ -125,11 +134,11 @@ class DC8SecurityCommercialTest extends TestCase
         [$key]=$this->signer();$payload=['kind'=>'license','license_id'=>'DC8-SYNTHETIC','company'=>$this->apiCompany->fresh()->public_id,'installation_id'=>app(InstallationIdentity::class)->id(),
             'package'=>'distribution','capabilities'=>['core','inventory','payroll'],'valid_from'=>now()->subDay()->toIso8601String(),'valid_until'=>now()->addDay()->toIso8601String(),'offline_until'=>now()->addDays(8)->toIso8601String()];
         $doc=$this->signed($payload,$key);$bad=$doc;$bad['payload'].='A';
-        $this->postJson('/api/commercial/license',['document'=>$bad])->assertUnprocessable();
+        $this->platform()->postJson($this->commercial('/license'),['document'=>$bad])->assertUnprocessable();
         $foreign=$payload;$foreign['company']=Company::factory()->create()->public_id;
-        $this->postJson('/api/commercial/license',['document'=>$this->signed($foreign,$key)])->assertUnprocessable();
-        $this->postJson('/api/commercial/license',['document'=>$doc])->assertOk()->assertJsonPath('status','active');
-        $this->putJson('/api/commercial/capabilities',['package'=>'platform','capabilities'=>Entitlements::CAPABILITIES])->assertUnprocessable();
+        $this->postJson($this->commercial('/license'),['document'=>$this->signed($foreign,$key)])->assertUnprocessable();
+        $this->postJson($this->commercial('/license'),['document'=>$doc])->assertOk()->assertJsonPath('status','active');
+        $this->putJson($this->commercial('/capabilities'),['package'=>'platform','capabilities'=>Entitlements::CAPABILITIES])->assertUnprocessable();
         $this->travel(2)->days();$this->assertSame('grace',app(Entitlements::class)->state($this->apiCompany->id)['status']);
         $this->travel(8)->days();$state=app(Entitlements::class)->state($this->apiCompany->id);$this->assertSame('expired',$state['status']);$this->assertFalse($state['write_allowed']);
         $this->tokens=app(JwtService::class)->issueTokens($this->owner);$this->withHeader('Authorization','Bearer '.$this->tokens['access_token']);
@@ -143,11 +152,11 @@ class DC8SecurityCommercialTest extends TestCase
             'migration_level'=>'2026_10_31_000003','minimum_php'=>'8.3.35','minimum_version'=>'1.1.2-rc.1','released_at'=>now()->toIso8601String(),
             'compatibility'=>['api'=>1],'tree_sha256'=>str_repeat('c',64),'artifacts'=>[['filename'=>'AIMS-1.1.3.zip','sha256'=>str_repeat('a',64)]]],$key);
         $bad=$doc;$bad['signature']=base64_encode(random_bytes(256));
-        $this->postJson('/api/commercial/update-preflight',['document'=>$bad,'workers_stopped'=>true])->assertUnprocessable();
-        $r=$this->postJson('/api/commercial/update-preflight',['document'=>$doc,'workers_stopped'=>true])->assertOk()->assertJsonPath('status','blocked')->assertJsonPath('migration_started',false)->json();
+        $this->platform()->postJson($this->commercial('/update-preflight'),['document'=>$bad,'workers_stopped'=>true])->assertUnprocessable();
+        $r=$this->postJson($this->commercial('/update-preflight'),['document'=>$doc,'workers_stopped'=>true])->assertOk()->assertJsonPath('status','blocked')->assertJsonPath('migration_started',false)->json();
         $this->assertSame('blocked',collect($r['checks'])->firstWhere('key','backup')['status']);
         DB::table('installation_state')->where('key','key_check')->update(['value'=>'wrong-key-evidence']);
-        $r=$this->postJson('/api/commercial/update-preflight',['document'=>$doc,'workers_stopped'=>true])->assertOk()->json();
+        $r=$this->postJson($this->commercial('/update-preflight'),['document'=>$doc,'workers_stopped'=>true])->assertOk()->json();
         $this->assertSame('blocked',collect($r['checks'])->firstWhere('key','encryption_key')['status']);
         $this->assertSame(0,DB::table('update_checks')->where('migration_started',true)->count());
     }
@@ -155,9 +164,10 @@ class DC8SecurityCommercialTest extends TestCase
     {
         $foreign=Company::factory()->create();DB::table('security_events')->insert(['company_id'=>$foreign->id,'event'=>'foreign-marker-must-not-leak','created_at'=>now()]);
         $this->owner->update(['api_token'=>hash('sha256','secret-token-must-not-leak')]);
-        $bundle=$this->postJson('/api/commercial/support-bundle')->assertOk()->json();
+        $bundle=$this->platform()->postJson($this->commercial('/support-bundle'))->assertOk()->json();
         $raw=json_encode($bundle);foreach(['secret-token-must-not-leak',$this->owner->password,config('app.key'),'foreign-marker-must-not-leak'] as $secret) $this->assertStringNotContainsString($secret,$raw);
         $this->assertSame(['format','generated_at','version','runtime','migration_state','health','integrations','recent_errors','presence','policy'],array_keys($bundle));
+        $this->withHeader('Authorization','Bearer '.$this->tokens['access_token']);
         $this->getJson('/api/security/audit-export')->assertOk()->assertDontSee('foreign-marker-must-not-leak');
         $this->getJson('/api/security')->assertOk()->assertHeader('X-Content-Type-Options','nosniff')->assertHeader('Cache-Control','no-store, private');
     }

@@ -389,7 +389,7 @@ function apiError(error, fallback) {
   return error?.message || fallback;
 }
 
-function Modal({ open, title, description, onClose, wide = false, drawer = false, children, busy=false, closeOnBackdrop=false, closeOnEscape=true, warnOnUnsaved=true }) {
+function Modal({ open, title, description, onClose, wide = false, children, busy=false, closeOnBackdrop=false, closeOnEscape=true, warnOnUnsaved=true }) {
   const {language}=useTranslation();
   const [dirty,setDirty]=useState(false);
   const titleId = useId();
@@ -401,10 +401,10 @@ function Modal({ open, title, description, onClose, wide = false, drawer = false
 
   if (!open) return null;
   return createPortal(
-    <div className={`invoice-overlay ${drawer ? "is-drawer" : ""}`} onMouseDown={event=>{if(closeOnBackdrop&&event.target===event.currentTarget)close()}} onChangeCapture={()=>{if(!drawer)setDirty(true)}}>
+    <div className="invoice-overlay" onMouseDown={event=>{if(closeOnBackdrop&&event.target===event.currentTarget)close()}} onChangeCapture={()=>{if(warnOnUnsaved)setDirty(true)}}>
       <section
         ref={dialogRef}
-        className={`invoice-dialog ${wide ? "is-wide" : ""} ${drawer ? "invoice-drawer" : ""}`}
+        className={`invoice-dialog ${wide ? "is-wide" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -1437,7 +1437,7 @@ function InvoiceDetail({ invoice, profile, open, onClose, onEdit, onIssue, onPay
   const canCredit = !invoice.daily_sale_id && documentType === "invoice" && documentStatus === "issued" && paid <= 0;
 
   return (
-    <Modal open={open} title={invoice.invoice_number || t("invoice.draftInvoice")} description={buyer.name} onClose={onClose} drawer closeOnBackdrop>
+    <Modal open={open} title={invoice.invoice_number || t("invoice.draftInvoice")} description={buyer.name} onClose={onClose} wide warnOnUnsaved={false} closeOnBackdrop>
       <div className="invoice-detail"><EntityDocuments entityType="invoice" entityId={invoice.id}/>
         {invoice.daily_sale?.outbound_dispatch?.order?.intake&&<p><Link to={`/order-hub?intake=${invoice.daily_sale.outbound_dispatch.order.intake.id}`}>{language==='sq'?'Porosia burimore':'Source order'} {invoice.daily_sale.outbound_dispatch.order.order_number}</Link> · {invoice.daily_sale.sale_number}</p>}
         <div className="invoice-detail-status"><StatusPills invoice={invoice} t={t} /></div><Link to={"/fiscalization?invoice="+invoice.id}>{language==="sq"?"Gjendja / kuponi fiskal TEST":"Fiscalization status / TEST receipt"}</Link>
@@ -1619,7 +1619,7 @@ export default function Invoices() {
     let active = true;
     Promise.allSettled([
       getInvoiceProfile(),
-      getAllProducts(),
+      getAllProducts({reference_only: !permissions.some(p=>['inventory.view','products.manage'].includes(p))}),
       getAllInvoiceCustomers(),
     ]).then(([profileResult, productResult, customerResult]) => {
       if (!active) return;

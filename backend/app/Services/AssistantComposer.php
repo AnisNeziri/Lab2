@@ -5,6 +5,7 @@ namespace App\Services;
 final class AssistantComposer
 {
     public const URLS=[
+        'get_incoming_supply'=>'/purchase-orders','get_stock_commitments'=>'/fulfillment','get_inventory_health'=>'/warehouse-operations?tab=control',
         'get_decision_learning_summary'=>'/decision-learning','get_recommendation_performance'=>'/decision-learning','get_decision_outcome'=>'/decision-learning','compare_policy_versions'=>'/decision-learning','get_challenger_status'=>'/decision-learning','get_override_patterns'=>'/decision-learning','get_policy_suggestions'=>'/decision-learning',
         'simulate_customer_payment_delay'=>'/financial-intelligence','simulate_shipment_delay'=>'/shipments/my-shipments','get_customer_supply_capacity'=>'/inventory-intelligence?view=planning',
         'get_open_decisions'=>'/inventory-intelligence?view=decisions','get_critical_decisions'=>'/inventory-intelligence?view=decisions','get_replenishment_decisions'=>'/inventory-intelligence?view=decisions','get_supplier_decisions'=>'/inventory-intelligence?view=decisions','get_decision_changes'=>'/inventory-intelligence?view=decisions',
@@ -19,9 +20,10 @@ final class AssistantComposer
 
     public function compose(array $results,bool $sq):array
     {
-        $cards=[];$sources=[];$limits=[];
+        $cards=[];$sources=[];$limits=[];$presentation=null;
         foreach($results as $result) {
             $name=$result['tool'];$data=$result['data'];$url=self::URLS[$name]??'/dashboard';
+            if($name==='get_sales_analytics')$presentation=['kind'=>'sales','total'=>$data['metrics']['revenue']??null,'currency'=>\App\Support\CompanyCurrency::current(),'period'=>$data['period']??null,'basis'=>'operational_sales','url'=>$url];
             if(in_array($name,AimsToolRegistry::OPTIMIZER_TOOLS))$url='/supply-optimizer'.(isset($data['id'])?'?plan='.$data['id']:(isset($data['plan_id'])?'?plan='.$data['plan_id']:''));
             if($name==='get_purchase_order'&&isset($data['id']))$url='/purchase-orders?po='.$data['id'];
             if($name==='get_sales_order'&&isset($data['id']))$url='/fulfillment?order='.$data['id'];
@@ -65,16 +67,19 @@ final class AssistantComposer
                 if($name==='get_supplier_options')$rowurl='/suppliers?supplier='.($row['supplier_id']??'');
                 if($name==='get_purchase_order')$rowurl='/purchase-orders?po='.($row['id']??'');
                 if($name==='get_sales_order')$rowurl='/fulfillment?order='.($row['id']??'');
-                $cards[]=['title'=>(string)$title,'tool'=>$name,'url'=>$rowurl,'status'=>$row['severity']??$row['risk']??data_get($row,'recommendation.risk')??$row['state']??$row['status']??null,'confidence'=>$row['confidence']??data_get($row,'cadence.confidence'),'stale'=>$row['stale']??$data['stale']??null,'as_of'=>$row['evidence_cutoff_at']??$asof,'metrics'=>$this->metrics($row,$sq),'evidence'=>$this->compact($row),'entity'=>$this->entity($name,$row)];
+                $cards[]=['title'=>(string)$title,'tool'=>$name,'url'=>$rowurl,'currency'=>$row['currency']??\App\Support\CompanyCurrency::current(),'status'=>$row['severity']??$row['risk']??data_get($row,'recommendation.risk')??$row['state']??$row['status']??null,'confidence'=>$row['confidence']??data_get($row,'cadence.confidence'),'stale'=>$row['stale']??$data['stale']??null,'as_of'=>$row['evidence_cutoff_at']??$asof,'metrics'=>$this->metrics($row,$sq),'evidence'=>$this->compact($row),'entity'=>$this->entity($name,$row)];
             }
         }
-        return ['cards'=>$cards,'sources'=>$sources,'limitations'=>array_values(array_unique($limits))];
+        return ['cards'=>$cards,'sources'=>$sources,'limitations'=>array_values(array_unique($limits)),'presentation'=>$presentation];
     }
 
     private function entity(string $tool,array $row):?array
     {
+        if($tool==='get_supplier_options'&&isset($row['supplier_id']))return ['type'=>'supplier','id'=>(int)$row['supplier_id']];
+        if(in_array($tool,['get_supplier','get_supplier_performance'])&&isset($row['supplier_id']))return ['type'=>'supplier','id'=>(int)$row['supplier_id']];
+        if($tool==='get_sales_analytics'&&isset($row['id'],$row['unit']))return ['type'=>'product','id'=>(int)$row['id']];
         if(in_array($tool,['get_open_decisions','get_critical_decisions','get_replenishment_decisions','get_supplier_decisions','get_decision']))return isset($row['id'])?['type'=>'decision','id'=>$row['id']]:null;
-        if(in_array($tool,['get_at_risk_customers','get_customer_intelligence']))return isset($row['id'])?['type'=>'customer','id'=>$row['id']]:null;
+        if(in_array($tool,['get_customer','get_at_risk_customers','get_customer_intelligence','get_customer_analytics']))return isset($row['id'])?['type'=>'customer','id'=>$row['id']]:null;
         if($tool==='get_products_needing_replenishment')return isset($row['product']['id'])?['type'=>'product','id'=>$row['product']['id']]:null;
         if($tool==='get_inventory_intelligence_recommendations')return isset($row['product_id'])?['type'=>'product','id'=>$row['product_id']]:null;
         if($tool==='get_product_availability')return isset($row['product']['id'])?['type'=>'product','id'=>$row['product']['id']]:null;
@@ -100,12 +105,12 @@ final class AssistantComposer
             'recommendation.explanation.stockout_date'=>['Projected stockout date','Data e mungesës së parashikuar'],'recommendation.explanation.base_quantity'=>['Recommended quantity','Sasia e rekomanduar'],'prediction.generated_at'=>['Forecast generated','Parashikimi u gjenerua'],'prediction.valid_until'=>['Forecast expiry','Skadimi i parashikimit'],
             'base_quantity'=>['Quantity','Sasia'],'quantity'=>['Quantity','Sasia'],'unit'=>['Unit','Njësia'],'currency'=>['Currency','Monedha'],'base_cost'=>['Estimated cost','Kosto e vlerësuar'],'supplier_name'=>['Supplier','Furnitori'],'expected_arrival'=>['Expected arrival','Mbërritja e pritshme'],'usual_lead_time_days'=>['Lead time days','Afati ditë'],'minimum_order_quantity'=>['Minimum quantity','Sasia minimale'],'pack_size'=>['Pack multiple','Shumëfishi i paketës'],'stockout_date'=>['Stockout date','Data e mungesës'],'scenario_stockout_date'=>['Scenario stockout','Mungesa në skenar'],'available_to_promise'=>['Available','Në dispozicion'],
             'can_fulfil_now'=>['Can fulfil now (physical stock)','Mund të plotësohet tani (stok fizik)'],'customer'=>['Customer','Klienti'],'shifted_receipts'=>['Dated receipts shifted','Mbërritje me datë të shtyra'],'baseline_stockout'=>['Baseline stockout','Mungesa bazë'],'scenario_stockout'=>['Scenario stockout','Mungesa në skenar'],'baseline_stockout_days'=>['Baseline shortage days','Ditët e mungesës bazë'],'scenario_stockout_days'=>['Scenario shortage days','Ditët e mungesës në skenar'],
-            'current_debt'=>['Debt','Borxhi'],'debt'=>['Debt','Borxhi'],'advance'=>['Advance','Parapagimi'],'remaining'=>['Outstanding','I papaguar'],'total_exposure'=>['Exposure','Ekspozimi'],'overdue'=>['Overdue','I vonuar'],'credit.current_debt'=>['Debt','Borxhi'],'credit.customer_advance'=>['Advance','Parapagimi'],'credit.total_exposure'=>['Exposure','Ekspozimi'],'credit.overdue_amount'=>['Overdue','I vonuar'],
+            'outstanding'=>['Outstanding','Borxhi i pashlyer'],'revenue'=>['Recorded sales','Shitjet e regjistruara'],'current_debt'=>['Debt','Borxhi'],'debt'=>['Debt','Borxhi'],'advance'=>['Advance','Parapagimi'],'remaining'=>['Outstanding','I papaguar'],'total_exposure'=>['Exposure','Ekspozimi'],'overdue'=>['Overdue','I vonuar'],'credit.current_debt'=>['Debt','Borxhi'],'credit.advance'=>['Advance','Parapagimi'],'credit.total_exposure'=>['Exposure','Ekspozimi'],'credit.overdue'=>['Overdue','I vonuar'],
             'financial_context.debt'=>['Debt','Borxhi'],'financial_context.advance'=>['Advance','Parapagimi'],'financial_context.exposure'=>['Exposure','Ekspozimi'],'financial_context.overdue'=>['Overdue','I vonuar'],'last_purchase'=>['Last purchase','Blerja e fundit'],'summary.revenue'=>['Recorded revenue','Të ardhurat'],'summary.sales_count'=>['Sales','Shitjet'],'cadence.expected_next'=>['Expected next order','Porosia e pritshme'],
             'opening_recorded_cash'=>['Recorded opening cash','Paratë fillestare të regjistruara'],'inflows'=>['Expected inflows','Hyrjet e pritshme'],'outflows'=>['Expected outflows','Daljet e pritshme'],'net_change'=>['Net change','Ndryshimi neto'],'expected_closing_cash'=>['Expected closing cash','Paratë e pritshme në fund'],
             'metrics.revenue'=>['Revenue','Të ardhurat'],'metrics.sales_count'=>['Sales','Shitjet'],'metrics.gross_profit'=>['Gross profit','Fitimi bruto'],'eta.expected'=>['Expected arrival','Mbërritja e pritshme'],'eta.warehouse_eta'=>['Warehouse ETA','Mbërritja në depo'],'tracking_freshness.last_position_at'=>['Last position','Pozicioni i fundit'],
         ];$out=[];
-        foreach($labels as $path=>$label)if(\Illuminate\Support\Arr::has($row,$path)){$v=data_get($row,$path);if(is_scalar($v)||$v===null)$out[]=['label'=>$label[$sq?1:0],'value'=>$v,'unit'=>in_array($path,['base_quantity','quantity','plan.base_quantity','recommended.base_quantity'])?($row['unit']??data_get($row,'product.unit')??data_get($row,'evidence.product.unit')??data_get($row,'plan.unit')):null];}
+        foreach($labels as $path=>$label)if(\Illuminate\Support\Arr::has($row,$path)){$v=data_get($row,$path);if(is_scalar($v)||$v===null)$out[]=['label'=>$label[$sq?1:0],'value'=>$v,'unit'=>str_starts_with($path,'position.')?data_get($row,'product.unit'):(in_array($path,['base_quantity','quantity','plan.base_quantity','recommended.base_quantity'])?($row['unit']??data_get($row,'product.unit')??data_get($row,'evidence.product.unit')??data_get($row,'plan.unit')):null)];}
         return array_slice($out,0,12);
     }
 

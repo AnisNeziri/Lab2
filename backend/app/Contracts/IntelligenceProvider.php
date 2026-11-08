@@ -2,7 +2,7 @@
 
 namespace App\Contracts;
 
-/** Vendor-neutral boundary reserved for a future local or remote intelligence provider. */
+/** Provider-neutral inference boundary. Server-side tools remain the business authority. */
 interface IntelligenceProvider
 {
     public function name(): string;

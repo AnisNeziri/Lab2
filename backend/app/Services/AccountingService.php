@@ -739,7 +739,7 @@ class AccountingService
             + (float) DailySale::query()->whereDoesntHave('outboundDispatch', fn ($q) => $q->whereHas('order', fn ($o) => $o->where('payment_type', '!=', 'cash')))->sum('total_amount')
             - (float) FinancialAccountTransaction::query()->where('source_type', 'daily_sale')->where('status', 'posted')->whereIn('type', ['inflow', 'transfer_in'])->sum('amount')
             + (float) PaymentTransaction::query()->where('status', 'completed')->whereNull('financial_account_id')->sum('amount')
-            + (float) CustomerDebtTransaction::query()->where('type', 'payment')->whereNull('financial_account_id')->whereDoesntHave('reversals')->sum('amount')
+            + (float) CustomerDebtTransaction::query()->cashReceipts()->whereNull('financial_account_id')->whereDoesntHave('reversals')->sum('amount')
             - (float) ExpensePayment::query()->where('status', 'completed')->whereNull('financial_account_id')->sum('amount_eur')
             - (float) PurchaseOrderPayment::query()->where('status', 'completed')->whereNull('financial_account_id')->when(\Illuminate\Support\Facades\Schema::hasColumn('purchase_order_payments','onboarding_session_id'),fn($q)=>$q->whereNull('onboarding_session_id'))->sum('amount_eur'), 2);
         $rows = [

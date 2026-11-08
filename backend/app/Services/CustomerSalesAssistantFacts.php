@@ -30,11 +30,13 @@ class CustomerSalesAssistantFacts
     {
         $q=app(AssistantLanguage::class)->normalize($input['question']);$sq=($input['language']??'en')==='sq';$crm=app(CustomerWorkspaceService::class);
         $context=($input['entity']['type']??null)==='customer'?(int)$input['entity']['id']:(int)($input['customer_id']??0);
-        $quotes=preg_match('/(?:quot(?:ation|e)|offer|ofert).*(?:follow|expir|ndjek|skad|needs)|(?:follow|ndjek).*(?:quot|ofert)/',$q);
+        $quotes=preg_match('/(?:quot(?:ation|e)|offer|ofert).*(?:follow|expir|ndjek|skad|afat|needs)|(?:follow|ndjek).*(?:quot|ofert)/',$q);
         $follow=preg_match('/(?:customer|klient|collection).*(?:follow.?up|ndjek).*(?:today|sot)|(?:which|cileve|cilat).*(?:follow.?up|ndjek).*(?:today|sot)/',$q);
+        $follow = $follow || preg_match('/\b(?:customer|klient\w*)\b.*\b(?:contact|kontaktu\w*)\b.*\btoday\b/', $q)
+            && ! preg_match('/\b(?:debt|balance|invoice|payments?|overdue|late|fatur\w*)\b/', $q);
         $next=$context&&preg_match('/(?:follow.?up|ndjekj|what.*next|cfare.*vijues)/',$q);
         $capacity=$context&&preg_match('/(?:credit|kredi).*(?:limit|kufi)|(?:before|para).*(?:limit|kufi)|how much.*order/',$q);
-        $history=preg_match('/(?:buy|bought|purchase|bleu|bler|ble[tr]).*(?:last month|muajin.*kaluar)/',$q);
+        $history=preg_match('/(?:buy|bought|purchase|bleu|bler|ble[tr]).*(?:last month|muajin.*kaluar)/',$q)&&($context||preg_match('/what did|qka bleu|cka bleu|cfare bleu/',$q));
         $writes=preg_match('/(?:approve|mirato|change|modify|ndrysho|pay|paguaj|post|write.?off|send|dergo|confirm|konfirmo).*(?:discount|zbrit|limit|kufi|payment|pages|order|porosi|message|mesazh)/',$q);
         if(!$quotes&&!$follow&&!$next&&!$capacity&&!$history&&!$writes)return null;
         if(!$crm->can('customers.manage')||!$crm->installed())return null;
@@ -53,11 +55,26 @@ class CustomerSalesAssistantFacts
                 else{$data=$runner->execute($tool,['customer_id'=>$context]);$url='/customers?customer='.$context;$sources[]=['tool'=>$tool,'url'=>$url];
                     if($history){$text=($sq?'Blerjet muajin e kaluar: ':'Last month purchases: ').$data['total'].' '.$data['currency'].' · '.$data['count'].' '.($sq?'shitje':'sales');foreach($data['rows'] as $r)$cards[]=['tool'=>$tool,'title'=>$r['number'],'summary'=>implode(', ',array_map(fn($i)=>$i['product'].' × '.$i['quantity'].' '.$i['unit'],$r['items'])),'url'=>'/daily-sales?sale='.$r['id'],'metrics'=>[]];}
                     elseif($capacity){$f=$data['finance'];$c=Customer::findOrFail($context);$text=!$f?($sq?'Për këtë kërkohen lejet e borxheve.':'Receivables permission is required.') : ($c->credit_status==='blocked'?($sq?'Llogaria është e bllokuar; kërko shqyrtim të autorizuar.':'This account is blocked; request authorized credit review.') : ($f['credit_limit']===null?($sq?'Nuk është caktuar kufi kredie.':'No credit limit is configured.') : ($sq?'Kapaciteti shtesë sipas politikës së kredisë: ':'Additional credit capacity under the existing policy: ').Money::maximum($f['available_credit'],'0.00').' '.$data['currency']));$limitations[]=$sq?'Ky nuk është premtim stoku ose miratim porosie.':'This is not a stock promise or order approval.';}
-                    else{$text=$sq?'Shqyrto ndjekjet e hapura, ofertat dhe historinë para kontaktit me klientin.':'Review open follow-ups, quotations and the latest interaction before contacting the customer.';foreach($data['followups'] as $r)$cards[]=['tool'=>$tool,'title'=>$r['title'],'summary'=>$r['due_at']??'','url'=>'/action-center?task='.$r['id'],'metrics'=>[]];$cards[]=['tool'=>$tool,'title'=>$data['customer']['business_name']?:$data['customer']['name'],'summary'=>$data['last_interaction']['note']??($sq?'Ende nuk ka ndërveprim të regjistruar.':'No interaction recorded yet.'),'url'=>$url,'metrics'=>[]];}
+                    else{
+                        $name=$data['customer']['business_name']?:$data['customer']['name'];
+                        $due=collect($data['followups'])->filter(fn($r)=>!empty($r['due_at']))->sortBy('due_at')->first();
+                        if($due)$text=$sq?'Fillo me ndjekjen “'.$due['title'].'” për '.$name.'. Hap detyrën dhe kontrollo kontaktin e fundit.':'Start with “'.$due['title'].'” for '.$name.'. Open the follow-up and check the latest contact.';
+                        elseif((float)($data['finance']['overdue']??0)>0)$text=($sq?'Kontakto ':'Contact ').$name.($sq?' për pagesën e vonuar: ':' about the overdue balance: ').Money::normalize($data['finance']['overdue']).' '.$data['currency'].'. '.($sq?'Kontrollo pasqyrën dhe regjistro përgjigjen e klientit.':'Check the statement and record the customer’s response.');
+                        elseif(($data['open_quotations']??0)>0)$text=$sq?'Shqyrto ofertat e hapura për '.$name.' dhe cakto kontaktin e radhës.':'Review the open quotations for '.$name.' and arrange the next contact.';
+                        else $text=$sq?'Nuk ka ndjekje me afat ose pagesë të vonuar të konfirmuar në këtë pamje për '.$name.'. Shqyrto marrëdhënien dhe cakto kontaktin e radhës.':'No dated follow-up or overdue payment is confirmed in this view for '.$name.'. Review the relationship and plan the next contact.';
+                        foreach($data['followups'] as $r)$cards[]=['tool'=>$tool,'title'=>$r['title'],'summary'=>$r['due_at']??'','url'=>'/action-center?task='.$r['id'],'metrics'=>[]];
+                        $cards[]=['tool'=>$tool,'title'=>$name,'summary'=>$data['last_interaction']['occurred_at']??($sq?'Ende nuk ka kontakt të regjistruar.':'No contact recorded yet.'),'url'=>$url,'metrics'=>[]];
+                        $input['next_action']=['url'=>$due?'/action-center?task='.$due['id']:$url,'label'=>$sq?'Shqyrto klientin dhe kontaktin':'Review customer & contact'];
+                    }
                 }
             }
         }
         foreach($cards as $card)$sources[]=['tool'=>$card['tool'],'url'=>$card['url']];
-        return ['id'=>(string)Str::uuid(),'conversation_id'=>$conversation,'intent'=>'crm_review','text'=>$text,'cards'=>$cards,'sources'=>$sources,'limitations'=>[...$limitations,$sq?'Vetëm lexim. Listat janë të kufizuara; hap burimin për historinë e plotë.':'Read-only. Lists are bounded; open the source for full history.'],'choices'=>[],'follow_ups'=>[],'read_only'=>true,'provider'=>'deterministic','state'=>'success','tools'=>$runner->executions,'context'=>null,'context_entities'=>[]];
+        if(!$writes&&($quotes||$follow)&&!empty($allowed)){
+            $target=$quotes?'/customers?view=quotations':'/action-center?view=mine&status=active';
+            $input['next_action']=['url'=>$target,'label'=>$quotes?($sq?'Shqyrto ofertat':'Review quotations'):($sq?'Hap ndjekjet e mia':'Open my follow-ups')];
+            $sources[]=['tool'=>$tool,'url'=>$target];
+        }
+        return ['id'=>(string)Str::uuid(),'conversation_id'=>$conversation,'intent'=>'crm_review','text'=>$text,'cards'=>$cards,'sources'=>$sources,'limitations'=>[...$limitations,$sq?'Lista është e kufizuar; hap klientin për historinë e plotë.':'This list is bounded; open the customer for full history.'],'next_action'=>$input['next_action']??null,'choices'=>[],'follow_ups'=>[],'read_only'=>true,'provider'=>'deterministic','state'=>'success','tools'=>$runner->executions,'context'=>null,'context_entities'=>[]];
     }
 }

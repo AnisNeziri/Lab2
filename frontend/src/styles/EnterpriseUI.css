@@ -29,7 +29,7 @@ html.dark, html[data-theme='dark'] { --ui-primary-fill: #2563eb; }
 .app .page-transition { animation: workspace-enter 160ms ease-out; filter: none; }
 @keyframes workspace-enter { from { opacity: .7; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 .main-content :is(h1,h2,h3) { color: var(--text-color); line-height: 1.3; letter-spacing: -.02em; }
-:where(.main-content) header { max-width: none; margin: 0; padding: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
+:where(.main-content,.invoice-dialog) header { max-width: none; margin: 0; padding: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
 .main-content h1 { font-size: clamp(1.35rem, 1.9vw, 1.8rem); font-weight: 750; }
 .main-content h2 { font-size: 1.1rem; font-weight: 700; }
 .main-content :is(.card,.auto-panel,.procurement-card) { border-color: var(--border-color); background-color: var(--card-bg); color: var(--text-color); border-radius: var(--ui-radius); box-shadow: 0 3px 12px color-mix(in srgb, var(--shadow-color) 38%, transparent); }

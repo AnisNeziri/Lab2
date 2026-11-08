@@ -51,7 +51,7 @@ export const pageCapabilities = Object.fromEntries(Object.entries({
   inventory:['products','stock','categories','quality','operations-center','reports'],
   wms:['warehouse-operations','warehouse-mobile','warehouse-layout','warehouse-3d'],
   sales:['daily-sales','invoices','fulfillment','order-hub'],crm:['customer-debts','customers'],
-  procurement:['purchase-orders','procurement','suppliers'],shipments:['control-tower','shipments/global-map','shipments/my-shipments','shipments/alerts'],
+  procurement:['purchase-orders','procurement','purchasing-decisions','suppliers'],shipments:['control-tower','shipments/global-map','shipments/my-shipments','shipments/alerts'],
   accounting:['accounting','finance','money-accounts'],tax:['tax','fiscalization'],
   workforce:['workforce','my-workforce'],payroll:['payroll'],automation:['automation-studio'],
   integrations:['integrations'],analytics:['analytics'],
@@ -64,6 +64,7 @@ export function canOpenPage(page, permissions = [], capabilities = null) {
   if (Array.isArray(capabilities) && pageCapabilities[key] && !capabilities.includes(pageCapabilities[key])) return false
   const required = pagePermissions[key]
   if (key === 'security') return true
+  if (key === 'purchasing-decisions') return ['procurement.view','inventory.view'].every(p=>permissions.includes(p))
   if (key === 'strategic-simulation') return simulationPermissions.every(p=>permissions.includes(p))
   if (key === 'supply-optimizer') return ['analytics.view','analytics.finance','inventory.view','procurement.view','finance.view','financial_accounts.view'].every(p=>permissions.includes(p))
   if (key === 'customer-sales-intelligence') return ['analytics.view', 'customers.manage', 'daily_sales.manage'].every(p => permissions.includes(p))

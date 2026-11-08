@@ -1,6 +1,19 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { assistantIntent, recordCapability, safeRecordPath, recordAnswer, guideAnswer } from '../src/components/assistantPresentation.js'
+import { assistantHelpRequest, assistantIntent, assistantRequestError, recordCapability, safeRecordPath, recordAnswer, guideAnswer } from '../src/components/assistantPresentation.js'
+
+test('business evidence questions reach the assistant while explicit product help stays local', () => {
+  assert.equal(assistantHelpRequest('How can I tell what is blocking dispatch on SO-2026-000640?'), false)
+  assert.equal(assistantHelpRequest('How do I know whether we received enough stock?'), false)
+  assert.equal(assistantHelpRequest('How do I create a purchase order?'), true)
+  assert.equal(assistantHelpRequest('Si përdoret kjo faqe?'), true)
+})
+
+test('assistant rate and role errors explain what the employee can do', () => {
+  assert.match(assistantRequestError({ status: 429, retryAfterSeconds: 17 }, 'sq'), /17 sekondash/)
+  assert.match(assistantRequestError({ status: 429 }, 'en'), /Wait a moment/)
+  assert.match(assistantRequestError({ status: 403 }, 'sq'), /Roli|Llogaria/)
+})
 
 test('English and Albanian product questions preserve the actual search term', () => {
   assert.deepEqual(assistantIntent('stock for Laptop Stand'), {kind:'record',mode:'stock',term:'Laptop Stand'})

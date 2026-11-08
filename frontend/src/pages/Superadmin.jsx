@@ -41,11 +41,12 @@ const dateTime = (value) =>
     : "—";
 
 export default function Superadmin() {
-  const { t } = useTranslation();
-  const isDesktop = Boolean(window.__AIMS_API_BASE__);
+  const { t, language } = useTranslation();
+
   const [companies, setCompanies] = useState([]);
   const [users, setUsers] = useState([]);
   const [health, setHealth] = useState(null);
+  const isDesktop = health?.mode === "offline";
   const [metrics, setMetrics] = useState(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -565,8 +566,8 @@ export default function Superadmin() {
                           : t("superadmin.disabled")}
                     </td>
                     <td>
-                      {item.role === "superadmin" ? (
-                        "—"
+                      {(!isDesktop || item.role === "superadmin") ? (
+                        language === "sq" ? "Menaxhohet nga kompania" : "Managed by the company"
                       ) : (
                         <div className="table-actions">
                           <button

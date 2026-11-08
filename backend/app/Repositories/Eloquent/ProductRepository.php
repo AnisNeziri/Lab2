@@ -16,7 +16,7 @@ class ProductRepository implements ProductRepositoryInterface
         $direction = $filters['direction'] ?? 'asc';
 
         $query = !empty($filters['reference_only'])
-            ? Product::query()->select(['products.id','company_id','name','sku','barcode','unit','quantity','min_quantity','high_stock_threshold','default_warehouse_id','tracking_mode','expiration_controlled','default_shelf_life_days','shelf_life_basis'])->withStockTotals()->orderBy($sort,$direction)
+            ? Product::query()->select(['products.id','company_id','name','sku','barcode','unit','price','selling_price','vat_rate','tax_treatment','default_tax_code_id','lifecycle_status','quantity','min_quantity','high_stock_threshold','default_warehouse_id','tracking_mode','expiration_controlled','default_shelf_life_days','shelf_life_basis'])->with('units')->withStockTotals()->orderBy($sort,$direction)
             : Product::withStockTotals()->with(['category', 'supplier', 'supplierCatalogue.supplier:id,name', 'alternativeBarcodes', 'defaultWarehouse:id,name,code', 'units', 'warehouseStock.warehouse:id,name,code', 'warehouseStock.location:id,warehouse_id,path,name,type,floor_level'])->orderBy($sort, $direction);
 
         if (! empty($filters['lifecycle_status'])) {

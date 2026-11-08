@@ -101,7 +101,7 @@ class DecisionLearningTest extends TestCase {
   $this->assertEquals(9,$this->learning()->comparison($e['id'])['comparison']['independent_samples']);
  }
  public function test_manager_can_review_but_cannot_change_company_policy():void {
-  $this->setupDecision();$user=Auth::user();$user->update(['role'=>'manager']);$this->getJson('/api/decision-learning')->assertOk()->assertJsonPath('can_manage',false);$this->postJson('/api/decision-learning/experiments',['quantity_multiplier'=>.8,'reason'=>'Manager tries policy promotion'])->assertForbidden();
+  $this->setupDecision();$user=Auth::user();$user->update(['role'=>'manager']);$this->renewApiSession($user);$this->getJson('/api/decision-learning')->assertOk()->assertJsonPath('can_manage',false);$this->postJson('/api/decision-learning/experiments',['quantity_multiplier'=>.8,'reason'=>'Manager tries policy promotion'])->assertForbidden();
  }
  public function test_tenant_isolation_for_history_comparison_outcome_and_tools():void {
   $d=$this->setupDecision();$e=$this->experiment();$other=Company::factory()->create();User::factory()->create(['company_id'=>$other->id,'role'=>'admin','api_token'=>hash('sha256','learning-other'),'email_verified_at'=>now()]);$this->withToken('learning-other')->getJson('/api/me')->assertOk();

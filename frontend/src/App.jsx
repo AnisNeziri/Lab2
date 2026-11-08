@@ -67,6 +67,7 @@ const FiscalizationCenter = lazy(() => import("./pages/FiscalizationCenter"));
 const AccountingCore = lazy(() => import("./pages/AccountingCore"));
 const SecurityCenter = lazy(() => import("./pages/SecurityCenter"));
 const CommercialCenter = lazy(() => import("./pages/CommercialCenter"));
+const PurchasingDecisions = lazy(() => import("./pages/PurchasingDecisions"));
 const IntegrationCenter = lazy(() => import("./pages/IntegrationCenter"));
 const SystemIntegrity = lazy(() => import("./pages/SystemIntegrity"));
 const CompanyPilot = lazy(() => import("./pages/CompanyPilot"));
@@ -145,7 +146,7 @@ function RoleAppGate({ children }) {
   const role = useAuthStore((state) => state.role);
   const location = useLocation();
 
-  if (role === "superadmin" && !["/superadmin", "/cms"].includes(location.pathname)) {
+  if (role === "superadmin" && !["/superadmin", "/cms", "/system-health"].includes(location.pathname)) {
     return <Navigate to="/superadmin" replace />;
   }
 
@@ -552,7 +553,7 @@ function AppRoutes() {
           <Route path="/fiscalization" element={<PermissionRoute permission="fiscalization.view"><Suspense fallback={<PageLoader />}><FiscalizationCenter /></Suspense></PermissionRoute>} />
           <Route path="/accounting" element={<PermissionRoute permission="accounting.reports.view"><Suspense fallback={<PageLoader />}><AccountingCore /></Suspense></PermissionRoute>} />
           <Route path="/security" element={<Suspense fallback={<PageLoader/>}><SecurityCenter/></Suspense>}/>
-          <Route path="/system-health" element={<PermissionRoute permission="deployment.view"><Suspense fallback={<PageLoader/>}><CommercialCenter/></Suspense></PermissionRoute>}/>
+          <Route path="/system-health" element={<ProtectedRoute allowedRoles={["superadmin"]}><PermissionRoute permission="deployment.view"><Suspense fallback={<PageLoader/>}><CommercialCenter/></Suspense></PermissionRoute></ProtectedRoute>}/>
           <Route path="/integrations" element={<PermissionRoute permission="integrations.view"><Suspense fallback={<PageLoader />}><IntegrationCenter /></Suspense></PermissionRoute>} />
           <Route path="/system-integrity" element={<PermissionRoute permission="system_integrity.view"><Suspense fallback={<PageLoader />}><SystemIntegrity /></Suspense></PermissionRoute>} />
           <Route path="/pilot" element={<ProtectedRoute allowedRoles={['admin']}><Suspense fallback={<PageLoader />}><CompanyPilot /></Suspense></ProtectedRoute>} />
@@ -590,6 +591,7 @@ function AppRoutes() {
           <Route path="/fulfillment" element={<PermissionRoute permission="fulfillment.view"><Suspense fallback={<PageLoader />}><Fulfillment /></Suspense></PermissionRoute>} />
           <Route path="/documents" element={<PermissionRoute permission="documents.view"><Suspense fallback={<PageLoader />}><Documents /></Suspense></PermissionRoute>} />
           <Route path="/procurement" element={<PermissionRoute permission="procurement.view"><Suspense fallback={<PageLoader />}><Procurement /></Suspense></PermissionRoute>} />
+          <Route path="/purchasing-decisions" element={<PermissionRoute permission="procurement.view"><PermissionRoute permission="inventory.view"><Suspense fallback={<PageLoader />}><PurchasingDecisions /></Suspense></PermissionRoute></PermissionRoute>} />
           <Route path="/quality" element={<PermissionRoute permission="quality.view"><Suspense fallback={<PageLoader />}><QualityManagement /></Suspense></PermissionRoute>} />
           <Route
             path="/customer-debts"

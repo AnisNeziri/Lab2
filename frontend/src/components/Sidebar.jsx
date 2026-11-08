@@ -16,6 +16,10 @@ import NavigationCustomizer from './NavigationCustomizer'
 import { useWorkspaceStore } from '../store/workspaceStore'
 import { defaultNavigation, personalizedNavigation } from '../config/workspaceNavigation'
 import { workspaceIcons } from './workspaceIcons'
+import { focusedNavigation } from '../config/everydayWorkspace'
+import { workProfiles } from '../config/workProfiles'
+import { useWorkFocus } from '../hooks/useWorkFocus'
+import '../styles/EverydayWorkspace.css'
 
 const icons = workspaceIcons
 
@@ -30,14 +34,16 @@ export default function Sidebar({ currentPage, onPageChange, userRole, onLogout,
   const workspace = useWorkspaceStore(state => state.document)
   const workspaceLoading = useWorkspaceStore(state => state.loading)
   const [customizing,setCustomizing] = useState(false)
-  const {groups,favorites} = useMemo(() => personalizedNavigation(permissions, enable3dMap, userRole, workspace?.navigation||defaultNavigation(userRole),capabilities), [permissions, enable3dMap, userRole, workspace?.navigation,capabilities])
+  const {profile,available,setProfile}=useWorkFocus()
+  const navigation = useMemo(() => personalizedNavigation(permissions, enable3dMap, userRole, workspace?.navigation||defaultNavigation(userRole),capabilities), [permissions, enable3dMap, userRole, workspace?.navigation,capabilities])
+  const {groups,favorites,occasional=[]}=userRole==='superadmin'?navigation:focusedNavigation(navigation.groups,navigation.favorites,profile)
   const panelRef = useDialog(onClose, false, isOpen)
   const navRef = useRef(null)
 
   useEffect(() => {
-    const group = currentPage === 'superadmin' ? 'settings' : navigationContext(currentPage)?.group.id
+    const group = currentPage === 'superadmin' ? 'settings' : groups.find(g=>g.items.some(e=>e.id===currentPage))?.id||navigationContext(currentPage)?.group.id
     if (group) ensureGroupOpen(group)
-  }, [currentPage, ensureGroupOpen])
+  }, [currentPage, ensureGroupOpen, profile])
 
   useEffect(() => {
     const selected = navRef.current?.querySelector('[aria-current="page"]')
@@ -59,9 +65,10 @@ export default function Sidebar({ currentPage, onPageChange, userRole, onLogout,
       </>}
     </div>
     <nav ref={navRef} className="sidebar-nav">
+      {userRole!=='superadmin'&&profile&&<label className="sidebar-work-focus">{language==='sq'?'Hapësira ime':'My workspace'}<select value={profile} onChange={e=>setProfile(e.target.value)}>{available.map(id=><option key={id} value={id}>{workProfiles[id]?.[language==='sq'?'sq':'en']||id}</option>)}</select></label>}
       {favorites.length>0&&<div className="sidebar-favorites"><p className="sidebar-favorites-title">{language==='sq'?'Të preferuarat':'Favorites'}</p>{favorites.map(entry=>{const Icon=icons[entry.icon]||Package,title=entry.label?t(entry.label):language==='sq'?entry.sq:entry.en;return <Link key={entry.id} to={entry.path} className={'sidebar-item sidebar-subitem '+(entry.id===currentPage?'active':'')} aria-current={entry.id===currentPage?'page':undefined} onClick={e=>{if(!e.ctrlKey&&!e.metaKey&&!e.shiftKey&&e.button===0){e.preventDefault();onPageChange(entry.path)}}}><Icon size={18}/><span>{title}</span></Link>})}</div>}
       {groups.map(group => {
-        const expanded = expandedGroups[group.id] ?? false
+        const expanded = expandedGroups[group.id] ?? group.id==='daily-work'
         const active = group.items.some(entry => entry.id === currentPage)
         const label = language === 'sq' ? group.sq : group.en
         return <div key={group.id} className={`sidebar-group ${active ? 'has-active' : ''}`}>
@@ -76,6 +83,7 @@ export default function Sidebar({ currentPage, onPageChange, userRole, onLogout,
           </div>}
         </div>
       })}
+      {occasional.length>0&&<details className="sidebar-more" key={profile} open={occasional.some(e=>e.id===currentPage)?true:undefined}><summary>{language==='sq'?'Mjete të tjera dhe administrimi':'More tools & administration'}</summary><p>{language==='sq'?'Faqet e lejuara që përdoren më rrallë.':'Permitted pages for occasional work.'}</p>{occasional.map(entry=>{const Icon=icons[entry.icon]||Package;return <Link key={entry.id} to={entry.path} className={`sidebar-item sidebar-subitem ${entry.id===currentPage?'active':''}`} aria-current={entry.id===currentPage?'page':undefined} onClick={e=>{if(!e.ctrlKey&&!e.metaKey&&!e.shiftKey&&e.button===0){e.preventDefault();onPageChange(entry.path)}}}><Icon size={18} aria-hidden="true"/><span>{entry.label?t(entry.label):entry[language==='sq'?'sq':'en']}</span></Link>})}</details>}
     </nav>
     <div className="sidebar-footer">{userRole!=='superadmin'&&<button type="button" className="sidebar-item sidebar-customize" disabled={workspaceLoading} onClick={()=>setCustomizing(true)}><LayoutGrid size={18}/><span>{language==='sq'?'Personalizo navigimin':'Customize Navigation'}</span></button>}<button type="button" className="sidebar-item logout" disabled={loggingOut} onClick={() => onLogout?.()}><LogOut size={20}/><span>{loggingOut ? (language === 'sq' ? 'Duke dalë…' : 'Signing out…') : t('nav.logout')}</span></button></div>
     {customizing&&<NavigationCustomizer onClose={()=>setCustomizing(false)}/>}

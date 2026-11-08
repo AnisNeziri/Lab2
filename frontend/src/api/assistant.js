@@ -1,7 +1,7 @@
 import { apiRequest } from './client'
 import { recordCapability } from '../components/assistantPresentation'
 
-export const askIntelligence = body => apiRequest('/intelligence-assistant/ask', {method:'POST',body:JSON.stringify(body)})
+export const askIntelligence = (body, signal) => apiRequest('/intelligence-assistant/ask', {method:'POST',body:JSON.stringify(body),signal})
 export const assistantStatus = () => apiRequest('/intelligence-assistant/status')
 export const assistantFeedback = body => apiRequest('/intelligence-assistant/feedback', {method:'POST',body:JSON.stringify(body)})
 export const confirmAssistantDraft = body => apiRequest('/intelligence-assistant/confirm', {method:'POST',body:JSON.stringify(body)})

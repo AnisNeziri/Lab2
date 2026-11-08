@@ -143,7 +143,7 @@ class FinanceService
         // invoices. Until that linkage is immutable, disclose their receipts
         // separately instead of inflating the canonical cash-in KPI.
 
-        $debtPayments = CustomerDebtTransaction::query()->where('type', 'payment')
+        $debtPayments = CustomerDebtTransaction::query()->cashReceipts()
             ->whereNull('payment_transaction_id')->whereBetween('transaction_date', [$from, $to])->get();
         foreach ($debtPayments as $payment) {
             $events->push($this->cashEvent($payment->transaction_date?->toDateString(), 'in', (float) $payment->amount, 'customer_debt_payment', $payment->reference_number));

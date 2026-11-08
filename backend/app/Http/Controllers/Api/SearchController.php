@@ -19,10 +19,12 @@ class SearchController extends Controller
             'q' => ['required', 'string', 'min:2', 'max:255'],
         ]);
 
+        return app(\App\Services\PermissionService::class)->readScope(function () use ($validated) {
         $exact=$this->searchService->search($validated['q']);
         $hybrid=app(\App\Services\Platform\HybridBusinessSearch::class)->search($validated['q'],$exact);
         $existing=collect($exact)->flatten(1)->pluck('url')->all();
         $extra=collect($hybrid['results'])->reject(fn($r)=>in_array($r['url'],$existing,true))->map(fn($r)=>array_replace($r,['entity_id'=>$r['id'],'id'=>$r['type'].':'.$r['id'],'similar_match'=>$r['match']==='local concept / fuzzy']))->values()->all();
         return response()->json($exact+['business_search'=>$extra]);
+        });
     }
 }

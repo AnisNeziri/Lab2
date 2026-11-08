@@ -210,7 +210,7 @@ export default function PurchaseOrders() {
   );
 
   useEffect(() => {
-    Promise.all([getSuppliers(), getAllProducts(), getWarehouses(), getWarehouseLocations()])
+    Promise.all([getSuppliers(), getAllProducts({reference_only: !permissions.some(p=>['inventory.view','products.manage'].includes(p))}), getWarehouses(), getWarehouseLocations()])
       .then(([supplierRows, productRows, warehouseRows, locationRows]) => {
         const supplierList = supplierRows.data || supplierRows;
         const productList = productRows.data || productRows;

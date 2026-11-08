@@ -17,9 +17,9 @@ final class CommercialReadiness
             return $value?json_decode(\Illuminate\Support\Facades\Crypt::decryptString($value),true):null;
         } catch (\Throwable) { return null; }
     }
-    public function health(): array
+    public function health(?Company $target=null): array
     {
-        $company=auth()->user()->company_id; $checks=[];
+        $company=$target?->id ?? auth()->user()->company_id; $checks=[];
         $updateFile=storage_path('framework/aims-update-state.json');
         $updateState=is_file($updateFile)?json_decode(file_get_contents($updateFile),true):null;
         if(is_array($updateState)) $updateState=array_intersect_key($updateState,array_flip(['stage','migration_started','migration_completed','code_changed','failed']));
@@ -47,13 +47,15 @@ final class CommercialReadiness
         $add('observability',($platform['observability_enabled']??false)?'healthy':'not_configured',($platform['observability_enabled']??false)?'Local sanitized tracing enabled.':'Local tracing disabled by company policy.');
         $license=app(Entitlements::class)->state($company);
         $add('license',$license['status']==='active'?'healthy':'attention','License/package state: '.$license['status'].'. Manual capability configuration is not an issuer-signed commercial license.');
-        $add('onboarding',$c->operational_cutover_date?'healthy':'attention',$c->operational_cutover_date?'Operational cutover configured.':'Complete company opening in the existing onboarding workspace.');
-        $add('accounting',$c->accounting_start_date?'healthy':'attention',$c->accounting_start_date?'Accounting start date configured.':'Review the accounting setup and opening balances.');
+        if (!$target) {
+            $add('onboarding',$c->operational_cutover_date?'healthy':'attention',$c->operational_cutover_date?'Operational cutover configured.':'Complete company opening in the existing onboarding workspace.');
+            $add('accounting',$c->accounting_start_date?'healthy':'attention',$c->accounting_start_date?'Accounting start date configured.':'Review the accounting setup and opening balances.');
+        }
         $add('fiscalization','review','Review the existing fiscalization test/production boundary if this capability is used.');
         $add('configuration',collect(app(ProductionReadinessService::class)->configuration())->contains('status','critical')?'attention':'healthy','Run aims:production-check before commercial deployment; development configuration is not certification.');
-        $commissioning=app(\App\Services\SystemIntegrityService::class)->operationalReadiness()['commissioning'];
+        $commissioning=$target ? null : app(\App\Services\SystemIntegrityService::class)->operationalReadiness()['commissioning'];
         return ['commissioning'=>$commissioning,'version'=>Release::metadata(),'installation_id'=>$identity,'company_id'=>$company,'company_public_id'=>$c->public_id,
-            'checked_at'=>now()->toIso8601String(),'status'=>$commissioning['status']==='BLOCKED'?'blocked':(collect($checks)->contains('status','blocked')?'blocked':'attention'),
+            'checked_at'=>now()->toIso8601String(),'status'=>($commissioning['status']??null)==='BLOCKED'?'blocked':(collect($checks)->contains('status','blocked')?'blocked':'attention'),
             'checks'=>$checks,'license'=>$license,'capability_catalog'=>Entitlements::CAPABILITIES,'packages'=>Entitlements::PACKAGES,
             'backup'=>$backup?array_intersect_key($backup,array_flip(['id','verified_at','release','engine','sha256'])):null,
             'queues'=>['pending'=>DB::table('jobs')->where('company_id',$company)->whereNull('reserved_at')->count(),'processing'=>DB::table('jobs')->where('company_id',$company)->whereNotNull('reserved_at')->count(),
@@ -76,8 +78,9 @@ final class CommercialReadiness
         $identity->write('backup_checkpoint',json_encode($checkpoint));
         return array_intersect_key($checkpoint,array_flip(['id','verified_at','release','engine','sha256']));
     }
-    public function preflight(array $envelope,bool $workersStopped): array
+    public function preflight(array $envelope,bool $workersStopped,?Company $target=null): array
     {
+        $companyId=$target?->id ?? auth()->user()->company_id;
         $target=app(UpdateManifest::class)->read($envelope);
         $checks=[];$add=function($key,$ready,$detail)use(&$checks){$checks[]=['key'=>$key,'status'=>$ready?'ready':'blocked','detail'=>$detail];};
         $add('signature',true,'Trusted issuer signature verified. No artifact was downloaded or executed.');
@@ -96,21 +99,21 @@ final class CommercialReadiness
         $add('workers',$workersStopped && $inflight===0,'The operator must stop supervised workers and confirm quiescence; no reserved jobs may remain.');
         $pending=array_values(array_diff(array_keys(app('migrator')->getMigrationFiles(database_path('migrations'))),DB::table('migrations')->pluck('migration')->all()));
         $ready=!collect($checks)->contains('status','blocked');
-        $id=DB::table('update_checks')->insertGetId(['company_id'=>auth()->user()->company_id,'user_id'=>auth()->id(),'target_version'=>$target['version'],
+        $id=DB::table('update_checks')->insertGetId(['company_id'=>$companyId,'user_id'=>auth()->id(),'target_version'=>$target['version'],
             'manifest_hash'=>hash('sha256',json_encode($envelope)),'stage'=>$ready?'preflight_ready':'preflight_blocked','checks'=>json_encode($checks),'created_at'=>now(),'updated_at'=>now()]);
         return ['id'=>$id,'status'=>$ready?'ready':'blocked','checks'=>$checks,'pending_migrations'=>$pending,'target_migration_level'=>$target['migration_level'],
             'migration_started'=>false,'code_changed'=>false,'rollback'=>'No update has run. Database rollback is not promised; use the verified backup into a separate installation if an applied migration cannot safely reverse.'];
     }
-    public function support(): array
+    public function support(?Company $target=null): array
     {
-        $health=$this->health();$company=auth()->user()->company_id;
+        $health=$this->health($target);$company=$target?->id ?? auth()->user()->company_id;
         return ['format'=>'aims-support-v1','generated_at'=>now()->toIso8601String(),'version'=>Release::metadata(),
             'runtime'=>['php'=>PHP_VERSION,'laravel'=>app()->version(),'database_driver'=>DB::getDriverName(),'cache_driver'=>config('cache.default'),'queue_driver'=>config('queue.default')],
             'migration_state'=>['applied'=>DB::table('migrations')->count(),'latest'=>DB::table('migrations')->orderByDesc('id')->value('migration')],
             'health'=>['status'=>$health['status'],'checks'=>$health['checks'],'queues'=>$health['queues']],
             'integrations'=>['service_accounts'=>DB::table('service_accounts')->where('company_id',$company)->where('status','active')->count(),
                 'failed_webhooks'=>DB::table('webhook_deliveries')->where('company_id',$company)->whereIn('status',['failed','retrying'])->count()],
-            'recent_errors'=>DB::table('platform_spans')->where('company_id',$company)->where('status','error')->latest('id')->limit(30)->get(['trace_id','span_id','name','duration_ms','created_at']),
+            'recent_errors'=>$target ? [] : DB::table('platform_spans')->where('company_id',$company)->where('status','error')->latest('id')->limit(30)->get(['trace_id','span_id','name','duration_ms','created_at']),
             'presence'=>['app_key'=>filled(config('app.key')),'jwt_key'=>filled(config('jwt.secret')),'license_issuer'=>is_readable(config('security.license_public_key')??''),'update_issuer'=>is_readable(config('security.update_public_key')??''),
                 'smtp_password'=>filled(config('mail.mailers.smtp.password'))],
             'policy'=>'Allowlisted technical metadata only; no logs, environment dumps, business rows, secrets or uploaded files.'];

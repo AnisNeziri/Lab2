@@ -1,0 +1,50 @@
+[
+  {
+    "id": "V01",
+    "role": "warehouse",
+    "language": "en",
+    "question": "Please check sellable meters for Oslo 20.",
+    "expected": "Product 100 availability 206.65 m.",
+    "group": "V01"
+  },
+  {
+    "id": "V02",
+    "role": "sales",
+    "language": "en",
+    "question": "Any quotes still waiting for me to chase before they expire?",
+    "expected": "Authorized quotation follow-up or honest empty result.",
+    "group": "V02"
+  },
+  {
+    "id": "V03",
+    "role": "primary",
+    "language": "en",
+    "question": "What happened in AIMS yesterday, rather than a balance comparison?",
+    "expected": "Recorded change events; no invented historical balance comparison.",
+    "group": "V03"
+  },
+  {
+    "id": "V04",
+    "role": "accountant",
+    "language": "en",
+    "question": "Show what we owe vendors, keeping supplier prepayments separate.",
+    "expected": "Authoritative supplier obligations; advances separate.",
+    "group": "V04"
+  },
+  {
+    "id": "V05",
+    "role": "purchasing",
+    "language": "en",
+    "question": "Find overdue deliveries we expected to receive.",
+    "expected": "Receipt-adjusted dated PO evidence or honest clarification.",
+    "group": "V05"
+  },
+  {
+    "id": "V06",
+    "role": "warehouse",
+    "language": "en",
+    "question": "Could you explain the difference between physical and free stock for Milano 04?",
+    "expected": "Product 4 current position and source review; no invented causal history.",
+    "group": "V06"
+  }
+]

@@ -1,0 +1,24 @@
+<?php
+require __DIR__.'/bootstrap.php';
+use Illuminate\Support\Facades\DB;
+$evaluation=json_decode(file_get_contents($dc17Root.'/evidence/ask-evaluation.json'),true);
+$case=collect($evaluation['results'])->first(fn($x)=>$x['case']['id']==='ASK-007');
+preg_match_all('/\d{4}-\d{2}-\d{2}/',$case['response']['text'],$dates);[$from,$to]=$dates[0];
+// Independent relational aggregation: no assistant or analytics ledger method is called.
+$valid="i.issued_at IS NOT NULL AND i.voided_at IS NULL AND i.status NOT IN ('draft','void')";
+$scope="s.company_id=2 AND DATE(s.sale_date) BETWEEN ? AND ? AND (s.inventory_applied_at IS NOT NULL OR s.status='finalized')";
+$rows=DB::select("SELECT l.product_id,SUM(l.base_quantity) quantity,SUM(l.line_total) revenue FROM daily_sale_items l JOIN daily_sales s ON s.id=l.daily_sale_id WHERE $scope AND NOT EXISTS(SELECT 1 FROM invoices i WHERE i.company_id=2 AND i.daily_sale_id=s.id AND i.document_type<>'credit_note' AND $valid) GROUP BY l.product_id",[$from,$to]);
+$rows=array_merge($rows,DB::select("SELECT l.product_id,SUM(l.base_quantity) quantity,SUM(l.taxable_amount) revenue FROM daily_sales s JOIN invoices i ON i.id=(SELECT MIN(x.id) FROM invoices x WHERE x.company_id=2 AND x.daily_sale_id=s.id AND x.document_type<>'credit_note' AND x.issued_at IS NOT NULL AND x.voided_at IS NULL AND x.status NOT IN ('draft','void')) JOIN invoice_items l ON l.invoice_id=i.id WHERE $scope AND i.currency='EUR' GROUP BY l.product_id",[$from,$to]));
+$rows=array_merge($rows,DB::select("SELECT l.product_id,SUM(IF(i.document_type='credit_note',-1,1)*l.base_quantity) quantity,SUM(IF(i.document_type='credit_note',-1,1)*l.taxable_amount) revenue FROM invoice_items l JOIN invoices i ON i.id=l.invoice_id WHERE i.company_id=2 AND i.currency='EUR' AND $valid AND (i.daily_sale_id IS NULL OR i.document_type='credit_note') AND DATE(i.invoice_date) BETWEEN ? AND ? GROUP BY l.product_id",[$from,$to]));
+$totals=[];foreach($rows as $r){$id=$r->product_id;$totals[$id]??=['product_id'=>(int)$id,'quantity'=>0,'revenue_minor'=>0];$totals[$id]['quantity']+=(float)$r->quantity;$totals[$id]['revenue_minor']+=(int)round((float)$r->revenue*100);}
+$returns=DB::table('inventory_returns as r')->where('r.company_id',2)->where('r.type','customer')->where('r.status','completed')->where('r.currency','EUR')->whereIn('r.financial_resolution',['cash_refund','debt_credit'])->whereBetween(DB::raw('DATE(r.completed_at)'),[$from,$to])->whereNotExists(fn($q)=>$q->selectRaw(1)->from('invoices as i')->whereColumn('i.daily_sale_id','r.daily_sale_id')->whereNotNull('i.issued_at')->whereNull('i.voided_at')->where('i.document_type','invoice'))->get();
+foreach($returns as $r){$items=DB::table('inventory_return_items')->where('inventory_return_id',$r->id)->orderBy('id')->get();$remaining=(int)round((float)$r->financial_amount*100);$original=$remaining;$weight=$items->sum(fn($i)=>(int)round((float)$i->line_value*100));foreach($items as $n=>$i){$value=$n===$items->count()-1?$remaining:($weight?(int)round($original*(int)round((float)$i->line_value*100)/$weight):0);$remaining-=$value;$totals[$i->product_id]['quantity']-=(float)$i->processed_quantity;$totals[$i->product_id]['revenue_minor']-=$value;}}
+usort($totals,fn($a,$b)=>$b['revenue_minor']<=>$a['revenue_minor']);$top=array_slice($totals,0,8);
+$checks=[];foreach($case['response']['cards'] as $n=>$card){$oracle=$top[$n];$actual=$card['evidence'];$checks[]=$oracle['product_id']===(int)$actual['id']&&abs($oracle['quantity']-(float)$actual['quantity'])<.0005&&$oracle['revenue_minor']===(int)round((float)$actual['revenue']*100);}
+$allRevenue=array_sum(array_column($totals,'revenue_minor'))/100;
+$comparison=collect($evaluation['results'])->first(fn($x)=>$x['case']['id']==='ASK-024')['followup']['body'];$previous=end($comparison['cards']);
+$previousAr=round((float)DB::table('journal_lines as l')->join('journal_entries as j','j.id','=','l.journal_entry_id')->join('accounting_accounts as a','a.id','=','l.accounting_account_id')->where('j.company_id',2)->whereIn('j.status',['posted','reversed'])->where('a.code','1100')->whereDate('j.posting_date','<=',$previous['title'])->sum(DB::raw('l.debit-l.credit')),2);
+$historical=$previousAr===(float)$previous['metrics'][0]['value'];
+dc17Evidence('ask-independent-october',['period'=>compact('from','to'),'basis'=>'Independent SQL joins, invoice deduplication and completed unbilled refund allocation','top_eight'=>$top,'economic_revenue'=>$allRevenue,'each_rank_quantity_and_revenue_match'=>$checks,'historical_ar_gl'=>$previousAr,'historical_ar_matches'=>$historical,'passed'=>count($checks)===8&&!in_array(false,$checks,true)&&$historical]);
+echo 'Top eight product ranks/quantities/net values: '.(!in_array(false,$checks,true)?'PASS':'FAIL').'; economic total '.$allRevenue."\n";
+if(in_array(false,$checks,true)||!$historical)exit(2);

@@ -8,7 +8,7 @@ use Illuminate\Support\Str;
 /** A question is input data, never code or a tool name. */
 final class AssistantPlanner
 {
-    public const INTENTS = ['inventory_health','incoming_supply','stock_commitments','low_stock','onboarding_status','optimization_run','optimization_limit','optimization_compare','optimization_stress','optimization_explain','optimization_stale','learning','overrides','policy_suggestions','challengers','brief','risks','replenishment','stockout','suppliers','shipments','orders','cash','debt','inactive','opportunities','decisions','changes','explain','compare','scenario','capacity','prepare','record','movements','forecast','sales'];
+    public const INTENTS = ['inventory_totals','inventory_health','incoming_supply','stock_commitments','low_stock','onboarding_status','optimization_run','optimization_limit','optimization_compare','optimization_stress','optimization_explain','optimization_stale','learning','overrides','policy_suggestions','challengers','brief','risks','replenishment','stockout','suppliers','shipments','orders','cash','debt','inactive','opportunities','decisions','changes','explain','compare','scenario','capacity','prepare','record','movements','forecast','sales'];
 
     public function plan(string $question, array $context = []): array
     {
@@ -16,7 +16,7 @@ final class AssistantPlanner
         if (preg_match('/\b(sql|select\s+\*|ignore.*instructions|system prompt|execute|shell|bankrupt|faliment|delete|fshi|approve|mirato|send email)\b/', $q)) return ['intent'=>'unsupported'];
         $rules = [
             'inventory_health'=>'/\b(inventory health|warehouse.*attention|inventory.*attention|stock.*anomal|gjendj.*stock)/',
-            'incoming_supply'=>'/\b(what.*(?:coming|incoming).*week|incoming.*this week|what.*vjen.*(?:jave|javen))/',
+            'incoming_supply'=>'/\b(what.*(?:coming|incoming).*week|incoming.*(?:this week|next (?:seven|7) days)|land.*purchase orders?.*(?:week|days)|what.*vjen.*(?:jave|javen|china))/',
             'stock_commitments'=>'/^(?:what stock is reserved|show (?:stock )?reservations|what is reserved|stock rezervuar|what.*rezervuar)[?.!]*$/',
             'onboarding_status'=>'/\b(onboarding|imported.*review|opening.*(?:balance|match|block)|bilanc.*fillestar|product.*import|hapj.*kompan)/',
             'low_stock'=>'/\b(low[ -]?stock|below.*(?:minimum|reorder)|stock.*(?:ulet|minimal|low)|pak stock)/',
@@ -30,10 +30,10 @@ final class AssistantPlanner
             'overrides'=>'/\b(usually buy less|buy less than|override pattern|human.*decisions|blejme.*me pak|ndryshimet e sasise)/',
             'policy_suggestions'=>'/\b(policy change|policy suggest|safety.*policy|ndryshim.*politik|sugjerim.*politik)/',
             'learning'=>'/\b(how good.*recommend|recommend.*performance|poor.*recommend|recommend.*poor|aims improving|decision learning|mesimi i vendimeve|ciles.*rekomand|aims.*permireso)/',
-            'prepare'=>'/\b(prepare|pergatit).*(option|recommend|draft|opsion|rekomand|kerkes)/',
+            'prepare'=>'/\b(prepare|pergatit).*(option|recommend|draft|purchase request|opsion|rekomand|kerkes)/',
             'scenario'=>'/\b(what if|what happens if|po nese|simulate|simulo|only\s+[0-9]|vetem\s+[0-9])/',
             'changes'=>'/\b(what changed|changes since|changed since|cfare ndryshoi|ndryshimet|ndryshuar)/',
-            'brief'=>'/\b(daily brief|morning brief|executive brief|business brief|brief today|summarize my business|what needs my attention|what should i focus on|permbledhje|prioritetet sot|(?:cfare|what).*(?:vemendjen|attention))/',
+            'brief'=>'/\b(daily brief|morning brief|executive brief|business brief|brief today|summarize my business|what needs my attention|what should i focus on|permbledhje|prioritetet sot|(?:cfare|what).*(?:vemendjen|attention)|what.*(?:kqyr|shikoj|review).*(?:sot|today|biznes))/',
             'capacity'=>'/\b(can we|can i|a mund).*(sell|fulfil|supply|handle|shes|plotes|furniz)/',
             'cash'=>'/\b(cash|cashflow|cash-flow|para|likuiditet|arke|cash forecast)/',
             'debt'=>'/\b(owes|owing|owe|receivable|borxh|debt)/',
@@ -44,31 +44,39 @@ final class AssistantPlanner
             'stockout'=>'/\b(stockout|run out|running out|out of stock|stock risk|risk.*stock|stock.*risk|stock.*finish|when.*finish|mbar.*stok|munges.*stok)/',
             'shipments'=>'/\b(shipment|vessel|container|derges|anije|logistics|china|incoming stock|stock.*incoming)/',
             'suppliers'=>'/\b(supplier.*attention|supplier.*risk|supplier.*should.*consider|furnitor.*vemend|furnitor.*rrezik|furnitor.*duhet.*konsider)/',
-            'replenishment'=>'/\b(what.*buy|should.*buy|what.*order|how much.*order|sa.*porosi|cfare.*ble|replenish|riporosi)/',
+            'replenishment'=>'/\b(what.*buy|should.*(?:buy|reorder)|what.*order|how much.*order|sa.*porosi|cfare.*ble|replenish|riporosi)/',
             'decisions'=>'/\b(waiting decision|pending decision|decisions|vendime|vendimet|miratime)/',
             'risks'=>'/\b(top risk|biggest risk|critical risk|rreziqet|rrezik)/',
             'movements'=>'/\b(movement|movements|levizje|levizjet)/',
             'forecast'=>'/\b(forecast|parashikim)/',
-            'sales'=>'/\b(sales|shitje|shitjet)/',
+            'sales'=>'/\b(sales|sold|sell|selling|shitje|shitjet|shiten|shitur)\b/',
         ];
         $intent = 'record';
         foreach ($rules as $name=>$pattern) if (preg_match($pattern,$q)) { $intent=$name; break; }
+        if(preg_match('/\b(metra|meters|metres|pcs|pieces|cope|kg|kilograms)\b/',$q)
+            && preg_match('/^(?:(?:how|much|many|of|do|we|have|us|left|remaining|available|fabric|stof|cloth|stock|inventory|kemi|in|total|all|na|kan|kane|metra|meters|metres|pcs|pieces|cope|kg|kilograms)\s*)+[?!.]*$/',$q))$intent='inventory_totals';
+        if(($context['last_intent']??null)==='sales' && preg_match('/^(?:and |po |compare |krahaso )?(?:last month|this month|last year|muajin e kaluar|kete muaj|vitin e kaluar)[?!. ]*$/',$q))$intent='sales';
         if($intent==='low_stock'&&preg_match('/next month|next week|tomorrow|future|will|forecast|muajin|javen|neser|ardhsh|parashik/',$q))$intent='stockout';
-        if ($intent==='record' && preg_match('/supplier.*(?:better|best|cover|for)|which supplier/', $q)) $intent='compare';
+        if ($intent==='record' && preg_match('/supplier.*(?:perform|best).*(?:year|month|vit|muaj)|which supplier performed/', $q)) $intent='suppliers';
+        elseif ($intent==='record' && preg_match('/supplier.*(?:better|best|cover|for)|which supplier/', $q)) $intent='compare';
         if ($intent==='record' && preg_match('/\border\b/', $q)) $intent='orders';
         if(!isset($context['optimization_plan_id'])&&!preg_match('/\bplan\s*#?\s*\d+/',$q)&&$intent==='optimization_stress')$intent='scenario';
         if(!isset($context['optimization_plan_id'])&&$intent==='optimization_limit')$intent='optimization_run';
         if(isset($context['optimization_plan_id'])&&in_array($intent,['explain','compare']))$intent='optimization_'.$intent;
         if (in_array($q,['yes','po','confirm','konfirmo'])) return ['intent'=>'confirmation_required'];
+        if(preg_match('/can we.*(?:sell|sold)/',$q))$intent='record';
         $term = null; $warehouseTerm = null;
         if (preg_match('/["“]([^"”]+)["”]/u',$question,$m)) $term=$m[1];
         elseif (preg_match('/(?:\bfor\b|\babout\b|\bper\b|\bpër\b)\s+(.+?)[?.!]*$/iu',$question,$m)) $term=trim($m[1]);
         elseif (preg_match('/^(?:stock|stoku|stok|find|gjej|customer|klienti|supplier|furnitori|product|produkti)\s+(.+?)[?.!]*$/iu',$question,$m)) $term=trim($m[1]);
         elseif ($intent === 'explain' && preg_match('/^(?:why\s+is|pse\s+(?:është|eshte))\s+(.+?)\s+(?:at\s+risk|në\s+rrezik|ne\s+rrezik)[?.!]*$/iu', $question, $m)) $term=trim($m[1]);
         $type = preg_match('/\b(customer|klient)/',$q)?'customer':(preg_match('/\b(supplier|furnitor)/',$q)?'supplier':(preg_match('/\b(shipment|vessel|derges|anije)/',$q)?'shipment':null));
-        if ($intent === 'record' && preg_match('/^(?:how much|sa)\s+(.+?)\s+(?:do we (?:really )?have|kemi)(?:\s+(?:in|ne|në)\s+(.+?))?(?:\s+available)?[?.!]*$/iu', $question, $m)) {
+        if($intent==='record' && preg_match('/\b(?:remaining|available|can we.*sold)\b/',$q) && preg_match('/\b(?:fabric|metra|meters|metres|stock|product)\b/',$q))$type='product';
+        if ($intent === 'record' && preg_match('/^(?:how much|sa)\s+(?:(?:metra|meters|metres)\s+)?(?:(?:stof|fabric|cloth)\s+)?(.+?)\s+(?:do we (?:really )?have|kemi)(?:\s+(?:in|ne|në)\s+(.+?))?(?:\s+available)?[?.!]*$/iu', $question, $m)) {
             $term = trim($m[1]); $type = 'product'; $warehouseTerm = isset($m[2]) ? trim($m[2]) : null;
+            if($warehouseTerm&&preg_match('/^(?:dispozicion|available|disponueshem|disponueshme)[?.!]*$/',app(AssistantLanguage::class)->normalize($warehouseTerm)))$warehouseTerm=null;
         }
+        if($intent==='record'&&preg_match('/can we.*(?:sell|sold)/',$q))$type='product';
         if ($intent === 'record' && preg_match('/\b(reserved|rezervuar|quality hold|available|disponuesh|where is it|ku eshte)\b/', $q) && ! $type) $type = 'product';
         if (in_array($intent,['forecast','movements','replenishment','stockout','capacity']) && !$type) $type='product';
         if ($intent==='compare' && preg_match('/supplier/', $q)) $type='product';
@@ -77,6 +85,7 @@ final class AssistantPlanner
         } elseif (preg_match('/\bwarehouse\b/', $q)) $type='warehouse';
         if (preg_match('/\bpurchase order\b|\bpo[- ]?\d/', $q)) $type='purchase_order';
         if (!$term) $term=app(AssistantLanguage::class)->entityTerm($question);
+        if($intent==='suppliers'&&preg_match('/supplier.*(?:perform|best).*(?:year|month|vit|muaj)|which supplier performed/',$q))$term=null;
         // A controlled draft follow-up uses the authorized conversation decision.
         // Preserve quoted or explicitly named records for normal entity resolution.
         if ($intent === 'prepare' && preg_match('/^(?:prepare|pergatit)\s+(?:the\s+)?(?:recommended\s+(?:option|draft)|option|draft|opsion(?:in)?\s+e\s+rekomanduar|draftin)[?.!]*$/', $q)) $term = null;
@@ -123,11 +132,53 @@ final class AssistantPlanner
 
     public function period(string $question, string $timezone): array
     {
-        $q=Str::lower(Str::ascii($question));$date=CarbonImmutable::now($timezone);$start=$date;$end=$date;
-        if(preg_match('/yesterday|dje/',$q))$start=$end=$date->subDay();
+        $q=Str::lower(Str::ascii($question));$date=CarbonImmutable::now($timezone);$start=$date->subDays(29);$end=$date;
+        if(preg_match_all('/\b\d{4}-\d{2}-\d{2}\b/',$q,$dates)){$start=CarbonImmutable::parse($dates[0][0],$timezone);$end=CarbonImmutable::parse($dates[0][1]??$dates[0][0],$timezone);}
+        elseif(preg_match('/\b(\d{4}-\d{2})\b/',$q,$month)){$start=CarbonImmutable::parse($month[1].'-01',$timezone);$end=$start->endOfMonth();}
+        elseif($named=$this->namedPeriod($q,$timezone,$date->year)){$start=$named;$end=$start->endOfMonth();}
+        elseif(preg_match('/last month|muaj(?:in|i)?\s+(?:e\s+)?kaluar/',$q)){$start=$date->subMonthNoOverflow()->startOfMonth();$end=$date->startOfMonth()->subDay();}
+        elseif(preg_match('/last year|vit(?:in|i)?\s+(?:e\s+)?kaluar/',$q)){$start=$date->subYear()->startOfYear();$end=$start->endOfYear();}
+        elseif(preg_match('/today|sot/',$q))$start=$end=$date;
+        elseif(preg_match('/yesterday|dje/',$q))$start=$end=$date->subDay();
         elseif(preg_match('/this week|kete jave/',$q)){$start=$date->startOfWeek(1);$end=$date->endOfWeek(7);}
         elseif(preg_match('/this month|kete muaj/',$q)){$start=$date->startOfMonth();$end=$date->endOfMonth();}
         elseif(preg_match('/this year|kete vit/',$q)){$start=$date->startOfYear();$end=$date->endOfYear();}
         return ['from'=>$start->toDateString(),'to'=>$end->toDateString(),'timezone'=>$timezone];
+    }
+
+    public function salesComparisonPeriods(string $question, string $timezone): array
+    {
+        $q = app(AssistantLanguage::class)->normalize($question);
+        if (! preg_match('/\b(?:sales|sell|sold|selling|shitje|shitjet)\b/', $q)) {
+            return [];
+        }
+        $split = preg_split('/\b(?:than|versus|vs|se|kundrejt)\b/', $q, 2);
+        if (count($split) !== 2) {
+            return [];
+        }
+        $today = CarbonImmutable::now($timezone);
+        $a = $this->namedPeriod($split[0], $timezone, $today->year);
+        $b = $this->namedPeriod($split[1], $timezone, $today->year);
+        if (! $a && preg_match('/\b(?:last month|muaj\w* (?:e )?kaluar)\b/', $split[0])) {
+            $a = $today->subMonthNoOverflow()->startOfMonth();
+        }
+        if ($a && ! $b && preg_match('/\b(?:month before|previous month|muaj\w* (?:para|paraprak))\b/', $split[1])) {
+            $b = $a->subMonthNoOverflow()->startOfMonth();
+        }
+        if (! $a || ! $b || $a->equalTo($b) || $a->endOfMonth()->gt($today) || $b->endOfMonth()->gt($today)) {
+            return [];
+        }
+        return array_map(fn ($month) => ['from' => $month->toDateString(), 'to' => $month->endOfMonth()->toDateString()], [$a, $b]);
+    }
+
+    private function namedPeriod(string $q,string $timezone,int $year):?CarbonImmutable
+    {
+        $months=['january|janar','february|shkurt','march|mars','april|prill','may|maj','june|qershor',
+            'july|korrik','august|gusht','september|shtator','october|tetor','november|nentor','december|dhjetor'];
+        foreach($months as $index => $names)if(preg_match('/\b('.$names.'(?:it|in|i)?)(?:\s+(20\d{2}))?\b/',$q,$m)){
+            if($m[1]==='may'&&empty($m[2])&&!str_contains($q,'in may'))continue;
+            return CarbonImmutable::create((int)($m[2]??$year),$index+1,1,0,0,0,$timezone);
+        }
+        return null;
     }
 }

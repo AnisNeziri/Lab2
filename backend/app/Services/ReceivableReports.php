@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\PaymentTransaction;
+use App\Support\CompanyClock;
 use App\Support\CompanyCurrency;
 use App\Support\Money;
 use Carbon\CarbonImmutable;
@@ -109,6 +110,19 @@ class ReceivableReports
         $union = $ledger->toBase()->unionAll($invoice->toBase())->unionAll($payment->toBase())->unionAll($paymentReversal->toBase())->unionAll($credit->toBase())->unionAll($void->toBase());
 
         return DB::query()->fromSub($union, 'events')->where('currency', $currency);
+    }
+
+    public function recentPaymentActivity(Customer $customer): array
+    {
+        $today = CompanyClock::today();
+        $from = $today->subDays(29)->toDateString();
+        $to = $today->toDateString();
+        $currency = CompanyCurrency::current();
+        $rows = $this->statementEvents($customer, $to, $currency)->whereDate('date', '>=', $from)
+            ->whereIn('type', ['payment', 'payment_reversal'])->orderByDesc('date')->orderBy('source')->orderByDesc('source_id')
+            ->limit(10)->get(['date', 'type', 'reference'])->toArray();
+
+        return ['customer' => $customer->only(['id', 'name']), 'from' => $from, 'to' => $to, 'currency' => $currency, 'rows' => $rows];
     }
 
     public function statement(Customer $customer, string $from, string $to, string $currency): array

@@ -29,7 +29,7 @@ class DC11CommissioningTest extends TestCase
         $this->apiCompany->update(['accounting_start_date'=>today(),'accounting_opening_finalized_at'=>now()]);
         $this->getJson('/api/system-integrity')->assertOk()->assertJsonPath('operational_readiness.financial_opening.status','BLOCKED_SOURCE_REQUIRED');
         $this->assertDatabaseCount('journal_entries',0);
-        $this->getJson('/api/commercial')->assertOk()->assertJsonPath('status','blocked')->assertJsonPath('commissioning.ready_for_pilot',false);
+        $this->getJson('/api/commercial?company_id='.$this->apiCompany->id)->assertForbidden();
         $this->putJson('/api/pilot/plan',['revision'=>0,'status'=>'active','cutover_date'=>today()->toDateString(),'timezone'=>'UTC','business_days'=>[1,2,3,4,5],'workstreams'=>['inventory'],'participants'=>[['user_id'=>$owner->id,'responsibility'=>'owner','tasks'=>'Supervised synthetic review only']],'telemetry_enabled'=>false,'attest_real_data'=>false,'source_document_ids'=>[]])->assertUnprocessable()->assertJsonValidationErrors('status')->assertSee('commissioning checklist');
     }
 }

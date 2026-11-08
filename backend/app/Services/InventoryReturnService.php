@@ -288,6 +288,9 @@ class InventoryReturnService
             'deductible_vat_amount' => round((float) $original->deductible_vat_amount * $ratio, 2),
             'tax_legal_reference' => $original->tax_legal_reference, 'notes' => $return->reason,
         ]);
+        // ExpenseService returns a decorated read model. Reload persisted attributes
+        // before assigning source lineage so display-only capabilities are never saved.
+        $credit = $credit->fresh();
         $credit->update([
             'supplier_id' => $return->supplier_id,
             'purchase_order_id' => $return->purchase_order_id,

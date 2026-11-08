@@ -23,6 +23,8 @@ class ActionCenterService
         if (!empty($filters['source_type'])) $q->where('source_type',$filters['source_type']);
         if (!empty($filters['source_id'])) $q->where('source_id',(int)$filters['source_id']);
         if (!empty($filters['task'])) $q->whereKey((int)$filters['task']);
+        if (!empty($filters['automation_only'])) $q->whereNotNull('automation_id');
+        if (!empty($filters['assigned_only'])) $q->where('assigned_user_id', Auth::id());
         if (($filters['status'] ?? 'active')==='active') $q->whereIn('status',['open','in_progress']);
         elseif (!empty($filters['status']) && $filters['status']!=='all') $q->where('status',$filters['status']);
         if (!empty($filters['priority'])) $q->where('priority',$filters['priority']);
@@ -166,7 +168,11 @@ class ActionCenterService
             }
         }
         if ($this->can('approvals.view')) foreach(app(ApprovalService::class)->pendingForUser(Auth::user())->take(25) as $a) $items[]=['kind'=>'approval','id'=>$a->id,'title'=>$a->rule_type,'description'=>$a->status,'url'=>'/procurement?view=approvals','due_at'=>null];
-        if ($this->can('control_tower.view')) foreach(OperationalException::whereIn('status',['active','open'])->latest()->limit(25)->get() as $e) $items[]=['kind'=>'shipment','id'=>$e->id,'title'=>$e->exception_type,'description'=>$e->description,'url'=>$e->next_action['url'] ?? '/control-tower','due_at'=>null];
+        $shipmentIssues=$this->can('control_tower.view');$orderIssues=$this->can('fulfillment.view');
+        if ($shipmentIssues||$orderIssues) foreach(OperationalException::whereIn('status',['active','open'])->where(function($q)use($shipmentIssues,$orderIssues){
+            if($orderIssues)$q->where('entity_type','SalesOrder');
+            if($shipmentIssues)$q->orWhere(fn($other)=>$other->whereNull('entity_type')->orWhere('entity_type','!=','SalesOrder'));
+        })->latest()->limit(25)->get() as $e) $items[]=['kind'=>$e->entity_type==='SalesOrder'?'order':'shipment','id'=>$e->id,'title'=>$e->exception_type,'exception_type'=>$e->exception_type,'description'=>$e->description,'values'=>$e->relevant_values,'url'=>$e->next_action['url'] ?? '/control-tower','due_at'=>null];
         if ($this->can('accounting.integrity.view')&&!$this->can('accounting.reports.view')) foreach(AccountingException::where('status','open')->latest()->limit(25)->get() as $e) $items[]=['kind'=>'finance','id'=>$e->id,'title'=>$e->type,'description'=>$e->message,'url'=>'/accounting?tab=integrity','due_at'=>null];
         if ($this->can('fulfillment.view')) foreach(\App\Models\OrderIntake::where('state','attention')->latest()->limit(25)->get() as $o) $items[]=['kind'=>'order','id'=>$o->id,'title'=>$o->external_id ?: '#'.$o->id,'description'=>'Review order','url'=>'/order-hub?intake='.$o->id,'due_at'=>null];
         if ($this->can('automations.executions.view')) foreach(app(AutomationService::class)->visibleExecutions()->whereIn('status',['failed','blocked','needs_verification'])->latest()->limit(25)->get() as $e) $items[]=['kind'=>'system','id'=>$e->id,'title'=>($e->status==='needs_verification'?'Verify automation outcome #':'Automation #').$e->automation_id,'description'=>$e->error,'url'=>'/automation-studio?automation='.$e->automation_id,'due_at'=>$e->next_retry_at,'severity'=>$e->status==='needs_verification'?'urgent':'attention'];

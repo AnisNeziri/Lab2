@@ -92,6 +92,34 @@ class IntelligenceAssistantTest extends TestCase
         $this->assertTrue($risk['read_only']);
         $this->assertDatabaseCount('purchase_requests', 0);
     }
+    public function test_sales_language_periods_and_context_are_source_grounded():void
+    {
+        $this->login();$this->travelTo(\Carbon\CarbonImmutable::parse('2026-09-05 12:00:00'));
+        $p=$this->product();
+        $sale=$this->postJson('/api/daily-sales',['sale_date'=>'2026-09-05','items'=>[['product_id'=>$p->id,'product_name'=>$p->name,'quantity'=>2,'unit'=>'pcs','unit_price'=>5]]])->assertCreated()->json();
+        app(\App\Services\DailySaleService::class)->finalize(\App\Models\DailySale::findOrFail($sale['id']));
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-10-06 12:00:00'));
+        $reply=$this->ask('Show sales for last month')->assertOk()->json();
+        $this->assertSame('sales',$reply['intent']);$this->assertStringContainsString('10.00',$reply['text']);
+        $this->assertStringContainsString('2026-09-01',$reply['text']);$this->assertStringContainsString('2026-09-30',$reply['text']);
+        $follow=$this->ask('And this month?',['conversation_id'=>$reply['conversation_id']])->assertOk()->json();
+        $this->assertSame('sales',$follow['intent']);$this->assertStringContainsString('0.00',$follow['text']);
+        $planner=app(AssistantPlanner::class);
+        $this->assertSame('sales',$planner->plan('Cilat artikuj po shiten më shumë?')['intent']);
+        $this->assertSame('2026-08-02',$planner->period('sales from 2026-08-02 to 2026-08-19','Europe/Budapest')['from']);
+        $this->assertSame('2026-08-19',$planner->period('sales from 2026-08-02 to 2026-08-19','Europe/Budapest')['to']);
+    }
+    public function test_inventory_quantity_words_do_not_mean_predicted_stockout_or_mix_units():void
+    {
+        $this->login();$this->product();
+        $reply=$this->ask('How many pieces of stock do we have left?')->assertOk()->json();
+        $this->assertSame('inventory_totals',$reply['intent']);$this->assertSame(5,$reply['cards'][0]['metrics'][0]['value']);
+        $this->assertSame('pcs',$reply['cards'][0]['metrics'][0]['unit']);$this->assertTrue($reply['read_only']);
+        $planner=app(AssistantPlanner::class);
+        $this->assertSame('inventory_totals',$planner->plan('Sa metra stof na kanë mbet?')['intent']);
+        $this->assertSame('finance_receivables',app(\App\Services\FinanceAssistantFacts::class)->intent('Which custmers ows us mony?',(string)\Illuminate\Support\Str::uuid()));
+    }
+
     private function login(string $role='admin'):void{$this->actingAsApiUser($role);$this->getJson('/api/me')->assertOk();$this->travelTo(now()->setDate(2026,10,6)->setTime(12,0));}
     private function product(string $name='Handles',string $sku='V9-1'):Product{return Product::create(['name'=>$name,'sku'=>$sku,'unit'=>'pcs','quantity'=>5,'min_quantity'=>20,'purchase_price'=>2,'price'=>5,'category_id'=>Category::firstOrCreate(['name'=>'Hardware'])->id]);}
     private function ask(string $question,array $extra=[]){return $this->postJson('/api/intelligence-assistant/ask',array_merge(['question'=>$question],$extra));}

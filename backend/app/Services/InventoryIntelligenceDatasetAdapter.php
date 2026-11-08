@@ -1,6 +1,6 @@
 <?php
 namespace App\Services;
-use App\Models\{Product,AnalyticsSnapshot,AnalyticsDataset,AnalyticsDatasetRow,DailySale};
+use App\Models\{Product,AnalyticsSnapshot,AnalyticsDataset,AnalyticsDatasetRow,DailySale,DailySalesDay};
 use Illuminate\Support\Facades\{Auth,DB};
 use Illuminate\Support\Str;
 use Carbon\CarbonImmutable as Date;
@@ -26,11 +26,17 @@ final class InventoryIntelligenceDatasetAdapter {
         $sales=app(AnalyticsSalesLedger::class)->rows($start->toDateString(),$end->toDateString(),true)->where('product_id',$product->id)->groupBy('date');
         $snapshots=AnalyticsSnapshot::where('entity_type','product')->where('entity_id',$product->id)->where('warehouse_id',0)
             ->whereDate('snapshot_date','>=',$start->toDateString())->whereDate('snapshot_date','<=',$end->toDateString())->get()->keyBy(fn($s)=>$s->snapshot_date->toDateString());
-        // Notes alone do not prove a day was operated/closed. At least one
-        // finalized sale, recognized on that day, is required for a zero.
-        $books=DailySale::whereBetween('sale_date',[$start,$end])->where('status','finalized')->get()
-            ->filter(fn($s)=>$s->finalized_at && $s->finalized_at->toDateString()<=$s->sale_date->toDateString())
-            ->map(fn($s)=>$s->sale_date->toDateString())->flip();
+        // A transaction is final independently of explicit operational day closure.
+        // No historical timestamps/notes are promoted into closure evidence.
+        $daySales=DailySale::whereBetween('sale_date',[$start,$end])->get()->groupBy(fn($s)=>$s->sale_date->toDateString());
+        $books=(\Illuminate\Support\Facades\Schema::hasColumns('daily_sales_days',['closed_at','closed_by','closed_sale_count','closed_last_sale_id'])
+            ? DailySalesDay::whereBetween('sale_date',[$start,$end])->whereNotNull('closed_at')->get() : collect())
+            ->filter(function($day)use($daySales){
+                $sales=$daySales->get($day->sale_date->toDateString(),collect());
+                return $day->closed_at->toDateString()<=$day->sale_date->toDateString() && $day->covers($sales)
+                    && $sales->every(fn($sale)=>$sale->finalized_at && $sale->finalized_at->lte($day->closed_at));
+            })
+            ->map(fn($day)=>$day->sale_date->toDateString())->flip();
         $unfinished=DailySale::whereBetween('sale_date',[$start,$end])->where('status','!=','finalized')->pluck('sale_date')->map(fn($d)=>substr($d,0,10))->flip();
         $series=[];
         for($day=$start;$day->lte($end);$day=$day->addDay()){

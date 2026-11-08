@@ -44,6 +44,20 @@ class AutomationStudioTest extends TestCase
         $this->assertDatabaseCount('daily_sales',0); $this->assertDatabaseCount('journal_entries',0);
     }
 
+    public function test_warehouse_shortage_attention_uses_order_context_and_source_permission(): void
+    {
+        [$p]=$this->setupRule();
+        $customer=Customer::create(['name'=>'Review customer']);
+        $order=app(\App\Services\OutboundService::class)->create(['customer_id'=>$customer->id,'order_date'=>today()->toDateString(),'payment_type'=>'cash','idempotency_key'=>(string)\Illuminate\Support\Str::uuid(),'items'=>[['product_id'=>$p->id,'quantity'=>2,'unit'=>'pcs','unit_price'=>5]]]);
+        \App\Models\OperationalException::create(['exception_key'=>'dc17-shortage','exception_type'=>'allocation_incomplete','entity_type'=>'SalesOrder','entity_id'=>$order->id,'status'=>'open','severity'=>'warning','description'=>'Not enough eligible stock','detected_at'=>now(),'next_action'=>['url'=>'/fulfillment?order='.$order->id]]);
+        $items=$this->getJson('/api/action-center')->assertOk()->json('attention');
+        $issue=collect($items)->firstWhere('exception_type','allocation_incomplete');
+        $this->assertSame('order',$issue['kind']);
+        $this->assertSame('/fulfillment?order='.$order->id,$issue['url']);
+        $user=Auth::user();$user->update(['role'=>'hr']);$this->renewApiSession($user);
+        $this->getJson('/api/action-center')->assertForbidden();
+    }
+
     public function test_conditions_and_read_only_simulation_version_history(): void
     {
         [$p,$rule,$definition]=$this->setupRule();

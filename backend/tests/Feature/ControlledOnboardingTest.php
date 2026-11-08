@@ -176,6 +176,8 @@ class ControlledOnboardingTest extends TestCase
         $this->assertFalse(app(OnboardingReconciliation::class)->operationallyEmpty());
         $user = auth()->user();
         $user->update(['role' => 'staff']);
+        $this->getJson('/api/onboarding/'.$id)->assertUnauthorized();
+        $this->renewApiSession($user);
         $this->getJson('/api/onboarding/'.$id)->assertForbidden();
     }
 

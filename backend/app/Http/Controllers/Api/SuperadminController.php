@@ -8,6 +8,8 @@ use App\Models\Company;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\UserRole;
+use App\Services\Security\SecurityEvents;
+use App\Services\Security\SessionSecurity;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +21,7 @@ class SuperadminController extends Controller
 {
     public function dashboard(): JsonResponse
     {
+        app(SecurityEvents::class)->record('platform.dashboard_viewed');
         $users = User::withoutGlobalScopes()->where('role', '!=', 'superadmin');
         $thirtyDaysAgo = now()->subDays(30);
         $loginEvents = DB::table('user_login_events')
@@ -46,6 +49,7 @@ class SuperadminController extends Controller
 
     public function companies(): JsonResponse
     {
+        app(SecurityEvents::class)->record('platform.company_directory_viewed');
         return response()->json(Company::query()
             ->withCount('users')
             ->orderBy('name')
@@ -54,6 +58,7 @@ class SuperadminController extends Controller
 
     public function storeCompany(Request $request): JsonResponse
     {
+        app(SessionSecurity::class)->recent();
         if (config('system.operation_mode') === 'offline' && Company::query()->exists()) {
             throw ValidationException::withMessages(['company' => ['This local AIMS installation supports one company only.']]);
         }
@@ -63,12 +68,14 @@ class SuperadminController extends Controller
         ]);
 
         $company = Company::create($data);
+        app(SecurityEvents::class)->record('platform.company_created', subject: $company->id);
 
         return response()->json($company, 201);
     }
 
     public function users(): JsonResponse
     {
+        app(SecurityEvents::class)->record('platform.user_directory_viewed');
         return response()->json(User::withoutGlobalScopes()
             ->with('company:id,name')
             ->orderByDesc('created_at')
@@ -77,11 +84,13 @@ class SuperadminController extends Controller
 
     public function storeUser(Request $request): JsonResponse
     {
+        app(SessionSecurity::class)->recent();
         $offline = config('system.operation_mode') === 'offline';
         $localCompanyId = null;
         if ($offline) {
             // The desktop superadmin is global (company_id is null), while
             // the single company user must belong to the local company.
+            abort_if(Company::query()->count() > 1, 403, 'Local user maintenance requires a single company.');
             $localCompanyId = Company::query()->value('id');
             if (! $localCompanyId) {
                 throw ValidationException::withMessages([
@@ -112,28 +121,37 @@ class SuperadminController extends Controller
             $data['company_id'] = $localCompanyId;
         }
 
-        $user = User::create([
-            'company_id' => $data['company_id'],
-            'name' => $data['name'],
-            'email' => $data['email'],
-            'password' => Hash::make($data['temporary_password']),
-            'role' => $data['role'],
-            'is_active' => true,
-            'email_verified_at' => now(),
-            'must_change_password' => true,
-            'temporary_password_consumed' => false,
-        ]);
+        $user = DB::transaction(function () use ($data, $offline) {
+            Company::query()->lockForUpdate()->findOrFail($data['company_id']);
+            // Only initial provisioning; managed companies own subsequent user administration.
+            abort_if(User::query()->when(!$offline, fn ($users) => $users->withTrashed())->where('company_id', $data['company_id'])->exists()
+                || (!$offline && $data['role'] !== 'admin'), 403, 'Platform provisioning is limited to the first company administrator.');
+            $user = User::create([
+                'company_id' => $data['company_id'],
+                'name' => $data['name'],
+                'email' => $data['email'],
+                'password' => Hash::make($data['temporary_password']),
+                'role' => $data['role'],
+                'is_active' => true,
+                'email_verified_at' => now(),
+                'must_change_password' => true,
+                'temporary_password_consumed' => false,
+            ]);
 
-        $role = Role::where('slug', $user->role)->first();
-        if ($role) {
-            UserRole::updateOrCreate(['user_id' => $user->id, 'role_id' => $role->id], ['assigned_at' => now()]);
-        }
+            $role = Role::where('slug', $user->role)->first();
+            if ($role) {
+                UserRole::updateOrCreate(['user_id' => $user->id, 'role_id' => $role->id], ['assigned_at' => now()]);
+            }
 
+            app(SecurityEvents::class)->record('platform.initial_user_provisioned', context: ['role' => $user->role], subject: $user->id);
+            return $user;
+        });
         return response()->json($this->formatUser($user->load('company:id,name')), 201);
     }
 
     public function updateUser(Request $request, User $user): JsonResponse
     {
+        $this->authorizeLocalUserMaintenance($user);
         if ($user->role === 'superadmin') {
             throw ValidationException::withMessages(['user' => ['Superadmin accounts cannot be changed here.']]);
         }
@@ -147,6 +165,7 @@ class SuperadminController extends Controller
         ]);
 
         $user->update($data);
+        app(SecurityEvents::class)->record('platform.local_user_updated', subject: $user->id);
 
         if (isset($data['role']) && ($role = Role::where('slug', $data['role'])->first())) {
             UserRole::where('user_id', $user->id)->delete();
@@ -158,6 +177,7 @@ class SuperadminController extends Controller
 
     public function resetPassword(Request $request, User $user): JsonResponse
     {
+        $this->authorizeLocalUserMaintenance($user);
         if ($user->role === 'superadmin') {
             throw ValidationException::withMessages(['user' => ['Superadmin passwords cannot be reset here.']]);
         }
@@ -166,24 +186,42 @@ class SuperadminController extends Controller
             'temporary_password' => [...\App\Services\Security\PasswordPolicy::rules(), 'confirmed'],
         ]);
 
-        $user->forceFill([
-            'password' => Hash::make($data['temporary_password']),
-            'must_change_password' => true,
-            'temporary_password_consumed' => false,
-        ])->save();
+        DB::transaction(function () use ($data, $user) {
+            $locked = User::query()->lockForUpdate()->findOrFail($user->id);
+            $locked->forceFill([
+                'password' => Hash::make($data['temporary_password']),
+                'must_change_password' => true,
+                'temporary_password_consumed' => false,
+                'api_token' => null,
+                'api_token_expires_at' => null,
+                'token_version' => (int) $locked->token_version + 1,
+            ])->save();
+            app(SessionSecurity::class)->revoke($locked);
+            app(SecurityEvents::class)->record('platform.local_user_password_reset', subject: $locked->id);
+        });
 
         return response()->json(['message' => 'Temporary password updated.']);
     }
 
     public function destroyUser(User $user): JsonResponse
     {
+        $this->authorizeLocalUserMaintenance($user);
         if ($user->role === 'superadmin') {
             throw ValidationException::withMessages(['user' => ['Superadmin accounts cannot be deleted.']]);
         }
 
         DB::transaction(fn () => $user->delete());
+        app(SecurityEvents::class)->record('platform.local_user_removed', subject: $user->id);
 
         return response()->json(['message' => 'User removed.']);
+    }
+
+    private function authorizeLocalUserMaintenance(User $user): void
+    {
+        abort_unless(config('system.operation_mode') === 'offline' && $user->company_id
+            && Company::query()->count() === 1 && Company::query()->whereKey($user->company_id)->exists(),
+            403, 'Existing company accounts are administered by the company.');
+        app(SessionSecurity::class)->recent();
     }
 
     private function formatUser(User $user): array

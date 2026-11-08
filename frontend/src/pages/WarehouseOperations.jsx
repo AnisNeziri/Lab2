@@ -97,6 +97,8 @@ export default function WarehouseOperations() {
   const canDispatch = permissions.includes('transfers.dispatch')
   const canReceive = permissions.includes('transfers.receive')
   const [tab, setTab] = useSessionState('warehouse.tab', 'locator')
+  const requestedTab=documentParams.get('tab')
+  useEffect(()=>{if(['control','locator','warehouses','locations','transfers','receipts'].includes(requestedTab))setTab(requestedTab)},[requestedTab,setTab])
   const [warehouses, setWarehouses] = useState([])
   const [locations, setLocations] = useState([])
   const [products, setProducts] = useState([])

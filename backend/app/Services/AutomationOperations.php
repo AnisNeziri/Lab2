@@ -65,6 +65,11 @@ class AutomationOperations
 
     public function health(): array
     {
+        return app(PermissionService::class)->readScope(fn () => $this->readHealth());
+    }
+
+    private function readHealth(): array
+    {
         app(AutomationService::class)->authorize('automations.health.view');
         $rules = app(AutomationService::class)->visibleRules();
         $runs = app(AutomationService::class)->visibleExecutions();

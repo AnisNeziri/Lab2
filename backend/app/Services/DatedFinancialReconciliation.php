@@ -61,7 +61,7 @@ class DatedFinancialReconciliation
         $sales = DailySale::query()->finalized()->whereDate('sale_date', '<=', $to)->whereDoesntHave('outboundDispatch', fn ($q) => $q->whereHas('order', fn ($o) => $o->where('payment_type', '!=', 'cash')))->sum('total_amount');
         $linkedSales = (clone $cashTransactions)->where('source_type', 'daily_sale')->whereIn('type', ['inflow', 'transfer_in'])->sum('amount');
         $invoicePayments = $this->effective(PaymentTransaction::query()->whereNull('financial_account_id'), 'payment_date', $to)->sum('amount');
-        $customerPayments = CustomerDebtTransaction::query()->where('type', 'payment')->whereNull('financial_account_id')->whereNull('payment_transaction_id')->whereDate('transaction_date', '<=', $to)->whereDoesntHave('reversals', fn ($q) => $q->whereDate('transaction_date', '<=', $to))->sum('amount');
+        $customerPayments = CustomerDebtTransaction::query()->cashReceipts()->whereNull('financial_account_id')->whereNull('payment_transaction_id')->whereDate('transaction_date', '<=', $to)->whereDoesntHave('reversals', fn ($q) => $q->whereDate('transaction_date', '<=', $to))->sum('amount');
         $expensePayments = $this->effective(ExpensePayment::query()->whereNull('financial_account_id'), 'payment_date', $to)->sum('amount_eur');
         $poPayments = (clone $advancePayments)->whereNull('financial_account_id')->whereNull('onboarding_session_id')->sum('amount_eur');
         $cash = Money::subtract(Money::add($cash, $sales, $invoicePayments, $customerPayments), Money::add($linkedSales, $expensePayments, $poPayments));

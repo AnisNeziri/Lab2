@@ -40,15 +40,16 @@ class FinanceAssistantFacts
             case 'get_accounting_receivables':
                 $data = app(ReceivableReports::class)->aging($to);
 
-                return ['as_of' => $to, 'currency' => $data['currency'], 'summary' => $data['summary'], 'aging_buckets' => $data['aging_buckets'], 'top_customers' => app(ReceivableReports::class)->positions($to)->where('currency', $data['currency'])->selectRaw('customer_id,customer_name,SUM(outstanding) outstanding')->groupBy('customer_id', 'customer_name')->orderByDesc('outstanding')->limit(10)->get()->toArray(), 'items' => array_slice($data['receivables'], 0, 10), 'qualification' => $data['note']];
+                return ['as_of' => $to, 'currency' => $data['currency'], 'summary' => $data['summary'], 'aging_buckets' => $data['aging_buckets'], 'top_customers' => app(ReceivableReports::class)->positions($to)->where('currency', $data['currency'])->selectRaw('customer_id,customer_name,SUM(outstanding) outstanding')->groupBy('customer_id', 'customer_name')->orderByDesc('outstanding')->limit(10)->get()->toArray(), 'top_overdue_customers' => $data['top_overdue_customers']->all(), 'items' => array_slice($data['receivables'], 0, 10), 'qualification' => $data['note']];
             case 'get_accounting_payables':
                 $data = app(PayableReports::class)->aging($to);
-                $next = CarbonImmutable::parse($to)->addDays(7)->toDateString();
+                $maxDue = CarbonImmutable::parse($to)->addDays(7)->toDateString();
+                $next = validator($input + ['due_through' => $maxDue], ['due_through' => 'required|date_format:Y-m-d|after_or_equal:'.$to.'|before_or_equal:'.$maxDue])->validate()['due_through'];
                 $due = app(PayableReports::class)->positions($to)->whereDate('due_date', '>=', $to)->whereDate('due_date', '<=', $next);
 
                 return ['as_of' => $to, 'currency' => $data['base_currency'], 'summary' => $data['summary'], 'known_due_through' => $next, 'known_due_amount' => Money::normalize((clone $due)->sum('base_outstanding')), 'items' => (clone $due)->orderBy('due_date')->orderBy('id')->limit(10)->get()->toArray(), 'qualification' => $data['note']];
             case 'get_month_close_blockers':
-                $p = isset($input['period_id']) ? AccountingPeriod::findOrFail($input['period_id']) : AccountingPeriod::where('status', '!=', 'closed')->whereDate('ends_at', '<=', $to)->orderByDesc('ends_at')->first();
+                $p = isset($input['period_id']) ? AccountingPeriod::findOrFail($input['period_id']) : (isset($input['from'])?AccountingPeriod::whereDate('starts_at','<=',$input['from'])->whereDate('ends_at','>=',$to)->first():AccountingPeriod::where('status', '!=', 'closed')->whereDate('ends_at', '<=', $to)->orderByDesc('ends_at')->first());
                 if (! $p) {
                     return ['period' => null, 'status' => 'ATTENTION', 'blockers' => [], 'qualification' => 'Select or create the accounting period to inspect month close.'];
                 }
@@ -95,9 +96,20 @@ class FinanceAssistantFacts
         $this->cache()->forget($this->key($id));
     }
 
+    public function receivablesUrl(?int $customer = null): string
+    {
+        $accounting = app(PermissionService::class)->roleHasPermission(Auth::user()->role, 'accounting.reports.view');
+        $url = $accounting ? '/accounting?tab=ar' : '/customer-debts';
+
+        return $customer === null ? $url : $url.($accounting ? '&' : '?').'customer='.$customer;
+    }
+
     public function intent(string $question, string $id): ?string
     {
         $q = app(AssistantLanguage::class)->normalize($question);
+        // A terse financial noun is scoped explicitly in the answer, never netted with AP.
+        if(preg_match('/^(?:debt|debts|receivables|borxhi)[?!. ]*$/',$q))return 'finance_receivables';
+        if(preg_match('/\b(?:fshi\w*|paguaj\w*|shlyej\w*|posto\w*|anulo\w*|mbyll\w*|rakordo\w*)\b.*\b(?:debt|borxh\w*|furnitor\w*|supplier|journal|ditar|periudh\w*|pages\w*|bank\w*)\b/',$q))return 'finance_action_boundary';
         $q = strtr($q, ['recievables' => 'receivables', 'receivbles' => 'receivables', 'suppllier' => 'supplier', 'alocation' => 'allocation', 'reconcilation' => 'reconciliation']);
         if (preg_match('/(?:change|alter|submit|fiscalize|ndrysho|dorezo|fiskalizo).*?(?:tax|vat|rate|return|certificate|invoice|tvsh|tatim|norm|fatur|certifik)/',$q)) return 'finance_action_boundary';
         if (preg_match('/(?:^|can you |please |a mund |te lutem )(?:post|reverse|allocate|close|reconcile|pay|posto|anulo|aloko|mbyll|paguaj)\b.*(?:journal|payment|period|bank|supplier|ditar|pagese|periudh|furnitor)/', $q)) {
@@ -107,13 +119,14 @@ class FinanceAssistantFacts
             'finance_fiscal' => '/fiscali[sz]|fiskaliz/',
             'finance_tax_mapping' => '/(?:product|produkt).*(?:tax|vat|tvsh|tatim|mapping)|missing.*tax.*map/',
             'finance_vat' => '/\\bvat\\b|tvsh|tax.*(?:reconcil|clos)/',
-            'finance_close' => '/month.?close|blocking.*clos|what.*block.*month|mbyll.*muaj|pengon.*mbyll|close.*(?:ready|block)/',
+            'finance_close' => '/(?:close|shut|mbyll).*(?:books|period|muaj|libr|20\d{2})|month.?close|blocking.*clos|what.*block.*month|mbyll.*muaj|pengon.*mbyll|close.*(?:ready|block)|\b20\d{2}\b.*\bclose\b/',
+            'finance_bank_reconciliation' => '/\b(?:bank|banke|bankes|banka)\b.*(?:reconcil|agree|balance.*books|pajtoh|perputh|libr.*kryesor)|(?:reconcil|agree|pajtoh|perputh).*\b(?:bank|banke|bankes|banka)\b/',
             'finance_reconciliation' => '/inventory.*(?:match|accounting|gl)|(?:ar|ap).*gl|subledger.*reconcil|reconcil.*difference|inventar.*(?:kontabil|perputh)|diferenc.*rakord/',
             'finance_allocation' => '/payment.*(?:allocat|unassigned)|unallocat.*payment|pages.*(?:alok|pacakt)/',
-            'finance_payables' => '/(?:owe|owing).*supplier|bills?.*(?:due|next)|payable|detyrim.*furnitor|furnitor.*(?:borxh|detyro)|fatura.*(?:ardhsh|javen|afat)/',
-            'finance_receivables' => '/customer.*(?:owe|owing|debt)|debt.*customer|which.*(?:owe|debt)|who.*owes|overdue.*(?:invoice|customer)|receivable|debtor|klient.*borxh|borxh.*klient|kush.*detyro/',
+            'finance_payables' => '/debt.*supplier|supplier.*debt|(?:owe|owing).*supplier|bills?.*(?:due|next)|payable|detyrim.*furnitor|furnitor.*(?:borxh|detyro)|fatura.*(?:ardhsh|javen|afat)/',
+            'finance_receivables' => '/(?:contact|call|kontakto).*(?:invoice|debt|customer)|customer.*(?:owe|owing|debt)|debt.*customer|which.*(?:owe|debt)|who.*owes|overdue.*(?:invoice|customer)|receivable|debtor|klient.*borxh|borxh.*klient|kush.*detyro/',
             'finance_profit' => '/profit.*(?:drop|fall|month|compar)|(?:why|pse).*(?:profit|fitim)|fitim.*(?:muaj|krahas)/',
-            'finance_cash' => '/how much.*(?:cash|bank)|cash.*(?:have|balance)|sa.*(?:para|mjete|arke|bank)|gjend.*bank/',
+            'finance_cash' => '/(?:how much|what amount).*\b(?:cash|bank\w*|para|mjete|ark[ae]\w*)\b|cash.*(?:have|balance)|gjend.*\b(?:bank\w*|ark[ae]\w*)\b/',
             'finance_summary' => '/financial state|finance summary|accounting summary|gjendja financiare|pasqyra financiare/',
         ] as $intent => $regex) {
             if (preg_match($regex, $q)) {
@@ -131,7 +144,7 @@ class FinanceAssistantFacts
         return null;
     }
 
-    public function reply(string $intent, string $question, string $id, bool $sq): array
+    public function reply(string $intent, string $question, string $id, bool $sq, bool $overdueOnly = false, ?string $dueThrough = null, bool $rankCustomers = false): array
     {
         $text = $sq ? 'Kontrollet financiare kërkojnë shqyrtim dhe veprim të njeriut në ndërfaqe. AIMS nuk poston, anulon, alokon, mbyll, rakordon ose paguan automatikisht.' : 'Financial actions require human review in the source workspace. Ask AIMS cannot post, reverse, allocate, close, reconcile or pay automatically.';
         $cards = [];
@@ -141,16 +154,22 @@ class FinanceAssistantFacts
         if ($intent !== 'finance_action_boundary') {
             $tool = match ($intent) {
                 'finance_vat'=>'get_vat_control_facts','finance_fiscal'=>'get_fiscalization_facts','finance_tax_mapping'=>'get_tax_mapping_gaps',
-                'finance_receivables','finance_receivables_compare' => 'get_accounting_receivables','finance_payables' => 'get_accounting_payables','finance_close' => 'get_month_close_blockers','finance_reconciliation' => 'get_financial_reconciliation','finance_allocation' => 'get_payment_allocation_review','finance_profit' => 'get_posted_profit_comparison',default => 'get_accounting_control_summary'
+                'finance_receivables','finance_receivables_compare' => 'get_accounting_receivables','finance_payables' => 'get_accounting_payables','finance_close' => 'get_month_close_blockers','finance_reconciliation','finance_bank_reconciliation' => 'get_financial_reconciliation','finance_allocation' => 'get_payment_allocation_review','finance_profit' => 'get_posted_profit_comparison',default => 'get_accounting_control_summary'
             };
             $runner = app(AssistantToolRunner::class);
-            $data = $runner->execute($tool);
+            $args=[];
+            if ($intent === 'finance_payables' && $dueThrough !== null) $args['due_through'] = $dueThrough;
+            if($intent==='finance_close'&&preg_match('/20\d{2}-\d{2}|january|february|march|april|may|june|july|august|september|october|november|december|janar|shkurt|mars|prill|maj|qershor|korrik|gusht|shtator|tetor|nentor|dhjetor/i',$question))$args=array_intersect_key(app(AssistantPlanner::class)->period($question,CompanyClock::timezone()),array_flip(['from','to']));
+            $data = $runner->execute($tool,$args);
             $tools = $runner->executions;
             $currency = $data['currency'] ?? CompanyCurrency::current();
             $format = fn ($v) => ($v === null ? '—' : Money::normalize($v).' '.$currency);
             $url = '/accounting?tab='.match ($intent) {
-                'finance_receivables','finance_allocation' => 'ar','finance_payables' => 'ap','finance_close' => 'periods','finance_reconciliation' => 'reconciliation','finance_profit' => 'reports',default => 'overview'
+                'finance_allocation' => 'ar','finance_payables' => 'ap','finance_close' => 'periods','finance_reconciliation' => 'reconciliation','finance_bank_reconciliation' => 'bank','finance_profit' => 'reports',default => 'overview'
             };
+            if (in_array($intent, ['finance_receivables', 'finance_receivables_compare'], true)) {
+                $url = $this->receivablesUrl();
+            }
             if(in_array($intent,['finance_vat','finance_tax_mapping','finance_fiscal']))$url=$intent==='finance_fiscal'?'/fiscalization':'/tax';
             $metrics = [];
             switch ($intent) {
@@ -167,19 +186,65 @@ class FinanceAssistantFacts
                     foreach($data['items'] as $p)$cards[]=['tool'=>$tool,'title'=>$p['name'],'url'=>'/tax?tab=configuration','summary'=>$p['sku'],'metrics'=>[]];break;
                 case 'finance_receivables_compare':
                 case 'finance_receivables':$s = $data['summary'];
+                    $q = app(AssistantLanguage::class)->normalize($question);
+                    $overdue = $intent === 'finance_receivables' && ($overdueOnly || preg_match('/\boverdue\b|\bpast due\b|late\s+(?:paying|invoice|payments?)|\bdebt\b.*\b(?:vonuar\w*|late)\b|(?:call|contact|kontakto).*(?:unpaid|not paid|pa paid)/', $q));
+                    $ranking = $overdue ? $data['top_overdue_customers'] : $data['top_customers'];
                     $text = ($sq ? 'Klientët na detyrohen ' : 'Customers owe us ').$format($s['total_outstanding']).'.';
+                    if ($overdue) {
+                        $text = ($sq ? 'Borxhe të vonuara të klientëve: ' : 'Overdue customer balances: ').$format($s['overdue_total']).'.';
+                        if ($ranking) {
+                            $customer = (array) $ranking[0];
+                            $text .= ' '.($sq ? 'Shqyrto fillimisht ' : 'Review first: ').($customer['customer_name'] ?: '#'.$customer['customer_id']).' · '.$format($customer['outstanding']).'.';
+                        }
+                    }
+                    if ($rankCustomers && ! $overdue) {
+                        $leader = isset($ranking[0]) ? (array) $ranking[0] : null;
+                        $text = $leader
+                            ? ($sq ? 'Borxhin më të madh e ka ' : 'The largest customer balance is ').($leader['customer_name'] ?: '#'.$leader['customer_id']).' · '.$format($leader['outstanding']).'. '.$text
+                            : ($sq ? 'Nuk ka borxhe të hapura të klientëve në këtë pamje.' : 'No outstanding customer balances appear in this view.');
+                    }
                     $metrics = [[$sq ? 'Të vonuara' : 'Overdue', $s['overdue_total']], ['90+', $s['overdue_90_plus']], [$sq ? 'Afati i panjohur' : 'Unknown due', $s['unknown_due']]];
-                    foreach (array_slice((array) $data['top_customers'], 0, 5) as $c) {
+                    foreach (array_slice($ranking, 0, 5) as $c) {
                         $c = (array) $c;
-                        $cards[] = ['tool' => $tool, 'title' => $c['customer_name'] ?: '#'.$c['customer_id'], 'url' => '/accounting?tab=ar&customer='.$c['customer_id'], 'summary' => $sq ? 'Borxh i hapur' : 'Outstanding receivable', 'metrics' => [['label' => $sq ? 'Mbetja' : 'Outstanding', 'value' => $c['outstanding'], 'unit' => $currency]]];
+                        $label = $overdue ? ($sq ? 'Borxh i vonuar' : 'Overdue balance') : ($sq ? 'Borxh i hapur' : 'Outstanding receivable');
+                        $cards[] = ['tool' => $tool, 'title' => $c['customer_name'] ?: '#'.$c['customer_id'], 'url' => $this->receivablesUrl((int) $c['customer_id']), 'entity' => ['type' => 'customer', 'id' => (int) $c['customer_id']], 'summary' => $label, 'metrics' => [['label' => $overdue ? $label : ($sq ? 'Mbetja' : 'Outstanding'), 'value' => $c['outstanding'], 'unit' => $currency]]];
                     }break;
                 case 'finance_payables':$text = ($sq ? 'Detyrimet ndaj furnitorëve janë ' : 'Supplier payables are ').$format($data['summary']['total']).'.';
                     $metrics = [[$sq ? 'Afatet e njohura në 7 ditë' : 'Known due within 7 days', $data['known_due_amount']], [$sq ? 'Pa afat të njohur' : 'Unknown due', $data['summary']['unknown_due']]];
+                    if ($dueThrough !== null || preg_match('/\b(?:due|next week|(?:next|seven|7) days|shtate dite\w*|javen|afat\w*)\b/', app(AssistantLanguage::class)->normalize($question))) {
+                        $metrics[0][0] = $sq ? 'Me afat deri më '.$data['known_due_through'] : 'Known due through '.$data['known_due_through'];
+                        $text = ($sq ? 'Detyrimet me afat të njohur deri më ' : 'Bills with known due dates through ').$data['known_due_through'].': '.$format($data['known_due_amount']).'.';
+                        foreach (array_slice($data['items'], 0, 5) as $item) {
+                            $item = (array) $item;
+                            $cards[] = ['tool' => $tool, 'title' => $item['vendor_name'] ?? $item['invoice_number'] ?? '#'.$item['id'],
+                                'summary' => (string) $item['due_date'], 'url' => $url,
+                                'metrics' => [['label' => $sq ? 'Shuma e mbetur' : 'Outstanding', 'value' => $item['base_outstanding'], 'unit' => $currency]]];
+                        }
+                    }
                     break;
-                case 'finance_close':$text = ($data['period']['name'] ?? ($sq ? 'Zgjidh periudhën' : 'Select a period')).' · '.$data['status'].'.';
+                case 'finance_close':
+                    $text = $data['period']
+                        ? $data['period']['name'].' · '.$data['status'].'.'
+                        : ($sq ? 'Hap mbylljen e periudhës dhe zgjidh periudhën kontabël për të parë pengesat.' : 'Open Period close and select an accounting period to see its blockers.');
+                    if (! $data['period'] && isset($args['from'], $args['to'])) {
+                        $range = $args['from'].' → '.$args['to'];
+                        $text = $sq ? "Nuk gjeta një periudhë kontabël për $range. Kontrollo datat te mbyllja e periudhës." : "No accounting period covers $range. Check the dates in Period close.";
+                    }
                     foreach (array_slice($data['blockers'], 0, 5) as $b) {
                         $cards[] = ['tool' => $tool, 'title' => $b['label'], 'url' => $b['url'], 'summary' => $b['detail'] ?? '', 'metrics' => isset($b['difference']) ? [['label' => $sq ? 'Diferenca' : 'Difference', 'value' => $b['difference'], 'unit' => $currency]] : []];
                     }break;
+                case 'finance_bank_reconciliation':
+                    $bank = collect($data['rows'])->firstWhere('control', 'cash_bank');
+                    $text = $sq ? 'Hap rakordimin për të shqyrtuar arkën dhe bankën.' : 'Open reconciliation to review cash and bank.';
+                    if ($bank && $bank['reconciled']) {
+                        $text = $sq ? 'Kontrolli i arkës dhe bankës përputhet me librin kryesor.' : 'The combined cash and bank control agrees with the general ledger.';
+                    } elseif ($bank && $bank['difference'] !== null && empty($bank['evidence_issues'])) {
+                        $text = ($sq ? 'Diferenca e arkës dhe bankës është ' : 'The cash and bank control difference is ').$format($bank['difference']).'. '.$text;
+                    } else {
+                        $text = ($sq ? 'Mungojnë të dhëna për ta konfirmuar përputhjen. ' : 'Evidence is missing to confirm reconciliation. ').$text;
+                    }
+                    $limits[] = $sq ? 'Kontrolli mbulon arkën dhe bankën së bashku.' : 'This control covers cash and bank together.';
+                    break;
                 case 'finance_reconciliation':$text = $data['all_reconciled'] ? ($sq ? 'Të gjitha nënlibrat e provuar përputhen me librin kryesor.' : 'All proven subledgers reconcile to the General Ledger.') : ($sq ? 'Ka diferenca ose prova që mungojnë. Shqyrtoni burimet para mbylljes.' : 'Differences or missing evidence need review before closing.');
                     foreach ($data['rows'] as $r) {
                         $cards[] = ['tool' => $tool, 'title' => ucwords(str_replace('_', ' ', $r['control'])), 'url' => $r['drilldown_url'], 'summary' => $r['status'].($r['evidence_issues'] ? ' · '.implode(' ', $r['evidence_issues']) : ''), 'metrics' => [['label' => $sq ? 'Diferenca' : 'Difference', 'value' => $r['difference'], 'unit' => $currency]]];

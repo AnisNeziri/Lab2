@@ -62,11 +62,14 @@ class ProductionReadinessTest extends TestCase
         $this->assertSame($before, $user->fresh()->password);
     }
 
-    public function test_diagnostics_require_an_authorized_company_admin(): void
+    public function test_diagnostics_require_a_global_platform_operator(): void
     {
         $this->getJson('/api/system/diagnostics')->assertUnauthorized();
         $this->actingAsApiUser('staff')->getJson('/api/system/diagnostics')->assertForbidden();
-        $this->actingAsApiUser('admin')->getJson('/api/system/diagnostics')->assertOk()->assertJsonPath('release.version', Release::version());
+        $this->actingAsApiUser('admin')->getJson('/api/system/diagnostics')->assertForbidden();
+        $operator=\App\Models\User::factory()->create(['company_id'=>null,'role'=>'superadmin','email_verified_at'=>now()]);
+        $this->renewApiSession($operator);
+        $this->getJson('/api/system/diagnostics')->assertOk()->assertJsonPath('release.version', Release::version());
     }
 
     public function test_a_created_checksum_or_selected_backup_cannot_satisfy_full_backup_health(): void

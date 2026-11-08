@@ -49,6 +49,12 @@ class ProcurementService
         });
     }
     public function requests() { return PurchaseRequest::query()->with(['items.product','approval','rfqs'])->latest('id')->paginate(50); }
+
+    public function requestReviews(): array
+    {
+        return PurchaseRequest::query()->whereIn('status', ['submitted', 'approved', 'sourcing'])
+            ->orderBy('required_by')->orderBy('id')->limit(8)->get(['id', 'request_number', 'status'])->toArray();
+    }
     public function findRequest(PurchaseRequest $request): PurchaseRequest { return $request->load(['items.product','approval.decisions','rfqs.suppliers','rfqs.quotes.items']); }
     public function createRequest(array $data): PurchaseRequest { return DB::transaction(function() use($data) { $company=(int)Auth::user()->company_id; $currency=strtoupper($data['currency'] ?? CompanyCurrency::current()); $total=Money::add(...array_map(fn($i)=>Money::multiply($i['estimated_unit_price'] ?? 0,$i['quantity']),$data['items'])); $request=PurchaseRequest::create(['company_id'=>$company,'request_number'=>$this->number('PR'),'status'=>'draft','requested_by'=>Auth::id(),'requested_at'=>$data['requested_at'] ?? \App\Support\CompanyClock::today()->toDateString(),'required_by'=>$data['required_by'] ?? null,'notes'=>$data['notes'] ?? null,'estimated_total'=>$total,'currency'=>$currency]); foreach($data['items'] as $item) $request->items()->create($item); $this->audit($request,'procurement.request.created','Purchase request created.'); return $this->findRequest($request); }); }
     public function updateRequest(PurchaseRequest $request,array $data): PurchaseRequest

@@ -3,7 +3,8 @@ import { apiRequest } from '../api/client'
 
 let sequence=0
 export const useWorkspaceStore=create((set,get)=>({
-  userKey:null,document:null,loading:false,saving:false,error:'',
+  userKey:null,document:null,loading:false,saving:false,error:'',workFocus:null,
+  setWorkFocus:(key,profile)=>set({workFocus:{key,profile}}),
   async load(user) {
     const key=user?`${user.company_id}:${user.id}`:null, ticket=++sequence
     if(!key){set({userKey:null,document:null,loading:false,saving:false,error:''});return}

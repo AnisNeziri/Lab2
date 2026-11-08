@@ -1,0 +1,114 @@
+[
+  {
+    "id": "H01",
+    "role": "warehouse",
+    "language": "sq",
+    "question": "A ka naj porosi gati per nisje?",
+    "expected": "Authorized order status or honest clarification; never promise delivery.",
+    "group": "H01"
+  },
+  {
+    "id": "H02",
+    "role": "warehouse",
+    "language": "sq",
+    "question": "Cka osht blloku ne depo?",
+    "expected": "Inventory exceptions, bounded and no personal assignments without task access.",
+    "group": "H02"
+  },
+  {
+    "id": "H03",
+    "role": "warehouse",
+    "language": "sq",
+    "question": "Milano 04 - sa mujna me shit tash?",
+    "expected": "Product 4 current availability 421.825 m.",
+    "group": "H03"
+  },
+  {
+    "id": "H04",
+    "role": "sales",
+    "language": "en",
+    "question": "Any offers about to expire that I should chase?",
+    "expected": "Quotation follow-ups with source links.",
+    "group": "H04"
+  },
+  {
+    "id": "H05",
+    "role": "sales",
+    "language": "en",
+    "question": "Can I give this customer more credit and confirm their order?",
+    "expected": "Explicit human-authorized credit/order boundary.",
+    "group": "H05"
+  },
+  {
+    "id": "H06",
+    "role": "sales",
+    "language": "en",
+    "question": "Who should I call about invoices that still are not paid?",
+    "expected": "Authorized customer debt evidence or honest permission limitation.",
+    "group": "H06"
+  },
+  {
+    "id": "H07",
+    "role": "accountant",
+    "language": "en",
+    "question": "What must I fix before we shut October books?",
+    "expected": "Existing month-close blockers; no closing action.",
+    "group": "H07"
+  },
+  {
+    "id": "H08",
+    "role": "accountant",
+    "language": "sq",
+    "question": "A jemi ne rregull me borxhet e furnitorve?",
+    "expected": "Supplier obligations, separate advances, authorized finance authority.",
+    "group": "H08"
+  },
+  {
+    "id": "H09",
+    "role": "purchasing",
+    "language": "en",
+    "question": "Are any promised receipts already late?",
+    "expected": "Overdue receipt dates; no invented supplier blame/location.",
+    "group": "H09"
+  },
+  {
+    "id": "H10",
+    "role": "purchasing",
+    "language": "sq",
+    "question": "Ku po na ngec furnizimi prej furnitorve?",
+    "expected": "Qualified delayed supply or honest clarification.",
+    "group": "H10"
+  },
+  {
+    "id": "H11",
+    "role": "primary",
+    "language": "en",
+    "question": "Which customers bought the most last month?",
+    "expected": "Ranked by recorded October sales; receivables current.",
+    "group": "customers"
+  },
+  {
+    "id": "H12",
+    "role": "primary",
+    "language": "en",
+    "question": "And are those same buyers late paying?",
+    "expected": "Same prior customer IDs re-read; no company-wide substitution.",
+    "group": "customers"
+  },
+  {
+    "id": "H13",
+    "role": "primary",
+    "language": "en",
+    "question": "Show me Milano 04 and Oslo 20 availability",
+    "expected": "Authorized products 4 and 100; no combining different units.",
+    "group": "products"
+  },
+  {
+    "id": "H14",
+    "role": "primary",
+    "language": "en",
+    "question": "Which one has more available?",
+    "expected": "Same two products read again; authoritative comparison.",
+    "group": "products"
+  }
+]

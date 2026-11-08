@@ -2,6 +2,26 @@ import { navigationGroups, navigationContext } from '../config/navigation.js'
 import { workspaceGuides, intelligenceWorkflows, pageSteps } from '../config/workspaceGuides.js'
 
 export const normalizeQuestion = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+
+export function assistantHelpRequest(message) {
+  const q = normalizeQuestion(message)
+  if (/\b(?:[a-z]{2,}-\d[\w-]*|\d{4}-\d{2}-\d{2})\b|["“]/.test(q)) return false
+  return /^(?:how (?:do|can) (?:i|we) (?:use|create|add|edit|configure|record|export|import)\b|how to (?:use|create|add|edit|configure|record|export|import)\b|how (?:do|does) .+ work\b|si (?:perdoret|funksionon|(?:mund te )?(?:perdor|krijoj|shtoj|ndryshoj|konfiguroj|regjistroj|eksportoj|importoj))\b)/.test(q)
+}
+
+export function assistantRequestError(error, language) {
+  const sq = language === 'sq'
+  if (error.status === 429) {
+    const seconds = error.retryAfterSeconds
+    return seconds
+      ? (sq ? `Ka pasur shumë pyetje radhazi. Mund ta riprovosh pas ${seconds} sekondash.` : `Too many questions in a short time. You can retry in ${seconds} seconds.`)
+      : (sq ? 'Ka pasur shumë pyetje radhazi. Prit pak dhe provo përsëri.' : 'Too many questions in a short time. Wait a moment, then try again.')
+  }
+  if (error.status === 403 && !error.code) {
+    return sq ? 'Llogaria jote nuk ka leje për këtë të dhënë ose veprim.' : 'Your account does not have access to this information or action.'
+  }
+  return error.message
+}
 const aliases = {
   payroll:['payroll','salary','salaries','pagat','paga','pagave'],
   workforce:['employee','employment','human resources','punonjes','punonjës','personeli'],

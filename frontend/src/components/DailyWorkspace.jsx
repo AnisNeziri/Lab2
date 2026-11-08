@@ -1,22 +1,25 @@
 import { Link } from 'react-router-dom'
-import { useSessionState } from '../hooks/useSessionState'
 import { useEffect } from 'react'
 import { useTranslation } from '../hooks/useTranslation'
 import { useAuthStore } from '../store/authStore'
 import { canOpenPage } from '../config/pageAccess'
-const profiles={
- owner:['Owner','Pronari','/accounting?tab=owner','Business state and cash exposure','Gjendja e biznesit dhe ekspozimi i parasë'],
- sales:['Sales','Shitjet','/customers','Orders, delivery and customer follow-ups','Porositë, dorëzimi dhe ndjekja e klientëve'],
- purchasing:['Purchasing','Blerjet','/procurement','Replenishment requests and supplier commitments','Kërkesat për furnizim dhe angazhimet ndaj furnitorëve'],
- warehouse:['Warehouse','Depoja','/warehouse-mobile','Receive, pick and count stock','Prano, përgatit dhe numëro stokun'],
- finance:['Accountant','Kontabilisti','/accounting','Posted books, differences and month close','Librat e postuar, diferencat dhe mbyllja mujore'],
- hr:['HR / Payroll','Personeli / Pagat','/workforce','Employment, time approvals and payroll preparation','Punësimi, miratimi i orëve dhe përgatitja e pagave'],
+import { workProfiles } from '../config/workProfiles'
+import { dailyStarts } from '../config/everydayWorkspace'
+import { useWorkFocus } from '../hooks/useWorkFocus'
+
+const starts={
+ owner:[['/action-center','Decisions & approvals','Vendimet dhe miratimet'],['/accounting?tab=owner','Money & company state','Paratë dhe gjendja e kompanisë'],['/purchasing-decisions','Suppliers & purchase budgets','Furnitorët dhe buxheti i blerjeve'],['/order-hub','Orders & delivery','Porositë dhe dorëzimi']],
+ sales:[['/customers','Customers & follow-ups','Klientët dhe ndjekjet'],['/customers?view=quotations','Quotations','Ofertat'],['/order-hub','Orders needing review','Porositë për shqyrtim']],
+ warehouse:[['/fulfillment','Pick & dispatch','Përgatit dhe dërgo'],['/warehouse-operations?tab=receipts','Receive goods','Prano mallin'],['/warehouse-mobile','Scan, find & count','Skano, gjej dhe numëro']],
+ purchasing:[['/purchasing-decisions','Compare suppliers','Krahaso furnitorët'],['/procurement','Review purchase requests','Shqyrto kërkesat e blerjes'],['/purchase-orders','Purchase orders','Porositë e blerjes'],['/shipments/my-shipments','Incoming shipments','Dërgesat në ardhje']],
+ finance:[['/accounting','Finance workspace','Hapësira financiare'],['/accounting?tab=reconciliation','Investigate differences','Shqyrto diferencat'],['/accounting?tab=periods','Month close','Mbyllja mujore']],
+ hr:[['/workforce','People & time approvals','Personeli dhe miratimi i orëve'],['/payroll','Prepare payroll','Përgatit pagat'],['/action-center?view=mine','Assigned reviews','Shqyrtimet e caktuara']],
+ manager:[['/action-center','Team reviews','Shqyrtimet e ekipit'],['/order-hub','Orders','Porositë'],['/warehouse-operations','Warehouse','Depoja']],
 }
 export default function DailyWorkspace({onProfileChange}){
- const {language}=useTranslation(),role=useAuthStore(s=>s.role),permissions=useAuthStore(s=>s.permissions),caps=useAuthStore(s=>s.user?.commercial?.capabilities),[profile,setProfile]=useSessionState('daily.profile',role==='admin'?'owner':'sales'),t=(en,sq)=>language==='sq'?sq:en
- const available=Object.entries(profiles).filter(([,p])=>canOpenPage(p[2],permissions,caps)),selected=available.find(([id])=>id===profile)||available[0]
- useEffect(()=>{onProfileChange?.(selected?.[0]||null)},[selected?.[0],onProfileChange])
- if(!selected)return null
- const [,p]=selected
- return <section className="dc9-daily-work" aria-label={t('Daily workspace','Hapësira ditore')}><label>{t('My work','Puna ime')}<select value={selected[0]} onChange={e=>setProfile(e.target.value)}>{available.map(([id,p])=><option key={id} value={id}>{t(p[0],p[1])}</option>)}</select></label><div><strong>{t(p[3],p[4])}</strong><p>{t('Review the current state, then work through assigned actions.','Shqyrto gjendjen aktuale, pastaj veprimet e caktuara.')}</p></div><Link className="secondary" to={p[2]}>{t('Open workspace','Hap hapësirën')}</Link>{canOpenPage('/action-center',permissions,caps)&&<Link to="/action-center?view=mine">{t('My attention queue','Radha ime e veprimeve')}</Link>}</section>
+ const {language}=useTranslation(),permissions=useAuthStore(s=>s.permissions),caps=useAuthStore(s=>s.user?.commercial?.capabilities),{profile}=useWorkFocus(),t=(en,sq)=>language==='sq'?sq:en
+ useEffect(()=>{onProfileChange?.(profile||null)},[profile,onProfileChange])
+ if(!profile)return null
+ const name=workProfiles[profile]?.[language==='sq'?'sq':'en']||profile
+ return <section className="everyday-start" aria-label={t('Daily workspace','Hapësira ditore')}><header><div><span className="everyday-eyebrow">{name}</span><h2>{t('Start with today’s work','Fillo me punët e sotme')}</h2><p>{t('Review urgent work below, or open a daily workflow.','Shqyrto punët urgjente më poshtë, ose hap një veprim të përditshëm.')}</p></div>{canOpenPage('/action-center',permissions,caps)&&<Link className="workspace-primary" to="/action-center?view=mine&status=active">{t('My tasks','Detyrat e mia')}</Link>}</header><nav aria-label={t('Daily actions','Veprimet ditore')}>{(starts[profile]||[[dailyStarts[profile],'Open workspace','Hap hapësirën']]).filter(([path])=>canOpenPage(path,permissions,caps)&&(!path.includes('tab=periods')||permissions.includes('accounting.periods.manage'))&&(!path.includes('tab=reconciliation')||permissions.includes('accounting.integrity.view'))).map(([path,en,sq])=><Link key={path} to={path}>{t(en,sq)}<span aria-hidden="true">↗</span></Link>)}</nav></section>
 }

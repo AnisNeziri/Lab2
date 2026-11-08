@@ -100,6 +100,6 @@ final class Entitlements
         };
         $state=$this->state($u->company_id);
         if (!in_array($cap,$state['capabilities'],true)) abort(response()->json(['message'=>ucfirst($cap).' is not enabled for this company.','code'=>'CAPABILITY_NOT_ENABLED','capability'=>$cap],403));
-        if (!$state['write_allowed'] && !$r->isMethodSafe() && !$r->is('api/security*','api/commercial*','api/logout','api/change-password','api/intelligence-assistant/ask')) abort(response()->json(['message'=>'The license needs administrator review. Existing records remain available.','code'=>'LICENSE_REVIEW_REQUIRED'],403));
+        if (!$state['write_allowed'] && !$r->isMethodSafe() && !$r->is('api/security*','api/commercial*','api/logout','api/change-password','api/intelligence-assistant/ask','api/procurement/purchase-comparison')) abort(response()->json(['message'=>'The license needs administrator review. Existing records remain available.','code'=>'LICENSE_REVIEW_REQUIRED'],403));
     }
 }

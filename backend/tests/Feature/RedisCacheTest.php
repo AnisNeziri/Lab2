@@ -69,6 +69,8 @@ class RedisCacheTest extends TestCase
         config(['system.operation_mode' => 'offline']);
         Redis::shouldReceive('connection')->never();
         Cache::shouldReceive('get')->andThrow(new \RuntimeException('Cache unavailable'));
+        // Permission lookups remain uncached while the optional health probe fails.
+        Cache::shouldReceive('remember')->andReturnUsing(fn ($key, $ttl, $read) => $read());
         $this->getJson('/api/system/mode')->assertOk()
             ->assertJsonPath('mode', 'offline')
             ->assertJsonPath('redis.status', 'disabled_offline')

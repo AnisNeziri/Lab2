@@ -19,19 +19,110 @@ final class IntelligenceAssistantService
     }
     public function ask(array $input):array
     {
+        $reply=app(\App\Services\Platform\PlatformTrace::class)->measure('assistant.request',fn()=>$this->answer($input));
+        if(!empty($reply['conversation_id'])){
+            $id=$reply['conversation_id'];$context=$this->contextCache()->get($this->key($id),[]);
+            $context['permission_scope']=hash('sha256',json_encode(app(PermissionService::class)->forRole(Auth::user()->role)));
+            $context['last_intent']=$reply['intent']??null;
+            if (isset($reply['purchase_comparison_reference'])) $context['purchase_comparison'] = $reply['purchase_comparison_reference'];
+            else unset($context['purchase_comparison']);
+            if (isset($reply['purchase_portfolio_reference'])) $context['purchase_portfolio'] = $reply['purchase_portfolio_reference'];
+            else unset($context['purchase_portfolio']);
+            if (isset($reply['fulfillment_reference'])) {
+                $context['fulfillment_order_id'] = (int) $reply['fulfillment_reference'];
+            } else {
+                if (isset($context['fulfillment_order_id']) && empty($reply['context'])) {
+                    unset($context['entity'], $context['result_entities']);
+                }
+                unset($context['fulfillment_order_id']);
+            }
+            $context['awaiting_order'] = ($reply['intent'] ?? null) === 'work_blocked'
+                && ($reply['state'] ?? null) === 'needs_clarification';
+            $firstRead = $reply['tools'][0] ?? $reply['model_calls'][0] ?? [];
+            $context['review_tool'] = $firstRead['tool'] ?? null;
+            $context['receipt_through'] = $context['review_tool'] === 'get_incoming_supply'
+                ? ($firstRead['arguments']['through'] ?? null) : null;
+            if ($context['review_tool'] === 'get_month_close_blockers') {
+                $context['close_period'] = array_intersect_key($firstRead['arguments'] ?? [], ['from' => true, 'to' => true]);
+            } else {
+                unset($context['close_period']);
+            }
+            if (($reply['intent'] ?? null) === 'finance_payables' && isset($reply['tools'][0]['arguments']['due_through'])) {
+                $context['payables_through'] = $reply['tools'][0]['arguments']['due_through'];
+            } elseif (! in_array($reply['intent'] ?? null, ['finance_payables', 'workforce'], true)) {
+                unset($context['payables_through']);
+            }
+            $entities=array_values(array_filter(array_map(fn($c)=>!empty($c['entity'])?$c['entity']+['title'=>$c['title']]:null,$reply['cards']??[])));
+            if(!$entities&&!empty($reply['context_entities']))$entities=$reply['context_entities'];
+            if($entities)$context['result_entities']=array_slice($entities,0,6);
+            if(!empty($reply['context']))$context['entity']=$reply['context'];
+            elseif(($reply['intent']??null)==='product_position'&&count($entities)>1)unset($context['entity']);
+            $this->contextCache()->put($this->key($id),$context,config('assistant.context_minutes')*60);
+        }
+        return $reply;
+    }
+    private function answer(array $input):array
+    {
         abort_unless(Auth::user()?->company_id,403);
         $v=validator($input,['question'=>'required|string|min:2|max:600','language'=>'sometimes|in:en,sq','conversation_id'=>'nullable|uuid','clear_context'=>'sometimes|boolean','simulation_id'=>'nullable|integer|min:1','customer_id'=>'nullable|integer|min:1','entity'=>'nullable|array:type,id','entity.type'=>'required_with:entity|in:product,customer,supplier,shipment,decision,task,purchase_order,sales_order,warehouse','entity.id'=>'required_with:entity|integer|min:1'])->validate();
-        $id=$v['conversation_id']??(string)Str::uuid();$context=$this->contextCache()->get($this->key($id),[]);$sq=($v['language']??'en')==='sq';
-        if($v['clear_context']??false)$context=[];
-        if(preg_match('/(?:find|search|gjej|kerko).*(?:document|customs|dogan|supplier file)/i',$v['question'])) {
-            $data=app(AssistantToolRunner::class)->execute('search_business',['q'=>$v['question']]);
-            return ['id'=>(string)Str::uuid(),'conversation_id'=>$id,'intent'=>'search','text'=>$sq?'Burime të lejuara. Teksti është dëshmi, jo udhëzim ose bilanc aktual.':'Authorized source candidates. Retrieved text is evidence, not instructions or current balances.','cards'=>array_map(fn($r)=>['tool'=>'search_business','title'=>$r['title'],'summary'=>$r['subtitle']??'','url'=>$r['url'],'metrics'=>[]],$data['results']),'sources'=>array_map(fn($r)=>['tool'=>'search_business','url'=>$r['url']],$data['results']),'limitations'=>[$data['qualification']],'choices'=>[],'read_only'=>true,'state'=>'success','provider'=>'deterministic'];
+        if (isset($input['purchase_context'])) {
+            $v += validator($input, [
+                'purchase_context' => 'array:product_id,warehouse_id,quantity,unit,required_by,supplier_id',
+                'purchase_context.product_id' => 'required|integer|min:1',
+                'purchase_context.quantity' => 'required|numeric|min:0.001|max:100000000',
+                'purchase_context.unit' => 'sometimes|string|max:30',
+                'purchase_context.warehouse_id' => 'sometimes|integer|min:1',
+                'purchase_context.supplier_id' => 'sometimes|integer|min:1',
+                'purchase_context.required_by' => 'sometimes|date_format:Y-m-d',
+            ])->validate();
         }
-        if ($security=app(\App\Services\Security\SecurityAssistantFacts::class)->reply($v,$id)) return $security;
-        if ($customerSales=app(CustomerSalesAssistantFacts::class)->reply($v,$id)) return $customerSales;
-        if ($operating=app(OperatingAssistantFacts::class)->reply($v,$id)) return $operating;
+        $id=$v['conversation_id']??(string)Str::uuid();$context=$this->contextCache()->get($this->key($id),[]);$sq=($v['language']??'en')==='sq';
+        if (preg_match('/\b(?:ignore.*instructions|system prompt)\b/i', $v['question'])
+            && preg_match('/\b(?:other compan\w*|another company|cross.tenant)\b/i', $v['question'])) {
+            return ['id' => (string) Str::uuid(), 'conversation_id' => $id, 'intent' => 'unsupported', 'state' => 'insufficient',
+                'text' => $sq ? 'Kjo llogari ka qasje vetëm në kompaninë e autorizuar.' : 'This account can only access its authorized company.',
+                'cards' => [], 'sources' => [], 'tools' => [], 'choices' => [], 'provider' => 'deterministic', 'read_only' => true];
+        }
+        $permissionScope=hash('sha256',json_encode(app(PermissionService::class)->forRole(Auth::user()->role)));
+        if (($v['clear_context'] ?? false) || isset($context['permission_scope']) && $context['permission_scope'] !== $permissionScope) {
+            $context = [];
+            $this->contextCache()->forget($this->key($id));
+            app(FinanceAssistantFacts::class)->clear($id);
+        }
+        $context['permission_scope']=$permissionScope;
         $workforce=app(\App\Services\Workforce\WorkforceAssistantFacts::class);
         if($workforceIntent=$workforce->intent($v['question'])) return $workforce->reply($workforceIntent,$id,$sq);
+        if ($portfolio = app(PurchasePortfolioAssistant::class)->answer($v, $id, $context)) return $portfolio;
+        if ($comparison = app(PurchaseComparisonAssistant::class)->answer($v, $id, $context)) return $comparison;
+        if (preg_match('/\b(?:cost price|purchase price|unit cost|cmimi i blerjes|kostoja per njesi)\b/', app(AssistantLanguage::class)->normalize($v['question']))) {
+            $permitted = $this->can('analytics.finance');
+            return ['id' => (string) Str::uuid(), 'conversation_id' => $id, 'intent' => 'product_cost',
+                'state' => $permitted ? 'insufficient' : 'permission_denied',
+                'text' => $permitted
+                    ? ($sq ? 'Pyet për një kosto të regjistruar me periudhë dhe burim, si fatura ose vlerësimi i stokut.' : 'Specify the cost basis and source period, such as an invoice or stock valuation.')
+                    : ($sq ? 'Kjo llogari nuk ka qasje në koston e produktit.' : 'This account cannot access product cost.'),
+                'cards' => [], 'sources' => [], 'tools' => [], 'choices' => [], 'provider' => 'deterministic', 'read_only' => true];
+        }
+        $conversation = app(AssistantConversation::class);
+        if ($history = $conversation->historicalVesselPosition($v, $id)) return $history;
+        if ($followup = $conversation->fulfillmentFollowup($v, $id, $context)) return $followup;
+        if ($purchase = $conversation->purchaseOrderReview($v, $id, $context)) return $purchase;
+        if ($followup = $conversation->businessFollowup($v, $id, $context)) return $followup;
+        if ($followup = $conversation->sourceReview($v, $id, $context)) return $followup;
+        if($comparison=app(AssistantConversation::class)->compareReferences($v,$id,$context))return $comparison;
+        if($explanation=app(AssistantConversation::class)->productExplanation($v,$id,$context))return $explanation;
+        if(!isset($v['entity'])&&($selected=app(AssistantConversation::class)->selected($v['question'],$context)))$v['entity']=$this->authorizeEntity($selected);
+        if(!isset($v['entity'])&&($reference=app(AssistantConversation::class)->referencedCustomers($v,$id,$context)))return $reference;
+        if($comparison=app(AssistantConversation::class)->warehouseComparison($v,$id,$context))return $comparison;
+        $v['question']=app(AssistantConversation::class)->question($v['question'],$context);
+        if(config('assistant.model_tools')&&isset($v['entity']))$v['entity']=$this->authorizeEntity($v['entity']);
+        if ($security=app(\App\Services\Security\SecurityAssistantFacts::class)->reply($v,$id)) return $security;
+        if ($customerSales=app(CustomerSalesAssistantFacts::class)->reply($v,$id)) return $customerSales;
+        if ($business=app(AssistantBusinessIntent::class)->reply($v,$id,$context)) return $business;
+        if (app(AssistantPlanner::class)->plan($v['question'])['intent'] !== 'unsupported' && ($salesComparison=app(AssistantConversation::class)->salesComparison($v,$id))) return $salesComparison;
+        if (empty($context['pending_capacity']) && ($stock=app(AssistantStockGuidance::class)->reply($v,$id))) return $stock;
+        if ($work=app(AssistantWorkGuidance::class)->reply($v,$id,$context)) return $work;
+        if ($operating=app(OperatingAssistantFacts::class)->reply($v,$id)) return $operating;
         $factIntent=app(AssistantPlanner::class)->plan($v['question'])['intent'];
         $finance=app(FinanceAssistantFacts::class);
         if($v['clear_context']??false)$finance->clear($id);
@@ -39,8 +130,29 @@ final class IntelligenceAssistantService
             if($financeIntent==='finance_action_boundary'||(!isset($v['entity'])&&!isset($v['customer_id'])))return $finance->reply($financeIntent,$v['question'],$id,$sq);
             $finance->clear($id);
         }
-        if(in_array($factIntent,['inventory_health','incoming_supply','stock_commitments'],true))return app(InventoryAssistantFacts::class)->reply($factIntent,$id,$sq);
+        if(in_array($factIntent,['inventory_health','incoming_supply','stock_commitments'],true)){
+            $reply=app(InventoryAssistantFacts::class)->reply($factIntent,$id,$sq);
+            if($factIntent==='incoming_supply'&&preg_match('/\b(?:china|country of origin|shteti i origjines)\b|\b(?:from|prej|nga)\s+(?!(?:the\s+)?(?:purchase orders?|pos?|suppliers?|furnitor\w*)\b)\p{L}/u',app(AssistantLanguage::class)->normalize($v['question']))){
+                $reply['text']=$sq?'Origjina sipas shtetit nuk mund të verifikohet nga ky burim. Lista më poshtë përfshin të gjitha ardhjet e datuara në shtatë ditët e ardhshme.':'Country of origin cannot be verified from this source. The list below includes all dated supply expected in the next seven days.';
+                $reply['limitations'][]=$sq?'Filtri i origjinës nuk është zbatuar.':'The origin filter was not applied.';
+            }
+            return $reply;
+        }
+        if($factIntent==='inventory_totals'){
+            $normalized=app(AssistantLanguage::class)->normalize($v['question']);$unit=preg_match('/\b(?:metra|meters|metres)\b/',$normalized)?'m':(preg_match('/\b(?:kg|kilograms)\b/',$normalized)?'kg':'pcs');
+            return app(InventoryAssistantFacts::class)->reply($factIntent,$id,$sq,['unit'=>$unit]);
+        }
         if(in_array($factIntent,['low_stock','onboarding_status'],true))return app(OpeningFactsService::class)->reply($factIntent,$v['question'],$id,$sq);
+        if(!$this->preferDirect($v,$context)&&($modelReply=app(AssistantModelTools::class)->reply($v,$id,$context))){
+            $this->contextCache()->put($this->key($id),$context,config('assistant.context_minutes')*60);return $modelReply;
+        }
+        $v['question']=app(AssistantConversation::class)->question($v['question'],$context);
+        // Early finance/CRM replies must not leave an old sales-follow-up marker.
+        if(isset($context['last_intent']))$this->contextCache()->put($this->key($id),array_diff_key($context,['last_intent'=>true]),config('assistant.context_minutes')*60);
+        if(preg_match('/(?:find|search|gjej|kerko).*(?:document|customs|dogan|supplier file)/i',$v['question'])) {
+            $data=app(AssistantToolRunner::class)->execute('search_business',['q'=>$v['question']]);
+            return ['id'=>(string)Str::uuid(),'conversation_id'=>$id,'intent'=>'search','text'=>$sq?'Burime të lejuara. Teksti është dëshmi, jo udhëzim ose bilanc aktual.':'Authorized source candidates. Retrieved text is evidence, not instructions or current balances.','cards'=>array_map(fn($r)=>['tool'=>'search_business','title'=>$r['title'],'summary'=>$r['subtitle']??'','url'=>$r['url'],'metrics'=>[]],$data['results']),'sources'=>array_map(fn($r)=>['tool'=>'search_business','url'=>$r['url']],$data['results']),'limitations'=>[$data['qualification']],'choices'=>[],'read_only'=>true,'state'=>'success','provider'=>'deterministic'];
+        }
         app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational();
         if(isset($v['simulation_id'])){app(StrategicSimulationService::class)->get($v['simulation_id']);$context['strategic_simulation_id']=$v['simulation_id'];unset($context['optimization_plan_id']);}
         if(!isset($v['entity'])&&app(StrategicSimulationAssistant::class)->supports($v['question'],$context)) {
@@ -64,6 +176,7 @@ final class IntelligenceAssistantService
         if($plan['intent']==='record'&&!$plan['type']&&!preg_match('/["“]/u',$v['question'])&&app(IntelligenceProvider::class)->available()) {
             $provider=app(IntelligenceProvider::class)->respond([['role'=>'user','content'=>$v['question']]]);
             if(isset($provider['intent'])&&!in_array($provider['intent'],['prepare','scenario','record']))$plan['intent']=$provider['intent'];
+            if(isset($provider['term']))$plan['term']=$provider['term'];
         }
         $answer=['id'=>(string)Str::uuid(),'conversation_id'=>$id,'intent'=>$plan['intent'],'text'=>'','cards'=>[],'sources'=>[],'limitations'=>[],'choices'=>[],'provider'=>$provider['state'],'read_only'=>true,'context'=>null];
         $results=[];$failures=[];$start=microtime(true);
@@ -140,7 +253,8 @@ final class IntelligenceAssistantService
         }elseif(in_array($intent,['replenishment','stockout'])) {
             if($entity&&$entity['type']==='product'){
                 $read('get_product_availability',['product_id'=>$entity['id']]);
-                $read('get_inventory_plan',['product_id'=>$entity['id']]);
+                $inventoryPlan=$read('get_inventory_plan',['product_id'=>$entity['id']]);
+                if(empty($inventoryPlan['plan'])||empty($inventoryPlan['plan']['coverage_supported']))$answer['text']=$sq?'Nuk ka plan të kualifikuar për këtë produkt. Shqyrto dëshmitë në Planifikim; mungesa e të dhënave nuk është rekomandim blerjeje.':'No qualified plan is available for this product. Review evidence in Planning; missing data is not a purchase recommendation.';
                 $read('get_product_incoming_risk',['product_id'=>$entity['id']]);
             }
             elseif($intent==='stockout'){
@@ -152,7 +266,10 @@ final class IntelligenceAssistantService
                 if(preg_match('/incoming|shipment|arriv/', $plan['normalized']??''))$read('get_at_risk_shipments');
             }
             else $read('get_products_needing_replenishment');
-        }elseif($intent==='suppliers')$read('get_supplier_decisions');
+        }elseif($intent==='suppliers'){
+            $read('get_supplier_decisions');
+            $answer['text']=$sq?'Shqyrto dëshmitë e furnitorëve. Renditja historike “më i miri” kërkon periudhë dhe kriter të verifikuar; kjo pamje nuk e shpall fituesin.':'Review supplier evidence. A historical “best” ranking requires a verified period and criterion; this view does not declare a winner.';
+        }
         elseif($intent==='shipments')$read($entity&&$entity['type']==='shipment'?'get_shipment_intelligence':'get_at_risk_shipments',$entity&&$entity['type']==='shipment'?['shipment_id'=>$entity['id']]:[]);
         elseif($intent==='orders'){
             if(($entity['type']??null)==='purchase_order')$read('get_purchase_order',['purchase_order_id'=>$entity['id']]);
@@ -169,10 +286,12 @@ final class IntelligenceAssistantService
             $read('get_decision_changes',$entity&&$entity['type']==='decision'?['decision_id'=>$entity['id']]:['from'=>$period['from'],'to'=>CarbonImmutable::now($period['timezone'])->toDateString()]);
         }elseif($intent==='sales') {
             $period=app(AssistantPlanner::class)->period($v['question'],$this->timezone());
+            $context['sales_period']=$period;
             // The analytics workspace owns period calculations and finance permissions.
             if($runner->allowed('get_sales_analytics')){
                 $data=app(AnalyticsService::class)->workspace('sales',['period'=>'custom','from'=>$period['from'],'to'=>min($period['to'],today()->toDateString())]);
                 $results[]=['tool'=>'get_sales_analytics','data'=>$data];$runner->executions[]=['tool'=>'get_sales_analytics','arguments'=>$period,'status'=>'success'];
+                $answer['text']=($sq?'Shitjet ekonomike të regjistruara: ':'Recorded economic sales: ').\App\Support\Money::normalize($data['metrics']['revenue']).' '.\App\Support\CompanyCurrency::current().' · '.$data['period']['from'].' → '.$data['period']['to'].'. '.($sq?'Produktet renditen sipas vlerës së shitjeve; burimi dallon shitjet nga faturat e lidhura.':'Products are ranked by sales value; linked invoices and sales are deduplicated by the authoritative ledger.');
             }else $failures[]='permission:get_sales_analytics';
         }elseif(in_array($intent,['record','movements','forecast','explain','compare'])) {
             if(!$entity&&in_array($intent,['explain','compare'])) {
@@ -233,6 +352,11 @@ final class IntelligenceAssistantService
                 $answer['text']=$sq?'Kontrollo stokun e disponueshëm, mbërritjet dhe kërkesën. Kapaciteti fizik nuk është miratim kredie për klientin.':'Review available stock, arrivals and demand. Physical capacity is not customer credit approval.';
             }
         }elseif($intent==='prepare') {
+            if(($entity['type']??null)==='product'){
+                $read('get_inventory_plan',['product_id'=>$entity['id']]);
+                $answer['text']=$sq?'Hap planifikimin për të shqyrtuar sasinë dhe dëshmitë. Pa rekomandim të kualifikuar dhe konfirmim njerëzor nuk përgatitet kërkesë blerjeje.':'Open planning to review quantity and evidence. A qualified recommendation and human confirmation are required before preparing a Purchase Request.';
+                $answer['limitations'][]=$sq?'Nuk u krijua kërkesë, porosi apo pagesë.':'No request, order or payment was created.';
+            }else
             if(!$needEntity(['decision'])) {
                 $d=$read('get_decision',['decision_id'=>$entity['id']]);$alternative=$d['recommended']['key']??null;
                 if($alternative&&$this->can('procurement.manage')&&$this->can('analytics.finance')) {
@@ -246,6 +370,11 @@ final class IntelligenceAssistantService
         }elseif($intent==='confirmation_required')$answer['text']=$sq?'Konfirmo vetëm nga paneli i rishikimit; një mesazh “po” nuk kryen veprime.':'Confirm only in the review panel; a chat message “yes” never performs an action.';
         elseif($intent==='unsupported')$answer['text']=$sq?'Nuk mund ta mbështes këtë kërkesë me mjete të autorizuara të AIMS. Pyet për një regjistrim ose rrezik konkret.':'I cannot support that request with authorized AIMS evidence tools. Ask about a specific record or risk.';
         $composed=app(AssistantComposer::class)->compose($results,$sq);
+        if($intent==='record'&&($entity['type']??null)==='product')foreach($results as $result)if($result['tool']==='get_product_availability')$answer['text']=$result['data']['product']['name'].': '.$result['data']['position']['available'].' '.$result['data']['product']['unit'].($sq?' në dispozicion.':' available.');
+        if($intent==='explain'&&($entity['type']??null)==='product')foreach($results as $result)if($result['tool']==='get_product_availability'){
+            $position=$result['data']['position'];$unit=$result['data']['product']['unit'];
+            $answer['text']=($sq?'Në dispozicion: ':'Available: ').$position['available'].' '.$unit.' · '.($sq?'Fizik: ':'Physical: ').$position['physical'].' '.$unit.' · '.($sq?'Rezervuar dhe në mbledhje: ':'Reserved and picking: ').($position['reserved']+$position['allocated']).' '.$unit.' · '.($sq?'Në kontroll, dëmtuar ose bllokuar: ':'Quality hold, damaged or blocked: ').($position['quality_hold']+$position['damaged']+$position['blocked']).' '.$unit.'.';
+        }
         if(in_array($intent,['brief','risks'])){
             $seen=[];$counts=[];$composed['cards']=array_values(array_filter($composed['cards'],function($card)use(&$seen,&$counts){
                 $tool=$card['tool'];$key=$tool.':'.$card['title'];if(isset($seen[$key]))return false;$seen[$key]=true;
@@ -253,11 +382,13 @@ final class IntelligenceAssistantService
             }));
         }
         foreach(['cards','sources','limitations'] as $field)$answer[$field]=array_merge($answer[$field],$composed[$field]);
+        if(!empty($composed['presentation']))$answer['presentation']=$composed['presentation'];
         foreach($failures as $failure)$answer['limitations'][]=str_starts_with($failure,'permission:')?($sq?'Një burim nuk është i disponueshëm me lejet e tua.':'A source is unavailable with your permissions.'):$failure;
         if(!$answer['text'])$answer['text']=$answer['cards']?($sq?'Dëshmi nga regjistrimet e kompanisë. Vlerësimet janë këshilluese, jo garanci.':'Evidence from company records. Forecasts are advisory, not guarantees.'):($sq?'Nuk ka dëshmi të mjaftueshme për këtë pyetje.':'There is insufficient recorded evidence for this question.');
         if(!$entity)foreach($answer['cards'] as $card)if(($card['entity']['type']??'')==='decision'){$context['first_decision']=$card['entity']['id'];break;}
-        if($answer['cards'])$context['result_entities']=array_values(array_filter(array_column($answer['cards'],'entity')));
+        if($answer['cards'])$context['result_entities']=array_values(array_filter(array_map(fn($c)=>!empty($c['entity'])?$c['entity']+['title'=>$c['title']]:null,$answer['cards'])));
         if($answer['choices'])$context['result_entities']=$answer['choices'];
+        $context['last_intent']=$intent;
         $answer['context']=$context['entity']??null;
         $answer['context_entities']=array_values(collect([$context['product']??null,$context['entity']??null])->filter()->unique(fn($e)=>$e['type'].':'.$e['id'])->all());
         $answer['follow_ups']=match($intent){
@@ -283,6 +414,21 @@ final class IntelligenceAssistantService
     {
         $group=fn($x)=>in_array(Str::lower($x),['m','meter','metre','metres','meters','metra'])?'m':(in_array(Str::lower($x),['pcs','piece','pieces','cope'])?'pcs':Str::lower($x));return $group($input)===$group($unit);
     }
+    /** Confident, simple reads use the same planner/tools without a model round-trip. */
+    private function preferDirect(array &$v,array $context):bool
+    {
+        $plan=app(AssistantPlanner::class)->plan($v['question'],$context);$q=$plan['normalized']??'';
+        if (($plan['intent'] ?? null) === 'sales' && preg_match('/\b(?:recorded sales|business sell)\b/', $q)
+            && ! preg_match('/\b(?:customer|product|rank|top|most)\b/', $q)) return true;
+        if(($plan['intent']??null)==='sales'&&preg_match('/last|this|today|yesterday|kaluar|kete|\d{4}-\d{2}/',$q)&&!preg_match('/customer|klient|january|february|march|april|may|june|july|august|september|october|november|december|janar|shkurt|mars|prill|maj|qershor|korrik|gusht|shtator|tetor|nentor|dhjetor/',$q))return true;
+        if(($plan['intent']??null)!=='record'||($plan['type']??null)!=='product'||preg_match('/why|pse|explain|compare|krahas/',$q))return false;
+        if(($v['entity']['type']??null)==='product')return true;
+        if(empty($plan['term']))return false;
+        $resolved=app(AssistantEntityResolver::class)->resolve($plan['term'],'product');
+        if(!$resolved['entity']||$resolved['fuzzy'])return false;
+        $v['entity']=$resolved['entity'];return true;
+    }
+
     private function authorizeEntity(array $entity):array
     {
         $type=$entity['type'];$id=(int)$entity['id'];$permission=match($type){'product'=>'inventory.view','customer'=>'debts.view','supplier'=>'supplier_catalogue.view','shipment'=>'shipments.view','decision'=>'analytics.view','task'=>'tasks.view','purchase_order'=>'purchase_orders.view','sales_order'=>'fulfillment.view','warehouse'=>'inventory.view'};
@@ -302,9 +448,9 @@ final class IntelligenceAssistantService
     }
     public function feedback(array $input):array
     {
-        $v=validator($input,['response_id'=>'required|uuid','helpful'=>'required|boolean','reason'=>'nullable|in:incorrect,unclear,missing_data,not_useful'])->validate();
-        abort_unless(ActivityLog::where('user_id',Auth::id())->where('action','assistant.query')->where('new_value->response_id',$v['response_id'])->exists(),404);
-        app(AnalyticsDataService::class)->audit('assistant.feedback',$v);return ['recorded'=>true];
+        $v=validator($input,['response_id'=>'required|uuid','helpful'=>'required|boolean','reason'=>'nullable|in:incorrect,unclear,missing_data,not_useful,misunderstood,wrong_product'])->validate();
+        $source=ActivityLog::where('user_id',Auth::id())->where('action','assistant.query')->where('new_value->response_id',$v['response_id'])->first();abort_unless($source,404);
+        app(AnalyticsDataService::class)->audit('assistant.feedback',$v+['provider'=>$source->new_value['provider']??config('assistant.provider'),'model'=>$source->new_value['model']??config('assistant.local_model'),'model_revision'=>$source->new_value['model_revision']??null,'tools'=>array_slice(array_column($source->new_value['tools']??[],'tool'),0,6),'vocabulary_version'=>'dc18-1-v1','automatic_training'=>false]);return ['recorded'=>true];
     }
     public function usage():array
     {

@@ -316,7 +316,8 @@ class OutboundService
         }$p->update(['outbound_dispatch_id'=>$dispatch->id]);}
         $sale=app(DailySaleService::class)->create(['sale_date'=>\App\Support\CompanyClock::today()->toDateString(),'notes'=>'Fulfillment '.$o->order_number.' / '.$dispatch->reference,'items'=>$lines,'idempotency_key'=>'outbound-sale-'.$dispatch->id],$values);
         foreach($sale->items()->orderBy('id')->get() as $index=>$saleItem)$packageItems[$index]->update(['daily_sale_item_id'=>$saleItem->id]);
-        $sale->update(['customer_id'=>$o->customer_id,'customer_name'=>$o->customer?->name??data_get($o->metadata,'guest_customer.name'),'status'=>'finalized','paid_amount'=>$o->payment_type==='cash'?$sale->total_amount:'0.00','payment_method'=>$o->payment_type==='cash'?'cash':null]);
+        $sale->update(['customer_id'=>$o->customer_id,'customer_name'=>$o->customer?->name??data_get($o->metadata,'guest_customer.name'),'paid_amount'=>$o->payment_type==='cash'?$sale->total_amount:'0.00','payment_method'=>$o->payment_type==='cash'?'cash':null]);
+        $sale=app(DailySaleService::class)->finalize($sale);
         $dispatch->update(['daily_sale_id'=>$sale->id,'total_amount'=>$sale->total_amount]);
         if($o->payment_type!=='cash'&&Money::compare($sale->total_amount,'0')>0){
             app(OperationalAccountingService::class)->reverseDailySale($sale,'Revenue recognized through customer ledger for '.$dispatch->reference);

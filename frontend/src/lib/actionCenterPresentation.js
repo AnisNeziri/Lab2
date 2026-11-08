@@ -1,5 +1,7 @@
 import { businessNumber } from '../utils/businessFormat.js'
 
+const warehouseIssues={allocation_incomplete:['Not enough stock to reserve','Stok i pamjaftueshëm për rezervim'],short_pick:['Picking quantity short','Sasi e pamjaftueshme për mbledhje'],delivery_failed:['Delivery needs review','Dorëzimi kërkon rishikim']}
+
 // Labels describe the failed control, rather than repeating its success criterion.
 const financeIssues = {
  critical_exceptions:['Unresolved critical accounting exceptions','Përjashtime kritike kontabël të pazgjidhura'],
@@ -44,6 +46,8 @@ const financeTasks = {
 }
 export function attentionTitle(item,language='en') {
  const sq=language==='sq',code=item.kind==='finance'?String(item.id).replace(/^dc2-/,''):''
+ const warehouse=warehouseIssues[item.exception_type||item.title]
+ if(warehouse)return warehouse[sq?1:0]
  if(financeIssues[code])return financeIssues[code][sq?1:0]
  const control=controlNames[code.replace(/^control_/,'')]
  if(code.startsWith('control_')&&control)return sq?`Diferencë me librin kryesor: ${control[1]}`:`${control[0]} differ from the General Ledger`
@@ -65,6 +69,7 @@ export function attentionPreview(items=[],now=Date.now()) {
  return [...groups.values()].sort((a,b)=>priority(a)-priority(b))
 }
 export function attentionDescription(item,language='en') {
+ if((item.exception_type||item.title)==='allocation_incomplete')return language==='sq'?'Stoku i lejuar nuk mbulon porosinë. Shqyrtoni rezervimet, furnizimin në ardhje ose përmbushjen e pjesshme.':'Eligible stock does not cover the order. Review reservations, incoming supply or partial fulfillment.'
  if(item.kind==='finance'&&/^\d+ items require review$/.test(item.description)){
   const count=Number(item.description.split(' ')[0]),n=businessNumber(count,language,0)
   return language==='sq'?`${n} ${count===1?'regjistrim kërkon':'regjistrime kërkojnë'} rishikim`:`${n} ${count===1?'record requires':'records require'} review`

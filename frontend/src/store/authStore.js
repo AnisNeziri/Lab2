@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { getCurrentUser } from '../api/login'
+import { storePurchasingDraft } from '../utils/purchasingDraft'
 
 function isTokenExpired(token) {
   if (!token) return true
@@ -81,6 +82,7 @@ export const useAuthStore = create((set, get) => ({
   },
 
   clearAuth: () => {
+    storePurchasingDraft(get().user, null)
     set({
       token: null,
       refreshToken: null,

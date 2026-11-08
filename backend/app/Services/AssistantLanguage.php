@@ -11,6 +11,9 @@ final class AssistantLanguage
     {
         $q = Str::lower(Str::ascii(trim($text)));
         $aliases = [
+            'sellable'=>'available','mujna'=>'can we','mundemi'=>'can we','tash'=>'now','ngec'=>'late','bo'=>'do','kqyr'=>'review','urgjent'=>'urgent','urgjente'=>'urgent','sot'=>'today','dje'=>'yesterday','furnitorve'=>'supplier','vonohet'=>'late','vonohen'=>'late',
+            'jon'=>'are','jemi'=>'we','pagu'=>'paid','paguar'=>'paid','stof'=>'fabric',
+            'mbetur'=>'remaining','metun'=>'remaining','shit'=>'sold','shitun'=>'sold',
             'quotatoin'=>'quotation','quotatoins'=>'quotations','qutation'=>'quotation',
             'suplier'=>'supplier','suppliers'=>'supplier','furnitor'=>'supplier','furnitori'=>'supplier','furnitoret'=>'supplier',
             'costumer'=>'customer','costumers'=>'customer','customers'=>'customer','client'=>'customer','klient'=>'customer','klienti'=>'customer','kliente'=>'customer','klientet'=>'customer','konsumator'=>'customer',
@@ -20,7 +23,9 @@ final class AssistantLanguage
             'depo'=>'warehouse','depot'=>'warehouse','magazine'=>'warehouse','produkt'=>'product','produkte'=>'product','produkti'=>'product','produktet'=>'product','artikull'=>'product',
             'porosi'=>'order','porosia'=>'order','porosite'=>'order','kines'=>'china','kina'=>'china','kine'=>'china',
             'osht'=>'is','eshte'=>'is','qka'=>'what','cfare'=>'what','cilat'=>'which','cili'=>'which','cilin'=>'which','sa'=>'how much',
-            'porosit'=>'order','porosis'=>'order','duhet'=>'should','me'=>'me','mbet'=>'run out','met'=>'run out','vonese'=>'late','vone'=>'late','vonohet'=>'late','jane'=>'are',
+            'porosit'=>'order','porosis'=>'order','duhet'=>'should','me'=>'me','mbet'=>'remaining','met'=>'remaining','vonese'=>'late','vone'=>'late','vonohet'=>'late','jane'=>'are',
+            'custmers'=>'customers','custmer'=>'customer','ows'=>'owes','mony'=>'money','whch'=>'which',
+            'cilet'=>'which','kliente'=>'customers','klientet'=>'customers','klient'=>'customer','borxhe'=>'debt','kane'=>'have','kan'=>'have',
             'mbuloje'=>'cover','parashikimi'=>'forecast','parasë'=>'cash','parase'=>'cash','kush'=>'which','preket'=>'risk',
             'mbarojne'=>'run out','ku'=>'where','presim'=>'incoming','na'=>'us','shume'=>'much','kerkon'=>'needs','vemendjen'=>'attention','time'=>'my',
         ];
@@ -33,8 +38,8 @@ final class AssistantLanguage
         if (preg_match('/["“]([^"”]+)["”]/u', $question, $m)) return trim($m[1]);
         $q = $this->normalize($question);
         // Remove controlled question vocabulary, not arbitrary unknown words/names.
-        $q = preg_replace('/\b(?:whats|what|which|who|where|when|why|how|much|many|will|finish|show|find|check|tell|give|look|up|me|my|us|our|we|i|is|are|was|the|a|an|of|for|about|per|and|or|with|from|prej|in|on|at|to|by|has|have|kemi|qe|kan|ka|te|ma|madh|most|highest|risk|risks|high|low|stock|inventory|status|quantity|available|really|reserved|rezervuar|physical|lower|than|disponueshem|supplier|customer|product|products|warehouse|shipment|purchase|order|orders|po|sales|sale|debt|owes|owe|owing|better|best|can|cover|should|need|needs|buy|out|run|arrive|arrival|incoming|before|until|attention|late|days|day|dite|first|one|second|third|this|that|it|them|these|why|pse|explain|shpjego|please|sot|today|pa|ne|nga|do|does|get|si|cfare|cilat|cfar|need|happens|if|mund|i pari|pari)\b/', ' ', $q);
-        $q = preg_replace('/\b(?:ta|nese|may)\b/', ' ', $q);
+        $q = preg_replace('/\b(?:now|currently|whats|what|which|who|where|when|why|how|much|many|will|finish|show|find|check|tell|give|look|up|me|my|us|our|we|i|is|are|was|the|a|an|of|for|about|per|and|or|with|from|prej|in|on|at|to|by|has|have|kemi|qe|kan|ka|te|ma|madh|most|highest|risk|risks|high|low|stock|inventory|status|quantity|available|really|reserved|rezervuar|physical|lower|than|disponueshem|supplier|customer|product|products|warehouse|shipment|purchase|order|orders|po|sales|sale|debt|owes|owe|owing|better|best|can|cover|should|need|needs|buy|out|run|arrive|arrival|incoming|before|until|attention|late|days|day|dite|first|one|second|third|this|that|it|them|these|why|pse|explain|shpjego|please|sot|today|pa|ne|nga|do|does|get|si|cfare|cilat|cfar|need|happens|if|mund|i pari|pari)\b/', ' ', $q);
+        $q = preg_replace('/\b(?:ta|nese|may|fabric|metra|meters|metres|remaining|sold|paid|tu|u)\b/', ' ', $q);
         $q = preg_replace('/\b(?:only|vetem)\s+(?=\d)/', '', $q);
         $q = trim(preg_replace('/\s+/', ' ', preg_replace('/[?!.,:]/', ' ', $q)));
         // Scenario amounts and ordinal follow-ups are not entity names.

@@ -30,7 +30,8 @@ class PilotSupportService
         }
         if ($safe['company_id'] && (int) config('pilot.company_id') === (int) $safe['company_id']) {
             try {
-                DB::table('pilot_incidents')->insertOrIgnore($safe + ['occurred_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+                // Trace context stays in the safe log; the incident schema stores its support reference.
+                DB::table('pilot_incidents')->insertOrIgnore(array_diff_key($safe, ['traceparent' => true]) + ['occurred_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
             } catch (\Throwable) { /* Database outage: the safe file log above retains the reference. */
             }
         }

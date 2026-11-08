@@ -1,3 +1,12 @@
+/* Editable values follow the reading direction, including forms rendered in portals. */
+:where(.main-content, [role="dialog"]) :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
+  textarea,
+  select
+) {
+  text-align: start;
+}
+
 .main-content
   input:not([type="checkbox"]):not([type="file"]):not([type="radio"]):not(
     [type="hidden"]

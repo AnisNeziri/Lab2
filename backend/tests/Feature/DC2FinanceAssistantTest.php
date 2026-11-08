@@ -67,6 +67,26 @@ class DC2FinanceAssistantTest extends TestCase
         $this->assertSame($before, $this->books());
     }
 
+    public function test_overdue_customer_guidance_excludes_larger_balances_that_are_not_due(): void
+    {
+        $this->context();
+        $today = \App\Support\CompanyClock::today();
+        $debts = app(CustomerDebtService::class);
+        foreach ([['Late customer', 300, $today->subDay()], ['Current customer', 900, $today->addDay()]] as [$name, $amount, $due]) {
+            $customer = Customer::create($this->tenantAttributes(['name' => $name, 'current_debt' => 0, 'current_credit' => 0]));
+            $debts->addDebt($customer, ['amount' => $amount, 'transaction_date' => $today->subDays(2)->toDateString(), 'due_date' => $due->toDateString()]);
+        }
+
+        $reply = $this->postJson('/api/intelligence-assistant/ask', [
+            'question' => 'Cilët klientë kanë borxhe të vonuara?',
+            'language' => 'sq',
+        ])->assertOk()->assertJsonPath('intent', 'finance_receivables')
+            ->assertJsonCount(2, 'cards')
+            ->assertJsonPath('cards.1.title', 'Late customer');
+
+        $this->assertStringContainsString('300.00 EUR', $reply->json('text'));
+    }
+
     public function test_finance_tools_enforce_permissions_even_when_a_tool_name_is_requested_directly(): void
     {
         $this->actingAsApiUser('staff');

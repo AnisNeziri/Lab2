@@ -49,6 +49,11 @@ class InventoryIntelligenceTest extends TestCase {
         $this->observe($p,2,0);$this->sale($p,2,1);$this->observe($p,3,20);
         DailySalesDay::create($this->tenantAttributes(['sale_date'=>today()->subDays(3),'notes'=>'Recorded day']));
         $other=$p->replicate();$other->sku='ML-OTHER';$other->save();$this->sale($other,3,1);
+        // Simulate the actual explicit close at that time, rather than treating
+        // an individually finalized transaction or note as day-closure evidence.
+        $this->travelTo(today()->subDays(3)->endOfDay());
+        app(\App\Services\DailySaleService::class)->finalizeDay(today()->toDateString());
+        $this->travelBack();
         $this->observe($p,4,20);DailySalesDay::create($this->tenantAttributes(['sale_date'=>today()->subDays(4),'notes'=>'Notes do not prove zero demand']));
         $history=collect(app(InventoryIntelligenceDatasetAdapter::class)->history($p,today()->subDay()->toDateString())['series'])->keyBy('date');
         $this->assertSame(3.0,$history[today()->subDay()->toDateString()]['demand']);

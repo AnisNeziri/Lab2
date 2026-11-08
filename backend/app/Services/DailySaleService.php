@@ -219,7 +219,12 @@ class DailySaleService
 
     public function finalizeDay(string $date): Collection
     {
+        if (! \Illuminate\Support\Facades\Schema::hasColumns('daily_sales_days',['closed_at','closed_by','closed_sale_count','closed_last_sale_id'])) {
+            throw ValidationException::withMessages(['date'=>['Explicit day closure requires the reviewed database upgrade. Individual sale finalization remains available.']]);
+        }
         return DB::transaction(function () use ($date) {
+            // Same tenant lock as sale creation: closure cannot race a new sale.
+            DB::table('companies')->where('id',Auth::user()->company_id)->lockForUpdate()->first();
             $sales = DailySale::query()
                 ->whereDate('sale_date', $date)
                 ->orderBy('id')
@@ -232,6 +237,13 @@ class DailySaleService
 
             foreach ($sales->where('status', 'draft') as $sale) {
                 $this->finalize($sale);
+            }
+
+            $sales=$sales->map(fn($sale)=>$sale->fresh());
+            $day=DailySalesDay::whereDate('sale_date',$date)->lockForUpdate()->first()
+                ?? new DailySalesDay(['company_id'=>Auth::user()->company_id,'sale_date'=>$date]);
+            if(!$day->covers($sales)){
+                $day->fill(['closed_at'=>now(),'closed_by'=>Auth::id(),'closed_sale_count'=>$sales->count(),'closed_last_sale_id'=>$sales->max('id')])->save();
             }
 
             return DailySale::with(['items.product', 'creator:id,name'])
@@ -291,7 +303,7 @@ class DailySaleService
             'draft_total' => (float) $allSales->where('status', 'draft')->sum('total_amount'),
             'day_total' => (float) $allSales->sum('total_amount'),
             'day_quantity' => (float) $allSales->sum('total_quantity'),
-            'day_closed' => $allSales->isNotEmpty() && $allSales->every(fn (DailySale $sale) => $sale->status === 'finalized'),
+            'day_closed' => DailySalesDay::whereDate('sale_date',$targetDate)->first()?->covers($allSales) ?? false,
         ];
     }
 

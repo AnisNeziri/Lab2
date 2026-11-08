@@ -45,7 +45,7 @@ class AnalyticsFoundationTest extends TestCase {
         $this->travelTo(now()->subDays(35)->startOfDay());$p=$this->fixture();$this->sale($p,2,2);$date=today()->toDateString();
         $this->postJson('/api/analytics/snapshots')->assertOk();$count=AnalyticsSnapshot::count();$snapshot=AnalyticsSnapshot::where('entity_type','product')->firstOrFail();$facts=$snapshot->facts;
         $this->postJson('/api/analytics/snapshots')->assertOk()->assertJsonPath('reused',true);$this->assertSame($count,AnalyticsSnapshot::count());
-        $this->travel(15)->days();$this->sale($p,0,7);$p->update(['quantity'=>900]);$this->travel(21)->days();
+        $this->travel(15)->days();$this->sale($p,0,7);$p->update(['quantity'=>900]);$this->travel(21)->days();$this->renewApiSession(\App\Models\User::where('company_id',$this->apiCompany->id)->firstOrFail());
         $this->assertSame($facts,$snapshot->fresh()->facts);$this->assertEquals(100,$snapshot->fresh()->facts['available']);
         $this->getJson('/api/analytics/features?entity_type=product&entity_id='.$p->id.'&date='.$date)->assertOk()->assertJsonPath('features.product_sales_7d',2);
         $d=$this->postJson('/api/analytics/datasets',['from'=>$date,'to'=>$date])->assertCreated()->assertJsonPath('labelled_count',1)->json();
@@ -98,7 +98,7 @@ class AnalyticsFoundationTest extends TestCase {
         $this->travelTo(now()->subDays(35));$p=$this->fixture();$date=today()->toDateString();$this->postJson('/api/analytics/snapshots')->assertOk();
         $snapshot=AnalyticsSnapshot::where('entity_type','product')->firstOrFail();
         try{$snapshot->update(['facts'=>['available'=>999]]);$this->fail('Snapshot changed');}catch(\LogicException $e){$this->assertStringContainsString('immutable',$e->getMessage());}
-        $this->travel(36)->days();$p->update(['unit'=>'m']);
+        $this->travel(36)->days();$this->renewApiSession(\App\Models\User::where('company_id',$this->apiCompany->id)->firstOrFail());$p->update(['unit'=>'m']);
         $d=$this->postJson('/api/analytics/datasets',['from'=>$date,'to'=>$date])->assertCreated()->assertJsonPath('labelled_count',0)->json();
         $this->assertSame('unit_unverifiable',AnalyticsDatasetRow::where('analytics_dataset_id',$d['id'])->firstOrFail()->values['label_status']);
         $tool=app(\App\Services\AimsToolRegistry::class)->execute('get_product_performance',['product_id'=>$p->id]);

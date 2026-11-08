@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Cache;
 
 class PermissionService
 {
+    public const PLATFORM_ONLY = ['cms.manage', 'licensing.manage', 'deployment.view', 'deployment.manage'];
     /** Reuse authorization reads only inside a bounded read operation; never across requests or writes. */
     public function readScope(callable $read): mixed
     {
@@ -33,7 +34,7 @@ class PermissionService
 
     private function resolveForRole(string $roleSlug): array
     {
-        if ($roleSlug === 'integration' && auth()->user()?->role === 'integration') return app(\App\Services\Commercial\Entitlements::class)->filter(auth()->user()->integration_permissions ?? [], auth()->user());
+        if ($roleSlug === 'integration' && auth()->user()?->role === 'integration') return app(\App\Services\Commercial\Entitlements::class)->filter(array_diff(auth()->user()->integration_permissions ?? [], self::PLATFORM_ONLY), auth()->user());
         $permissions = Cache::remember("role_permissions:{$roleSlug}", 3600, function () use ($roleSlug) {
             $role = Role::where('slug', $roleSlug)->with('permissions')->first();
 
@@ -46,7 +47,8 @@ class PermissionService
         $user = auth()->user();
         if (!$user?->company_id) return $permissions;
         $overrides = \App\Models\Company::find($user->company_id)?->role_permissions ?? [];
-        return app(\App\Services\Commercial\Entitlements::class)->filter($overrides[$roleSlug] ?? $permissions, $user);
+        return app(\App\Services\Commercial\Entitlements::class)->filter(
+            array_diff($overrides[$roleSlug] ?? $permissions, self::PLATFORM_ONLY), $user);
     }
 
     public function forUser(\App\Models\User $user): array

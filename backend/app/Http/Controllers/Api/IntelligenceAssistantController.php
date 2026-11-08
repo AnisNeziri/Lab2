@@ -7,6 +7,9 @@ use Illuminate\Http\Request;
 
 final class IntelligenceAssistantController extends Controller
 {
+    public function supportPreview(Request $r,\App\Services\AssistantSupport $s){return response()->json($s->prepare($r->all()));}
+    public function supportSubmit(string $id,Request $r,\App\Services\AssistantSupport $s){return response()->json($s->submit($id,$r->all()));}
+    public function supportStatus(int $id,\App\Services\AssistantSupport $s){return response()->json($s->status($id));}
     public function ask(Request $r,IntelligenceAssistantService $s){return response()->json($s->ask($r->all()));}
     public function status(IntelligenceAssistantService $s){return response()->json($s->status());}
     public function confirm(Request $r,IntelligenceAssistantService $s){return response()->json($s->confirm($r->all()));}

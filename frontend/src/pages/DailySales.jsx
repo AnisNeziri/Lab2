@@ -191,7 +191,7 @@ export default function DailySales() {
   const loadProducts = useCallback(async ({ silent = false } = {}) => {
     const requestId = ++productsRequestRef.current;
     try {
-      const data = await getAllProducts();
+      const data = await getAllProducts({reference_only: !permissions.some(p=>['inventory.view','products.manage'].includes(p))});
       const list = data.data || data || [];
       if (requestId !== productsRequestRef.current) return list;
       setProducts(list);

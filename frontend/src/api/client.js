@@ -113,6 +113,10 @@ export async function parseApiResponse(response, fallbackMessage) {
     error.errors = businessFieldErrors(payload?.errors, document.documentElement.lang)
     error.code = payload?.code
     error.status = response.status
+    if (response.status === 429) {
+      const seconds = response.headers.get('retry-after')
+      if (/^\d+$/.test(seconds || '') && Number(seconds) <= 3600) error.retryAfterSeconds = Number(seconds)
+    }
     error.requestId = payload?.request_id || response.headers.get('x-request-id') || null
     if (response.status >= 500 && /^AIMS-[a-f0-9]{16}$/.test(payload?.reference || '')) {
       error.reference = payload.reference

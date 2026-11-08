@@ -29,7 +29,7 @@ class IntegrationController extends Controller
                 'enabled' => filled(config('tracking.aisstream.api_key')),
                 'health_state' => in_array($state, ['connected', 'subscribed', 'receiving'], true) ? 'healthy' : ($state === 'error' ? 'error' : 'degraded'),
                 'last_data_received_at' => $lastMessage ?: $ais->last_data_received_at,
-                'last_error' => $state === 'error' ? ($connection['message'] ?? $ais->last_error) : null,
+                'last_error' => $state === 'error' ? 'Tracking is unavailable. Contact the platform operator.' : null,
             ])->save();
         }
         IntegrationProvider::withoutGlobalScopes()->firstOrCreate(
@@ -43,6 +43,9 @@ class IntegrationController extends Controller
 
     public function update(Request $request, IntegrationProvider $integrationProvider): JsonResponse
     {
+        abort_unless((int)$integrationProvider->company_id === (int)$request->user()->company_id, 404);
+        abort_if($this->platformOwned($integrationProvider),
+            403, 'This provider is managed by the platform operator.');
         $validated = $request->validate([
             'display_name' => ['sometimes', 'string', 'max:120'], 'enabled' => ['sometimes', 'boolean'],
             'configuration' => ['sometimes', 'array'], 'credentials' => ['sometimes', 'array'],
@@ -84,6 +87,17 @@ class IntegrationController extends Controller
 
     private function safe(IntegrationProvider $provider): array
     {
-        return $provider->only(['id', 'category', 'provider_key', 'display_name', 'enabled', 'health_state', 'last_success_at', 'last_failure_at', 'last_data_received_at', 'last_error']);
+        $data = $provider->only(['id', 'category', 'provider_key', 'display_name', 'enabled', 'health_state', 'last_success_at', 'last_failure_at', 'last_data_received_at', 'last_error']);
+        if ($this->platformOwned($provider)) {
+            $data['last_error'] = $data['last_error'] ? 'Platform connection unavailable. Contact the platform operator.' : null;
+        }
+
+        return $data;
+    }
+
+    private function platformOwned(IntegrationProvider $provider): bool
+    {
+        return in_array($provider->provider_key, ['aisstream', 'ecb'], true)
+            || in_array($provider->category, ['vessel_tracking', 'fx_rates', 'ai', 'embedding'], true);
     }
 }

@@ -16,19 +16,20 @@ class EnsureCompanyContext
     public function handle(Request $request, Closure $next): mixed
     {
         $companyId = $request->user()?->company_id;
-        if (! $companyId) {
+        if (! $companyId || $request->user()?->role === 'superadmin') {
             return new JsonResponse([
-                'message' => 'Select an explicit company context before using company data.',
+                'message' => 'An authorized company account is required to access company data.',
             ], 403);
         }
 
-        if (!$request->isMethodSafe() && !$request->is('api/onboarding*','api/intelligence-assistant/ask')) {
+        if (!$request->isMethodSafe() && !$request->is('api/onboarding*','api/intelligence-assistant/ask','api/procurement/purchase-comparison')) {
             app(\App\Services\Onboarding\OnboardingGuard::class)->assertOperational();
         }
 
         // The desktop runtime has no permanent scheduler and a web scheduler
         // may have been offline. The first tenant request catches alerts up;
         // the durable state and cache throttle make this safe and unobtrusive.
+        if ($request->is('api/procurement/purchase-comparison')) return $next($request);
         $cacheKey = "inventory-expiry-sync:{$companyId}";
         try { $runCatchup = Cache::add($cacheKey, true, now()->addMinutes(10)); }
         catch (\Throwable) { $runCatchup = false; }

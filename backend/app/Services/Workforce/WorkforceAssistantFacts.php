@@ -20,7 +20,9 @@ class WorkforceAssistantFacts
     {
         $q = app(AssistantLanguage::class)->normalize($question);
         $q = strtr($q, ['payrol' => 'payroll', 'pension' => 'pension', 'employes' => 'employees']);
-        if (! preg_match('/payroll|payrolll|salary|salaries|payslip|employee|overtime|leave request|workforce|\bpaga\b|\bpage\b|pagat|pushim|punonjes|punetor|ore.*shtes/', $q)) {
+        $salaryLanguage = preg_match('/\b(?:payroll\w*|salar(?:y|ies)|payslips?|pag(?:a|at|e|en|ave)|rrog\w*)\b/', $q)
+            || preg_match('/\b(?:paguhet|paguhen|paid)\b.*\b(?:punetor\w*|puntor\w*|staff|staf\w*)\b/', $q);
+        if (! $salaryLanguage && ! preg_match('/employee|overtime|leave request|workforce|pushim|punonjes|punetor|ore.*shtes/', $q)) {
             return null;
         }
         if (preg_match('/\b(post|reverse|pay|approve|fire|dismiss|rank|change|send|submit|delete|posto|paguaj|mirato|largo|pusho|ndrysho|dorezo|fshi)\b/', $q)) {
@@ -32,7 +34,7 @@ class WorkforceAssistantFacts
         if (preg_match('/active|how many|sa.*pun|aktive|aktiv/', $q)) {
             return 'get_workforce_summary';
         }
-        if (preg_match('/unpaid|outstanding.*(?:salary|payroll)|nuk.*paguar|papaguar/', $q)) {
+        if (preg_match('/unpaid|outstanding.*(?:salary|payroll)|nuk.*(?:paguar|paid)|papaguar|\bpa (?:u )?(?:paid|pagu\w*)\b/', $q)) {
             return 'get_unpaid_payroll';
         }
 
@@ -66,7 +68,10 @@ class WorkforceAssistantFacts
             return [...$base, 'text' => $sq ? 'AIMS mund të shpjegojë të dhënat e autorizuara. Pagat, pagesat, pushimet dhe vendimet e punësimit kërkojnë veprim njerëzor në hapësirën përkatëse.' : 'AIMS can explain authorized workforce data. Payroll, payments, leave approvals and employment decisions require a person to act in the appropriate workspace.'];
         }
         if (! app(WorkforceService::class)->can(self::TOOLS[$intent])) {
-            return [...$base, 'state' => 'permission_denied', 'text' => $sq ? 'Nuk keni leje për këto të dhëna të personelit ose pagave.' : 'You do not have permission to view this workforce or payroll information.'];
+            $payroll = self::TOOLS[$intent] === 'payroll.view';
+            return [...$base, 'state' => 'permission_denied', 'text' => $payroll
+                ? ($sq ? 'Roli yt nuk ka leje për të parë të dhënat e pagave. Nëse të duhen për punë, kërko ndihmë nga personi përgjegjës për pagat.' : 'Your role cannot view payroll records. If you need them for work, ask the person responsible for payroll.')
+                : ($sq ? 'Roli yt nuk ka leje për këto të dhëna të personelit.' : 'Your role cannot view these workforce records.')];
         }
         $data = app(AimsToolRegistry::class)->execute($intent, [])['data'];
         $metrics = [];

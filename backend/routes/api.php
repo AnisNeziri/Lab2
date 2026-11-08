@@ -151,7 +151,12 @@ Route::prefix('pilot')->middleware(['auth.token','password.changed','company.con
 });
 
 Route::prefix('intelligence-assistant')->middleware(['auth.token','password.changed','company.context','throttle:30,1'])->group(function(){
+    Route::post('/visual-search',[\App\Http\Controllers\Api\AssistantMediaController::class,'search'])->middleware('throttle:6,1');
     $c=\App\Http\Controllers\Api\IntelligenceAssistantController::class;
+    Route::post('/screenshot',[\App\Http\Controllers\Api\AssistantMediaController::class,'screenshot'])->middleware('throttle:6,1');
+    Route::post('/support-preview',[$c,'supportPreview']);
+    Route::post('/support/{id}/submit',[$c,'supportSubmit'])->whereUuid('id');
+    Route::get('/support/{id}',[$c,'supportStatus'])->whereNumber('id');
     Route::get('/status',[$c,'status']);Route::post('/ask',[$c,'ask']);Route::post('/feedback',[$c,'feedback']);
     Route::post('/confirm',[$c,'confirm'])->middleware('permission:procurement.manage');
     Route::get('/usage',[$c,'usage'])->middleware('permission:activity.view');
@@ -224,7 +229,7 @@ Route::middleware('auth.token')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::post('/change-password', [AuthController::class, 'changePassword']);
     Route::get('/system/mode', [SystemController::class, 'mode']);
-    Route::get('/system/diagnostics', [\App\Http\Controllers\Api\ProductionController::class, 'diagnostics'])->middleware(['password.changed', 'company.context', 'role:admin', 'permission:system_integrity.view', 'throttle:6,1']);
+    Route::get('/system/diagnostics', [\App\Http\Controllers\Api\ProductionController::class, 'diagnostics'])->middleware(['password.changed', 'role:superadmin', 'permission:deployment.view', 'throttle:6,1']);
 
     Route::middleware('password.changed')->group(function () {
         Route::middleware('company.context')->group(function () {
@@ -430,10 +435,10 @@ Route::middleware('auth.token')->group(function () {
             Route::post('/inventory-counts/{inventoryCount}/cancel', [InventoryCountController::class, 'cancel'])->middleware('permission:inventory.counts.manage');
             Route::delete('/inventory-counts/{inventoryCount}', [InventoryCountController::class, 'destroy'])->middleware('permission:inventory.counts.manage');
 
-            Route::get('/products/lookup', [ProductController::class, 'lookup']);
-            Route::get('/products/export', [ProductController::class, 'export']);
+            Route::get('/products/lookup', [ProductController::class, 'lookup'])->middleware(\App\Http\Middleware\AuthorizeCatalogRead::class);
+            Route::get('/products/export', [ProductController::class, 'export'])->middleware(\App\Http\Middleware\AuthorizeCatalogRead::class.':export');
             Route::post('/products/{product}/image', [ProductController::class, 'uploadImage'])->middleware('permission:products.manage');
-            Route::get('/shelves/{locationCode}/products', [ProductController::class, 'byShelf']);
+            Route::get('/shelves/{locationCode}/products', [ProductController::class, 'byShelf'])->middleware(\App\Http\Middleware\AuthorizeCatalogRead::class.':inventory');
             Route::post('/products/import', [ImportController::class, 'products'])->middleware('permission:import.execute');
             Route::get('/warehouses', [WarehouseController::class, 'index']);
             Route::post('/warehouses', [WarehouseOperationsController::class, 'storeWarehouse'])->middleware('permission:warehouses.manage');
@@ -462,6 +467,8 @@ Route::middleware('auth.token')->group(function () {
             Route::post('/purchase-order-payments/{payment}/reverse', [PurchaseOrderController::class, 'reversePayment'])->middleware('permission:purchase_orders.payments');
             Route::post('/purchase-orders/{purchaseOrder}/receive', [PurchaseOrderController::class, 'receive'])->middleware('permission:purchase_orders.receive');
             Route::get('/purchase-orders/{purchaseOrder}/statement', [PurchaseOrderController::class, 'statement'])->middleware('permission:purchase_orders.export');
+            Route::post('/procurement/purchase-comparison', fn (\Illuminate\Http\Request $request, \App\Services\PurchaseComparisonService $service) => $service->compare($request->all()))
+                ->middleware('permission:procurement.view');
             Route::get('/purchase-requests', [ProcurementController::class, 'requests'])->middleware('permission:procurement.view');
             Route::post('/purchase-requests', [ProcurementController::class, 'storeRequest'])->middleware('permission:procurement.manage');
             Route::get('/purchase-requests/{purchaseRequest}', [ProcurementController::class, 'showRequest'])->middleware('permission:procurement.view');
@@ -595,10 +602,10 @@ Route::middleware('auth.token')->group(function () {
             Route::apiResource('categories', CategoryController::class)->only(['index', 'show']);
             Route::post('/categories', [CategoryController::class, 'store'])->middleware('permission:categories.manage');
             Route::match(['put', 'patch'], '/categories/{category}', [CategoryController::class, 'update'])->middleware('permission:categories.manage');
-            Route::apiResource('suppliers', SupplierController::class)->only(['index', 'show']);
+            Route::apiResource('suppliers', SupplierController::class)->only(['index', 'show'])->middleware(\App\Http\Middleware\AuthorizeCatalogRead::class.':suppliers');
             Route::post('/suppliers', [SupplierController::class, 'store'])->middleware('permission:suppliers.manage');
             Route::match(['put', 'patch'], '/suppliers/{supplier}', [SupplierController::class, 'update'])->middleware('permission:suppliers.manage');
-            Route::apiResource('products', ProductController::class)->only(['index', 'show']);
+            Route::apiResource('products', ProductController::class)->only(['index', 'show'])->middleware(\App\Http\Middleware\AuthorizeCatalogRead::class);
             Route::post('/products', [ProductController::class, 'store'])->middleware('permission:products.manage');
             Route::match(['put', 'patch'], '/products/{product}', [ProductController::class, 'update'])->middleware('permission:products.manage');
 
@@ -805,7 +812,7 @@ Route::prefix('security')->middleware(['auth.token','password.changed','throttle
     Route::delete('/sessions/{id}',[$c,'revokeSession'])->whereUuid('id'); Route::post('/sessions/revoke-others',[$c,'revokeOthers']);
     Route::put('/policy',[$c,'policy']); Route::put('/roles/{role}',[$c,'role']); Route::get('/audit-export',[$c,'export']);
 });
-Route::prefix('commercial')->middleware(['auth.token','password.changed','throttle:30,1'])->group(function(){
+Route::prefix('commercial')->middleware(['auth.token','password.changed','role:superadmin','throttle:30,1'])->group(function(){
     $c=\App\Http\Controllers\Api\CommercialController::class;
     Route::get('/',[$c,'show']); Route::post('/support-bundle',[$c,'support']); Route::put('/capabilities',[$c,'configure']);
     Route::post('/license',[$c,'license']); Route::post('/backup-checkpoint',[$c,'backup'])->middleware('throttle:3,1'); Route::post('/update-preflight',[$c,'preflight']);

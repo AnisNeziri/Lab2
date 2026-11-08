@@ -28,6 +28,7 @@ class PlatformTrace
     private int $queries = 0;
 
     private float $dbMs = 0;
+    private array $assistantMs = [];
 
     public function begin(?string $parent = null, int $company = 0): void
     {
@@ -38,6 +39,7 @@ class PlatformTrace
         $this->rootSpan = '';
         $this->queries = 0;
         $this->dbMs = 0;
+        $this->assistantMs = [];
         $this->trace = bin2hex(random_bytes(16));
         if (preg_match('/^00-([a-f0-9]{32})-([a-f0-9]{16})-[a-f0-9]{2}$/', $parent ?? '', $m) && $m[1] !== str_repeat('0', 32) && $m[2] !== str_repeat('0', 16)) {
             $this->trace = $m[1];
@@ -71,6 +73,7 @@ class PlatformTrace
 
     private function add(array $s, string $status): void
     {
+        if(str_starts_with($s['name'],'assistant.'))$this->assistantMs[$s['name']]=round(($this->assistantMs[$s['name']]??0)+(microtime(true)-$s['start'])*1000,3);
         if (count($this->spans) >= 64) {
             return;
         }$allowed = ['tool', 'channel', 'entity_type', 'entity_id', 'service_identity', 'result', 'route', 'method', 'http_status', 'db_system', 'db_operation', 'statement_fingerprint', 'cache_result', 'job_type', 'query_count', 'db_duration_ms', 'rule_id', 'event_id','request_id','support_reference'];
@@ -118,7 +121,7 @@ class PlatformTrace
 
     public function stats(): array
     {
-        return ['query_count' => $this->queries, 'db_duration_ms' => round($this->dbMs, 3)];
+        return ['query_count' => $this->queries, 'db_duration_ms' => round($this->dbMs, 3)]+($this->assistantMs?['assistant_stages_ms'=>$this->assistantMs]:[]);
     }
 
     public function jobStart(array $ctx, string $name): void

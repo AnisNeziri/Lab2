@@ -11,6 +11,13 @@ class CustomerDebtTransaction extends Model
 {
     use BelongsToCompany;
 
+    /** Customer-return credits settle AR/advances without receiving cash. */
+    public function scopeCashReceipts($query)
+    {
+        return $query->where('type', 'payment')
+            ->where(fn ($q) => $q->whereNull('source')->orWhere('source', '!=', 'customer_return'));
+    }
+
     protected $fillable = ['company_id', 'customer_id', 'user_id', 'daily_sale_id', 'invoice_id', 'payment_transaction_id', 'reversed_transaction_id', 'type', 'source', 'amount', 'balance_before', 'balance_after', 'credit_before', 'credit_after', 'transaction_date', 'due_date', 'payment_method', 'reference_number', 'idempotency_key', 'note', 'metadata', 'financial_account_id', 'financial_account_transaction_id'];
 
     protected function casts(): array

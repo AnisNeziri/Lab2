@@ -66,9 +66,12 @@ final class InventoryPlanningInsights {
   foreach(['safety_stock','reorder_point','expected_lead_demand','lead_days','desired_base_quantity','optimization_state'] as $key){$before=$previous[$key]??null;$after=$current[$key]??null;if($before!==$after)$rows[]=['field'=>$key,'previous'=>$before,'current'=>$after];}
   return $rows;
  }
- public function finance(string $currency):array {
+ public function recordedCash(string $currency):array {
   $accounts=FinancialAccount::where('is_active',true)->whereDate('opening_date','<=',today())->get();
   $matching=$accounts->where('currency',$currency);$cash=$matching->isEmpty()?null:Money::add(...$matching->map(fn($a)=>app(FinancialAccountService::class)->balance($a))->all());
+  return ['base_currency'=>$currency,'recorded_cash'=>$cash,'excluded_currency_accounts'=>$accounts->count()-$matching->count()];
+ }
+ public function finance(string $currency):array {
   $orders=PurchaseOrder::whereNotIn('status',['draft','cancelled'])->get();$remaining=[];$upcoming=[];$commitments=[];$unknown=0;
   foreach($orders as $po){$balance=Money::maximum(0,Money::subtract($po->total_amount,$po->total_paid));$rate=$po->currency===$currency?1:$po->exchange_rate;if(!$rate||$rate<=0){$unknown++;continue;}
    $base=Money::multiply($balance,$rate);$remaining[]=$base;if(in_array($po->status,['confirmed','ordered','partially_received']))$commitments[]=Money::multiply($po->total_amount,$rate);
@@ -78,6 +81,6 @@ final class InventoryPlanningInsights {
   // adding both would count linked supplier invoices twice.
   $expenses=Expense::with('payments')->where('status','posted')->where('document_type','purchase_invoice')->whereNull('purchase_order_id')->whereNotNull('supplier_id')->get();$unlinked=[];
   foreach($expenses as $e){$rate=$e->currency===$currency?1:$e->exchange_rate;if($rate>0)$unlinked[]=Money::multiply($e->remaining_amount,$rate);else $unknown++;}
-  return ['base_currency'=>$currency,'recorded_cash'=>$cash,'excluded_currency_accounts'=>$accounts->count()-$matching->count(),'po_outstanding'=>Money::add(...$remaining),'open_po_commitments'=>Money::add(...$commitments),'unlinked_supplier_documents'=>Money::add(...$unlinked),'upcoming_po_payments'=>$upcoming,'unknown_fx_records'=>$unknown,'qualification'=>'Recorded balances and separate source totals only; completeness, available credit and affordability are not inferred.'];
+  return $this->recordedCash($currency)+['po_outstanding'=>Money::add(...$remaining),'open_po_commitments'=>Money::add(...$commitments),'unlinked_supplier_documents'=>Money::add(...$unlinked),'upcoming_po_payments'=>$upcoming,'unknown_fx_records'=>$unknown,'qualification'=>'Recorded balances and separate source totals only; completeness, available credit and affordability are not inferred.'];
  }
 }

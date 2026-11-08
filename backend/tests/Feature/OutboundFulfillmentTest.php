@@ -31,6 +31,35 @@ class OutboundFulfillmentTest extends TestCase
         $o=$this->act($o,'pick',['allocation_id'=>$a['id'],'location_id'=>$a['location_id'],'inventory_lot_id'=>$a['inventory_lot_id'],'quantity'=>$a['quantity'],'barcode'=>'123456789012']);
         return $this->act($o,'pack',['items'=>[['allocation_id'=>$a['id'],'quantity'=>$a['quantity']]]]);
     }
+    public function test_assistant_keeps_order_through_product_lookup_and_refreshes_the_next_action(): void
+    {
+        [$product, $customer] = $this->fixture();
+        $order = $this->act($this->order($product, $customer), 'confirm');
+        $orderId = $order['id'];
+        $answer = $this->postJson('/api/intelligence-assistant/ask', [
+            'question' => 'Can you show fulfillment progress for this order?',
+            'entity' => ['type' => 'sales_order', 'id' => $orderId],
+        ])->assertOk()->assertJsonPath('tools.0.arguments.sales_order_id', $orderId)->json();
+        $ask = fn (string $question) => $this->postJson('/api/intelligence-assistant/ask', [
+            'question' => $question,
+            'conversation_id' => $answer['conversation_id'],
+        ])->assertOk()->assertJsonPath('read_only', true);
+
+        $ask('What keeps it from leaving?')->assertJsonPath('intent', 'work_blocked')
+            ->assertJsonPath('tools.0.arguments.sales_order_id', $orderId);
+        $ask('What is missing?')->assertJsonPath('intent', 'work_order_shortage')
+            ->assertJsonPath('context.id', $product['id']);
+        $ask('Do we have it at another warehouse?')->assertJsonPath('tools.0.tool', 'get_product_availability')
+            ->assertJsonPath('tools.0.arguments.product_id', $product['id']);
+
+        $order = $this->act($this->act($order, 'reserve'), 'allocate');
+        $ask('What should we do now?')->assertJsonPath('tools.0.arguments.sales_order_id', $orderId)
+            ->assertJsonPath('next_action.url', '/fulfillment?order='.$orderId)
+            ->assertJsonPath('next_action.label', 'Review picking');
+        $ask('Çka me shqyrtu tani?')->assertJsonPath('next_action.url', '/fulfillment?order='.$orderId);
+        $this->assertDatabaseCount('outbound_dispatches', 0);
+    }
+
     public function test_full_cycle_issues_stock_once_and_returns_to_quarantine_with_credit():void
     {
         [$p,$c]=$this->fixture();$o=$this->packed($p,$c);
@@ -38,11 +67,30 @@ class OutboundFulfillmentTest extends TestCase
         $key=(string)Str::uuid();$data=['package_ids'=>[$o['packages'][0]['id']],'idempotency_key'=>$key];
         $o=$this->act($o,'dispatch',$data);$this->act($o,'dispatch',$data);
         $this->assertEquals(16,Product::find($p['id'])->quantity);$this->assertCount(1,$o['dispatches']);
+        $sale=\App\Models\DailySale::findOrFail($o['dispatches'][0]['daily_sale_id']);
+        $this->assertNotNull($sale->finalized_at);
+        $this->assertTrue($sale->finalized_at->gte($sale->inventory_applied_at));
+        $sales=app(\App\Services\DailySaleService::class);
+        $this->assertFalse($sales->todaySummary()['day_closed']);
+        $sales->finalizeDay($sale->sale_date->toDateString());
+        $this->assertTrue($sales->todaySummary()['day_closed']);
+        $firstFinalized=$sale->finalized_at->toIso8601String();
+        $sales->finalizeDay($sale->sale_date->toDateString());
+        $this->assertSame($firstFinalized,$sale->fresh()->finalized_at->toIso8601String());
+        try{$sales->finalize($sale->fresh());$this->fail('A dispatched sale cannot be finalized twice.');}catch(\Illuminate\Validation\ValidationException){}
         $o=$this->act($o,'delivery',['dispatch_id'=>$o['dispatches'][0]['id'],'recipient'=>'Buyer']);$this->assertSame('delivered',$o['status']);
         $o=$this->act($o,'return',['stage'=>'requested','allocation_id'=>$o['allocations'][0]['id'],'quantity'=>2,'reason'=>'Damaged package']);$id=$o['returns'][0]['id'];
         $o=$this->act($o,'return',['stage'=>'authorized','return_id'=>$id]);$o=$this->act($o,'return',['stage'=>'received','return_id'=>$id]);$o=$this->act($o,'return',['stage'=>'resolved','return_id'=>$id,'disposition'=>'quarantine']);
         $this->assertEquals(18,Product::find($p['id'])->quantity);$this->assertEquals(2,\App\Models\WarehouseStock::where('product_id',$p['id'])->sum('quarantine_quantity'));
         $this->assertEquals(10,$c->fresh()->current_credit);$this->assertSame('resolved',$o['returns'][0]['status']);
+        // A return settled as customer credit is not another cash receipt.
+        $cash=app(\App\Services\AccountingService::class)->reconciliation(false)['rows']['cash_bank'];
+        $this->assertSame('20.00',$cash['operational_amount']);
+        $this->assertSame('20.00',$cash['gl_amount']);
+        $dated=app(\App\Services\DatedFinancialReconciliation::class)->report(\App\Support\CompanyClock::today()->toDateString());
+        $this->assertSame('20.00',collect($dated['rows'])->firstWhere('control','cash_bank')['operational_amount']);
+        $flow=app(\App\Services\FinanceService::class)->cashFlow(today()->toDateString(),today()->toDateString());
+        $this->assertEquals(0,$flow['summary']['customer_debt_payments']);
     }
     public function test_partial_reservation_and_release_never_over_reserve_or_reduce_physical_stock():void
     {

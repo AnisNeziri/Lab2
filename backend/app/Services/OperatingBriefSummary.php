@@ -12,6 +12,23 @@ use Illuminate\Support\Facades\Auth;
 class OperatingBriefSummary
 {
     private array $permissions = [];
+
+    public static function displayTitle(array $item, bool $sq): ?string
+    {
+        $title = $item['title'] ?? null;
+        if (! $sq || ($item['source_type'] ?? null) !== 'FinancialIntelligenceSnapshot') {
+            return $title;
+        }
+        return match ($title) {
+            'Review financial intelligence: cash pressure detected' => 'Shqyrto rrezikun e mungesës së parave',
+            'Review financial intelligence: receivable risk changed' => 'Shqyrto ndryshimin e rrezikut të arkëtimit',
+            'Review financial intelligence: large commitment upcoming' => 'Shqyrto angazhimet e mëdha në afrim',
+            'Review financial intelligence: forecast materially changed' => 'Shqyrto ndryshimin e rëndësishëm në parashikim',
+            'Review financial intelligence: data quality issue' => 'Shqyrto problemin me cilësinë e të dhënave',
+            default => $title,
+        };
+    }
+
     private function can(string $permission): bool
     {
         return in_array($permission, $this->permissions, true);

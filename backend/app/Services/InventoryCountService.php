@@ -34,6 +34,7 @@ class InventoryCountService
             ->with(['warehouse:id,name,code', 'location:id,name,code,path', 'creator:id,name', 'approver:id,name'])
             ->withCount('items')
             ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
+            ->when($filters['statuses'] ?? null, fn ($query, $statuses) => $query->whereIn('status', $statuses))
             ->when($filters['warehouse_id'] ?? null, fn ($query, $warehouseId) => $query->where('warehouse_id', $warehouseId))
             ->latest('id')
             ->paginate($filters['per_page'] ?? 20);

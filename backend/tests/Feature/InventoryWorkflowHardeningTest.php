@@ -334,6 +334,28 @@ class InventoryWorkflowHardeningTest extends TestCase
             ->assertUnprocessable()->assertJsonValidationErrors('warehouse');
     }
 
+    public function test_supplier_credit_return_reloads_decorated_expense_and_completes_exactly_once(): void
+    {
+        $this->actingAsApiUser();$this->getJson('/api/me')->assertOk();
+        [$warehouse,$product]=$this->simpleInventory(0,['purchase_price'=>2]);
+        $supplier=Supplier::create(['name'=>'Return supplier']);$orders=app(\App\Services\PurchaseOrderService::class);
+        $po=$orders->create(['supplier_id'=>$supplier->id,'warehouse_id'=>$warehouse->id,'ordered_at'=>today()->toDateString(),'currency'=>'EUR','status'=>'ordered','items'=>[['product_id'=>$product->id,'description'=>$product->name,'unit'=>'pcs','quantity'=>2,'unit_price'=>2]]]);
+        $orders->receive($po,['received_at'=>today()->toDateString(),'items'=>[['id'=>$po->items->first()->id,'quantity'=>2]],'idempotency_key'=>'supplier-return-receipt']);
+        $receipt=\App\Models\GoodsReceipt::with('items')->firstOrFail();$matching=app(\App\Services\SupplierInvoiceMatchingService::class);
+        $bill=$matching->create(['supplier_id'=>$supplier->id,'purchase_order_id'=>$po->id,'vendor_name'=>$supplier->name,'vendor_business_number'=>'TEST-RETURN','document_type'=>'purchase_invoice','document_number'=>'RETURN-BILL','source_type'=>'domestic','asset_treatment'=>'ordinary','category'=>'inventory','invoice_date'=>today()->toDateString(),'supply_date'=>today()->toDateString(),'received_date'=>today()->toDateString(),'due_date'=>today()->addDays(21)->toDateString(),'currency'=>'EUR','exchange_rate'=>1,'net_amount'=>4,'vat_rate'=>0,'vat_amount'=>0,'vat_treatment'=>'non_vat','input_vat_eligible'=>false,'deductible_vat_amount'=>0,'goods_receipt_ids'=>[$receipt->id],'items'=>[['purchase_order_item_id'=>$po->items->first()->id,'product_id'=>$product->id,'description'=>$product->name,'quantity'=>2,'unit'=>'pcs','unit_price'=>2,'vat_rate'=>0]]]);
+        $matching->approve($bill,'Verified original receipt and supplier invoice');
+        $service=app(\App\Services\InventoryReturnService::class);
+        $return=$service->create(['type'=>'supplier','supplier_id'=>$supplier->id,'purchase_order_id'=>$po->id,'goods_receipt_id'=>$receipt->id,'financial_resolution'=>'supplier_credit','financial_amount'=>2,'currency'=>'EUR','reference_number'=>'RETURN-CREDIT','reason'=>'One item returned for credit','idempotency_key'=>'supplier-return','items'=>[['product_id'=>$product->id,'goods_receipt_item_id'=>$receipt->items->first()->id,'warehouse_id'=>$warehouse->id,'quantity'=>1,'condition'=>'sellable']]]);
+        $return=$service->complete($service->approve($service->submit($return)));
+        $this->assertSame('completed',$return->status);$this->assertEquals(1,$product->fresh()->quantity);
+        $credit=\App\Models\Expense::findOrFail($return->supplier_credit_expense_id);
+        $this->assertSame('posted',$credit->status);$this->assertEquals(2,$credit->gross_amount);$this->assertSame($bill->id,$credit->original_expense_id);
+        $this->assertSame('posted',$bill->fresh()->status);$this->assertEquals(4,$bill->gross_amount);
+        $before=[\App\Models\JournalEntry::count(),StockMovement::count(),\App\Models\Expense::count()];$service->complete($return);
+        $this->assertSame($before,[\App\Models\JournalEntry::count(),StockMovement::count(),\App\Models\Expense::count()]);
+        $this->assertTrue(app(\App\Services\AccountingService::class)->reconciliation(false)['all_reconciled']);
+    }
+
     private function simpleInventory(float $quantity = 0, array $productAttributes = []): array
     {
         $warehouse = Warehouse::create($this->tenantAttributes([

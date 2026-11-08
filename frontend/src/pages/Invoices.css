@@ -541,11 +541,6 @@
   animation: invoice-overlay-in 0.18s ease-out;
 }
 
-.invoice-overlay.is-drawer {
-  justify-items: end;
-  padding: 0;
-}
-
 @keyframes invoice-overlay-in { from { opacity: 0; } }
 
 .invoice-dialog {
@@ -562,24 +557,11 @@
 }
 
 .invoice-dialog.is-wide {
-  width: min(1180px, 96vw);
-}
-
-.invoice-dialog.invoice-drawer {
-  width: min(680px, 94vw);
-  height: 100vh;
-  max-height: none;
-  border-width: 0 0 0 1px;
-  border-radius: 0;
-  animation-name: invoice-drawer-in;
+  width: min(1180px, 100%);
 }
 
 @keyframes invoice-dialog-in {
   from { opacity: 0; transform: translateY(14px) scale(0.985); }
-}
-
-@keyframes invoice-drawer-in {
-  from { opacity: 0; transform: translateX(32px); }
 }
 
 .invoice-dialog-header {

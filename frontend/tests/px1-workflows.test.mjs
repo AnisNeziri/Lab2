@@ -34,3 +34,10 @@ test('shared API validation fields do not expose database errors',async()=>{
     return true
   })
 })
+test('the API client retains a server retry delay without retrying the request', async () => {
+  globalThis.window = { __AIMS_API_BASE__: '/api' }
+  globalThis.document = { documentElement: { lang: 'en' } }
+  const { parseApiResponse } = await import('../src/api/client.js')
+  const response = new Response('{}', { status: 429, headers: { 'content-type': 'application/json', 'retry-after': '15' } })
+  await assert.rejects(() => parseApiResponse(response, 'Request limited.'), { status: 429, retryAfterSeconds: 15 })
+})

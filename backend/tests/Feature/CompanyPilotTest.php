@@ -116,7 +116,9 @@ class CompanyPilotTest extends TestCase
         $plan = $this->plan();
         // DDL inside RefreshDatabase would implicitly commit MariaDB's test transaction.
         $schema = Schema::getFacadeRoot();
-        Schema::partialMock()->shouldReceive('hasTable')->andReturnUsing(fn ($table) => $table === '_aims_performance_manifest' || $schema->hasTable($table));
+        $proxy = \Mockery::mock($schema);
+        $proxy->shouldReceive('hasTable')->andReturnUsing(fn ($table) => $table === '_aims_performance_manifest' || $schema->hasTable($table));
+        Schema::swap($proxy);
         $this->getJson('/api/pilot')->assertOk()->assertJsonPath('readiness.source.state', 'SYNTHETIC_OR_DEMO');
         $this->putJson('/api/pilot/plan', array_replace($plan, ['attest_real_data' => true, 'source_document_ids' => [$this->document()->id]]))->assertUnprocessable();
         $this->putJson('/api/pilot/plan', array_replace($plan, ['status' => 'active']))->assertUnprocessable();
