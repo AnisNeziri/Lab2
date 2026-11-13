@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Models\{Expense, PurchaseOrder};
-use App\Support\{CompanyClock, Money};
+use App\Support\{CompanyClock, CompanyCurrency, Money};
 
 /** Reconciles known purchasing exposure for planning. The payable report remains the bill authority. */
 final class PurchasePortfolioFinance
@@ -12,9 +12,10 @@ final class PurchasePortfolioFinance
     {
         abort_unless(app(PurchaseComparisonService::class)->budgetAllowed(), 403);
         $today = CompanyClock::today();
+        $readiness = app(PurchasingFinancialEvidence::class)->assess();
         $cash = app(InventoryPlanningInsights::class)->recordedCash($currency);
         // The legacy payable report's carrying columns are EUR. Never relabel them in another currency.
-        $baseSupported = $currency === 'EUR';
+        $baseSupported = $currency === 'EUR' && CompanyCurrency::current() === 'EUR';
         $positions = app(PayableReports::class)->positions($today->toDateString())
             ->whereNotNull('supplier_id');
         $unconvertedBills = (clone $positions)->where('outstanding', '>', 0)->where('base_outstanding', '<=', 0)->count();
@@ -34,7 +35,6 @@ final class PurchasePortfolioFinance
         $unlinkedSuppliers = (clone $positions)->whereNull('purchase_order_id')->distinct()->pluck('supplier_id')->flip();
         $capture = function (string $reason, $order, $bills, ?string $residual, bool $requiresReview) use (&$counts, &$review, &$qualified) {
             $counts[$reason] = ($counts[$reason] ?? 0) + 1;
-            if (!$requiresReview && $bills->isEmpty()) return;
             $target = &$qualified;
             if ($requiresReview) $target = &$review;
             if (count($target) >= 50) return;
@@ -119,16 +119,32 @@ final class PurchasePortfolioFinance
             }
             unset($row);
         }
-        $combined = !$uncertain && !$unconvertedBills && $baseSupported ? Money::add($bills, Money::decimal($poExposure)) : null;
+        $readiness['status'] = match (true) {
+            $readiness['status'] === 'blocked' => 'blocked',
+            !$baseSupported => 'not_evaluated',
+            $uncertain > 0 || $unconvertedBills > 0 => 'partial',
+            default => 'verified',
+        };
+        $verified = $readiness['status'] === 'verified';
+        $combined = $verified ? Money::add($bills, Money::decimal($poExposure)) : null;
+        $sourceRows = $verified || !$baseSupported ? [] : array_map(function ($row) {
+            $row['recorded_order_residual'] = Money::maximum(0, Money::subtract($row['order_materials'], $row['recorded_po_payments']));
+            $row['unbilled_base'] = null;
+            return $row;
+        }, $qualified);
+        // Positive amounts remain visible as source evidence. A zero from incomplete records is unknown.
+        $sourceAmount = fn ($amount) => !$verified && $amount === '0.00' ? null : $amount;
         return $cash + [
-            'posted_supplier_bills' => $bills, 'linked_supplier_bills' => $linked, 'unlinked_supplier_bills' => $unlinked,
-            'supplier_bills_due_30_days_or_overdue' => $due,
+            'posted_supplier_bills' => $sourceAmount($bills), 'linked_supplier_bills' => $sourceAmount($linked),
+            'unlinked_supplier_bills' => $sourceAmount($unlinked), 'supplier_bills_due_30_days_or_overdue' => $sourceAmount($due),
             'matched_invoiced_materials' => Money::decimal($alreadyInvoiced),
-            'known_unbilled_po_exposure' => Money::decimal($poExposure),
+            'known_unbilled_po_exposure' => $verified ? Money::decimal($poExposure) : null,
+            'partial_po_source_subtotal' => !$verified && $baseSupported ? $sourceAmount(Money::decimal($poExposure)) : null,
+            'evidence_readiness' => $readiness,
             'unresolved_po_overlaps_or_fx' => $uncertain, 'currency_supported_for_payables' => $baseSupported,
             'unconverted_bills' => $unconvertedBills,
-            'commitment_evidence' => ['counts' => $counts, 'resolved' => $qualified, 'review' => $review,
-                'review_truncated' => $uncertain > count($review), 'resolved_truncated' => ($counts['fully_billed'] ?? 0) + ($counts['part_billed'] ?? 0) > count($qualified)],
+            'commitment_evidence' => ['counts' => $counts, 'resolved' => $verified ? $qualified : [], 'partial' => $sourceRows, 'review' => $baseSupported ? $review : [],
+                'review_truncated' => $uncertain > count($review), 'resolved_truncated' => array_sum(array_intersect_key($counts, array_flip(['fully_billed', 'part_billed', 'unbilled']))) > count($qualified)],
             'combined_known_obligations' => $combined,
             'planning_cash_after_obligations' => $combined === null || $cash['recorded_cash'] === null || $cash['excluded_currency_accounts']
                 ? null : Money::subtract($cash['recorded_cash'], $combined),

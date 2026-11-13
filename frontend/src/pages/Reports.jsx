@@ -526,7 +526,7 @@ function Reports({ recoveryOnly = false }) {
                     <label className={`import-file-label ${!canImport || busyKey ? 'is-disabled' : ''}`}>
                       {busyKey === `import-${list.id}` ? <LoaderCircle className="is-spinning" size={14} /> : <Upload size={14} />}
                       {busyKey === `import-${list.id}` ? t('reports.importing') : t('reports.chooseFile')}
-                      <input type="file" accept=".csv,.json,.xlsx,.txt" hidden disabled={!canImport || Boolean(busyKey)} onChange={(event) => handleImport(list.id, event)} />
+                      <input type="file" accept=".csv,.json,.xlsx,.txt" disabled={!canImport || Boolean(busyKey)} onChange={(event) => handleImport(list.id, event)} />
                     </label>
                   ) : <span className="reports-export-only">{t('reports.exportOnly')}</span>}</td>
                 </tr>

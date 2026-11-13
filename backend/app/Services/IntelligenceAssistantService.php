@@ -24,10 +24,13 @@ final class IntelligenceAssistantService
             $id=$reply['conversation_id'];$context=$this->contextCache()->get($this->key($id),[]);
             $context['permission_scope']=hash('sha256',json_encode(app(PermissionService::class)->forRole(Auth::user()->role)));
             $context['last_intent']=$reply['intent']??null;
-            if (isset($reply['purchase_comparison_reference'])) $context['purchase_comparison'] = $reply['purchase_comparison_reference'];
-            else unset($context['purchase_comparison']);
-            if (isset($reply['purchase_portfolio_reference'])) $context['purchase_portfolio'] = $reply['purchase_portfolio_reference'];
-            else unset($context['purchase_portfolio']);
+            foreach (['purchase_comparison', 'purchase_portfolio'] as $focus) {
+                if (isset($reply[$focus.'_reference'])) {
+                    $context[$focus] = $reply[$focus.'_reference'];
+                    $context['purchase_focus'] = $focus;
+                }
+            }
+            // Retain bounded inputs for an explicit return to the plan. These are never source results.
             if (isset($reply['fulfillment_reference'])) {
                 $context['fulfillment_order_id'] = (int) $reply['fulfillment_reference'];
             } else {
@@ -93,6 +96,8 @@ final class IntelligenceAssistantService
         $workforce=app(\App\Services\Workforce\WorkforceAssistantFacts::class);
         if($workforceIntent=$workforce->intent($v['question'])) return $workforce->reply($workforceIntent,$id,$sq);
         if ($portfolio = app(PurchasePortfolioAssistant::class)->answer($v, $id, $context)) return $portfolio;
+        $finance = app(FinanceAssistantFacts::class);
+        if ($finance->fundingQuestion($v['question'])) return $finance->reply('finance_purchase_capacity', $v['question'], $id, $sq);
         if ($comparison = app(PurchaseComparisonAssistant::class)->answer($v, $id, $context)) return $comparison;
         if (preg_match('/\b(?:cost price|purchase price|unit cost|cmimi i blerjes|kostoja per njesi)\b/', app(AssistantLanguage::class)->normalize($v['question']))) {
             $permitted = $this->can('analytics.finance');
@@ -124,7 +129,6 @@ final class IntelligenceAssistantService
         if ($work=app(AssistantWorkGuidance::class)->reply($v,$id,$context)) return $work;
         if ($operating=app(OperatingAssistantFacts::class)->reply($v,$id)) return $operating;
         $factIntent=app(AssistantPlanner::class)->plan($v['question'])['intent'];
-        $finance=app(FinanceAssistantFacts::class);
         if($v['clear_context']??false)$finance->clear($id);
         if($financeIntent=$finance->intent($v['question'],$id)){
             if($financeIntent==='finance_action_boundary'||(!isset($v['entity'])&&!isset($v['customer_id'])))return $finance->reply($financeIntent,$v['question'],$id,$sq);
@@ -353,9 +357,26 @@ final class IntelligenceAssistantService
             }
         }elseif($intent==='prepare') {
             if(($entity['type']??null)==='product'){
-                $read('get_inventory_plan',['product_id'=>$entity['id']]);
-                $answer['text']=$sq?'Hap planifikimin për të shqyrtuar sasinë dhe dëshmitë. Pa rekomandim të kualifikuar dhe konfirmim njerëzor nuk përgatitet kërkesë blerjeje.':'Open planning to review quantity and evidence. A qualified recommendation and human confirmation are required before preparing a Purchase Request.';
-                $answer['limitations'][]=$sq?'Nuk u krijua kërkesë, porosi apo pagesë.':'No request, order or payment was created.';
+                $data = $read('get_product_availability', ['product_id' => $entity['id']]);
+                if ($data && $this->can('procurement.view') && $this->can('procurement.manage')) {
+                    $product = $data['product'];
+                    $answer['text'] = $sq
+                        ? 'Hap parapamjen për '.$product['name'].'. Plotëso sasinë në '.$product['unit'].' dhe kontrollo datën kur të duhet.'
+                        : 'Open the request preview for '.$product['name'].'. Enter the quantity in '.$product['unit'].' and review the required date.';
+                    $answer['next_action'] = [
+                        'url' => '/procurement#purchase-request-form',
+                        'label' => $sq ? 'Hap parapamjen e kërkesës' : 'Open purchase request preview',
+                        'purchase_draft' => [
+                            'currency' => \App\Support\CompanyCurrency::current(),
+                            'required_by' => '',
+                            'notes' => '',
+                            'items' => [['product_id' => $product['id'], 'description' => $product['name'],
+                                'unit' => $product['unit'], 'quantity' => '', 'estimated_unit_price' => '']],
+                        ],
+                    ];
+                } else {
+                    $answer['text'] = $sq ? 'Kërkesa e blerjes kërkon qasje te produkti dhe leje për të përgatitur kërkesa.' : 'Preparing a purchase request requires product access and permission to manage requests.';
+                }
             }else
             if(!$needEntity(['decision'])) {
                 $d=$read('get_decision',['decision_id'=>$entity['id']]);$alternative=$d['recommended']['key']??null;

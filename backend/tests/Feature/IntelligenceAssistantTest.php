@@ -198,6 +198,18 @@ class IntelligenceAssistantTest extends TestCase
         $this->getJson('/api/intelligence-assistant/usage')->assertOk()->assertJsonPath('queries',1)->assertJsonPath('feedback.not_helpful',1)->assertJsonMissingPath('questions');
         $this->login('staff');$this->postJson('/api/intelligence-assistant/feedback',['response_id'=>$r['id'],'helpful'=>true])->assertNotFound();$this->getJson('/api/intelligence-assistant/usage')->assertForbidden();
     }
+
+    public function test_purchase_request_preview_prefills_an_authorized_product_without_writing(): void
+    {
+        $this->login();
+        $product = Product::create(['name' => 'Preview fabric', 'sku' => 'DC32-PREVIEW', 'unit' => 'm', 'price' => 4]);
+        $this->ask('Prepare a purchase request for Preview fabric.', ['entity' => ['type' => 'product', 'id' => $product->id]])
+            ->assertOk()->assertJsonPath('next_action.url', '/procurement#purchase-request-form')
+            ->assertJsonPath('next_action.purchase_draft.items.0.product_id', $product->id)
+            ->assertJsonPath('next_action.purchase_draft.items.0.quantity', '')
+            ->assertJsonPath('read_only', true);
+        $this->assertDatabaseCount('purchase_requests', 0);
+    }
     public function test_periods_use_user_timezone_and_calendar_boundaries():void{
         $this->login();$p=app(AssistantPlanner::class);$this->assertSame('2026-10-05',$p->period('this week','Europe/Budapest')['from']);$this->assertSame('2026-10-11',$p->period('this week','Europe/Budapest')['to']);
         $this->ask('Sales this month')->assertOk()->assertJsonPath('sources.0.tool','get_sales_analytics');

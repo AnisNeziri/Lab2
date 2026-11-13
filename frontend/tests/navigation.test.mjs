@@ -17,13 +17,13 @@ test('workflow navigation preserves all protected workspaces without duplicate e
   assert.equal(navigationContext('/action-center').group.id, 'overview')
   assert.equal(navigationContext('/automation-studio').group.id, 'settings')
   const intelligence = navigationGroups.find(group => group.id === 'intelligence').items.map(entry => entry.id)
-  assert.ok(intelligence.indexOf('inventory-planning') < intelligence.indexOf('decision-center'))
-  assert.ok(intelligence.indexOf('decision-center') < intelligence.indexOf('supply-optimizer'))
+  assert.ok(intelligence.includes('inventory-intelligence'))
+  assert.ok(!intelligence.includes('inventory-planning') && !intelligence.includes('decision-center'))
 })
 
 test('deep views select the right navigation item and inherit route permissions', () => {
-  assert.equal(navigationKey('/inventory-intelligence?view=planning&product=7'), 'inventory-planning')
-  assert.equal(navigationKey('/inventory-intelligence?view=decisions'), 'decision-center')
+  assert.equal(navigationKey('/inventory-intelligence?view=planning&product=7'), 'inventory-intelligence')
+  assert.equal(navigationKey('/inventory-intelligence?view=decisions'), 'inventory-intelligence')
   assert.equal(navigationKey('/control-tower/11'), 'control-tower')
   assert.equal(canOpenPage('/control-tower/11?shipment=11', []), false)
   assert.equal(canOpenPage('/inventory-intelligence?view=planning', []), false)

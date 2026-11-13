@@ -17,9 +17,9 @@
     "electron": "41.10.7",
     "php_windows_build": "8.3.36-1"
   },
-  "build_id": "1.1.2-rc.1-dc8-review",
-  "release_date": "2026-10-31",
-  "schema_level": "2026_10_31_000004_bound_legacy_token_lifetime",
+  "build_id": "1.1.2-rc.1-dc33-review",
+  "release_date": null,
+  "schema_level": "2026_11_04_000001_record_daily_sales_closure_provenance",
   "minimum_runtime": {
     "php": "8.3.36",
     "node": "22.14.0",

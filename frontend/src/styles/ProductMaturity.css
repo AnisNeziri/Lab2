@@ -46,7 +46,11 @@
 .workspace-disclosure-body > :first-child { margin-top: 0; }
 .workspace-disclosure-body > :last-child { margin-bottom: 0; }
 .app .main-content .intelligence-workflow { margin: 16px 0; padding: 10px 16px; border: 0; border-radius: 8px; }
-.app .intelligence-workflow > summary > span { display: inline; margin-left: 12px; }
+.app .intelligence-workflow > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; list-style: none; }
+.app .intelligence-workflow > summary::-webkit-details-marker { display: none; }
+.app .intelligence-workflow > summary svg { flex-shrink: 0; }
+.app .intelligence-workflow[open] > summary svg { transform: rotate(180deg); }
+.app .intelligence-workflow > summary small { display: inline; margin-left: 12px; color: var(--text-muted); font-weight: 400; font-size: .78rem; }
 .app .main-content :is(.learning-status,.fi-notice,.csi-notice,.optimizer-notice) { padding: 12px 16px; border-radius: var(--ui-radius-sm); font-size: 13px; }
 .app .main-content .learning-metrics article { padding: 16px; border-radius: var(--ui-radius); }
 .app .learning-metrics strong { margin-top: 8px; font-size: 26px; }
@@ -79,7 +83,7 @@
   :root { --ui-page-gutter: 16px; --ui-panel-padding: 16px; }
   .app .main-content { padding-top: 24px; }
   .app .workspace-context { min-height: 40px; padding-left: 56px; }
-  .app .intelligence-workflow > summary > span { display: block; margin: 4px 0 0; }
+  .app .intelligence-workflow > summary small { display: block; margin: 4px 0 0; }
 }
 @media(max-width:600px) {
   :root { --ui-page-gutter: 12px; --ui-section-gap: 16px; }

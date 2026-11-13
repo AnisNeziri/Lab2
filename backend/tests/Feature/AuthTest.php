@@ -43,6 +43,26 @@ class AuthTest extends TestCase
         ]);
     }
 
+    public function test_concurrent_logins_remain_valid_until_identity_logout(): void
+    {
+        $company = Company::factory()->create();
+        $password = 'Independent-test-sessions-2026!';
+        $owner = User::factory()->create(['company_id' => $company->id, 'password' => $password, 'email_verified_at' => now()]);
+        $other = User::factory()->create(['company_id' => $company->id, 'password' => $password, 'email_verified_at' => now()]);
+        $login = fn (User $user) => $this->postJson('/api/login', ['email' => $user->email, 'password' => $password])
+            ->assertOk()->json('access_token');
+        $browser = $login($owner);
+        $runner = $login($owner);
+        $independent = $login($other);
+
+        $this->assertNotSame($browser, $runner);
+        $this->withToken($browser)->getJson('/api/me')->assertOk();
+        $this->withToken($runner)->getJson('/api/me')->assertOk();
+        $this->withToken($browser)->postJson('/api/logout')->assertOk();
+        $this->withToken($runner)->getJson('/api/me')->assertUnauthorized();
+        $this->withToken($independent)->getJson('/api/me')->assertOk();
+    }
+
     public function test_admin_can_create_user_with_temporary_password(): void
     {
         $this->actingAsApiUser('admin');

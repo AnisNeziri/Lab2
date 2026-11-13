@@ -108,7 +108,7 @@ html.dark .main-content :is(.workspace-primary,.form-actions button[type='submit
 .intelligence-workflow li { display: flex; align-items: flex-start; gap: .55rem; min-width: 0; }
 .intelligence-workflow li > span { display: grid; place-items: center; flex: 0 0 24px; height: 24px; border: 1px solid var(--border-color); border-radius: 50%; color: var(--primary-color); font-size: .75rem; font-weight: 700; }
 .intelligence-workflow li > p { margin: .05rem 0 0; color: var(--text-muted); font-size: .8rem; line-height: 1.5; }
-.main-content .intelligence-workflow .intelligence-glossary { padding: .6rem 0 0; margin-top: .8rem; }
+.main-content .intelligence-workflow .intelligence-glossary { margin-top: .8rem; }
 .intelligence-glossary summary { color: var(--text-muted); font-size: .78rem; cursor: pointer; }
 .intelligence-glossary dl { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .75rem; }
 .intelligence-glossary dt { font-weight: 650; font-size: .8rem; }
@@ -208,7 +208,6 @@ html.dark .product-lifecycle-discontinued,html[data-theme='dark'] .product-lifec
 .command-palette button:hover { transform: none; box-shadow: none; }
 .command-palette-footer button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
 .intelligence-workflow > summary { cursor: pointer; font-size: .85rem; font-weight: 650; color: var(--text-color); }
-.intelligence-workflow > summary > span { display: block; color: var(--text-muted); font-weight: 400; font-size: .78rem; margin-top: .3rem; }
 .intelligence-workflow:not([open]) { padding: .7rem 1rem; }
 .main-content .intelligence-nav { gap: .4rem; padding-top: .25rem; }
 .intelligence-nav > a { padding: .65rem .85rem; }

@@ -12,14 +12,17 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 /** Carries only authorized input assumptions. All calculation happens in the typed read tool. */
 final class PurchasePortfolioAssistant
 {
-    private const QUANTITY = '(\d+(?:[.,]\d{1,3})?)\s*(metres?|meters?|metra|m|pieces?|pcs|cope|kg|rolls?|rrotulla)\b';
+    private const QUANTITY = PurchaseConversationInput::QUANTITY;
 
     public function answer(array $input, string $conversation, array $context): ?array
     {
         if (isset($input['simulation_id']) || isset($input['customer_id']) || isset($input['entity']) && $input['entity']['type'] !== 'product') return null;
         $question = $input['question'];
-        $q = app(AssistantLanguage::class)->normalize($question);
-        $prior = ($context['last_intent'] ?? null) === 'purchase_portfolio' ? ($context['purchase_portfolio'] ?? []) : [];
+        $language = app(AssistantLanguage::class);
+        $q = $language->normalize($question);
+        $conversationInput = app(PurchaseConversationInput::class);
+        $resume = ($context['purchase_focus'] ?? null) === 'purchase_portfolio' && $conversationInput->resumesPlan($q);
+        $prior = $resume || ($context['last_intent'] ?? null) === 'purchase_portfolio' ? ($context['purchase_portfolio'] ?? []) : [];
         $explicit = preg_match('/\b(?:purchasing plan|purchase plan|buying plan|purchasing portfolio|plan\w* (?:i |e |per |te )?blerj\w*|buxhet\w* (?:per |te )?blerj\w*)\b/', $q);
         if (!$explicit && preg_match('/\b(?:payroll|customer|sales|payables?|receivables?|pagat|klient\w*|fatur\w*)\b/', $q)) return null;
         $prioritize = preg_match('/\b(?:buy first|order first|prioriti[sz]e|porosit\w* (?:tani|now)|order now)\b/', $q)
@@ -28,13 +31,18 @@ final class PurchasePortfolioAssistant
         $assumedPrice = $assumptions->unitPrice($question);
         $smaller = $prior && preg_match('/\b(?:smaller|shrink|reduce|scale down|zvogel\w*|zvogelo\w*|pak\w* sasi)\b/', $q);
         $cashQuestion = $prior && preg_match('/\b(?:enough cash|enough money|fund\w* this|pare\w* (?:te )?mjaft\w*|na dalin paret)\b/', $q);
-        $nextStep = $prior && preg_match('/^(?:what (?:should|do) (?:i|we) do|(?:qka|cka|cfare) (?:duhet|me bo))\b/', $q);
+        $nextStep = $prior && preg_match('/^(?:what (?:(?:should|do) (?:i|we) do|should me do|me do)|cka should)\b/', $q);
         $totalQuestion = $prior && preg_match('/\b(?:altogether|all in|krejt|sa (?:po )?na del)\b/', $q);
-        $addFromComparison = !empty($context['purchase_comparison']['quantity']) && preg_match('/\b(?:add\w*|shto\w*)\b/', $q);
+        $comparison = ($context['last_intent'] ?? null) === 'purchase_comparison' ? ($context['purchase_comparison'] ?? []) : [];
+        $addFromComparison = !empty($comparison['quantity']) && preg_match('/\b(?:add\w*|shto\w*)\b/', $q);
+        $keepSupplier = $prior && preg_match('/\b(?:same supplier|te njejt\w* (?:supplier|furnitor\w*)|(?:supplier|furnitor\w*) te njejt\w*)\b/', $q);
         $reference = $prior && ($assumedPrice || $smaller || $cashQuestion || $nextStep || $totalQuestion || preg_match('/\b(?:add\w*|shto\w*|budget\w*|buxhet\w*|total|gjithsej|safer|sigurt|conservative|konservator|plan|kusht\w*|afford|safe to spend|quot\w*|ofert\w*|suppliers?)\b/', $q))
             && !preg_match('/\b(?:payroll|pay supplier|customer|sales|write off|post journal|pagat|klient\w*)\b/', $q);
         $pending = $prior['pending_product'] ?? null;
-        if (!$explicit && !$prioritize && !$reference && !$addFromComparison && !($pending && preg_match('/^'.self::QUANTITY.'[.?! ]*$/', $q))) return null;
+        $correction = $prior ? $conversationInput->correction($q) : null;
+        $resize = $prior && !$pending && preg_match('/^(?:use|make it|beje|vendos|perdor)\s+'.self::QUANTITY.'/i', $q, $size);
+        if (!$resume && !$explicit && !$prioritize && !$reference && !$addFromComparison && !$keepSupplier
+            && !$correction && !$resize && !($pending && preg_match('/^'.self::QUANTITY.'[.?! ]*$/', $q))) return null;
 
         $t = fn ($en, $sq) => ($input['language'] ?? 'en') === 'sq' ? $sq : $en;
         $base = ['id' => (string) Str::uuid(), 'conversation_id' => $conversation, 'intent' => 'purchase_portfolio',
@@ -45,13 +53,58 @@ final class PurchasePortfolioAssistant
         if (!$runner->allowed($tool)) return $base + $denied;
         $review = ['url' => '/purchasing-decisions#purchase-portfolio', 'label' => $t('Open purchasing plan', 'Hap planin e blerjeve')];
         $args = $prior['args'] ?? ['lines' => []];
-        if (!$prior && ($explicit || $addFromComparison) && isset($context['purchase_comparison']['quantity'])) {
-            $previous = $context['purchase_comparison'];
+        if (!$prior && ($explicit || $addFromComparison) && isset($comparison['quantity'])) {
+            $previous = $comparison;
             $args['lines'][] = array_diff_key($previous, ['budget' => true]);
             if (isset($previous['budget'])) $args['budget'] = $previous['budget'];
         }
         if (!$assumedPrice && preg_match('/\b(?:budget\w*|buxhet\w*|envelope)\b/', $q) && ($budget = $this->budget($question)) !== null) $args['budget'] = $budget;
         $resolver = app(AssistantEntityResolver::class);
+        if ($correction && ($pending || count($args['lines']) !== 1 || $correction['reset'])) {
+            $match = $resolver->resolve($correction['product'], 'product');
+            $product = $match['entity'];
+            if (!$pending && count($args['lines']) > 1) {
+                return $base + ['state' => 'needs_clarification', 'next_action' => $review,
+                    'purchase_portfolio_reference' => $prior,
+                    'text' => $t('Which line in the existing plan do you want to replace? Open the plan to edit it.',
+                        'Cilin rresht të planit dëshiron të zëvendësosh? Hape planin për ta ndryshuar.')];
+            }
+            if ($product && $correction['reset']) $args['lines'] = [];
+            return array_replace($base, ['state' => 'needs_clarification', 'next_action' => $review,
+                'choices' => $match['choices'],
+                'purchase_portfolio_reference' => ['args' => $args, 'pending_product' => $product ?? $pending],
+                'text' => $product
+                    ? $t('What quantity of '.$product['title'].' should I add?', 'Çfarë sasie të shtoj për '.$product['title'].'?')
+                    : $t('Which product should I add? Your existing plan is saved.', 'Cilin produkt të shtoj? Plani ekzistues është ruajtur.')]);
+        }
+        if ($correction) {
+            $match = $resolver->resolve($correction['product'], 'product');
+            $product = isset($match['entity']) ? Product::find($match['entity']['id']) : null;
+            if (!$product || $assumptions->unit($args['lines'][0]['unit'] ?? '') !== $assumptions->unit($product->unit)) {
+                return array_replace($base, ['state' => 'needs_clarification', 'choices' => $match['choices'],
+                    'next_action' => $review, 'purchase_portfolio_reference' => $prior,
+                    'text' => $t('Confirm the replacement product and quantity in Purchasing Decisions. I kept your existing plan.',
+                        'Konfirmo produktin zëvendësues dhe sasinë te Vendimet për blerje. Plani ekzistues është ruajtur.')]);
+            }
+            if ((int) $args['lines'][0]['product_id'] !== (int) $product->id) {
+                $args['lines'][0]['product_id'] = $product->id;
+                unset($args['lines'][0]['supplier_id'], $args['lines'][0]['assumed_unit_price'], $args['lines'][0]['assumed_extra_cost']);
+            }
+        }
+        if ($resize) {
+            if (count($args['lines']) !== 1) {
+                return $base + ['state' => 'needs_clarification', 'next_action' => $review,
+                    'purchase_portfolio_reference' => $prior,
+                    'text' => $t('Which product should use that quantity? Your plan is still saved.',
+                        'Për cilin produkt ta përdor atë sasi? Plani yt është ruajtur.')];
+            }
+            $line = &$args['lines'][0];
+            $unit = $assumptions->unit($size[2]);
+            if ($assumptions->unit($line['unit'] ?? '') !== $unit) unset($line['assumed_unit_price']);
+            $line['unit'] = $unit;
+            $line['quantity'] = (float) str_replace(',', '.', $size[1]);
+            unset($line);
+        }
         preg_match_all('/["“]([^"”]{2,80})["”]\s*(?:[:=]|at|me|for|per)?\s*'.self::QUANTITY.'/iu', $question, $pairs, PREG_SET_ORDER);
         $outsideNames = preg_replace('/["“][^"”]*["”]/u', '', $question);
         $unpairedQuantity = $pairs && preg_match_all('/'.self::QUANTITY.'/iu', $outsideNames) > count($pairs);
@@ -73,14 +126,17 @@ final class PurchasePortfolioAssistant
             $pairs[] = [null, $pending['title'], $amount[1], $amount[2]];
             $adding = true;
         }
-        if (!$pairs && $explicit && preg_match_all('/'.self::QUANTITY.'/i', $q, $amounts, PREG_SET_ORDER) === 1) {
+        if (!$pairs && !$args['lines'] && $explicit && preg_match_all('/'.self::QUANTITY.'/i', $q, $amounts, PREG_SET_ORDER) === 1) {
             // One optional local interpretation. The number comes from the question, not from the model.
             $provider = app(IntelligenceProvider::class);
             $proposal = $provider instanceof LocalAssistantProvider ? $provider->businessIntent($question, ['purchase_product']) : null;
             if ($proposal) {
                 $name = preg_replace('/^'.preg_quote($amounts[0][0], '/').'\s+(?:(?:of|te|nga)\s+)?/iu', '', trim($proposal['phrase']));
-                $pairs[] = [null, $name, $amounts[0][1], $amounts[0][2]];
-                $base['provider'] = 'ollama';
+                $candidate = $language->normalize($name);
+                if ($candidate !== '' && preg_match('/(?<![\pL\pN])'.preg_quote($candidate, '/').'(?![\pL\pN])/u', $q)) {
+                    $pairs[] = [null, $name, $amounts[0][1], $amounts[0][2]];
+                    $base['provider'] = 'ollama';
+                }
             }
         }
         if ($pairs) {
@@ -132,6 +188,7 @@ final class PurchasePortfolioAssistant
             $data = $runner->execute($tool, $args);
         } catch (ModelNotFoundException|ValidationException) {
             return $base + ['state' => 'needs_clarification', 'next_action' => $review,
+                'purchase_portfolio_reference' => $prior ?: ['args' => ['lines' => []]],
                 'text' => $t('Check the product, quantity, unit or budget in Purchasing Decisions.', 'Kontrollo produktin, sasinë, njësinë ose buxhetin te Vendimet për blerje.')];
         } catch (HttpExceptionInterface $error) {
             if ($error->getStatusCode() === 403) return $base + $denied;
@@ -168,6 +225,10 @@ final class PurchasePortfolioAssistant
             ? $t('Smaller quantities reduce exposure when priced. The records do not establish a replenishment strategy. ', 'Sasitë më të vogla ulin angazhimin kur kanë çmim. Regjistrimet nuk përcaktojnë një strategji furnizimi. ')
             : $t('Only quantities backed by uncovered confirmed orders enter these plans. ', 'Planet përfshijnë vetëm sasi të mbështetura nga porosi të konfirmuara të pambuluara. ');
         $text .= $t('Cash available to spend and full landed costs remain unverified.', 'Paratë e disponueshme për shpenzim dhe kostot e plota deri në depo mbeten të paverifikuara.');
+        if ($data['financial']['evidence_readiness']['status'] === 'blocked') {
+            $text .= ' '.$t('Finance must reconcile the records before we can confirm total obligations or how much is safe to spend.',
+                'Financat duhet të rakordojnë regjistrimet para se të konfirmojmë detyrimet totale ose sa mund të shpenzohet me siguri.');
+        }
         if ($data['financial']['unresolved_po_overlaps_or_fx'] && ($cashQuestion || preg_match('/\b(?:afford|safe to spend|why|pse|buxhet\w*|cash)\b/', $q))) {
             $text .= ' '.$data['financial']['unresolved_po_overlaps_or_fx'].' '.$t('purchase orders still need a finance review.', 'porosi blerjeje ende kërkojnë shqyrtim financiar.');
         }

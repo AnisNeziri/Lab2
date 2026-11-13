@@ -16,7 +16,7 @@ final class AssistantBusinessIntent
         }
         $order = $hasOrder || preg_match('/\b(?:orders?|porosi\w*)\b/', $q);
         $movement = preg_match('/\b(?:dispatch\w*|shipp?\w*|going out|go out|leav\w*|nis\w*|dal\w*|del)\b/', $q);
-        $obstacle = preg_match('/\b(?:why|pse|prevent\w*|stop\w*|keep\w*|block\w*|stuck|cannot|can.?t|not|nuk|spo|peng\w*|bllok\w*)\b/', $q);
+        $obstacle = preg_match('/\b(?:why|pse|prevent\w*|stop\w*|keep\w*|hold\w*|block\w*|stuck|cannot|can.?t|not|nuk|spo|peng\w*|bllok\w*)\b/', $q);
         if ($order && $movement && $obstacle) {
             return 'blocker';
         }
@@ -71,12 +71,15 @@ final class AssistantBusinessIntent
         $orderLeaving = preg_match('/\borders?\b.*\b(?:going out|leaving)\b/', $q);
         $outbound = ! $vendor && ($dispatch || $orderLeaving || preg_match('/\bSO-[a-z0-9-]+\b/i', $question));
         $orderFollowup = ($context['last_intent'] ?? null) === 'work_blocked' && preg_match('/^\s*(?:and |what about |po )?SO-[a-z0-9-]+[?.! ]*$/i', $question);
+        $hasOrder = ($input['entity']['type'] ?? null) === 'sales_order';
+        $scopedBlocker = $hasOrder && $this->fulfillmentOperation($question, true) === 'blocker';
         $signals = [
-            'dispatch' => $outbound && ($blocked || $orderLeaving && preg_match('/\b(?:keep\w*|stop\w*|hold\w*)\b/', $q)) || $orderFollowup,
+            'dispatch' => $outbound && ($blocked || $scopedBlocker || $orderLeaving && preg_match('/\b(?:keep\w*|stop\w*|hold\w*)\b/', $q)) || $orderFollowup,
             'receipts' => ! $customer && ! $bill && ! $historicalSupplier && $late
                 && ($inbound && ($vendor || preg_match('/\b(?:receipts?|received|arrival|inbound|pranim\w*|mall\w*|ardh\w*)\b/', $q)) || $vendor && str_contains($q, 'incoming')),
             'payables' => ! $customer && $bill && $due && ($vendor || preg_match('/\b(?:bills?|payables?)\b/', $q)),
-            'receivables' => $customer && $debt && $rank && ! $sales,
+            'receivables' => ($customer || preg_match('/\b(?:who owes|which.*detyro\w*)\b/', $q))
+                && $debt && $rank && ! $sales && ! $vendor,
         ];
         $certain = array_keys(array_filter($signals));
         $sq = ($input['language'] ?? 'en') === 'sq';

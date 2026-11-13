@@ -77,8 +77,9 @@ final class AssistantConversation
         }
         $intent = app(AssistantBusinessIntent::class);
         $reference = preg_match('/\bPO-[a-z0-9-]+\b/i', $question, $match);
+        $orderBalance = preg_match('/\b(?:balance|residual|conclude|saldo|remaining (?:amount|payment)|mbetj\w* (?:financiare|e pageses))\b/', $q);
         $next = ($context['last_intent'] ?? null) === 'purchase_order_review' && $intent->isNextStep($question);
-        if (! $next && (! $reference || ! preg_match('/\b(?:status|receipts?|received|delivery|supplier|pranim\w*|gjend\w*|furnitor\w*)\b/', $q)
+        if (! $next && (! $reference || (!$orderBalance && ! preg_match('/\b(?:status|receipts?|received|delivery|supplier|pranim\w*|gjend\w*|furnitor\w*)\b/', $q))
             || preg_match('/^(?:confirm|approve|receive|cancel|pay|konfirmo|mirato|prano|anulo|paguaj)\b/', $q))) {
             return null;
         }
@@ -106,6 +107,11 @@ final class AssistantConversation
         $url = '/purchase-orders?po='.$entity['id'];
         $text = $data['po_number'].' · '.$status.'. '.($sq ? 'Dokumente pranimi: ' : 'Receipt records: ').$data['receipts_count'].'.';
         $meaning = $sq ? 'Hap porosinë për datat dhe sasitë e regjistruara të pranimit.' : 'Open the order to review recorded receipt dates and quantities.';
+        if ($orderBalance) {
+            $remaining = \App\Support\Money::normalize($data['remaining_balance']).' '.$data['currency'];
+            $text = $sq ? $data['po_number'].' · Mbetja sipas totalit dhe pagesave të regjistruara: '.$remaining.'.' : $data['po_number'].' · Remaining from the recorded order total and payments: '.$remaining.'.';
+            $meaning = $sq ? 'Kjo shifër vlen për regjistrimin e kësaj porosie. Kontabiliteti duhet të kontrollojë faturat dhe pagesat për të konfirmuar detyrimet.' : 'This figure describes this order record. Accounting must check the bills and payments to confirm obligations.';
+        }
         return array_replace($base, ['state' => 'success', 'text' => $text, 'meaning' => $meaning,
             'cards' => [['tool' => 'get_purchase_order', 'title' => $data['po_number'], 'summary' => $data['supplier']['name'] ?? null, 'url' => $url,
                 'metrics' => [['label' => $sq ? 'Dokumente pranimi' : 'Receipt records', 'value' => $data['receipts_count']]]]],

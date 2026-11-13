@@ -29,6 +29,7 @@ class ActionCenterService
         elseif (!empty($filters['status']) && $filters['status']!=='all') $q->where('status',$filters['status']);
         if (!empty($filters['priority'])) $q->where('priority',$filters['priority']);
         if (!empty($filters['overdue'])) $q->whereIn('status',['open','in_progress'])->where('due_at','<',now());
+        if (isset($filters['due_through'])) $q->where('due_at', '<=', $filters['due_through']);
         if (!empty($filters['q'])) $q->where('title','like','%'.mb_substr($filters['q'],0,100).'%');
         return $q->orderByRaw("CASE WHEN status IN ('open','in_progress') AND due_at < ? THEN 0 ELSE 1 END", [now()])
             ->orderByRaw("CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END")

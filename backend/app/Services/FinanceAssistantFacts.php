@@ -46,10 +46,30 @@ class FinanceAssistantFacts
                 $maxDue = CarbonImmutable::parse($to)->addDays(7)->toDateString();
                 $next = validator($input + ['due_through' => $maxDue], ['due_through' => 'required|date_format:Y-m-d|after_or_equal:'.$to.'|before_or_equal:'.$maxDue])->validate()['due_through'];
                 $due = app(PayableReports::class)->positions($to)->whereDate('due_date', '>=', $to)->whereDate('due_date', '<=', $next);
+                $ready = app(PurchasingFinancialEvidence::class)->assess()['status'] === 'verified';
+                $summary = $ready ? $data['summary'] : array_fill_keys(array_keys($data['summary']), null);
+                $recorded = Money::normalize($data['summary']['total']);
 
-                return ['as_of' => $to, 'currency' => $data['base_currency'], 'summary' => $data['summary'], 'known_due_through' => $next, 'known_due_amount' => Money::normalize((clone $due)->sum('base_outstanding')), 'items' => (clone $due)->orderBy('due_date')->orderBy('id')->limit(10)->get()->toArray(), 'qualification' => $data['note']];
+                return ['as_of' => $to, 'currency' => $data['base_currency'], 'summary' => $summary,
+                    'evidence_status' => $ready ? 'verified' : 'blocked',
+                    'partial_posted_bill_subtotal' => !$ready && $recorded !== '0.00' ? $recorded : null,
+                    'known_due_through' => $next, 'known_due_amount' => $ready ? Money::normalize((clone $due)->sum('base_outstanding')) : null,
+                    'items' => (clone $due)->orderBy('due_date')->orderBy('id')->limit(10)->get()->toArray(),
+                    'qualification' => $ready ? $data['note'] : 'Incomplete purchasing or accounting records. Individual posted bills do not establish total supplier obligations.'];
             case 'get_month_close_blockers':
-                $p = isset($input['period_id']) ? AccountingPeriod::findOrFail($input['period_id']) : (isset($input['from'])?AccountingPeriod::whereDate('starts_at','<=',$input['from'])->whereDate('ends_at','>=',$to)->first():AccountingPeriod::where('status', '!=', 'closed')->whereDate('ends_at', '<=', $to)->orderByDesc('ends_at')->first());
+                $p = isset($input['period_id']) ? AccountingPeriod::findOrFail($input['period_id']) : null;
+                if (!$p) {
+                    $periods = AccountingPeriod::whereDate('starts_at', '<=', $input['from'] ?? $to)
+                        ->whereDate('ends_at', '>=', $to);
+                    if (!isset($input['from']) && !isset($input['to'])) {
+                        $periods->where('status', '!=', 'closed');
+                    }
+                    $matches = $periods->limit(2)->get();
+                    if ($matches->isEmpty() && !isset($input['from']) && !isset($input['to'])) {
+                        $matches = AccountingPeriod::where('status', '!=', 'closed')->whereDate('ends_at', '<', $to)->limit(2)->get();
+                    }
+                    $p = $matches->count() === 1 ? $matches->first() : null;
+                }
                 if (! $p) {
                     return ['period' => null, 'status' => 'ATTENTION', 'blockers' => [], 'qualification' => 'Select or create the accounting period to inspect month close.'];
                 }
@@ -104,6 +124,13 @@ class FinanceAssistantFacts
         return $customer === null ? $url : $url.($accounting ? '&' : '?').'customer='.$customer;
     }
 
+    public function fundingQuestion(string $question): bool
+    {
+        $q = app(AssistantLanguage::class)->normalize($question);
+
+        return (bool) preg_match('/\b(?:afford|safe to spend|available cash|spendable cash|(?:can|could) (?:i|we) spend|enough (?:cash|money)|(?:pare|para) (?:me|per(?: te)?) (?:order|porosit\w*|ble\w*)|(?:pare|para)\w* (?:te )?mjaft\w*)\b/', $q);
+    }
+
     public function intent(string $question, string $id): ?string
     {
         $q = app(AssistantLanguage::class)->normalize($question);
@@ -151,6 +178,7 @@ class FinanceAssistantFacts
         $tools = [];
         $sources = [];
         $limits = [];
+        $nextAction = null;
         if ($intent !== 'finance_action_boundary') {
             $tool = match ($intent) {
                 'finance_vat'=>'get_vat_control_facts','finance_fiscal'=>'get_fiscalization_facts','finance_tax_mapping'=>'get_tax_mapping_gaps',
@@ -202,6 +230,10 @@ class FinanceAssistantFacts
                         $text = $leader
                             ? ($sq ? 'Borxhin më të madh e ka ' : 'The largest customer balance is ').($leader['customer_name'] ?: '#'.$leader['customer_id']).' · '.$format($leader['outstanding']).'. '.$text
                             : ($sq ? 'Nuk ka borxhe të hapura të klientëve në këtë pamje.' : 'No outstanding customer balances appear in this view.');
+                        if ($leader) {
+                            $nextAction = ['url' => $this->receivablesUrl((int) $leader['customer_id']),
+                                'label' => $sq ? 'Hap borxhet e klientit' : 'Review the customer balance'];
+                        }
                     }
                     $metrics = [[$sq ? 'Të vonuara' : 'Overdue', $s['overdue_total']], ['90+', $s['overdue_90_plus']], [$sq ? 'Afati i panjohur' : 'Unknown due', $s['unknown_due']]];
                     foreach (array_slice($ranking, 0, 5) as $c) {
@@ -209,7 +241,15 @@ class FinanceAssistantFacts
                         $label = $overdue ? ($sq ? 'Borxh i vonuar' : 'Overdue balance') : ($sq ? 'Borxh i hapur' : 'Outstanding receivable');
                         $cards[] = ['tool' => $tool, 'title' => $c['customer_name'] ?: '#'.$c['customer_id'], 'url' => $this->receivablesUrl((int) $c['customer_id']), 'entity' => ['type' => 'customer', 'id' => (int) $c['customer_id']], 'summary' => $label, 'metrics' => [['label' => $overdue ? $label : ($sq ? 'Mbetja' : 'Outstanding'), 'value' => $c['outstanding'], 'unit' => $currency]]];
                     }break;
-                case 'finance_payables':$text = ($sq ? 'Detyrimet ndaj furnitorëve janë ' : 'Supplier payables are ').$format($data['summary']['total']).'.';
+                case 'finance_payables':
+                    if ($data['evidence_status'] === 'blocked') {
+                        $text = $sq ? 'Detyrimet totale ndaj furnitorëve nuk mund të konfirmohen. Kërko nga Kontabiliteti të shqyrtojë faturat, porositë dhe pagesat që mungojnë.' : 'Total supplier obligations cannot be confirmed. Ask Accounting to review the bills, purchase orders and missing payment evidence.';
+                        if ($data['partial_posted_bill_subtotal'] !== null) {
+                            $metrics = [[$sq ? 'Nëntotali i faturave të postuara që gjenden në regjistër' : 'Subtotal from available posted bills', $data['partial_posted_bill_subtotal']]];
+                        }
+                        break;
+                    }
+                    $text = ($sq ? 'Faturat e postuara të papaguara: ' : 'Outstanding posted supplier bills: ').$format($data['summary']['total']).'.';
                     $metrics = [[$sq ? 'Afatet e njohura në 7 ditë' : 'Known due within 7 days', $data['known_due_amount']], [$sq ? 'Pa afat të njohur' : 'Unknown due', $data['summary']['unknown_due']]];
                     if ($dueThrough !== null || preg_match('/\b(?:due|next week|(?:next|seven|7) days|shtate dite\w*|javen|afat\w*)\b/', app(AssistantLanguage::class)->normalize($question))) {
                         $metrics[0][0] = $sq ? 'Me afat deri më '.$data['known_due_through'] : 'Known due through '.$data['known_due_through'];
@@ -223,9 +263,11 @@ class FinanceAssistantFacts
                     }
                     break;
                 case 'finance_close':
+                    if ($data['period']) $url .= '&period='.$data['period']['id'];
+                    $nextAction = ['url' => $url, 'label' => $sq ? 'Hap mbylljen e periudhës' : 'Open Period close'];
                     $text = $data['period']
                         ? $data['period']['name'].' · '.$data['status'].'.'
-                        : ($sq ? 'Hap mbylljen e periudhës dhe zgjidh periudhën kontabël për të parë pengesat.' : 'Open Period close and select an accounting period to see its blockers.');
+                        : ($sq ? 'Për cilin muaj dëshiron të kontrollosh pengesat? Mund ta zgjedhësh edhe te Mbyllja e periudhës.' : 'Which accounting month should I check for blockers? You can also select it in Period close.');
                     if (! $data['period'] && isset($args['from'], $args['to'])) {
                         $range = $args['from'].' → '.$args['to'];
                         $text = $sq ? "Nuk gjeta një periudhë kontabël për $range. Kontrollo datat te mbyllja e periudhës." : "No accounting period covers $range. Check the dates in Period close.";
@@ -259,8 +301,11 @@ class FinanceAssistantFacts
                     if ($data['previous']) {
                         $cards[] = ['tool' => $tool, 'title' => $data['comparison_from'].' — '.$data['comparison_to'], 'url' => $url, 'summary' => $sq ? 'Periudha e krahasimit' : 'Comparison period', 'metrics' => [['label' => $sq ? 'Rezultati neto' : 'Net result', 'value' => $data['previous']['net_profit'], 'unit' => $currency]]];
                     }break;
+                case 'finance_purchase_capacity':
+                    $text = $sq ? 'Buxheti i planifikimit është një kufi që vendos ti. AIMS nuk mund të konfirmojë sa para mund të shpenzosh për blerje. Kërko nga Financat të verifikojnë arkën, fondet e kufizuara dhe detyrimet.' : 'A planning budget is a limit you set. AIMS cannot confirm how much cash you can spend on purchases. Ask Finance to verify cash balances, restricted funds and obligations.';
+                    break;
                 default:$s = $data['summary'];
-                    $text = ($sq ? 'Arka dhe banka: ' : 'Cash and bank: ').$format($s['cash'] === null || $s['bank'] === null ? null : Money::add($s['cash'], $s['bank'])).'.';
+                    $text = ($sq ? 'Arka dhe banka sipas librit kryesor: ' : 'Cash and bank recorded in the general ledger: ').$format($s['cash'] === null || $s['bank'] === null ? null : Money::add($s['cash'], $s['bank'])).'.';
                     $metrics = [[$sq ? 'Borxhet e klientëve' : 'Customers owe', $s['accounts_receivable']], [$sq ? 'Detyrimet ndaj furnitorëve' : 'We owe suppliers', $s['accounts_payable']]];
             }
             if ($intent === 'finance_receivables_compare') {
@@ -281,6 +326,7 @@ class FinanceAssistantFacts
         }
 
         $response = ['id' => (string) Str::uuid(), 'conversation_id' => $id, 'intent' => $intent, 'text' => $text, 'cards' => array_slice($cards, 0, 7), 'sources' => $sources, 'limitations' => $limits, 'choices' => [], 'follow_ups' => $intent === 'finance_receivables' ? ['Why?', 'Show customers', 'Compare last month'] : [], 'context' => null, 'context_entities' => [], 'read_only' => true, 'provider' => 'deterministic', 'state' => 'success', 'is_prediction' => false, 'tools' => $tools];
+        if ($nextAction) $response['next_action'] = $nextAction;
         app(AnalyticsDataService::class)->audit('assistant.query', ['response_id' => $response['id'], 'conversation_id' => $id, 'question' => $question, 'intent' => $intent, 'tools' => $tools, 'action_preview' => false, 'response_state' => 'success', 'provider' => 'deterministic', 'follow_up' => false, 'language' => $sq ? 'sq' : 'en']);
 
         return $response;

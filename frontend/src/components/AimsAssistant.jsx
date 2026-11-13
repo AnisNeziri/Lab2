@@ -113,7 +113,7 @@ export default function AimsAssistant({open=true,onClose,guideRequest,request,em
     }catch(error){
       if(error.name!=='AbortError'&&mounted.current&&ticket===sequence.current){
         if(error.status===429&&error.retryAfterSeconds)setCooldown(Date.now()+error.retryAfterSeconds*1000)
-        append({kind:'error',text:assistantRequestError(error,language),original:value,selected,retryable:error.status!==403})
+        append({kind:'error',text:assistantRequestError(error,language),original:value,selected,retryable:![401,403].includes(error.status)})
       }
     }
 

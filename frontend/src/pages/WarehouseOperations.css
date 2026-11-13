@@ -201,3 +201,54 @@ html.dark .stock-warehouse-card:hover,
 html[data-theme='dark'] .stock-warehouse-card:hover{box-shadow:inset 3px 0 var(--locator-color),0 14px 28px rgba(0,0,0,.25)}
 
 @media(max-width:560px){.warehouse-dimensions{grid-template-columns:1fr}.warehouse-form-actions{display:grid;grid-template-columns:1fr}.warehouse-inventory-heading>div:first-child{min-width:0}.warehouse-inventory-heading h3,.warehouse-inventory-heading p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+
+.warehouse-ops-page .warehouse-tabs {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.warehouse-ops-page .warehouse-tabs button,
+.warehouse-ops-page .stock-locator-modes button {
+  height: auto;
+  min-height: 44px;
+  white-space: normal;
+  text-align: start;
+}
+
+.stock-locator-panel {
+  container-type: inline-size;
+}
+
+.stock-locator-panel .stock-locator-product-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr));
+  grid-auto-rows: max-content;
+  max-height: 23rem;
+  padding: .25rem;
+  align-content: start;
+}
+
+.stock-locator-panel .stock-locator-product-grid > button {
+  height: auto;
+  min-height: 64px;
+  max-height: none;
+  align-self: stretch;
+  line-height: 1.3;
+}
+
+.stock-locator-panel .stock-locator-product-grid :is(strong, small) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.stock-locator-panel .stock-locator-modes {
+  flex-wrap: wrap;
+}
+
+@container (max-width: 550px) {
+  .stock-locator-panel .stock-locator-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .stock-locator-panel .stock-locator-product-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

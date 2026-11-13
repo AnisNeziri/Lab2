@@ -74,3 +74,7 @@
 @media(max-width:1150px) { .crm-overview-grid { grid-template-columns:minmax(0,1fr); } .crm-financial-summary,.crm-work-summary { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:600px) { .crm-fields { grid-template-columns:minmax(0,1fr); } .crm-identity > div { flex-basis:100%; } .crm-identity label { flex:1 1 100%; } .crm-work-summary { gap:8px; } .crm-work-summary dd,.crm-financial-summary dd { font-size:17px; } .crm-table-wrap table { min-width:580px; } .crm-actions > button { flex:1 1 auto; } .crm-dialog .crm-actions { align-items:stretch; } }
 @media(max-width:600px) { .crm-workspace .workspace-tabs { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:thin; } .app .main-content .crm-workspace .workspace-tabs button { flex:0 0 auto; white-space:nowrap; } }
+
+.crm-workspace .crm-upgrade { display: grid; gap: .75rem; }
+.crm-upgrade p { margin: 0; color: var(--text-muted); max-width: 64ch; }
+.crm-upgrade .crm-actions { align-items: center; }

@@ -83,7 +83,8 @@ class DC13CustomerWorkspaceTest extends TestCase
     public function test_uninstalled_crm_is_actionable_and_does_not_break_existing_action_center(): void
     {
         $this->fixture();$this->partialMock(\App\Services\CustomerWorkspaceService::class,fn($m)=>$m->shouldReceive('installed')->andReturn(false));
-        $this->getJson('/api/customer-workspace')->assertStatus(503);
+        $this->getJson('/api/customer-workspace')->assertStatus(503)
+            ->assertJsonPath('code', 'CUSTOMER_WORKSPACE_UPGRADE_REQUIRED');
         $this->getJson('/api/action-center')->assertOk();
     }
     private function fixturePayload(Customer $c): array {return ['order_channel_id'=>OrderChannel::first()->id,'quote_date'=>today()->toDateString(),'expires_on'=>today()->addDays(7)->toDateString(),'payment_type'=>'credit','idempotency_key'=>'foreign','items'=>[['product_id'=>Product::first()->id,'quantity'=>1]]];}

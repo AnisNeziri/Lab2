@@ -28,6 +28,13 @@ final class AssistantWorkGuidance
         $question = $input['question'];
         $plan = app(AssistantPlanner::class)->plan($question);
         $q = $plan['normalized'] ?? '';
+        // Management briefing and a worker's next assignment use different queues.
+        if ($plan['intent'] === 'brief' && preg_match('/\b(?:needs my attention|vemendjen tim[e]?)\b/', $q)
+            && !preg_match('/\b(?:shift|warehouse|depo\w*)\b/', $q)
+            && in_array(auth()->user()->role, ['admin', 'manager'], true)
+            && app(AssistantToolRunner::class)->allowed('get_operating_brief')) {
+            return null;
+        }
         if (in_array($plan['intent'], ['unsupported', 'prepare', 'scenario', 'confirmation_required', 'suppliers'], true) || isset($input['simulation_id']) || preg_match('/\b(?:what if|nese|simulate|simulo)\b/', $q)) {
             return null;
         }

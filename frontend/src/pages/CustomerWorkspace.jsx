@@ -18,11 +18,12 @@ import {crmRequest,quotationPdf} from '../api/customerWorkspace'
 import {businessDate,businessMoney} from '../utils/businessFormat'
 import {businessStatus} from '../utils/businessStatus'
 import {businessError} from '../utils/businessErrors'
+import {canOpenPage} from '../config/pageAccess'
 import './CustomerWorkspace.css'
 
 function useCrm(path,version,language){
  const [state,setState]=useState({path,data:null,error:'',loading:Boolean(path)})
- useEffect(()=>{if(!path){setState({path,data:null,error:'',loading:false});return}const controller=new AbortController();setState({path,data:null,error:'',loading:true});crmRequest(path,'GET',null,controller.signal).then(data=>setState({path,data,error:'',loading:false})).catch(e=>{if(!controller.signal.aborted)setState({path,data:null,error:businessError(e.message,undefined,language),loading:false})});return()=>controller.abort()},[path,version,language])
+ useEffect(()=>{if(!path){setState({path,data:null,error:'',loading:false});return}const controller=new AbortController();setState({path,data:null,error:'',loading:true});crmRequest(path,'GET',null,controller.signal).then(data=>setState({path,data,error:'',loading:false})).catch(e=>{if(!controller.signal.aborted)setState({path,data:null,error:businessError(e.message,undefined,language),code:e.code,loading:false})});return()=>controller.abort()},[path,version,language])
  return state.path===path?state:{data:null,error:'',loading:Boolean(path)}
 }
 const stages={lead:['Lead','Kontakt i ri'],qualified:['Qualified','I kualifikuar'],quoted:['Quoted','Me ofertë'],negotiation:['Negotiation','Negociim'],won:['Won','E fituar'],lost:['Lost','E humbur']}
@@ -32,7 +33,7 @@ export default function CustomerWorkspace(){
 }
 function CustomerWorkspaceContent(){
  const {language}=useTranslation(),t=(en,sq)=>language==='sq'?sq:en,permissions=useAuthStore(s=>s.permissions),can=p=>permissions.includes(p)
- const role=useAuthStore(s=>s.role)
+ const role=useAuthStore(s=>s.role),capabilities=useAuthStore(s=>s.user?.commercial?.capabilities)
  const [params,setParams]=useSearchParams(),customerId=params.get('customer'),tab=customerId?(params.get('tab')||'overview'):(params.get('view')||'customers'),scope=params.get('scope')||(role==='admin'?'all':'mine'),page=Number(params.get('page')||1),[search,setSearch]=useState(params.get('search')||'')
  const [version,setVersion]=useState(0),[editor,setEditor]=useState(null),[quoteEditor,setQuoteEditor]=useState(null),[quote,setQuote]=useState(null),[quoteLoading,setQuoteLoading]=useState(false),[confirmation,setConfirmation]=useState(null),[busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[actionError,setActionError]=useState(''),pending=useRef(false)
  const refresh=()=>setVersion(v=>v+1),navigate=(key,value)=>setParams(p=>{const next=new URLSearchParams(p);value?next.set(key,value):next.delete(key);if(key!=='page')next.delete('page');return next})
@@ -55,6 +56,18 @@ function CustomerWorkspaceContent(){
   return row.kind==='ledger'?(ledger[row.reference]||t('Customer balance transaction','Transaksion i gjendjes së klientit')):row.kind==='order_event'?(events[row.description]||t('Order activity recorded','Aktivitet i regjistruar i porosisë')):row.reference
  }
  function label(value){return ({draft:t('Draft','Draft'),sent:t('Sent','E dërguar'),accepted:t('Accepted','E pranuar'),rejected:t('Rejected','E refuzuar'),expired:t('Expired','E skaduar'),converted:t('Converted to order','E kthyer në porosi'),cancelled:t('Cancelled','E anuluar')})[value]||businessStatus(value,language)}
+ if(listing.code==='CUSTOMER_WORKSPACE_UPGRADE_REQUIRED') return <main className="page-shell crm-workspace">
+  <PageHeader title={t('Customers & Sales','Klientët dhe shitjet')}/>
+  <section className="card crm-upgrade" aria-labelledby="crm-upgrade-title">
+   <h2 id="crm-upgrade-title">{t('Customer workspace is waiting for an update','Hapësira e klientëve pret një përditësim')}</h2>
+   <p role="status">{t('The administrator needs to apply a database update for contacts, opportunities and quotations. You can continue with the workflows below if you have access.','Administratori duhet të përditësojë bazën e të dhënave për kontaktet, mundësitë dhe ofertat. Mund të vazhdoni me veprimet më poshtë nëse keni qasje.')}</p>
+   <div className="crm-actions">
+    {canOpenPage('/customer-debts',permissions,capabilities)&&<Link className="workspace-primary" to={customerId?`/customer-debts?customer=${encodeURIComponent(customerId)}`:'/customer-debts'}>{t('Receivables & payments','Borxhet dhe pagesat')}</Link>}
+    {canOpenPage('/order-hub',permissions,capabilities)&&<Link to="/order-hub">{t('Customer orders','Porositë e klientëve')}</Link>}
+    <button className="secondary" onClick={refresh}>{t('Check again','Kontrollo përsëri')}</button>
+   </div>
+  </section>
+ </main>
  return <main className="page-shell crm-workspace">
   {customerId&&<Link className="crm-back" to={`/customers?scope=${scope}`}><ArrowLeft size={16}/>{t('Customer workspace','Hapësira e klientëve')}</Link>}
   <PageHeader title={customer?(customer.business_name||customer.name):t('Customers & Sales','Klientët dhe shitjet')} description={customer?t('One relationship, from first conversation to collection and follow-up.','Një marrëdhënie, nga biseda e parë deri te arkëtimi dhe ndjekja.'):t('Your customer relationships, opportunities and next actions.','Marrëdhëniet me klientët, mundësitë dhe veprimet vijuese.')} actions={<><button className="secondary" onClick={refresh} aria-label={t('Refresh customer workspace','Rifresko hapësirën e klientëve')}><RefreshCw size={16}/>{t('Refresh','Rifresko')}</button>{customer&&can('fulfillment.manage')&&<button className="workspace-primary" onClick={()=>setQuoteEditor({})}><QuotationsGlyph size={16}/>{t('New quotation','Ofertë e re')}</button>}{can('debts.view')&&<Link to={customer?`/customer-debts?customer=${customer.id}`:'/customer-debts'}><PaymentsGlyph size={16}/>{t('Receivables & payments','Borxhet dhe pagesat')}</Link>}</>}/>

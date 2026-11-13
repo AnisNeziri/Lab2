@@ -11,6 +11,9 @@ export function assistantHelpRequest(message) {
 
 export function assistantRequestError(error, language) {
   const sq = language === 'sq'
+  if (error.status === 401) {
+    return sq ? 'Sesioni ka përfunduar. Hyr përsëri për të vazhduar.' : 'Your session ended. Sign in again to continue.'
+  }
   if (error.status === 429) {
     const seconds = error.retryAfterSeconds
     return seconds

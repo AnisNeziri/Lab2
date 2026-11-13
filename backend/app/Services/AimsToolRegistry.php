@@ -260,7 +260,8 @@ class AimsToolRegistry
     private function purchaseOrder(array $input): array
     {
         $x = PurchaseOrder::query()->with(['supplier:id,name', 'warehouse:id,name,code'])->withCount(['items', 'goodsReceipts', 'shipments'])->findOrFail($this->id($input, 'purchase_order_id'));
-        return ['id' => $x->id, 'po_number' => $x->po_number, 'status' => $x->status, 'supplier' => $x->supplier?->only(['id', 'name']), 'warehouse' => $x->warehouse?->only(['id', 'name', 'code']), 'total_amount' => $x->total_amount, 'currency' => $x->currency, 'payment_status' => $x->payment_status, 'remaining_balance' => $x->remaining_balance, 'ordered_at' => $x->ordered_at?->toDateString(), 'expected_at' => $x->expected_at?->toDateString(), 'items_count' => $x->items_count, 'receipts_count' => $x->goods_receipts_count, 'shipments_count' => $x->shipments_count];
+        return ['id' => $x->id, 'po_number' => $x->po_number, 'status' => $x->status, 'supplier' => $x->supplier?->only(['id', 'name']), 'warehouse' => $x->warehouse?->only(['id', 'name', 'code']), 'total_amount' => $x->total_amount, 'currency' => $x->currency, 'payment_status' => $x->payment_status, 'remaining_balance' => $x->remaining_balance, 'ordered_at' => $x->ordered_at?->toDateString(), 'expected_at' => $x->expected_at?->toDateString(), 'items_count' => $x->items_count, 'receipts_count' => $x->goods_receipts_count, 'shipments_count' => $x->shipments_count,
+            'qualification' => 'The remaining balance comes from the recorded order total and payments. Supplier obligations require separate bill and payment evidence.'];
     }
 
     private function warehouseStock(array $input): array

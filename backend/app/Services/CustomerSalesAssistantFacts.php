@@ -14,8 +14,9 @@ class CustomerSalesAssistantFacts
         $crm=app(CustomerWorkspaceService::class);$crm->permit();
         if($tool==='get_sales_followups'){
             abort_unless($crm->can('tasks.view'),403);
-            $tasks=app(ActionCenterService::class)->tasks(['view'=>'mine','source_type'=>'Customer','status'=>'active','per_page'=>12])->items();
-            return ['rows'=>array_values(array_filter($tasks,fn($t)=>$t['due_at']&&\Carbon\CarbonImmutable::parse($t['due_at'])->lte(CompanyClock::today()->endOfDay())))];
+            $tasks=app(ActionCenterService::class)->tasks(['view'=>'mine','source_type'=>'Customer','status'=>'active',
+                'due_through'=>CompanyClock::today()->endOfDay()->utc(), 'per_page'=>12]);
+            return ['rows'=>$tasks->items()];
         }
         if($tool==='get_quotation_followups'){abort_unless($crm->can('fulfillment.view'),403);return ['rows'=>CustomerQuotation::where('status','sent')->whereDate('expires_on','<=',CompanyClock::today()->addDays(3))->orderBy('expires_on')->limit(12)->get(['id','number','customer_id','expires_on'])->toArray()];}
         $customer=Customer::findOrFail($input['customer_id']);
@@ -44,7 +45,12 @@ class CustomerSalesAssistantFacts
         if($writes)$text=$sq?'Ky veprim kërkon shqyrtim në procesin përkatës të shitjeve ose financave. Biseda nuk miraton zbritje, ndryshon kredi, poston pagesa, konfirmon porosi ose dërgon mesazhe.':'Use the authorized sales or finance review for that action. Chat cannot approve discounts, change credit, post payments, confirm orders or send messages.';
         elseif($quotes||$follow){
             $tool=$quotes?'get_quotation_followups':'get_sales_followups';$allowed=$quotes?$crm->can('fulfillment.view'):$crm->can('tasks.view');
-            if(!$allowed)$text=$sq?'Kjo pamje kërkon lejet për ofertat ose detyrat e klientëve.':'This view requires quotation or customer-task permissions.';
+            if(!$allowed){
+                $text=$quotes
+                    ? ($sq?'Roli yt nuk ka qasje te lista e ofertave për ndjekje.':'Your role cannot view the quotation follow-up list.')
+                    : ($sq?'Roli yt nuk ka qasje te detyrat e klientëve. Hap klientët për të shqyrtuar kontaktet që mund të shohësh.':'Your role cannot view assigned customer tasks. Open Customers to review the contacts available to you.');
+                $input['next_action']=['url'=>'/customers','label'=>$sq?'Hap klientët':'Open Customers'];
+            }
             else{$data=$runner->execute($tool);foreach($data['rows'] as $r)$cards[]=['tool'=>$tool,'title'=>$r['number']??$r['title'],'summary'=>$quotes?($sq?'Skadon më ':'Expires ').substr($r['expires_on'],0,10):($sq?'Afati: ':'Due: ').substr($r['due_at'],0,10),'url'=>$quotes?'/customers?customer='.$r['customer_id'].'&tab=quotations&quote='.$r['id']:'/action-center?task='.$r['id'],'metrics'=>[]];$text=$quotes?($sq?'Oferta të dërguara që skadojnë brenda tre ditëve ose kanë skaduar.':'Sent quotations expiring within three days or already expired.'):($sq?'Ndjekjet e caktuara për ty, me afat sot ose të kaluar.':'Customer follow-ups assigned to you, due today or overdue.');if(!$cards)$text.=$sq?' Nuk ka regjistrime në këtë pamje.':' No records in this view.';}
         }else{
             if(!$context&&$history){$term=null;if(preg_match('/what did\s+(.+?)\s+(?:buy|purchase)/i',$input['question'],$m))$term=trim($m[1]);if($term){$matches=Customer::where(fn($q)=>$q->whereRaw('LOWER(name) = ?',[mb_strtolower($term)])->orWhereRaw('LOWER(business_name) = ?',[mb_strtolower($term)]))->limit(2)->get();if($matches->count()===1)$context=$matches->first()->id;}}
@@ -75,6 +81,6 @@ class CustomerSalesAssistantFacts
             $input['next_action']=['url'=>$target,'label'=>$quotes?($sq?'Shqyrto ofertat':'Review quotations'):($sq?'Hap ndjekjet e mia':'Open my follow-ups')];
             $sources[]=['tool'=>$tool,'url'=>$target];
         }
-        return ['id'=>(string)Str::uuid(),'conversation_id'=>$conversation,'intent'=>'crm_review','text'=>$text,'cards'=>$cards,'sources'=>$sources,'limitations'=>[...$limitations,$sq?'Lista është e kufizuar; hap klientin për historinë e plotë.':'This list is bounded; open the customer for full history.'],'next_action'=>$input['next_action']??null,'choices'=>[],'follow_ups'=>[],'read_only'=>true,'provider'=>'deterministic','state'=>'success','tools'=>$runner->executions,'context'=>null,'context_entities'=>[]];
+        return ['id'=>(string)Str::uuid(),'conversation_id'=>$conversation,'intent'=>'crm_review','text'=>$text,'cards'=>$cards,'sources'=>$sources,'limitations'=>[...$limitations,$sq?'Lista është e kufizuar; hap klientin për historinë e plotë.':'This list is bounded; open the customer for full history.'],'next_action'=>$input['next_action']??null,'choices'=>[],'follow_ups'=>[],'read_only'=>true,'provider'=>'deterministic','state'=>isset($allowed)&&!$allowed?'permission_denied':'success','tools'=>$runner->executions,'context'=>null,'context_entities'=>[]];
     }
 }

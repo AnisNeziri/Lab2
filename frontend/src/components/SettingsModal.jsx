@@ -2,7 +2,7 @@ import { SettingsGlyph as SettingsIcon, SecurityGlyph as ShieldCheck } from './i
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Download, KeyRound, RefreshCw, X } from 'lucide-react'
+import { Download, KeyRound, Moon, RefreshCw, Sun, X } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { useTranslation } from '../hooks/useTranslation'
@@ -70,8 +70,8 @@ export default function SettingsModal() {
     }
   }
 
-  function handleThemeChange(event) {
-    persistPreferences({ theme: event.target.value, language, enable_3d_map })
+  function handleThemeChange(nextTheme) {
+    if(nextTheme !== theme) persistPreferences({ theme: nextTheme, language, enable_3d_map })
   }
 
   function handleLanguageChange(event) {
@@ -121,7 +121,7 @@ export default function SettingsModal() {
           <div className="settings-modal-backdrop" onClick={() => { if (!saving && !desktopBusy) setIsOpen(false) }} />
           <div className="settings-modal" ref={panelRef} role="dialog" aria-modal="true" aria-label={t('settings.title')}>
             <div className="settings-modal-header">
-              <h3>{t('settings.title')}</h3>
+              <div className="settings-title"><SettingsIcon size={22} aria-hidden="true"/><h3>{t('settings.title')}</h3></div>
               <button type="button" className="close-btn" onClick={() => { if (!saving && !desktopBusy) setIsOpen(false) }} aria-label={t('common.close')} disabled={saving || Boolean(desktopBusy)}>
                 <X size={16} />
               </button>
@@ -129,13 +129,14 @@ export default function SettingsModal() {
 
             <div className="settings-modal-body">
               <p className="settings-save-hint">{language==='sq'?'Cilësimet ruhen dhe zbatohen menjëherë pas çdo ndryshimi.':'Settings are saved and applied immediately after each change.'}</p>
-              <label className="settings-modal-field">
-                <span>{t('settings.theme')}</span>
-                <select aria-label={t('settings.theme')} value={theme} onChange={handleThemeChange} disabled={saving}>
-                  <option value="light">{t('settings.themeLight')}</option>
-                  <option value="dark">{t('settings.themeDark')}</option>
-                </select>
-              </label>
+              <div className="settings-preference-grid">
+              <div className="settings-modal-field">
+                <span id="settings-theme-label">{t('settings.theme')}</span>
+                <div className="settings-theme-options" role="group" aria-labelledby="settings-theme-label">
+                  <button type="button" aria-pressed={theme==='light'} disabled={saving} onClick={()=>handleThemeChange('light')}><Sun size={16} aria-hidden="true"/>{t('settings.themeLight')}</button>
+                  <button type="button" aria-pressed={theme==='dark'} disabled={saving} onClick={()=>handleThemeChange('dark')}><Moon size={16} aria-hidden="true"/>{t('settings.themeDark')}</button>
+                </div>
+              </div>
 
               <label className="settings-modal-field">
                 <span>{t('settings.language')}</span>
@@ -144,6 +145,7 @@ export default function SettingsModal() {
                   <option value="sq">{t('settings.languageSq')}</option>
                 </select>
               </label>
+              </div>
 
               {user?.role === 'admin' ? (
                 <label className="settings-modal-field">
@@ -155,9 +157,6 @@ export default function SettingsModal() {
                 </label>
               ) : null}
 
-              <div className="settings-modal-row">
-                <div><strong>AIMS {release.version}</strong><p>{release.status === 'uncertified' ? 'Release candidate · certification pending' : release.status}</p></div>
-              </div>
               <div className="settings-modal-row">
                 <div>
                   <strong>{t('settings.enable3d')}</strong>
@@ -222,8 +221,9 @@ export default function SettingsModal() {
               ) : null}
 
               {message ? <p className="settings-modal-success" role="status">{t(message)}</p> : null}
-              {error ? <p className="settings-modal-error">{error}</p> : null}
+              {error ? <p className="settings-modal-error" role="alert">{error}</p> : null}
             </div>
+            <div className="settings-version"><strong>AIMS {release.version}</strong>{release.status==='uncertified'&&<span>{language==='sq'?'Version për shqyrtim · certifikimi në pritje':'Review build · certification pending'}</span>}</div>
           </div>
         </>,
         document.body

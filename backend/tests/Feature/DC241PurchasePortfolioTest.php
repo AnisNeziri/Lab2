@@ -10,6 +10,77 @@ class DC241PurchasePortfolioTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_legacy_opening_difference_withholds_combined_obligations_but_preserves_source_subtotal(): void
+    {
+        $this->actingAsApiUser()->getJson('/api/me')->assertOk();
+        $supplier = Supplier::create($this->tenantAttributes(['name' => 'Legacy supplier']));
+        PurchaseOrder::create($this->tenantAttributes([
+            'po_number' => 'PO-LEGACY-PO1', 'supplier_id' => $supplier->id, 'currency' => 'EUR',
+            'ordered_at' => today()->subDay(), 'status' => 'confirmed', 'total_amount' => 300000, 'total_paid' => 0,
+        ]));
+        $customer = \App\Models\Customer::create($this->tenantAttributes(['name' => 'Legacy buyer']));
+        $customer->forceFill(['current_debt' => 868.86])->save();
+        $product = Product::create($this->tenantAttributes(['name' => 'Legacy fabric', 'sku' => 'LEGACY-F', 'unit' => 'm', 'quantity' => 0, 'price' => 4]));
+        $this->postJson('/api/procurement/purchase-comparison', [
+            'budget' => 10000, 'lines' => [['product_id' => $product->id, 'quantity' => 500]],
+        ])->assertOk()
+            ->assertJsonPath('financial.combined_known_obligations', null)
+            ->assertJsonPath('financial.known_unbilled_po_exposure', null)
+            ->assertJsonPath('financial.partial_po_source_subtotal', '300000.00')
+            ->assertJsonCount(0, 'financial.commitment_evidence.resolved')
+            ->assertJsonPath('financial.commitment_evidence.partial.0.recorded_order_residual', '300000.00')
+            ->assertJsonPath('financial.posted_supplier_bills', null)
+            ->assertJsonPath('financial.evidence_readiness.unreconciled_controls.0', 'accounts_receivable')
+            ->assertJsonPath('financial.spendable_cash', null)
+            ->assertJsonPath('financial.evidence_readiness.status', 'blocked');
+        $this->postJson('/api/intelligence-assistant/ask', [
+            'language' => 'en', 'question' => 'Show the purchasing plan for "Legacy fabric" at 500 meters.',
+        ])->assertOk()->assertJsonPath('state', 'answered')
+            ->assertJsonPath('tools.0.tool', 'get_purchase_portfolio')
+            ->assertSee('Finance must reconcile the records', false);
+        $this->postJson('/api/intelligence-assistant/ask', [
+            'language' => 'en', 'question' => 'How much do we owe suppliers?',
+        ])->assertOk()->assertJsonPath('tools.0.tool', 'get_accounting_payables')
+            ->assertSee('Total supplier obligations cannot be confirmed', false);
+        $this->postJson('/api/intelligence-assistant/ask', [
+            'language' => 'en', 'question' => 'What can I safely conclude from PO-LEGACY-PO1?',
+        ])->assertOk()->assertJsonPath('tools.0.tool', 'get_purchase_order')
+            ->assertSee('Remaining from the recorded order total and payments: 300000.00 EUR', false);
+        foreach (['en' => 'Can I spend €20,000 on new stock?', 'sq' => 'A kemi pare me porosit mall?'] as $language => $question) {
+            $this->postJson('/api/intelligence-assistant/ask', compact('language', 'question'))->assertOk()
+                ->assertJsonPath('intent', 'finance_purchase_capacity')->assertJsonPath('cards.0.metrics', []);
+        }
+        $this->assertDatabaseCount('journal_entries', 0);
+    }
+
+    public function test_undated_foreign_order_withholds_the_aggregate_without_counting_another_tenant(): void
+    {
+        $this->actingAsApiUser()->getJson('/api/me')->assertOk();
+        $supplier = Supplier::create($this->tenantAttributes(['name' => 'Foreign supplier']));
+        $order = PurchaseOrder::create($this->tenantAttributes([
+            'po_number' => 'FX-PO', 'supplier_id' => $supplier->id, 'currency' => 'USD',
+            'ordered_at' => today()->subDay(), 'status' => 'confirmed', 'total_amount' => 100, 'total_paid' => 0,
+            'exchange_rate' => '0.9', 'exchange_rate_date' => null,
+        ]));
+        $finance = app(\App\Services\PurchasePortfolioFinance::class);
+        $result = $finance->read('EUR');
+        $this->assertSame('partial', $result['evidence_readiness']['status']);
+        $this->assertNull($result['combined_known_obligations']);
+        $this->assertSame('missing_po_fx', $result['commitment_evidence']['review'][0]['reason']);
+        $this->assertSame($order->id, $result['commitment_evidence']['review'][0]['order_id']);
+
+        $company = \App\Models\Company::factory()->create();
+        $other = User::factory()->create(['company_id' => $company->id, 'role' => 'admin', 'email_verified_at' => now()]);
+        $this->renewApiSession($other);
+        $this->getJson('/api/me')->assertOk();
+        $result = $finance->read('EUR');
+        $this->assertSame('verified', $result['evidence_readiness']['status']);
+        $this->assertSame('0.00', $result['combined_known_obligations']);
+        $this->assertNull($result['recorded_cash']);
+        $this->assertNull($result['spendable_cash']);
+        $this->assertSame([], $result['commitment_evidence']['review']);
+    }
+
     public function test_portfolio_discloses_unpriced_items_and_deducts_matched_bills_once(): void
     {
         $this->actingAsApiUser()->getJson('/api/me')->assertOk();
@@ -18,7 +89,7 @@ class DC241PurchasePortfolioTest extends TestCase
         $other = Product::create($this->tenantAttributes(['name' => 'Unpriced fabric', 'sku' => 'PORT-OTHER', 'unit' => 'm', 'quantity' => 0, 'price' => 4]));
         ProductSupplier::create($this->tenantAttributes(['product_id' => $product->id, 'supplier_id' => $supplier->id,
             'purchase_price' => '2.00', 'currency' => 'EUR', 'minimum_order_quantity' => 10, 'pack_size' => 10, 'is_active' => true]));
-        FinancialAccount::create($this->tenantAttributes(['name' => 'Portfolio cash', 'type' => 'cash', 'currency' => 'EUR',
+        $cash = FinancialAccount::create($this->tenantAttributes(['name' => 'Portfolio cash', 'type' => 'cash', 'currency' => 'EUR',
             'opening_balance' => 1000, 'opening_date' => today()->subDay(), 'is_active' => true]));
         $order = fn ($reference, $amount) => PurchaseOrder::create($this->tenantAttributes([
             'po_number' => $reference, 'supplier_id' => $supplier->id, 'currency' => 'EUR', 'exchange_rate' => 1,
@@ -38,7 +109,12 @@ class DC241PurchasePortfolioTest extends TestCase
             'gross_amount' => $gross, 'gross_amount_eur' => $gross,
         ]));
         $matched = $bill('PORT-BILL1', 80, 96, $linked);
-        $bill('PORT-BILL2', 30, 30);
+        $independent = $bill('PORT-BILL2', 30, 30);
+        $accounting = app(\App\Services\AccountingService::class);
+        $accounting->postFinancialOpening($cash);
+        $accounting->postExpense($matched);
+        $accounting->postExpense($independent);
+        $journalCount = \App\Models\JournalEntry::count();
         $payload = ['budget' => 90, 'buffer' => 20, 'lines' => [
             ['product_id' => $product->id, 'quantity' => 50, 'supplier_id' => $supplier->id],
             ['product_id' => $other->id, 'quantity' => 30],
@@ -49,6 +125,7 @@ class DC241PurchasePortfolioTest extends TestCase
             ->assertJsonPath('financial.linked_supplier_bills', '96.00')
             ->assertJsonPath('financial.known_unbilled_po_exposure', '170.00')
             ->assertJsonPath('financial.combined_known_obligations', '296.00')
+            ->assertJsonPath('financial.evidence_readiness.status', 'verified')
             ->assertJsonPath('financial.spendable_cash', null)
             ->assertJsonPath('scenarios.1.known_material_cost', '100.00')
             ->assertJsonPath('scenarios.1.unpriced_count', 1)
@@ -73,11 +150,12 @@ class DC241PurchasePortfolioTest extends TestCase
         $matched->update(['match_status' => 'exception']);
         $this->postJson('/api/procurement/purchase-comparison', $payload)->assertOk()
             ->assertJsonPath('financial.combined_known_obligations', null)
+            ->assertJsonPath('financial.evidence_readiness.status', 'partial')
             ->assertJsonPath('financial.unresolved_po_overlaps_or_fx', 1)
             ->assertJsonPath('scenarios.1.recorded_cash_less_obligations_buffer_and_known_materials', null);
         $this->assertDatabaseCount('purchase_orders', 2);
         $this->assertDatabaseCount('purchase_requests', 0);
-        $this->assertDatabaseCount('journal_entries', 0);
+        $this->assertDatabaseCount('journal_entries', $journalCount);
         $this->assertDatabaseCount('stock_movements', 0);
     }
 

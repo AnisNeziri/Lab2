@@ -4,11 +4,10 @@ import { focusedNavigation, suggestedWorkProfile } from '../src/config/everydayW
 import { permittedNavigation } from '../src/config/navigation.js'
 import { answerView } from '../src/components/assistantAnswerView.js'
 
-test('daily focus keeps permitted work and moves configuration into occasional tools',()=>{
+test('daily focus keeps frequent and occasional tools in the same functional group',()=>{
  const source=[{id:'work',items:[{id:'dashboard'},{id:'fulfillment'},{id:'automation-studio'},{id:'accounting'}]}]
  const r=focusedNavigation(source,[],'warehouse')
- assert.deepEqual(r.groups.flatMap(g=>g.items).map(e=>e.id),['dashboard','fulfillment'])
- assert.deepEqual(r.occasional.map(e=>e.id),['automation-studio','accounting'])
+ assert.deepEqual(r.groups.map(g=>[g.id,g.items.map(e=>e.id)]),[['work',['dashboard','fulfillment','automation-studio','accounting']]])
  assert.equal(source[0].items.length,4)
 })
 test('job roles select their own daily workspace without requiring a nonexistent accounting permission',()=>{
@@ -19,7 +18,7 @@ test('role focus never adds finance, payroll or packages to permitted navigation
  const permissions=['dashboard.view','inventory.view','tasks.view']
  const groups=permittedNavigation(permissions,false,'staff')
  for(const profile of ['owner','sales','warehouse','purchasing','finance','hr']){
-  const r=focusedNavigation(groups,[],profile),ids=r.groups.flatMap(g=>g.items).concat(r.occasional).map(e=>e.id)
+  const r=focusedNavigation(groups,[],profile),ids=r.groups.flatMap(g=>g.items).map(e=>e.id)
   assert.equal(ids.includes('payroll'),false)
   assert.equal(ids.includes('accounting'),false)
  }

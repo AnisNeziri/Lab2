@@ -11,7 +11,14 @@ class CustomerWorkspaceService
 {
     public function installed(): bool {return \Illuminate\Support\Facades\Schema::hasTable('customer_quotation_items');}
     public function can(string $permission): bool {return app(PermissionService::class)->roleHasPermission(Auth::user()->role,$permission);}
-    public function permit(): void {abort_unless(Auth::user()?->company_id&&$this->can('customers.manage'),403);abort_unless($this->installed(),503,'The customer relationship upgrade requires its reviewed database migration. Existing receivables and order workflows remain available.');}
+    public function permit(): void
+    {
+        abort_unless(Auth::user()?->company_id && $this->can('customers.manage'), 403);
+        abort_unless($this->installed(), response()->json([
+            'code' => 'CUSTOMER_WORKSPACE_UPGRADE_REQUIRED',
+            'message' => 'Customer workspace is waiting for a database update.',
+        ], 503));
+    }
     public function own($record): void {abort_unless((int)$record->company_id===(int)Auth::user()->company_id,404);}
     public function owner(?int $id): ?int {if($id)User::where('company_id',Auth::user()->company_id)->findOrFail($id);return $id;}
     private function identity(Customer $customer): array {return $customer->only(['id','name','business_name','phone','email','address','billing_address','customer_type','is_active','account_owner_id']);}

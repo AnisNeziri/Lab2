@@ -128,6 +128,7 @@ class FinancialControlService
         $people=\App\Models\User::where('company_id',$company->id)->where('is_active',true)->get(['id','name']);
         return ['currency'=>$company->base_currency,'as_of'=>CompanyClock::today()->toDateString(),'source_statement_available'=>(bool)$locked,
             'opening_finalized'=>(bool)$company->accounting_opening_finalized_at,'posted_journal_count'=>$journalCount,
+            'purchasing_source_review'=>app(PurchasingFinancialEvidence::class)->reviewSources(),
             'status'=>collect($rows)->every(fn($r)=>$r['opening_status']==='PASS')?'PASS':'BLOCKED','rows'=>$rows,'reviewers'=>$people,
             'correction_policy'=>'Existing operational history must not be imported again through DC1. Review independent statements and prepare corrections through existing source workflows or DC2 accounting opening. Review notes never post or approve balances.'];
     }

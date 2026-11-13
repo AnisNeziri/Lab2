@@ -8,11 +8,14 @@ use App\Services\{FinancialIntelligenceService,FinancialIntelligenceScenario,Fin
 
 class FinancialIntelligenceTest extends TestCase {
  use RefreshDatabase;
- public function test_dashboard_summary_preserves_authoritative_cash_and_default_response():void {
+ public function test_dashboard_summary_withholds_unqualified_cash_without_changing_source_forecast():void {
   $this->setupCompany();$this->cash('100.10');$this->refresh();
   $full=$this->getJson('/api/financial-intelligence?horizon=30')->assertOk()->json();
   $summary=$this->getJson('/api/financial-intelligence?horizon=30&summary_only=1')->assertOk()->json();
-  $this->assertSame($full['id'],$summary['id']);$this->assertSame($full['forecast']['currencies']['EUR']['expected_closing_cash'],$summary['forecast']['currencies']['EUR']['expected_closing_cash']);
+  $this->assertSame($full['id'],$summary['id']);
+  $this->assertSame('100.10',$full['forecast']['currencies']['EUR']['expected_closing_cash']);
+  $this->assertFalse($summary['cash_coverage_complete']);
+  $this->assertNull($summary['forecast']['currencies']['EUR']['expected_closing_cash']);
   $this->assertArrayHasKey('evidence',$full);$this->assertArrayNotHasKey('evidence',$summary);$this->assertArrayNotHasKey('timeline',$summary['forecast']['currencies']['EUR']);
   $this->getJson('/api/financial-intelligence?summary_only=bad')->assertStatus(422);
  }

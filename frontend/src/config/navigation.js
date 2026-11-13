@@ -12,7 +12,7 @@ export const navigationGroups = [
   { id: 'finance', en: 'Money & budgets', sq: 'Financat dhe buxheti', items: [item('finance', null, 'Landmark',{en:'Operational finance',sq:'Financat operative'}), item('invoices', 'nav.invoices', 'FileText'), item('money-accounts', 'nav.moneyAccounts', 'Landmark'), item('accounting', null, 'BookOpen',{en:'Finance workspace',sq:'Hapësira financiare'}), item('tax',null,'Landmark',{en:'Tax & VAT',sq:'Tatimet dhe TVSH',allPermissions:['tax.view']}), item('fiscalization',null,'FileText',{en:'Fiscalization',sq:'Fiskalizimi',allPermissions:['fiscalization.view']})] },
 
   { id:'workforce', en:'People & payroll', sq:'Personeli dhe pagat', items:[item('workforce',null,'Users',{en:'Employees & employment',sq:'Punonjësit dhe punësimi'}),item('payroll',null,'Landmark',{en:'Payroll control',sq:'Kontrolli i pagave'}),item('my-workforce',null,'Users',{en:'My workforce',sq:'Hapësira ime e punës'})] },
-  { id: 'intelligence', en: 'Reports & insights', sq: 'Raportet dhe analizat', items: [item('inventory-intelligence', 'nav.inventoryIntelligence', 'HeartPulse', { allPermissions: ['inventory.view'] }), item('inventory-planning', null, 'Boxes', { path: '/inventory-intelligence?view=planning', en: 'Inventory planning', sq: 'Planifikimi i inventarit', allPermissions: ['inventory.view'] }), item('decision-center', null, 'Radar', { path: '/inventory-intelligence?view=decisions', en: 'Decision Center', sq: 'Qendra e vendimeve', allPermissions: ['inventory.view'] }), item('analytics', 'nav.analytics', 'TrendingUp'), item('reports', 'nav.inventoryReports', 'FileText')] },
+  { id: 'intelligence', en: 'Reports & insights', sq: 'Raportet dhe analizat', items: [item('inventory-intelligence', 'nav.inventoryIntelligence', 'HeartPulse', { allPermissions: ['inventory.view'] }), item('analytics', 'nav.analytics', 'TrendingUp'), item('reports', 'nav.inventoryReports', 'FileText')] },
   { id: 'operations', en: 'Tools & operations', sq: 'Mjetet dhe operacionet', items: [item('quality', 'nav.quality', 'ShieldCheck'), item('documents', 'nav.documents', 'FileText'), item('automation-studio', 'nav.automationStudio', 'Workflow')] },
   { id: 'settings', en: 'Company settings', sq: 'Cilësimet e kompanisë', items: [item('users', 'nav.users', 'Users', { roles: ['admin'] }), item('activity-logs', 'nav.activityLogs', 'Activity', { roles: ['admin'] }), item('integrations', null, 'Plug', {en:'Company Connections',sq:'Lidhjet e kompanisë'}), item('system-integrity', 'nav.systemIntegrity', 'HeartPulse')] },
 ]
@@ -33,17 +33,12 @@ navigationGroups.find(g => g.id === 'intelligence').items.splice(2,0,item('suppl
 
 // Read evidence → plan → review decisions → coordinate supply → inspect outcomes.
 navigationGroups.find(g => g.id === 'intelligence').items.push(item('strategic-simulation',null,'Radar',{en:'Strategic Simulation',sq:'Simulimi strategjik',allPermissions:simulationPermissions}))
-const intelligenceOrder = ['intelligence-assistant','inventory-intelligence','inventory-planning','decision-center','supply-optimizer','strategic-simulation','customer-sales-intelligence','financial-intelligence','decision-learning','analytics','reports']
+const intelligenceOrder = ['intelligence-assistant','inventory-intelligence','supply-optimizer','strategic-simulation','customer-sales-intelligence','financial-intelligence','decision-learning','analytics','reports']
 navigationGroups.find(g => g.id === 'intelligence').items.sort((a,b) => intelligenceOrder.indexOf(a.id) - intelligenceOrder.indexOf(b.id))
 
 export function navigationKey(path) {
-  const [pathname, search = ''] = path.replace(/^\//, '').split('?')
+  const [pathname] = path.replace(/^\//, '').split('?')
   if (pathname.startsWith('control-tower/')) return 'control-tower'
-  if (pathname === 'inventory-intelligence') {
-    const view = new URLSearchParams(search).get('view')
-    if (view === 'planning') return 'inventory-planning'
-    if (view === 'decisions') return 'decision-center'
-  }
   return pathname || 'dashboard'
 }
 

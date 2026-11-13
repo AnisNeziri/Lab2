@@ -133,16 +133,19 @@ export default function PurchasePortfolio({ lines, setLines, budget, setBudget, 
           : line.quantity + ' ' + line.unit + ' · ' + (line.cost == null ? t('Unpriced','Pa çmim') : money(line.cost) + ' · ' + sourceLabels[line.cost_source])}</li>)}</ul>
       </article>)}</div>
       <p>{t('Freight, duty and tax are unknown unless you enter them as a planning assumption. Recorded cash may include restricted funds. Expected collections are excluded.','Transporti, dogana dhe tatimi mbeten të panjohura përveçse kur i vendos si supozim planifikimi. Gjendja e regjistruar mund të përfshijë para të kufizuara. Arkëtimet e pritshme nuk përfshihen.')}</p>
+      {result.financial.evidence_readiness?.status === 'blocked' && <p role="status">{t('Finance needs to reconcile the records before confirming total obligations. The figures below may be incomplete.','Financat duhet t’i rakordojnë regjistrimet para se të konfirmojnë detyrimet totale. Shifrat më poshtë mund të jenë të paplota.')}</p>}
       <details><summary>{t('Cash, supplier bills and purchase orders','Arka, faturat e furnitorëve dhe porositë e blerjes')}</summary>
         <dl className="purchase-facts">
           {fact(t('Recorded cash and bank','Arka dhe banka sipas regjistrit'),result.financial.recorded_cash)}
           {fact(t('Posted unpaid supplier bills','Faturat e postuara e të papaguara'),result.financial.posted_supplier_bills)}
           {fact(t('Of those bills, linked to purchase orders','Prej tyre, të lidhura me porosi blerjeje'),result.financial.linked_supplier_bills)}
           {fact(t('Bills due within 30 days or overdue','Fatura me afat brenda 30 ditëve ose të vonuara'),result.financial.supplier_bills_due_30_days_or_overdue)}
-          {fact(t('Known purchase order exposure outside bills','Detyrimet e njohura nga porositë jashtë faturave'),result.financial.known_unbilled_po_exposure)}
+          {result.financial.partial_po_source_subtotal == null
+            ? fact(t('Supported unbilled purchase order subtotal','Nëntotali i mbështetur i porosive të pafaturuara'),result.financial.known_unbilled_po_exposure)
+            : fact(t('Subtotal from available order records · incomplete','Nëntotali nga porositë e regjistruara · i paplotë'),result.financial.partial_po_source_subtotal)}
           {fact(t('Combined known obligations','Detyrimet e njohura së bashku'),result.financial.combined_known_obligations)}
         </dl>
-        {result.financial.combined_known_obligations == null && <p>{t('A combined amount is unavailable. Finance must review currency or overlapping orders and bills.','Shuma e përbashkët nuk është në dispozicion. Financat duhet të shqyrtojnë valutën ose mbivendosjen e porosive me faturat.')}</p>}
+        {result.financial.combined_known_obligations == null && result.financial.evidence_readiness?.status !== 'blocked' && <p>{t('A combined amount is unavailable. Finance must review currency or overlapping orders and bills.','Shuma e përbashkët nuk është në dispozicion. Financat duhet të shqyrtojnë valutën ose mbivendosjen e porosive me faturat.')}</p>}
         <CommitmentEvidence evidence={result.financial.commitment_evidence} language={language} money={money}/>
       </details>
       <Link id="portfolio-next-step" to={result.url} state={canManage ? {purchaseDraft:{currency:result.base_currency,notes:t('From Purchasing Decisions. Review suppliers, delivery, pricing and approvals before proceeding.','Nga vendimet për blerje. Shqyrto furnitorët, dorëzimin, çmimet dhe miratimet para vazhdimit.'),
@@ -154,6 +157,7 @@ export default function PurchasePortfolio({ lines, setLines, budget, setBudget, 
 function CommitmentEvidence({ evidence, language, money }) {
   const t = (en,sq) => language === 'sq' ? sq : en
   const reasons = {
+    unbilled:t('Recorded order without a posted matching bill','Porosi e regjistruar pa faturë përkatëse të postuar'),
     fully_billed:t('Fully represented in posted bills','E mbuluar plotësisht në faturat e postuara'),
     part_billed:t('Partially billed · remaining materials counted separately','Pjesërisht e faturuar · materiali i mbetur llogaritet veçmas'),
     missing_po_fx:t('PO lacks a dated exchange rate','Porosisë i mungon kursi valutor me datë'),
@@ -175,6 +179,10 @@ function CommitmentEvidence({ evidence, language, money }) {
       {order.potentially_related_bills?.length > 0 && <><ul>{order.potentially_related_bills.map(b => <li key={b.document_number}>{b.document_number} · {money(b.base_outstanding)}</li>)}</ul>
         <p>{t('Compare the supplier invoice, order and applied payments. The shared supplier alone does not establish a link. Until Finance confirms the relationship, the combined obligation and available funds remain unknown.','Krahaso faturën e furnitorit, porosinë dhe pagesat e aplikuara. Furnitori i njëjtë nuk provon lidhjen. Derisa Financat ta verifikojnë lidhjen, detyrimi i përbashkët dhe fondet në dispozicion mbeten të panjohura.')}</p></>}
     </article>)}
+    {evidence.partial?.length > 0 && <details><summary>{t('Recorded orders requiring financial review','Porosi të regjistruara që kërkojnë shqyrtim financiar')}</summary>
+      <ul>{evidence.partial.map(order => <li key={order.order_id}><Link to={order.url}>{order.reference}</Link> · {t('Remaining from recorded order total and payments','Mbetja sipas totalit dhe pagesave të regjistruara në porosi')}: {order.recorded_order_residual} {order.currency || t('currency unknown','valuta e panjohur')}</li>)}</ul>
+      <p>{t('These order balances may overlap with missing or unmatched purchasing records. Finance must review them before confirming what the company owes.','Këto mbetje mund të mbivendosen me regjistrime të munguara ose të papërputhura të blerjeve. Financat duhet t’i shqyrtojnë para se të konfirmojnë detyrimet e kompanisë.')}</p>
+    </details>}
     <details><summary>{t('Reviewed orders','Porositë e shqyrtuara')} · {evidence.resolved.length}</summary><ul>{evidence.resolved.map(order => <li key={order.order_id}>
       <Link to={order.url}>{order.reference}</Link> · {reasons[order.reason]}
       {order.bills.length > 0 && <span> · {order.bills.map(b=>b.reference).join(', ')}</span>}

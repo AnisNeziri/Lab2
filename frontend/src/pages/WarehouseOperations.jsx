@@ -452,7 +452,7 @@ export default function WarehouseOperations() {
           <div className="stock-locator-product-grid">
             {locatorProducts.map((product) => {
               const balanceCount = (product.warehouse_stock || []).filter((balance) => Number(balance.quantity ?? balance.available_quantity ?? 0) > 0).length
-              return <button key={product.id} type="button" className={String(product.id) === String(locatedProductId) ? 'active' : ''} onClick={() => setLocatedProductId(product.id)}>
+              return <button key={product.id} type="button" aria-pressed={String(product.id) === String(locatedProductId)} className={String(product.id) === String(locatedProductId) ? 'active' : ''} onClick={() => setLocatedProductId(product.id)}>
                 <span className="stock-locator-product-icon"><PackageCheck size={18} /></span>
                 <span><strong>{product.name}</strong><small>{product.sku || t('warehouseOps.locatorNoSku')} · {formatQuantity(getInventoryQuantity(product, 'available'), product.unit)} {product.unit}</small></span>
                 <em>{balanceCount}</em>

@@ -14,9 +14,19 @@ final class PurchaseComparisonAssistant
     {
         if (isset($input['simulation_id']) || isset($input['customer_id']) || isset($input['entity']) && $input['entity']['type'] !== 'product') return null;
         $q = app(AssistantLanguage::class)->normalize($input['question']);
+        $conversationInput = app(PurchaseConversationInput::class);
         $prior = ($context['last_intent'] ?? '') === 'purchase_comparison' ? ($context['purchase_comparison'] ?? []) : [];
+        $resume = ($context['purchase_focus'] ?? null) === 'purchase_comparison' && $conversationInput->resumesPlan($q);
+        if ($resume) $prior = $context['purchase_comparison'] ?? [];
         $page = $input['purchase_context'] ?? [];
         if (!$prior && ($context['last_intent'] ?? '') !== 'purchase_portfolio') $prior = $page;
+        $correction = $prior ? $conversationInput->correction($q) : null;
+        $relativeDate = $prior && $conversationInput->relativeDelivery($q)
+            && preg_match('/^(?:not|jo|by|deri)\b|\b(?:deliver\w*|dor[eë]z\w*)\b/', $q);
+        $exactDate = $prior && preg_match('/^(?:(?:by|deri)\s+)?20\d{2}-\d{2}-\d{2}[.! ]*$/', $q);
+        $quantityCorrection = $prior && preg_match('/^(?:use|make it|beje|vendos|perdor)\s+'.PurchaseConversationInput::QUANTITY.'/i', $q);
+        $sameSupplier = $prior && preg_match('/\b(?:same supplier|te njejt\w* (?:supplier|furnitor\w*)|(?:supplier|furnitor\w*) te njejt\w*)\b/', $q);
+        $supplierReference = $prior && preg_match('/\b(?:those (?:two )?supplier|ata (?:dy )?(?:supplier|furnitor\w*))\b/', $q);
         $purchase = preg_match('/\b(?:buy|purchase|purchasing|procurement|order|ble|blej\w*|blerj\w*|marr|porosit\w*|mall\w*)\b/', $q);
         $supplier = preg_match('/\b(?:suppliers?|vendors?|furnitor\w*)\b/', $q);
         $budget = preg_match('/\b(?:budget\w*|buxhet\w*)\b/', $q);
@@ -28,8 +38,8 @@ final class PurchaseComparisonAssistant
         $comparison = $quoteQuestion || preg_match('/\b(?:compare|choose|best|cheapest|reliab\w*|fastest|provide|ofroj\w*|krahas\w*|rekomand\w*|mir[ei]?|lir[ei]|shpejt\w*|zgjedh\w*)\b/', $q);
         $priceFollowup = $prior && preg_match('/\b(?:price|cmim\w*|afford|safe to spend|buxhet\w*)\b/', $q)
             && !preg_match('/\b(?:customer|invoices?|fatur\w*|payroll|pagat|sell|shit\w*)\b/', $q);
-        $nextStep = $prior && preg_match('/^(?:what (?:should|do) (?:i|we) do|(?:qka|cka|cfare) (?:duhet|me bo))\b/', $q);
-        $follow = ($prior && ($quoteQuestion || $assumedPrice || $priceFollowup || $nextStep)) || ($prior && preg_match('/^(?:and |po |e )?(?:what if|what happens|how much(?: would| will| (?:us )?kusht\w*| del| remaining)|how does|why|pse|which plan|nese|po te|me)\b/', $q)
+        $nextStep = $prior && preg_match('/^(?:what (?:(?:should|do) (?:i|we) do|should me do|me do)|cka should)\b/', $q);
+        $follow = $resume || $correction || $relativeDate || $exactDate || $quantityCorrection || $sameSupplier || $supplierReference || ($prior && ($quoteQuestion || $assumedPrice || $priceFollowup || $nextStep)) || ($prior && preg_match('/^(?:and |po |e )?(?:what if|what happens|how much(?: would| will| (?:us )?kusht\w*| del| remaining)|how does|why|pse|which plan|nese|po te|me)\b/', $q)
             && ($purchase || $budget || $supplier || preg_match('/\b(?:that|this|cost|price|plan|balanced|kusht\w*|cmim\w*|skenar\w*|metra|meters?)\b|^(?:why|pse)[?!. ]*$/', $q))
             && !preg_match('/\b(?:payroll|invoice|customer|pagat|fatur\w*|klient\w*)\b/', $q));
         $scopes = [];
@@ -50,8 +60,9 @@ final class PurchaseComparisonAssistant
         }
         if (preg_match('/["“]([^"”]{2,100})["”]/u', $productQuestion, $m)) $named = $m[1];
         elseif (preg_match('/\b(?:for|per)\s+(.+?)(?=\s+(?:with|if|at|by|in|from|under|ne|nga|me|nese)\b|$)/', $productQuery, $m)
-            && !preg_match('/^(?:\d|my |next |this (?:year|month|week)|last |all |our |muajin |blerj|mall\b)/', $m[1])) $named = $m[1];
+            && !preg_match('/^(?:\d|my |next |(?:this|that) (?:year|month|week|quantity|order|comparison|size)\b|last |all |our |muajin |blerj|mall\b)/', $m[1])) $named = $m[1];
         elseif ($supplier && preg_match('/\b(?:provide|ofroj\w*)\s+(.+?)[?!. ]*$/', $q, $m)) $named = $m[1];
+        if ($correction) $named = $correction['product'];
         $currentProduct = ($input['entity']['type'] ?? null) === 'product' ? $input['entity']['id'] : null;
         if (!$follow && !$quoteQuestion && !($budget && $purchase) && !($purchase && preg_match('/\b(?:who should|cili|wait|prit\w*)\b/', $q))
             && !($supplier && $comparison && ($named || $currentProduct || $prior || $purchase
@@ -65,12 +76,18 @@ final class PurchaseComparisonAssistant
         $tool = PurchaseComparisonService::TOOL;
         $denied = ['state' => 'permission_denied', 'text' => $t('This role cannot view the requested purchasing or budget evidence.', 'Ky rol nuk mund t’i shohë të dhënat e kërkuara të blerjeve ose të buxhetit.')];
         if (!$runner->allowed($tool)) return $base + $denied;
+        if ($relativeDate && !preg_match('/\b20\d{2}-\d{2}-\d{2}\b/', $input['question'])) {
+            return $base + ['state' => 'needs_clarification', 'purchase_comparison_reference' => $prior,
+                'text' => $t('What is the latest delivery date? Give the exact date so I can compare offers. I kept your current plan.',
+                    'Cila është data e fundit e dorëzimit? Jep datën e saktë që të krahasoj ofertat. Plani aktual është ruajtur.')];
+        }
 
         $productId = $currentProduct;
         if ($named && !in_array(trim($named, " ?!.,:"), ['it', 'that', 'this product', 'the product', 'kete product', 'ate'], true)) {
             $entity = app(AssistantEntityResolver::class)->resolve(trim($named, " ?!.,:"), 'product');
             $productId = $entity['entity']['id'] ?? null;
             if (!$productId) return array_replace($base, ['state' => 'needs_clarification', 'choices' => $entity['choices'],
+                'purchase_comparison_reference' => $prior,
                 'text' => $t('Which product should I compare? Use its catalogue name or SKU.', 'Cilin produkt të krahasoj? Shkruaj emrin ose kodin nga katalogu.')]);
         }
         $productId ??= $prior['product_id'] ?? (($context['entity']['type'] ?? null) === 'product' ? $context['entity']['id'] : null);
@@ -80,7 +97,13 @@ final class PurchaseComparisonAssistant
         if (!$product) return $base + ['state' => 'needs_clarification', 'next_action' => $review,
             'text' => $t('Choose a product and quantity for supplier evidence, or add several products to the purchasing plan.', 'Zgjidh produktin dhe sasinë për dëshmitë e furnitorëve, ose shto disa produkte në planin e blerjeve.')];
 
-        $args = (int) ($prior['product_id'] ?? 0) === (int) $product->id ? $prior : [];
+        $args = !($correction['reset'] ?? false) && (int) ($prior['product_id'] ?? 0) === (int) $product->id ? $prior : [];
+        if ($correction && !$correction['reset'] && !$args) {
+            $args = array_intersect_key($prior, array_flip(['warehouse_id', 'required_by', 'priority', 'budget']));
+            if (isset($prior['quantity']) && $assumptions->unit($prior['unit'] ?? $product->unit) === $assumptions->unit($product->unit)) {
+                $args += ['quantity' => $prior['quantity'], 'unit' => $product->unit];
+            }
+        }
         $args['product_id'] = (int) $product->id;
         $priorUnit = $assumptions->unit($args['unit'] ?? $product->unit);
         foreach ($scopes as $kind => $term) {
@@ -118,7 +141,7 @@ final class PurchaseComparisonAssistant
             $value = preg_replace('/(?<=[0-9])[.,](?=\d{3}(?:\D|$))/', '', $value);
             if (preg_match('/^\d+(?:[.,]\d{1,2})?$/D', $value)) $args['budget'] = (float) str_replace(',', '.', $value);
         }
-        if (preg_match('/\b(?:by|deri)\s+(20\d{2}-\d{2}-\d{2})\b/', $input['question'], $m)) $args['required_by'] = $m[1];
+        if (preg_match('/(?:^|\b(?:by|deri)\s+)(20\d{2}-\d{2}-\d{2})\b/', $input['question'], $m)) $args['required_by'] = $m[1];
         if (preg_match('/\b(?:cheapest|lowest (?:cost|price)|ma i lire|me i lire)\b/', $q)) $args['priority'] = 'cost';
         elseif (preg_match('/\b(?:fastest|quickest|ma i shpejt\w*|me i shpejt\w*)\b/', $q)) $args['priority'] = 'speed';
         elseif (preg_match('/\b(?:reliab\w*|besuesh\w*)\b/', $q)) $args['priority'] = 'reliability';
@@ -133,7 +156,8 @@ final class PurchaseComparisonAssistant
         try {
             $data = $runner->execute($tool, $args);
         } catch (ModelNotFoundException|ValidationException $e) {
-            unset($reference['purchase_comparison_reference']['quantity'], $reference['purchase_comparison_reference']['unit']);
+            if ($prior) $reference['purchase_comparison_reference'] = $prior;
+            else unset($reference['purchase_comparison_reference']['quantity'], $reference['purchase_comparison_reference']['unit']);
             return $base + $reference + ['state' => 'needs_clarification', 'next_action' => ['url' => $workspace, 'label' => $review['label']],
                 'text' => $t('Check the product, quantity, configured unit and delivery date before comparing.', 'Kontrollo produktin, sasinë, njësinë e konfiguruar dhe datën e dorëzimit para krahasimit.')];
         } catch (HttpExceptionInterface $e) {
@@ -151,6 +175,11 @@ final class PurchaseComparisonAssistant
             ? $lead['name'].' — '.$criteria[$lead['criterion']].' ('.$lead['comparable_suppliers'].' '.$t('comparable suppliers', 'furnitorë të krahasueshëm').').'
             : $t('No clear winner is supported. Compare recorded offers and request missing price or delivery evidence.', 'Të dhënat nuk tregojnë një fitues të qartë. Krahaso ofertat dhe kërko të dhënat që mungojnë për çmimin ose dorëzimin.');
         $text = $product->name.' · '.$data['normalized']['base_quantity'].' '.$data['normalized']['inventory_unit']."\n".$text;
+        if ($sameSupplier) {
+            $selected = collect($data['suppliers'])->firstWhere('id', (int) ($args['supplier_id'] ?? 0));
+            $text .= "\n".($selected ? $t('Supplier kept: ', 'Furnitori i ruajtur: ').$selected['name'].'.'
+                : $t('There is no selected supplier yet. Choose one in Purchasing Decisions.', 'Ende nuk është zgjedhur një furnitor. Zgjidhe te Vendimet për blerje.'));
+        }
         if (!$lead && $data['quote_candidates']) {
             $text .= "\n".$t('Ask these recorded candidates for a current quote: ', 'Kërko ofertë aktuale nga këta kandidatë të regjistruar: ')
                 .implode(', ', array_column(array_slice($data['quote_candidates'], 0, 3), 'name')).'.';

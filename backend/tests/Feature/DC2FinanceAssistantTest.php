@@ -17,6 +17,20 @@ class DC2FinanceAssistantTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_current_period_is_selected_for_an_undated_month_close_question(): void
+    {
+        $this->context();
+        $today = \App\Support\CompanyClock::today();
+        $period = \App\Models\AccountingPeriod::create($this->tenantAttributes([
+            'name' => 'Current close review', 'starts_at' => $today->startOfMonth(),
+            'ends_at' => $today->endOfMonth(), 'status' => 'open',
+        ]));
+        $this->postJson('/api/intelligence-assistant/ask', [
+            'language' => 'sq', 'question' => 'Çfarë po e bllokon mbylljen e muajit?',
+        ])->assertOk()->assertJsonPath('next_action.url', '/accounting?tab=periods&period='.$period->id)
+            ->assertJsonPath('tools.0.tool', 'get_month_close_blockers');
+    }
+
     private function context(): void
     {
         $this->actingAsApiUser('admin');

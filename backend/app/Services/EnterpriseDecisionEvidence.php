@@ -7,6 +7,7 @@ use App\Support\Money;
 final class EnterpriseDecisionEvidence {
  public function assemble(int $id,?int $warehouse=null):array {
   $planning=app(InventoryPlanningService::class);$base=$planning->decisionEvidence($id,['warehouse_id'=>$warehouse]);$p=Product::findOrFail($id);$plan=$base['plan'];$input=$base['input'];
+  // Recorded balances are evidence for review and do not establish funding for a recommendation.
   $finance=app(InventoryPlanningInsights::class)->finance($input['currency']);
   $supplierOptions=app(InventoryPlanningInsights::class)->supplierOptions($input,true);$transfers=$this->transfers($p,$plan,$input);
   $variants=[];foreach(array_slice($supplierOptions,0,config('enterprise_decisions.supplier_limit')) as $s){$variants[]=[$this->supplierVariant($base,$s),$s];}
@@ -19,7 +20,7 @@ final class EnterpriseDecisionEvidence {
   }
   if($transfers)$alternatives[]=$this->option($base,[],$required,$transfers[0],$finance,true);
   $alternatives[]=['key'=>'monitor','action'=>'monitor','supplier_id'=>null,'supplier_name'=>null,'supplier_risk'=>[],'base_quantity'=>0,'quantity'=>0,'unit'=>$p->unit,'unit_price'=>null,'base_cost'=>'0.00','currency'=>$input['currency'],'transfer_quantity'=>0,'transfer'=>null,'feasible'=>true,'constraints'=>[],'assumptions'=>['no_new_replenishment'],'impact'=>['stockout_before'=>$plan['stockout_date'],'stockout_after'=>$plan['stockout_date'],'stockout_days_after'=>$plan['stockout_days'],'arrival'=>null,'days_of_supply'=>$plan['days_of_supply'],'excess_quantity'=>$plan['excess_quantity'],'projection_supported'=>(bool)$plan['daily']]];
-  $alternatives=app(EnterpriseDecisionRanker::class)->rank($alternatives,['required'=>$required,'forecast'=>(bool)$plan['daily'],'horizon'=>count($plan['daily']),'stockout_date'=>$plan['stockout_date'],'cash'=>$finance['recorded_cash']===null?null:(float)$finance['recorded_cash']]);
+  $alternatives=app(EnterpriseDecisionRanker::class)->rank($alternatives,['required'=>$required,'forecast'=>(bool)$plan['daily'],'horizon'=>count($plan['daily']),'stockout_date'=>$plan['stockout_date'],'cash'=>null]);
   $orders=PurchaseOrder::with(['items'=>fn($q)=>$q->where('product_id',$id)])->whereHas('items',fn($q)=>$q->where('product_id',$id))->whereNotIn('status',['draft','cancelled','completed','received'])->when($warehouse,fn($q)=>$q->where('warehouse_id',$warehouse))->orderBy('id')->limit(30)->get();
   $poIds=$orders->pluck('id');$shipments=$poIds->isEmpty()?collect():Shipment::with('containers','purchaseOrders')->where(fn($q)=>$q->whereIn('purchase_order_id',$poIds)->orWhereHas('purchaseOrders',fn($s)=>$s->whereIn('purchase_orders.id',$poIds)))->orderBy('id')->limit(30)->get();
   $intelligence=\App\Models\ShipmentIntelligence::whereIn('shipment_id',$shipments->pluck('id'))->where('is_current',true)->get()->keyBy('shipment_id');
@@ -40,7 +41,7 @@ final class EnterpriseDecisionEvidence {
    foreach($variants as [$v,$s]){$v=$this->logisticsTiming($v,$riskIds,$intelligence->all(),$id,$warehouse);$alternatives[]=$this->option($v,$s,$required,null,$finance);if($transfers)$alternatives[]=$this->option($v,$s,$required,$transfers[0],$finance);}
    if($transfers)$alternatives[]=$this->option($base,[],$required,$transfers[0],$finance,true);
    $alternatives[]=['key'=>'monitor','action'=>'monitor','supplier_id'=>null,'supplier_name'=>null,'supplier_risk'=>[],'base_quantity'=>0,'quantity'=>0,'unit'=>$p->unit,'unit_price'=>null,'base_cost'=>'0.00','currency'=>$input['currency'],'transfer_quantity'=>0,'transfer'=>null,'feasible'=>true,'constraints'=>[],'assumptions'=>['no_new_replenishment'],'impact'=>['stockout_before'=>$plan['stockout_date'],'stockout_after'=>$plan['stockout_date'],'stockout_days_after'=>$plan['stockout_days'],'arrival'=>null,'days_of_supply'=>$plan['days_of_supply'],'excess_quantity'=>$plan['excess_quantity'],'projection_supported'=>(bool)$plan['daily']]];
-   $alternatives=app(EnterpriseDecisionRanker::class)->rank($alternatives,['required'=>$required,'forecast'=>(bool)$plan['daily'],'horizon'=>count($plan['daily']),'stockout_date'=>$plan['stockout_date'],'cash'=>$finance['recorded_cash']===null?null:(float)$finance['recorded_cash']]);
+   $alternatives=app(EnterpriseDecisionRanker::class)->rank($alternatives,['required'=>$required,'forecast'=>(bool)$plan['daily'],'horizon'=>count($plan['daily']),'stockout_date'=>$plan['stockout_date'],'cash'=>null]);
   }
   $requests=PurchaseRequest::whereHas('items',fn($q)=>$q->where('product_id',$id))->whereIn('status',['draft','submitted','approved','sourcing'])->orderBy('id')->get(['id','request_number','status']);
   $alerts=InventoryIntelligenceAlert::where('product_id',$id)->where('status','open')->get(['id','evidence']);
@@ -67,7 +68,7 @@ final class EnterpriseDecisionEvidence {
   $severity=$plan['stock']['available']-$plan['stock']['committed_outgoing']<=0&&$required>0?'critical':($plan['risk']==='high'?'high':($required>0?'warning':'normal'));
   $policy=app(DecisionLearningService::class)->currentPolicy();$evidence['versions']['decision']=$policy['version'];
   $fingerprint=hash('sha256',$fingerprint.json_encode($policy));
-  return ['evidence'=>$evidence,'alternatives'=>$alternatives,'source_fingerprint'=>$fingerprint,'confidence'=>$confidence,'severity'=>$severity,'required'=>$required,'plan'=>$plan,'learning_input'=>$input,'ranking_context'=>['required'=>$required,'forecast'=>(bool)$plan['daily'],'horizon'=>count($plan['daily']),'stockout_date'=>$plan['stockout_date'],'cash'=>$finance['recorded_cash']===null?null:(float)$finance['recorded_cash']]];
+  return ['evidence'=>$evidence,'alternatives'=>$alternatives,'source_fingerprint'=>$fingerprint,'confidence'=>$confidence,'severity'=>$severity,'required'=>$required,'plan'=>$plan,'learning_input'=>$input,'ranking_context'=>['required'=>$required,'forecast'=>(bool)$plan['daily'],'horizon'=>count($plan['daily']),'stockout_date'=>$plan['stockout_date'],'cash'=>null]];
  }
  /** Reuse the assembled operational input instead of re-reading the entire
   * supplier catalogue, warehouse balances and history for each alternative. */

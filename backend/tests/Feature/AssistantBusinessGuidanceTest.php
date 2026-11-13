@@ -140,6 +140,8 @@ class AssistantBusinessGuidanceTest extends TestCase
      $this->actingAsApiUser('admin');
      $this->postJson('/api/intelligence-assistant/ask', ['question' => "Why can't I ship this order yet?"])
          ->assertOk()->assertJsonPath('state', 'needs_clarification')->assertJsonPath('tools', []);
+     $this->assertSame('blocker', app(\App\Services\AssistantBusinessIntent::class)
+         ->fulfillmentOperation('The shipment is on hold. What is the dispatch issue?', true));
      $this->assertDatabaseCount('stock_movements', 0);
  }
 }

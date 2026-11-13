@@ -8,7 +8,7 @@ import { dailyStarts } from '../config/everydayWorkspace'
 import { useWorkFocus } from '../hooks/useWorkFocus'
 
 const starts={
- owner:[['/action-center','Decisions & approvals','Vendimet dhe miratimet'],['/accounting?tab=owner','Money & company state','Paratë dhe gjendja e kompanisë'],['/purchasing-decisions','Suppliers & purchase budgets','Furnitorët dhe buxheti i blerjeve'],['/order-hub','Orders & delivery','Porositë dhe dorëzimi']],
+ owner:[['/action-center?area=approval#related-approvals','Approvals to review','Miratimet për shqyrtim'],['/accounting?tab=owner','Money & company state','Paratë dhe gjendja e kompanisë'],['/purchasing-decisions','Suppliers & purchase budgets','Furnitorët dhe buxheti i blerjeve'],['/order-hub','Orders & delivery','Porositë dhe dorëzimi']],
  sales:[['/customers','Customers & follow-ups','Klientët dhe ndjekjet'],['/customers?view=quotations','Quotations','Ofertat'],['/order-hub','Orders needing review','Porositë për shqyrtim']],
  warehouse:[['/fulfillment','Pick & dispatch','Përgatit dhe dërgo'],['/warehouse-operations?tab=receipts','Receive goods','Prano mallin'],['/warehouse-mobile','Scan, find & count','Skano, gjej dhe numëro']],
  purchasing:[['/purchasing-decisions','Compare suppliers','Krahaso furnitorët'],['/procurement','Review purchase requests','Shqyrto kërkesat e blerjes'],['/purchase-orders','Purchase orders','Porositë e blerjes'],['/shipments/my-shipments','Incoming shipments','Dërgesat në ardhje']],
