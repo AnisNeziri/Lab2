@@ -46,7 +46,7 @@ class OperatingAssistantFacts
         $task = ($input['entity']['type'] ?? null) === 'task' && preg_match('/why|explain|pse|shpjego|prepare|pergatit|next|safe/', $q);
         $collections = preg_match('/(?:customer|collection|klient|arketime).*(?:follow.?up|task|ndjek|dety)|(?:follow.?up|ndjek).*(?:customer|collection|klient)/', $q);
         $overdue = (bool) preg_match('/overdue|late|vonuar|vones/', $q);
-        $daily=(bool)preg_match('/what needs my attention|today in aims|warehouse.*(?:today|urgent)|(?:what|which).*(?:do|review|work|urgent).*(?:warehouse|today)/',$q);
+        $daily=(bool)preg_match('/what needs (?:my attention|attention my)|today in aims|warehouse.*(?:today|urgent)|(?:what|which).*(?:do|review|work|urgent).*(?:warehouse|today)/',$q);
         if($daily&&!app(AssistantToolRunner::class)->allowed('get_operating_brief')){
             if(app(AssistantToolRunner::class)->allowed('get_inventory_health')){
                 $reply=app(InventoryAssistantFacts::class)->reply('inventory_health',$conversation,$sq);
@@ -55,7 +55,7 @@ class OperatingAssistantFacts
             }
             return ['id'=>(string)Str::uuid(),'conversation_id'=>$conversation,'intent'=>'daily_navigation','text'=>$sq?'Kjo llogari nuk ka qasje në radhën e detyrave. Fillo nga hapësira e punës që të lejohet.':'This account cannot view task queues. Start in your permitted workspace.','cards'=>[],'sources'=>[],'choices'=>[],'navigation_actions'=>[['url'=>'/procurement','en'=>'Purchase requests','sq'=>'Kërkesat e blerjes'],['url'=>'/warehouse-mobile','en'=>'Warehouse work','sq'=>'Puna në depo'],['url'=>'/customers','en'=>'Customers','sq'=>'Klientët']],'limitations'=>[$sq?'Vetëm lidhje navigimi; asnjë numër detyrash nuk është konfirmuar.':'Navigation only; no task counts have been confirmed.'],'read_only'=>true,'provider'=>'deterministic','state'=>'insufficient'];
         }
-        $executive = empty($input['entity']) && preg_match('/business.*(?:doing|perform)|focus.*today|what.*changed|what.*happened.*(?:yesterday|today|week|aims)|ndrysh.*(?:jave|sot)|si jemi.*(?:shitje|debt)|what.*kontroll.*sot|afford.*purchas|shipment.*(?:affect|attention)|customer.*(?:contact|follow)|stock.*(?:ordering|reorder)|what needs my attention|today in aims/', $q);
+        $executive = empty($input['entity']) && preg_match('/business.*(?:doing|perform)|focus.*today|what.*changed|what.*happened.*(?:yesterday|today|week|aims)|ndrysh.*(?:jave|today)|si jemi.*(?:shitje|debt)|what.*kontroll.*today|afford.*purchas|shipment.*(?:affect|attention)|customer.*(?:contact|follow)|stock.*(?:ordering|reorder)|what needs my attention|today in aims/', $q);
         if (($executive||$daily) && !($collections && $overdue)) return $this->management($input, $conversation, $q, $sq);
         $warehouseDay=(bool)preg_match('/(?:warehouse|depo).*(?:today|sot)|(?:what|cfare).*(?:bo|do|work|pune).*(?:warehouse|depo)/',$q);
         $brief = $warehouseDay || ($collections && $overdue) || preg_match('/what needs my attention|most important unresolved|what can.*safely resolve|today in aims|operating brief|punet.*sot|qka.*(?:sot|vemend)|cfare.*vemend/', $q);

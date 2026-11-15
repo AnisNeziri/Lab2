@@ -38,6 +38,7 @@ class CatalogConfidentialityTest extends TestCase
   $data=$this->getJson('/api/products?reference_only=1')->assertOk()->json('data.0');
   $this->assertSame($p->id,$data['id']);$this->assertSame('20.00',$data['selling_price']);$this->assertArrayHasKey('unit',$data);
   foreach(['quantity','available_quantity','warehouse_stock','inventory','supplier_catalogue','purchase_price'] as $key)$this->assertArrayNotHasKey($key,$data);
+  $this->getJson('/api/products?reference_only=1&inventory_fields=1')->assertOk()->assertJsonMissingPath('data.0.tracking_mode')->assertJsonMissingPath('data.0.purchase_price');
   $this->getJson('/api/products/'.$p->id.'?reference_only=1')->assertOk()->assertJsonMissingPath('movements');
   Auth::user()->company->update(['role_permissions'=>['staff'=>['invoices.manage']]]);
   $this->getJson('/api/products')->assertForbidden();

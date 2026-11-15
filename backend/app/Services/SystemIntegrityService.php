@@ -31,13 +31,19 @@ class SystemIntegrityService
     public function referenceReview(): array
     {
         abort_unless(Auth::user()?->role==='admin' && app(PermissionService::class)->roleHasPermission('admin','deployment.view'),403);
+
+        return $this->referenceReviewForCompany((int) Auth::user()->company_id);
+    }
+
+    protected function referenceReviewForCompany(int $company): array
+    {
         $c=config('database.connections.'.config('database.default'));
         $scope=hash('sha256',DB::getDriverName().':'.($c['host']??'').':'.($c['port']??'').':'.($c['database']??''));
         $file=storage_path('framework/aims-reference-review.json');$report=is_file($file)?json_decode(file_get_contents($file),true):[];
         $matches=hash_equals($report['app_key_fingerprint']??'',hash('sha256',(string)config('app.key'))) && in_array($scope,[$report['source_scope']??null,$report['rehearsal_scope']??null],true);
         if(!$matches)return ['status'=>'NOT_VERIFIED','rows'=>[],'migration_ready'=>false,'message'=>'No matching operator reference audit.'];
         $isolated=$scope===($report['rehearsal_scope']??null);$audit=$isolated?($report['current_rehearsal']??$report['rehearsal']??[]):($report['current_source']??$report['baseline']??[]);$current=collect($audit['violations']??[])->keyBy(fn($v)=>$v['table'].':'.$v['constraint']);
-        $rows=[];$company=(int)Auth::user()->company_id;
+        $rows=[];
         $known=collect($report['baseline']['violations']??[])->keyBy(fn($v)=>$v['table'].':'.$v['constraint']);
         foreach($current as $key=>$v)if(!$known->has($key))$known->put($key,$v);
         foreach($known as $v){

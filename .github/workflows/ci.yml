@@ -29,7 +29,7 @@ jobs:
   recovery-certification:
     name: Independent populated upgrade and recovery
     if: github.event_name == 'workflow_dispatch' || inputs.release_certification == true
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       mariadb:
         image: mariadb:11.4
@@ -109,7 +109,7 @@ jobs:
           path: output/pr1-linux-*.json
   backend-tests:
     name: Backend tests (SQLite portable path)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: backend
@@ -165,7 +165,7 @@ jobs:
 
   backend-mariadb-migrations:
     name: Backend migrations (MariaDB server path)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       mariadb:
         image: mariadb:11
@@ -259,7 +259,7 @@ jobs:
 
   browser-smoke:
     name: Browser smoke (Chromium + SQLite)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
@@ -294,7 +294,7 @@ jobs:
   browser-release:
     name: Browser release certification
     if: github.event_name == 'workflow_dispatch' || inputs.release_certification == true
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

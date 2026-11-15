@@ -9,6 +9,9 @@ class DC11CommissioningTest extends TestCase
     use RefreshDatabase;
     public function test_an_orphan_line_cannot_attach_to_a_new_po_when_its_parent_identifier_is_reused(): void
     {
+        if (DB::getDriverName() !== 'sqlite') {
+            $this->markTestSkipped('This fixture uses SQLite deferred foreign keys and ID reuse.');
+        }
         $this->actingAsApiUser();$this->getJson('/api/me')->assertOk();
         $supplier=\App\Models\Supplier::create($this->tenantAttributes(['name'=>'Fixture supplier']));
         DB::statement('PRAGMA defer_foreign_keys=ON');

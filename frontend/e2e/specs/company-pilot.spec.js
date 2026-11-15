@@ -31,11 +31,16 @@ test('@smoke owner sees honest pilot readiness, saves a draft and captures a rev
 })
 
 test('@smoke quick feedback captures the page and redacts sensitive free text', async ({page}) => {
-  await login(page);await page.goto('/products?search=private-search-token')
+  await login(page)
+  await page.goto('/products?search=private-search-token')
+  await expect(page.getByRole('heading', { name: 'Products', exact: true })).toBeVisible()
+  await page.locator('summary[aria-label="Help and support"]').click()
   await page.getByRole('button',{name:'Report a problem',exact:true}).click()
   const dialog=page.getByRole('dialog',{name:'Report a problem',exact:true})
   await dialog.getByLabel('What happened? (optional)',{exact:true}).fill('Slow list password=secret-password customer@example.com')
+  const submitted = page.waitForResponse(r => new URL(r.url()).pathname === '/api/pilot/feedback' && r.request().method() === 'POST')
   await dialog.getByRole('button',{name:'Send report',exact:true}).click()
+  expect((await submitted).ok()).toBe(true)
   await expect(dialog).toContainText('Report saved for your company administrator.')
   await page.keyboard.press('Escape');await page.goto('/pilot')
   await page.getByRole('button',{name:'Feedback',exact:true}).click()

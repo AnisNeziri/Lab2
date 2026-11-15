@@ -1,7 +1,12 @@
 import { expect } from '@playwright/test'
 
 export async function expectNoDocumentOverflow(page, tolerance = 2) {
-  await page.waitForLoadState('networkidle')
+  // Workspace polling and realtime connections can stay active after layout is ready.
+  await expect(page.locator('.main-content :is(h1, h2)').first()).toBeVisible()
+  await page.evaluate(async () => {
+    await document.fonts.ready
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  })
   const dimensions = await page.evaluate(() => {
     const viewport = document.documentElement.clientWidth
     const offenders = [...document.querySelectorAll('body *')]

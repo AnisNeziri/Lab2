@@ -4,6 +4,7 @@ export async function getProducts(filters = {}) {
   return apiRequest(
     buildApiUrl('/products', {
       reference_only: filters.reference_only ? '1' : '',
+      inventory_fields: filters.inventory_fields ? '1' : '',
       search: filters.search,
       category_id: filters.category_id,
       supplier_id: filters.supplier_id,

@@ -167,7 +167,7 @@ function Stock() {
         setError('')
       }
       const [productsList, movementsData, warehouseList, locationList] = await Promise.all([
-        getProducts({ reference_only: true, search: productSearchRef.current, per_page: 50 }),
+        getProducts({ reference_only: true, inventory_fields: true, search: productSearchRef.current, per_page: 50 }),
         loadMovements(activeFilters),
         getWarehouses(),
         getWarehouseLocations(),
@@ -198,7 +198,7 @@ function Stock() {
     searchedProducts.current = true
     const request = ++productChoiceRequest.current
     const timer = setTimeout(() => {
-      getProducts({ reference_only: true, search: productSearch, per_page: 50 })
+      getProducts({ reference_only: true, inventory_fields: true, search: productSearch, per_page: 50 })
         .then(value => { if (request === productChoiceRequest.current) acceptProductChoices(value.data || []) })
         .catch(() => { if (request === productChoiceRequest.current) setError('Could not search products.') })
     }, 200)

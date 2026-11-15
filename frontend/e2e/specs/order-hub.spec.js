@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test'
-import {login} from '../helpers/auth.mjs'
+import {login,logout} from '../helpers/auth.mjs'
 
 async function api(page,path,data){
   const headers={Authorization:`Bearer ${await page.evaluate(()=>localStorage.getItem('api_token'))}`}
@@ -32,30 +32,44 @@ test('Order Hub creates, confirms, reserves, links WMS and exposes safe tracking
   await page.getByRole('link',{name:'Open pick, pack, dispatch & returns',exact:true}).click();await expect(page).toHaveURL(new RegExp(`fulfillment\\?order=${intake.order.id}`))
   await page.goto(href);await expect(page.getByText(f.product.name,{exact:true})).toBeVisible();expect(errors).toEqual([])
 })
-test('simple Orders journey dispatches once, opens its Daily Sale and creates a linked invoice',async({page})=>{
-  test.setTimeout(90_000)
+test('Sales reserves an order, Warehouse dispatches once, and Sales creates its linked invoice',async({page,browser,baseURL})=>{
+  test.setTimeout(120_000)
   const errors=[];page.on('pageerror',e=>errors.push(e.message));await login(page);const f=await fixture(page)
+  await logout(page)
+  await login(page,'sales')
   const intake=await api(page,'/order-hub/orders',{idempotency_key:f.tag,customer_id:f.customer.id,order_date:new Date().toLocaleDateString('en-CA'),payment_type:'cash',items:[{product_id:f.product.id,quantity:2}]})
   const url=`/order-hub?intake=${intake.id}`
   await page.goto(url)
-  await page.getByRole('button',{name:'Confirm & reserve',exact:true}).click()
-  await page.getByRole('checkbox',{name:'I verified these products and quantities are ready.',exact:true}).check()
-  await page.getByRole('button',{name:'Mark ready',exact:true}).click()
-  await page.getByRole('button',{name:'Confirm cash received & dispatch',exact:true}).click()
-  await page.getByText('Connections: sales, invoices & returns',{exact:true}).click()
-  await expect(page.getByRole('link',{name:/^DS-/})).toBeVisible()
+  const confirm=page.getByRole('button',{name:'Confirm & reserve',exact:true})
+  await expect(confirm).toBeEnabled({timeout:30_000})
+  await confirm.click()
+  await expect(page.getByRole('link',{name:'Open warehouse fulfillment'})).toBeVisible()
+  const manager=await browser.newPage({baseURL})
+  try {
+    await login(manager,'manager')
+    await manager.goto(url)
+    await manager.getByRole('checkbox',{name:'I verified these products and quantities are ready.',exact:true}).check()
+    await manager.getByRole('button',{name:'Mark ready',exact:true}).click()
+    await expect(manager.getByRole('button',{name:'Confirm cash received & dispatch',exact:true})).toBeVisible()
+  } finally { await manager.close() }
+  const warehouse=await browser.newPage({baseURL})
+  try {
+    await login(warehouse,'warehouse')
+    await warehouse.goto(url)
+    await warehouse.getByRole('button',{name:'Confirm cash received & dispatch',exact:true}).click()
+    await warehouse.getByLabel('Recipient',{exact:true}).fill('Test recipient')
+    await warehouse.getByRole('button',{name:'Confirm full delivery',exact:true}).click()
+    await expect(warehouse.getByRole('heading',{name:/Next action: View sale, invoice or return/})).toBeVisible()
+  } finally { await warehouse.close() }
+  await page.reload()
   const dispatched=await api(page,`/order-hub/intakes/${intake.id}`)
   expect(dispatched.connections.sales).toHaveLength(1)
   const stockAfterDispatch=await api(page,`/products/${f.product.id}`)
   expect(Number(stockAfterDispatch.product.quantity)).toBe(18)
-  await page.getByLabel('Recipient',{exact:true}).fill('Test recipient')
-  await page.getByRole('button',{name:'Confirm full delivery',exact:true}).click()
-  await expect(page.getByRole('heading',{name:/Next action: View sale, invoice or return/})).toBeVisible()
-  await page.getByRole('link',{name:dispatched.connections.sales[0].sale_number,exact:true}).click()
-  await expect(page).toHaveURL(/daily-sales\?date=/)
-  await expect(page.getByRole('link',{name:/SO-/}).first()).toBeVisible()
-  await page.goto(url)
   await page.getByText('Connections: sales, invoices & returns',{exact:true}).click()
+  const sale=dispatched.connections.sales[0].sale_number
+  await expect(page.getByText(sale,{exact:true})).toBeVisible()
+  await expect(page.getByRole('link',{name:sale,exact:true})).toHaveCount(0)
   await page.getByRole('button',{name:'Create invoice',exact:true}).click()
   await expect(page).toHaveURL(/invoices\?invoice=\d+/)
   await expect(page.getByRole('link',{name:/Source order/})).toBeVisible()

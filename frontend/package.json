@@ -8,7 +8,7 @@
     "dev": "vite",
     "test": "node ../scripts/run-node-tests.cjs",
     "test:e2e": "playwright test --project=chromium",
-    "test:e2e:smoke": "playwright test --project=chromium --grep @smoke",
+    "test:e2e:smoke": "playwright test --config playwright.smoke.config.js --project=chromium --grep @smoke",
     "test:e2e:release": "playwright test --project=chromium",
     "build": "vite build",
     "preview": "vite preview"

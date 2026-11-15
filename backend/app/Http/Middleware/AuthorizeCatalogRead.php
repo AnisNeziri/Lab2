@@ -18,9 +18,11 @@ final class AuthorizeCatalogRead
         $response=$next($request);
         if($reference && $response instanceof JsonResponse && $response->isSuccessful()){
             $data=$response->getData(true);
-            if(isset($data['data']))$data['data']=array_map($access->referenceProduct(...),$data['data']);
-            elseif(isset($data['product']))$data=['product'=>$access->referenceProduct($data['product'])];
-            else $data=$access->referenceProduct($data);
+            $includeTracking = $request->boolean('inventory_fields') && $access->inventory($permissions);
+            $project = fn (array $product): array => $access->referenceProduct($product, $includeTracking);
+            if(isset($data['data']))$data['data']=array_map($project,$data['data']);
+            elseif(isset($data['product']))$data=['product'=>$project($data['product'])];
+            else $data=$project($data);
             $response->setData($data);
         }
         return $response;

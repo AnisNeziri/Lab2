@@ -56,7 +56,7 @@ function Sources({data,busy,run,text,label,issue,onDirty,initialDomain}) {
   const session=data.session,editable=!session.posting_started_at&&!['locked','cancelled'].includes(session.status)&&data.permissions.manage
   const batches=data.batches.filter(b=>b.is_active&&b.domain===domain),batch=batches.find(b=>String(b.id)===batchId)||batches.at(-1)
   useEffect(()=>{setMapping(batch?.mapping||{});setMappingDirty(false);onDirty(false)},[batch?.id,batch?.updated_at,onDirty])
-  const load=useCallback(async(signal)=>{setLoading(true);setError('');try{const result=await readOpening(`/${session.id}/rows`,{domain,page,status,q,view:warnings?'warnings':'',batch_id:batchId});if(!signal?.aborted)setRows(result)}catch(e){if(!signal?.aborted)setError(e.message)}finally{if(!signal?.aborted)setLoading(false)}},[session.id,domain,page,status,q,warnings,batchId])
+  const load=useCallback(async(signal)=>{setLoading(true);setError('');try{const result=await readOpening(`/${session.id}/rows`,{domain,page,status,q,view:warnings?'warnings':'',batch_id:batchId},signal);if(!signal?.aborted)setRows(result)}catch(e){if(!signal?.aborted)setError(e.message)}finally{if(!signal?.aborted)setLoading(false)}},[session.id,domain,page,status,q,warnings,batchId])
   useEffect(()=>{const abort=new AbortController();const timeout=setTimeout(()=>load(abort.signal),200);return()=>{clearTimeout(timeout);abort.abort()}},[load,session.revision,session.status])
   useEffect(()=>setSelected([]),[domain,page,status,q,warnings,batchId])
   const rowSource=row=>({...Object.fromEntries(Object.entries(data.batches.find(b=>b.id===row.onboarding_batch_id)?.mapping||{}).map(([field,column])=>[field,row.raw[column]])),...row.overrides})

@@ -39,8 +39,12 @@ final class CatalogReadAccess
         return $data;
     }
 
-    public function referenceProduct(array $product): array
+    public function referenceProduct(array $product, bool $includeTracking = false): array
     {
-        return array_intersect_key($product, array_flip(['id','name','sku','barcode','unit','price','selling_price','vat_rate','tax_treatment','tax_legal_reference','default_tax_code_id','category_id','lifecycle_status','units']));
+        $fields = ['id','name','sku','barcode','unit','price','selling_price','vat_rate','tax_treatment','tax_legal_reference','default_tax_code_id','category_id','lifecycle_status','units'];
+        if ($includeTracking) {
+            array_push($fields, 'tracking_mode', 'expiration_controlled', 'default_shelf_life_days', 'shelf_life_basis');
+        }
+        return array_intersect_key($product, array_flip($fields));
     }
 }

@@ -34,10 +34,10 @@ class ScaleReadContractsTest extends TestCase
         DB::listen(function () use (&$queries) {
             $queries++;
         });
-        $r = $this->getJson('/api/products?reference_only=1&per_page=50')->assertOk()->assertJsonCount(50, 'data')->assertJsonPath('total', 130);
+        $r = $this->getJson('/api/products?reference_only=1&inventory_fields=1&per_page=50')->assertOk()->assertJsonCount(50, 'data')->assertJsonPath('total', 130);
         $this->assertLessThan(20, $queries);
         $this->assertLessThan(70000, strlen($r->getContent()));
-        $r->assertJsonPath('data.0.expiration_controlled', true)->assertJsonPath('data.0.default_shelf_life_days', 30)->assertJsonPath('data.0.available_quantity', 10);
+        $r->assertJsonPath('data.0.tracking_mode', 'batch_expiry')->assertJsonPath('data.0.expiration_controlled', true)->assertJsonPath('data.0.default_shelf_life_days', 30)->assertJsonMissingPath('data.0.available_quantity')->assertJsonMissingPath('data.0.purchase_price');
         $this->getJson('/api/products?reference_only=1&search=REF-129')->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.sku', 'REF-129');
         $this->getJson('/api/products?per_page=-1')->assertUnprocessable();
     }

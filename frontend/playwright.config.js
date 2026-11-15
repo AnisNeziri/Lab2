@@ -13,6 +13,12 @@ const backendEnvironment = {
   DB_CONNECTION: 'sqlite',
   DB_DATABASE: databasePath,
   DB_URL: '',
+  APP_OPERATION_MODE: 'online',
+  REDIS_ENABLED: 'false',
+  APP_URL: 'http://127.0.0.1:8010',
+  FRONTEND_URL: 'http://127.0.0.1:4173',
+  TRACKING_EXTERNAL_ENABLED: 'false',
+  ASSISTANT_PROVIDER: 'deterministic',
   CACHE_STORE: 'array',
   SESSION_DRIVER: 'array',
   QUEUE_CONNECTION: 'sync',
@@ -22,6 +28,8 @@ const backendEnvironment = {
 
 export default defineConfig({
   testDir: './e2e/specs',
+  // Archived phase witnesses have dedicated configs and require separately provisioned fixtures.
+  testMatch: /(?:^|[/\\])(?!(?:dc(?:[3-9]|1[0-5])|px[12])-|ui-review\.spec\.)[^/\\]+\.spec\.js$/,
   outputDir: './test-results',
   globalSetup: './e2e/global-setup.mjs',
   fullyParallel: false,
@@ -57,8 +65,8 @@ export default defineConfig({
     {
       command: 'node ../scripts/serve-e2e.cjs',
       cwd: frontendDir,
-      url: 'http://127.0.0.1:4173/login',
-      env: { VITE_API_PROXY_TARGET: 'http://127.0.0.1:8010' },
+      url: 'http://127.0.0.1:4173/api/status',
+      env: { VITE_API_PROXY_TARGET: 'http://127.0.0.1:8010', VITE_ASSISTANT_PROXY_TARGET: '' },
       reuseExistingServer: false,
       timeout: 120_000,
     },

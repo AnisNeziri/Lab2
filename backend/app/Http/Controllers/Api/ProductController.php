@@ -30,6 +30,7 @@ class ProductController extends Controller
     {
         $validated = $request->validate([
             'reference_only' => ['sometimes', 'boolean'],
+            'inventory_fields' => ['sometimes', 'boolean'],
             'page' => ['sometimes','integer','min:1'],
             'per_page' => ['sometimes','integer','min:1','max:50'],
             'search' => ['nullable', 'string', 'max:255'],

@@ -12,13 +12,20 @@ const viewports = [
 
 for (const viewport of viewports) {
   test(`@smoke ${viewport.name} renders core pages without document overflow`, async ({ page }, testInfo) => {
+    test.setTimeout(90_000) // Five independent page loads share the local PHP server.
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
     await login(page)
 
     for (const route of ['/dashboard', '/products', '/purchase-orders', '/customer-debts', '/finance']) {
       await page.goto(route)
       await expect(page.locator('.main-content')).toBeVisible()
+      if (route === '/finance') await expect(page.getByRole('button', { name: 'Refresh data' })).toBeEnabled()
       await expectNoDocumentOverflow(page)
+    }
+
+    if (viewport.width <= 700) {
+      const tabs = page.locator('.finance-tabs')
+      expect(await tabs.evaluate(nav => nav.scrollWidth - nav.clientWidth)).toBeLessThanOrEqual(2)
     }
 
     await page.screenshot({

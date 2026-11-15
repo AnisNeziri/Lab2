@@ -27,9 +27,13 @@ if (! app()->environment('e2e') || config('database.default') !== 'sqlite' || ba
 }
 DB::beginTransaction();
 $company = Company::factory()->create(['name' => 'DC5 Synthetic Inventory', 'base_currency' => 'EUR', 'timezone' => 'Europe/Budapest']);
-$owner = User::updateOrCreate(['email' => 'dc5-owner@e2e.example'], ['name' => 'DC5 Warehouse Reviewer', 'password' => bcrypt('dc5-local-test-secret'), 'role' => 'admin', 'company_id' => $company->id,
+$password = getenv('AIMS_E2E_DC5_PASSWORD');
+if (! is_string($password) || ! preg_match('/\A[a-f0-9]{48}\z/', $password)) {
+    throw new RuntimeException('An ephemeral DC5 fixture password is required.');
+}
+$manager = User::updateOrCreate(['email' => 'dc5-manager@e2e.example'], ['name' => 'DC5 Receiving Manager', 'password' => bcrypt($password), 'role' => 'manager', 'company_id' => $company->id,
     'must_change_password' => false, 'is_active' => true, 'email_verified_at' => now()]);
-Auth::setUser($owner);
+Auth::setUser($manager);
 (new RolePermissionSeeder)->run(true);
 app(AccountingService::class)->initialize();
 $category = Category::create(['name' => 'DC5 Upholstery']);

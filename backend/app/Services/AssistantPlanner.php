@@ -41,7 +41,7 @@ final class AssistantPlanner
             'opportunities'=>'/\b(sales opportun|reorder opportun|customer.*(?:reorder|buy.*again|riporos)|mundesi.*shit|mundesi.*ri|klient.*riporos)/',
             'compare'=>'/\b(compare|instead of|versus| vs |krahaso|ne vend|supplier b.*supplier a)/',
             'explain'=>'/\b(why|explain|pse|shpjego)/',
-            'stockout'=>'/\b(stockout|run out|running out|out of stock|stock risk|risk.*stock|stock.*risk|stock.*finish|when.*finish|mbar.*stok|munges.*stok)/',
+            'stockout'=>'/\b(stockout|run out|running out|out of stock|stock risk|risk.*stock|stock.*risk|stock.*finish|when.*finish|mbar.*stock|munges.*stock|which products?\b.*\bremaining pa stock)/',
             'shipments'=>'/\b(shipment|vessel|container|derges|anije|logistics|china|incoming stock|stock.*incoming)/',
             'suppliers'=>'/\b(supplier.*attention|supplier.*risk|supplier.*should.*consider|furnitor.*vemend|furnitor.*rrezik|furnitor.*duhet.*konsider)/',
             'replenishment'=>'/\b(what.*buy|should.*(?:buy|reorder)|what.*order|how much.*order|sa.*porosi|cfare.*ble|replenish|riporosi)/',

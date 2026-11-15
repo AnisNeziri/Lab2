@@ -96,9 +96,10 @@ export default function WarehouseOperations() {
   const canManageTransfers = permissions.includes('transfers.manage')
   const canDispatch = permissions.includes('transfers.dispatch')
   const canReceive = permissions.includes('transfers.receive')
+  const canViewReceipts = permissions.includes('purchase_orders.view')
   const [tab, setTab] = useSessionState('warehouse.tab', 'locator')
-  const requestedTab=documentParams.get('tab')
-  useEffect(()=>{if(['control','locator','warehouses','locations','transfers','receipts'].includes(requestedTab))setTab(requestedTab)},[requestedTab,setTab])
+  const requestedTab = documentParams.get('tab')
+  const activeTab = tab === 'receipts' && !canViewReceipts ? 'locator' : tab
   const [warehouses, setWarehouses] = useState([])
   const [locations, setLocations] = useState([])
   const [products, setProducts] = useState([])
@@ -128,7 +129,8 @@ export default function WarehouseOperations() {
     if (!silent) setLoading(true)
     try {
       const [warehouseData, locationData, productData, transferData, receiptData] = await Promise.all([
-        getWarehouses(), getWarehouseLocations(), getAllProducts(), getStockTransfers({ per_page: 100 }), getGoodsReceipts({ per_page: 100 }),
+        getWarehouses(), getWarehouseLocations(), getAllProducts(), getStockTransfers({ per_page: 100 }),
+        canViewReceipts ? getGoodsReceipts({ per_page: 100 }) : Promise.resolve(null),
       ])
       setWarehouses(warehouseData || [])
       setLocations(locationData || [])
@@ -141,10 +143,13 @@ export default function WarehouseOperations() {
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [t])
+  }, [t, canViewReceipts])
 
   useEffect(() => { void load() }, [load])
-  useEffect(() => { const target=documentParams.get('tab'); if(['control','locator','warehouses','locations','transfers','receipts'].includes(target))setTab(target) }, [documentParams.get('tab')])
+  useEffect(() => {
+    if (requestedTab === 'receipts' && !canViewReceipts) setTab('locator')
+    else if (['control','locator','warehouses','locations','transfers','receipts'].includes(requestedTab)) setTab(requestedTab)
+  }, [requestedTab, canViewReceipts, setTab])
   useEffect(() => { const id=documentParams.get('product'); if(id){setTab('locator');setLocatorMode('product');setLocatedProductId(id);setLocatorQuery('');setLocatorCategoryId('');setLocatorSupplierId('');setLocatorLowOnly(false)} }, [documentParams.get('product')])
   useEffect(() => {
     if (linkedWarehouseId) {
@@ -152,11 +157,11 @@ export default function WarehouseOperations() {
     }
   }, [linkedWarehouseId])
   useEffect(() => {
-    if (!linkedReceiptId) return
+    if (!linkedReceiptId || !canViewReceipts) return
     let active = true
     getGoodsReceipt(linkedReceiptId).then(data => { if(active){ setTab('receipts'); setReceiptDetail(data) } }).catch(err => { if(active) setError(err.message) })
     return () => { active = false }
-  }, [linkedReceiptId])
+  }, [linkedReceiptId, canViewReceipts])
   useEffect(() => {
     if (warehouses.length === 0) {
       if (loading) return;
@@ -379,7 +384,7 @@ export default function WarehouseOperations() {
     ['warehouses', Building2, t('warehouseOps.warehouses')],
     ['locations', MapPin, t('warehouseOps.locations')],
     ['transfers', ArrowRightLeft, t('warehouseOps.transfers')],
-    ['receipts', PackageCheck, t('warehouseOps.receipts')],
+    ...(canViewReceipts ? [['receipts', PackageCheck, t('warehouseOps.receipts')]] : []),
   ]
 
   return (
@@ -391,20 +396,20 @@ export default function WarehouseOperations() {
           <div className="warehouse-ops-kpis">
             <span><strong>{warehouses.filter((row) => row.is_active).length}</strong>{t('warehouseOps.activeWarehouses')}</span>
             <span><strong>{transfers.filter((row) => ['in_transit', 'partially_received'].includes(row.status)).length}</strong>{t('warehouseOps.inTransit')}</span>
-            <span><strong>{receipts.length}</strong>{t('warehouseOps.goodsReceipts')}</span>
+            {canViewReceipts && <span><strong>{receipts.length}</strong>{t('warehouseOps.goodsReceipts')}</span>}
           </div>
         </div>
       </header>
 
       <nav className="warehouse-tabs" aria-label={t('warehouseOps.title')}>
-        {tabs.map(([id, Icon, label]) => <button key={id} type="button" className={tab === id ? 'active' : ''} onClick={() => setTab(id)}><Icon size={18} />{label}</button>)}
+        {tabs.map(([id, Icon, label]) => <button key={id} type="button" className={activeTab === id ? 'active' : ''} onClick={() => setTab(id)}><Icon size={18} />{label}</button>)}
       </nav>
       {error ? <p className="error warehouse-feedback">{error}</p> : null}
       {message ? <p className="success warehouse-feedback">{message}</p> : null}
       {loading ? <section className="card"><p>{t('common.loading')}</p></section> : null}
 
-      {tab === 'control' && <InventoryControlCenter warehouses={warehouses} />}
-      {!loading && tab === 'warehouses' && <div className="warehouse-grid">
+      {activeTab === 'control' && <InventoryControlCenter warehouses={warehouses} />}
+      {!loading && activeTab === 'warehouses' && <div className="warehouse-grid">
         {canManageWarehouses && <section ref={warehouseFormRef} className="card warehouse-side-form" id="warehouse-form"><h2>{editingWarehouseId ? <Pencil size={19} /> : <Plus size={19} />}{t(editingWarehouseId ? 'warehouseOps.editWarehouse' : 'warehouseOps.addWarehouse')}</h2><form onSubmit={saveWarehouse}>
           <label>{t('warehouseOps.name')}<input name="warehouse-name" value={warehouseForm.name} onChange={(event) => setWarehouseForm({ ...warehouseForm, name: event.target.value })} required /></label>
           <label>{t('warehouseOps.code')}<input value={warehouseForm.code} onChange={(event) => setWarehouseForm({ ...warehouseForm, code: event.target.value.toUpperCase() })} required /></label>
@@ -429,7 +434,7 @@ export default function WarehouseOperations() {
         </article>)}</div></section>
       </div>}
 
-      {!loading && tab === 'locator' && <section className="card stock-locator-panel">
+      {!loading && activeTab === 'locator' && <section className="card stock-locator-panel">
         <header className="stock-locator-heading">
           <span className="stock-locator-heading-icon"><LocateFixed size={24} /></span>
           <div><h2>{t('warehouseOps.locatorTitle')}</h2><p>{t('warehouseOps.locatorSubtitle')}</p></div>
@@ -526,7 +531,7 @@ export default function WarehouseOperations() {
         </div>}
       </section>}
 
-      {!loading && tab === 'locations' && <div className="warehouse-grid">
+      {!loading && activeTab === 'locations' && <div className="warehouse-grid">
         {canManageWarehouses && <section className="card warehouse-side-form"><h2><Plus size={19} />{editingLocationId ? t('warehouseOps.editLocation') : t('warehouseOps.addLocation')}</h2><form onSubmit={saveLocation}>
           <label>{t('warehouseOps.warehouse')}<select required value={locationForm.warehouse_id} onChange={(event) => setLocationForm({ ...locationForm, warehouse_id: event.target.value, parent_id: '', floor_level: 1 })}><option value="">{t('common.select')}</option>{warehouses.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
           <label>{t('warehouseOps.type')}<select value={locationForm.type} onChange={(event) => setLocationForm({ ...locationForm, type: event.target.value, parent_id: event.target.value === 'zone' ? '' : locationForm.parent_id })}>{['zone', 'rack', 'shelf', 'bin'].map((type) => <option key={type} value={type}>{t(`warehouseOps.type.${type}`)}</option>)}</select></label>
@@ -540,7 +545,7 @@ export default function WarehouseOperations() {
         <section className="card warehouse-main-list"><h2>{t('warehouseOps.locationTree')}</h2><p className="warehouse-location-sync-note">{t('warehouseOps.layoutSync')}</p><div className="location-list">{locations.map((row) => <div key={row.id} className={`location-row level-${row.path?.split('/').length || 1}`}><span className="type-dot">{row.type.slice(0, 1).toUpperCase()}</span><div><strong>{row.path}</strong><small>{row.name} · {row.warehouse?.name} · {t('warehouseOps.level')} {row.floor_level || 1}</small></div>{canManageWarehouses && <div className="location-row-actions"><button type="button" className="secondary" onClick={() => editLocation(row)}>{t('common.edit')}</button><button type="button" className="icon-danger" aria-label={t('common.delete')} onClick={() => window.confirm(t('warehouseOps.deleteLocationConfirm')) && perform(() => deleteWarehouseLocation(row.id), t('warehouseOps.deleted'))}><X size={17} /></button></div>}</div>)}</div></section>
       </div>}
 
-      {!loading && tab === 'transfers' && <div className="warehouse-grid transfers-layout">
+      {!loading && activeTab === 'transfers' && <div className="warehouse-grid transfers-layout">
         {canManageTransfers && <section className="card warehouse-side-form"><h2><Plus size={19} />{t('warehouseOps.newTransfer')}</h2><form onSubmit={saveTransfer}>
           <label>{t('warehouseOps.from')}<select required value={transferForm.source_warehouse_id} onChange={(event) => setTransferForm({ ...transferForm, source_warehouse_id: event.target.value, source_location_id: '' })}><option value="">{t('common.select')}</option>{warehouses.filter((row) => row.is_active).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
           <label>{t('warehouseOps.to')}<select required value={transferForm.destination_warehouse_id} onChange={(event) => setTransferForm({ ...transferForm, destination_warehouse_id: event.target.value, destination_location_id: '' })}><option value="">{t('common.select')}</option>{warehouses.filter((row) => row.is_active && String(row.id) !== String(transferForm.source_warehouse_id)).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label>
@@ -563,7 +568,7 @@ export default function WarehouseOperations() {
         <section className="card warehouse-main-list"><h2>{t('warehouseOps.transferHistory')}</h2><div className="transfer-list">{transfers.map((row) => <article key={row.id} className="transfer-card"><header><div><strong>{row.transfer_number}</strong><span className={`transfer-status ${row.status}`}>{t(`warehouseOps.status.${row.status}`)}</span></div><time>{new Date(row.created_at).toLocaleString()}</time></header><p>{row.source_warehouse?.name} <ArrowRightLeft size={15} /> {row.destination_warehouse?.name}</p><ul>{row.items?.map((item) => <li key={item.id}>{item.product?.name}: {formatQuantity(item.quantity, item.product?.unit)} {item.product?.unit} <small>({formatQuantity(Number(item.received_quantity || 0) + Number(item.damaged_quantity || 0), item.product?.unit)} {t('warehouseOps.received').toLowerCase()})</small></li>)}</ul><div className="row-actions">{row.status === 'draft' && canDispatch && <button disabled={busy} onClick={() => perform(async () => { const key = dispatchKeysRef.current.get(row.id) || requestKey(); dispatchKeysRef.current.set(row.id, key); await dispatchStockTransfer(row.id, key); dispatchKeysRef.current.delete(row.id) }, t('warehouseOps.dispatched'))}><Send size={16}/>{t('warehouseOps.dispatch')}</button>}{['in_transit', 'partially_received'].includes(row.status) && canReceive && <button disabled={busy} onClick={() => openReceive(row)}><PackageCheck size={16}/>{t('warehouseOps.receive')}</button>}{['draft', 'in_transit', 'partially_received'].includes(row.status) && canManageTransfers && <button className="danger" disabled={busy} onClick={() => { const reason = window.prompt(t('warehouseOps.cancelReason')); if (reason) void perform(() => cancelStockTransfer(row.id, reason), t('warehouseOps.cancelled')) }}>{t('common.cancel')}</button>}</div></article>)}</div></section>
       </div>}
 
-      {!loading && tab === 'receipts' && (
+      {!loading && canViewReceipts && activeTab === 'receipts' && (
         <section className="card">
           <div className="warehouse-operations-section-heading">
             <div>

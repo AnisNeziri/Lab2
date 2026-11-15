@@ -76,12 +76,14 @@ test('DC1 synthetic company stages, reviews, resumes, restores and locks an open
   await page.getByLabel('Backup passphrase',{exact:true}).fill(phrase);const restore=page.waitForResponse(r=>r.url().endsWith('/restore-verify'),{timeout:60000});await page.getByRole('button',{name:'Restore into an independent database',exact:true}).click();expect((await restore).ok()).toBeTruthy();await expect(page.getByText('Independent restore passed',{exact:true})).toBeVisible({timeout:60000})
   await page.getByLabel('I confirm the verified opening is complete.',{exact:true}).check();await page.getByRole('button',{name:'Lock opening',exact:true}).click();await expect(page.getByText('Opening locked. Use normal corrections and reversals for later changes.',{exact:true})).toBeVisible()
   const download=page.waitForEvent('download');await page.getByRole('button',{name:'Download evidence summary',exact:true}).click();expect((await download).suggestedFilename()).toContain('evidence')
-  for(const [language,theme] of [['en','light'],['en','dark'],['sq','light'],['sq','dark']]){
-    await page.evaluate(async pref=>window.__aimsCertification.useSettingsStore.getState().applyPreferences(pref),{language,theme})
-    for(const [width,height] of [[1920,1080],[1366,768],[768,1024],[390,844]]){
-      await page.setViewportSize({width,height});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2)).toBeTruthy()
-      for(const [index,screen] of [[1,'sources'],[2,'reconciliation'],[5,'locked']]){
-        await step(index);if(index===1)await expect(page.locator('.opening-table tbody tr')).toHaveCount(30);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2)).toBeTruthy()
+  for(const [index,screen] of [[1,'sources'],[2,'reconciliation'],[5,'locked']]){
+    await step(index)
+    if(index===1) await expect(page.locator('.opening-table tbody tr')).toHaveCount(30)
+    for(const [language,theme] of [['en','light'],['en','dark'],['sq','light'],['sq','dark']]){
+      await page.evaluate(async pref=>window.__aimsCertification.useSettingsStore.getState().applyPreferences(pref),{language,theme})
+      for(const [width,height] of [[1920,1080],[1366,768],[768,1024],[390,844]]){
+        await page.setViewportSize({width,height})
+        expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2)).toBeTruthy()
         await page.screenshot({path:testInfo.outputPath(`opening-${screen}-${language}-${theme}-${width}.png`),fullPage:true})
       }
     }

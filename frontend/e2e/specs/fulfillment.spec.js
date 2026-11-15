@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test'
-import {login} from '../helpers/auth.mjs'
+import {login,logout} from '../helpers/auth.mjs'
 
 async function api(page,path,data){
   const headers={Authorization:`Bearer ${await page.evaluate(()=>localStorage.getItem('api_token'))}`}
@@ -31,8 +31,10 @@ async function createOrder(page,{product,customer},quantity=4,payment='cash'){
   return new URL(page.url()).searchParams.get('order')
 }
 async function action(page,name,endpoint){
+  const button=page.getByRole('button',{name,exact:true})
+  await expect(button).toBeEnabled()
   const response=page.waitForResponse(r=>r.url().endsWith(`/${endpoint}`)&&r.request().method()==='POST')
-  await page.getByRole('button',{name,exact:true}).click()
+  await button.click()
   const result=await response;expect(result.ok(),await result.text()).toBeTruthy()
   return result.json()
 }
@@ -48,10 +50,13 @@ async function dispatch(page){
   return action(page,'Dispatch selected packages','dispatch')
 }
 
-test('complete outbound UI cycle, draft edit, assignment, proof and return',async({page})=>{
-  test.setTimeout(90000)
+test('sales hands outbound work to warehouse for pick, dispatch and proof, then handles the return',async({page,browser,baseURL})=>{
+  test.setTimeout(150000)
   const errors=[];page.on('pageerror',e=>errors.push(e.message));await login(page)
-  const f=await fixture(page);const id=await createOrder(page,f)
+  const f=await fixture(page)
+  await logout(page)
+  await login(page,'sales')
+  const id=await createOrder(page,f)
   await page.getByRole('button',{name:'Edit draft',exact:true}).click()
   await page.getByLabel('Notes',{exact:true}).fill('Edited before confirmation')
   await action(page,'Save sales order','edit')
@@ -60,12 +65,23 @@ test('complete outbound UI cycle, draft edit, assignment, proof and return',asyn
   await action(page,'Create pick tasks','allocate')
   await page.getByRole('combobox',{name:'Assigned picker',exact:true}).selectOption('')
   await action(page,'Save assignment','assign')
-  await pickPack(page,4)
-  const before=await api(page,`/products/${f.product.id}`);expect(Number(before.product.quantity)).toBe(20)
-  await dispatch(page)
-  await page.getByRole('button',{name:'Mark all quantities delivered',exact:true}).click()
-  await page.getByLabel('Recipient',{exact:true}).fill('Warehouse customer')
-  const delivered=await action(page,'Confirm delivery','delivery');expect(delivered.status).toBe('delivered')
+  const warehouseContext=await browser.newContext({baseURL})
+  try {
+    const warehouse=await warehouseContext.newPage()
+    warehouse.on('pageerror',e=>errors.push(e.message))
+    await login(warehouse,'warehouse')
+    await warehouse.goto(`/fulfillment?order=${id}`)
+    await pickPack(warehouse,4)
+    const before=await api(warehouse,`/products/${f.product.id}`);expect(Number(before.product.quantity)).toBe(20)
+    await dispatch(warehouse)
+    await warehouse.getByRole('button',{name:'Mark all quantities delivered',exact:true}).click()
+    await warehouse.getByLabel('Recipient',{exact:true}).fill('Warehouse customer')
+    const delivered=await action(warehouse,'Confirm delivery','delivery');expect(delivered.status).toBe('delivered')
+    await expect(warehouse.getByRole('link',{name:'Open sale',exact:true})).toHaveCount(0)
+  } finally {
+    await warehouseContext.close()
+  }
+  await page.reload()
   await page.getByRole('combobox',{name:'Delivered product / package',exact:true}).selectOption({index:1})
   await page.getByLabel('Return quantity',{exact:true}).fill('1');await page.getByLabel('Reason',{exact:true}).fill('Damaged packaging')
   await action(page,'Request return','return');await action(page,'Authorize return','return');await action(page,'Receive return','return')

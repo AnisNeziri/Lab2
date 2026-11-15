@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuthStore } from '../store/authStore'
 
 export function DeliveryEditor({ d, detail, t, busy, onSave, statusText }) {
+  const canViewSale = useAuthStore(state => state.permissions.includes('daily_sales.manage'))
   const rows = d.packages.flatMap(p => p.items.map(item => ({ ...item, package: p.reference })))
   const [quantities, setQuantities] = useState({})
   const [recipient, setRecipient] = useState(d.recipient || '')
@@ -16,7 +18,7 @@ export function DeliveryEditor({ d, detail, t, busy, onSave, statusText }) {
       items: rows.map(r => ({ package_item_id: r.id, quantity: quantities[r.id] ?? r.delivered_quantity })) })
   }}>
     <h3>{d.reference} · {statusText(d.status)}</h3>
-    <Link to={`/daily-sales?sale=${d.daily_sale_id}`}>{t('Open sale', 'Hap shitjen')}</Link>
+    {canViewSale && d.daily_sale_id && <Link to={`/daily-sales?sale=${d.daily_sale_id}`}>{t('Open sale', 'Hap shitjen')}</Link>}
     {d.status !== 'delivered' && <>
       <p>{t('Enter cumulative delivered quantities. Leave the remainder outstanding for a later delivery.', 'Shkruani sasitë totale të dorëzuara. Pjesa e mbetur mund të dorëzohet më vonë.')}</p>
       {rows.map(r => {

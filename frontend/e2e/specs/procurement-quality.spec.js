@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test'
 import { login } from '../helpers/auth.mjs'
 
-test('purchase request edit → supplier quote → award review → created PO detail', async ({ page }) => {
-  test.setTimeout(90_000)
+test('buyer drafts a request, hands approval to a manager, then records a quote and creates a PO', async ({ page, browser, baseURL }) => {
+  test.setTimeout(150_000)
   const errors=[]; page.on('pageerror',error=>errors.push(error.message))
-  await login(page)
+  await login(page, 'purchasing')
   await page.goto('/procurement')
   const form=page.locator('#purchase-request-form')
   await form.locator('select').first().selectOption({index:1})
@@ -19,10 +19,43 @@ test('purchase request edit → supplier quote → award review → created PO d
   const saved=page.waitForResponse(r=>r.url().endsWith(`/api/purchase-requests/${request.id}`)&&r.request().method()==='PUT')
   await form.getByRole('button',{name:'Save',exact:true}).click()
   expect((await saved).ok()).toBeTruthy()
-  await row.getByRole('button',{name:'Submit',exact:true}).click()
+  const managerContext = await browser.newContext({ baseURL })
+  try {
+    const manager = await managerContext.newPage()
+    await login(manager, 'manager')
+    const token = await manager.evaluate(() => localStorage.getItem('api_token'))
+    const headers = { Authorization: `Bearer ${token}` }
+    const rules = await manager.request.get('/api/approval-rules', { headers })
+    expect(rules.ok()).toBe(true)
+    const prior = (await rules.json()).find(rule => rule.rule_type === 'purchase_request')
+    const rule = await manager.request.put('/api/approval-rules', { headers, data: {
+      rule_type: 'purchase_request', threshold_amount: 0, currency: request.currency,
+      required_role: 'manager', required_user_id: null, separation_of_duties: true, is_active: true,
+    } })
+    expect(rule.ok(), await rule.text()).toBe(true)
+    try {
+      const submitted = page.waitForResponse(r => r.url().endsWith(`/api/purchase-requests/${request.id}/submit`))
+      await row.getByRole('button',{name:'Submit',exact:true}).click()
+      expect((await (await submitted).json()).status).toBe('submitted')
+      await expect(page.getByRole('button', { name: 'Record request for quotes' })).toBeDisabled()
+      await manager.goto('/procurement')
+      const approval = manager.locator('article').filter({ hasText: request.request_number })
+      const approve = approval.getByRole('button', { name: 'Approve', exact: true })
+      await expect(approve).toBeEnabled({ timeout: 30_000 })
+      const decided = manager.waitForResponse(r => /\/api\/approvals\/\d+\/decision$/.test(r.url()))
+      await approve.click()
+      expect((await decided).ok()).toBe(true)
+    } finally {
+      const restored = await manager.request.put('/api/approval-rules', { headers, data: prior ?? { rule_type: 'purchase_request', is_active: false } })
+      expect(restored.ok(), await restored.text()).toBe(true)
+    }
+  } finally {
+    await managerContext.close()
+  }
+  await page.goto(`/procurement?request=${request.id}`)
   await expect(page.locator('.supplier-choice')).toBeVisible()
   await page.locator('.supplier-choice input').first().check()
-  await page.getByRole('button',{name:'Send request for quotes'}).click()
+  await page.getByRole('button',{name:'Record request for quotes'}).click()
   const quoteForm=page.locator('form').filter({has:page.getByRole('heading',{name:'Record supplier quote'})})
   await expect(quoteForm).toBeVisible()
   await quoteForm.getByLabel('Supplier',{exact:true}).selectOption({index:1})
@@ -33,6 +66,7 @@ test('purchase request edit → supplier quote → award review → created PO d
   const quoteSaved=page.waitForResponse(r=>/\/api\/rfqs\/\d+\/quotes$/.test(r.url())&&r.request().method()==='POST')
   await quoteForm.getByRole('button',{name:'Save quote'}).click()
   expect((await quoteSaved).ok()).toBeTruthy()
+  await page.locator('.comparison-table').getByRole('radio', { name: 'Select', exact: true }).check()
   await page.locator('.comparison-head').getByRole('button',{name:'Confirm award'}).click()
   const review=page.getByRole('region',{name:'Review award'})
   await expect(review).toContainText('29.97')

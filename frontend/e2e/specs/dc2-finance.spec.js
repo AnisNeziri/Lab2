@@ -18,10 +18,10 @@ test.beforeAll(() => {
     windowsHide: true,
   });
 });
-async function login(page) {
+async function login(page, account = "dc2-finance") {
   await page.goto("/login");
-  await page.getByLabel("Email address").fill("dc2-finance@e2e.example");
-  await page.getByLabel("Password", { exact: true }).fill("dc2-fixture-secret");
+  await page.getByLabel("Email address").fill(`${account}@e2e.example`);
+  await page.getByLabel("Password", { exact: true }).fill(process.env.AIMS_E2E_WORKDAY_PASSWORD);
   await page.getByRole("button", { name: "Enter workspace" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 }
@@ -53,7 +53,6 @@ test("DC2 accountant workspace posts, traces, matches a bank statement and close
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await login(page);
-  await request(page, "/accounting/initialize");
   const expense = await request(page, "/accounting/accounts", {
     code: "DC2-6010",
     name: "DC2 test expense",
@@ -252,7 +251,7 @@ test("DC2 accountant workspace posts, traces, matches a bank statement and close
 });
 
 test("DC2 AR and AP workbenches preserve settlement and reversal history", async ({
-  page,
+  page, browser, baseURL,
 }) => {
   test.setTimeout(180_000);
   const errors = [];
@@ -269,13 +268,19 @@ test("DC2 AR and AP workbenches preserve settlement and reversal history", async
   const customer = await request(page, "/customers", {
     name: "DC2 UI Customer",
   });
-  await request(page, `/customers/${customer.id}/debts`, {
-    amount: 3700,
-    transaction_date: "2026-10-02",
-    due_date: "2026-10-10",
-    reference_number: "DC2-AR-3700",
-    idempotency_key: crypto.randomUUID(),
-  });
+  const manager = await browser.newPage({ baseURL });
+  try {
+    await login(manager, "dc2-manager");
+    await request(manager, `/customers/${customer.id}/debts`, {
+      amount: 3700,
+      transaction_date: "2026-10-02",
+      due_date: "2026-10-10",
+      reference_number: "DC2-AR-3700",
+      idempotency_key: crypto.randomUUID(),
+    });
+  } finally {
+    await manager.close();
+  }
   await request(page, `/customers/${customer.id}/payments`, {
     amount: 3400,
     transaction_date: "2026-10-03",
