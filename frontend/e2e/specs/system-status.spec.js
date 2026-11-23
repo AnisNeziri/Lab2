@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { login } from '../helpers/auth.mjs'
 import { expectNoDocumentOverflow } from '../helpers/layout.mjs'
 
-test('desktop mode and Redis connectivity have distinct status and retry behavior', async ({ page }) => {
+test('optional Redis downtime stays out of the workspace, while required cache failure can be retried', async ({ page }) => {
   let state = { mode: 'offline', cache_available: true, redis: { status: 'disabled_offline' } }
   await page.route('**/api/system/mode', route => route.fulfill({ json: state }))
   await login(page)
@@ -11,11 +11,17 @@ test('desktop mode and Redis connectivity have distinct status and retry behavio
   await page.setViewportSize({ width: 390, height: 844 })
   await expectNoDocumentOverflow(page)
   state = { mode: 'online', cache_available: true, redis: { status: 'unavailable', message: 'Start Redis and check REDIS_HOST/REDIS_PORT.' } }
+  const optionalCheck = page.waitForResponse('**/api/system/mode')
+  await page.goto('/quality')
+  await optionalCheck
+  await expect(page.getByRole('heading', { name: 'Quality Management' })).toBeVisible()
+  await expect(banner).toHaveCount(0)
+  state = { ...state, cache_available: false }
   await page.reload()
   await expect(banner).toContainText('System connection needs attention')
   await expect(banner.locator('details')).not.toHaveAttribute('open','')
   await banner.locator('summary').click()
-  await expect(banner.getByText('Start Redis and check REDIS_HOST/REDIS_PORT.')).toBeVisible()
+  await expect(banner.getByText(/Check the configured cache service/)).toBeVisible()
   state = { mode: 'online', cache_available: true, redis: { status: 'connected' } }
   await page.getByRole('button', { name: 'Refresh system status' }).click()
   await expect(banner).toHaveCount(0)

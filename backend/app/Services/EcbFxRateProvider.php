@@ -18,15 +18,17 @@ class EcbFxRateProvider
     {
         $base = strtoupper($base);
         $quote = strtoupper($quote);
-        $existing = FxReferenceRate::withoutGlobalScopes()
-            ->where('company_id', $companyId)
-            ->where('base_currency', $base)
-            ->where('quote_currency', $quote)
-            ->when($rateDate, fn ($query) => $query->whereDate('rate_date', $rateDate))
-            ->latest('rate_date')
-            ->first();
-        if ($existing) {
-            return $existing;
+        if ($rateDate) {
+            $existing = FxReferenceRate::withoutGlobalScopes()
+                ->where('company_id', $companyId)
+                ->where('base_currency', $base)
+                ->where('quote_currency', $quote)
+                ->whereDate('rate_date', $rateDate)
+                ->where('source', 'ECB')
+                ->first();
+            if ($existing) {
+                return $existing;
+            }
         }
 
         $provider = IntegrationProvider::withoutGlobalScopes()->firstOrCreate(
@@ -36,7 +38,12 @@ class EcbFxRateProvider
 
         $feed = Cache::remember('integrations:ecb:daily:v1', now()->addHours(6), fn () =>
             $this->integrations->run($provider, 'reference_rates', $rateDate, function (): array {
-                $response = Http::timeout(12)->get(config(
+                $client = Http::timeout(12);
+                if (PHP_OS_FAMILY === 'Windows' && defined('CURLSSLOPT_NATIVE_CA')) {
+                    // Include trusted Windows roots for PHP distributions that ship their own CA bundle.
+                    $client->withOptions(['curl' => [CURLOPT_SSL_OPTIONS => CURLSSLOPT_NATIVE_CA]]);
+                }
+                $response = $client->get(config(
                     'services.ecb.daily_url',
                     'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml'
                 ));

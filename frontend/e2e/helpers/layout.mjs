@@ -1,8 +1,8 @@
 import { expect } from '@playwright/test'
 
-export async function expectNoDocumentOverflow(page, tolerance = 2) {
+export async function expectNoDocumentOverflow(page, tolerance = 2, heading = page.locator('.main-content :is(h1, h2)').first()) {
   // Workspace polling and realtime connections can stay active after layout is ready.
-  await expect(page.locator('.main-content :is(h1, h2)').first()).toBeVisible()
+  await expect(heading).toBeVisible()
   await page.evaluate(async () => {
     await document.fonts.ready
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))

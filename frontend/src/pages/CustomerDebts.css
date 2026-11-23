@@ -347,3 +347,6 @@ html[data-theme="dark"] .credit-aging-grid article.is-danger {
     display: none !important;
   }
 }
+.debt-workspace-link { min-height: 40px; }
+.debt-history-heading { margin: 1rem 0 .65rem; }
+.debt-supporting-records > summary { cursor: pointer; color: var(--text-muted); }

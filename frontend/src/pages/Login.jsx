@@ -99,7 +99,7 @@ function Login({ onLoginSuccess, onBackHome, onRegister }) {
                   type="email"
                   required
                   autoComplete="email"
-                  placeholder="you@company.com"
+                  placeholder={text('Enter your email', 'Shkruaj emailin')}
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                 />

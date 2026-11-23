@@ -5,7 +5,8 @@ import { AlertTriangle, Anchor, Boxes, CheckCircle2, ExternalLink, RefreshCw, Ra
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAuthStore } from "../store/authStore";
-import { getControlTower, getControlTowerShipment, getControlTowerAttention, getIntegrationHealth, resolveControlTowerException, saveControlTowerMilestone } from "../api/controlTower";
+import { getControlTower, getControlTowerShipment, getControlTowerAttention, resolveControlTowerException, saveControlTowerMilestone } from "../api/controlTower";
+import { useRevealTarget } from '../hooks/useRevealTarget';
 import "./SupplyChainControlTower.css";
 
 const formatDate = (value) => value ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Unknown";
@@ -17,12 +18,11 @@ export default function SupplyChainControlTower() {
   const { shipmentId } = useParams();
   const permissions = useAuthStore((state) => state.permissions);
   const canManage = permissions.includes("control_tower.manage");
-  const canViewIntegrations = permissions.includes("integrations.view");
+  const reveal = useRevealTarget();
   const loadVersion = useRef(0);
   const [tab, setTab] = useState("imports");
   const [imports, setImports] = useState([]);
   const [attention, setAttention] = useState([]);
-  const [integrations, setIntegrations] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -35,10 +35,9 @@ export default function SupplyChainControlTower() {
     if (!options.silent) setLoading(true);
     setError("");
     try {
-      const [tower, issues, health] = await Promise.all([
+      const [tower, issues] = await Promise.all([
         getControlTower({ per_page: 100 }),
         getControlTowerAttention({ ...filters, per_page: 100 }),
-        canViewIntegrations ? getIntegrationHealth() : Promise.resolve({ data: [] }),
       ]);
       if (shipmentId && !tower.data?.some((row) => row.id === Number(shipmentId))) {
         const detail = await getControlTowerShipment(shipmentId);
@@ -47,13 +46,12 @@ export default function SupplyChainControlTower() {
       if (version !== loadVersion.current) return;
       setImports(tower.data || []);
       setAttention(issues.data || []);
-      setIntegrations(health.data || []);
       setSelectedId((current) => Number(shipmentId) || current || tower.data?.[0]?.id || null);
     } catch (exception) {
       if (version !== loadVersion.current) return;
       setError(exception.message || t("controlTower.loadError"));
     } finally { if (version === loadVersion.current) setLoading(false); }
-  }, [filters, shipmentId, t, canViewIntegrations]);
+  }, [filters, shipmentId, t]);
 
   useEffect(() => { void load(); return () => { loadVersion.current++; }; }, [load]);
   useEffect(() => {
@@ -100,20 +98,19 @@ export default function SupplyChainControlTower() {
     <nav className="ct-tabs">
       <button className={tab === "imports" ? "active" : ""} onClick={() => setTab("imports")}><Route size={17}/>{t("controlTower.imports")}</button>
       <button className={tab === "attention" ? "active" : ""} onClick={() => setTab("attention")}><AlertTriangle size={17}/>{t("controlTower.attention")} {attention.length > 0 && <b>{attention.length}</b>}</button>
-      {canViewIntegrations && <button className={tab === "integrations" ? "active" : ""} onClick={() => setTab("integrations")}><Radio size={17}/>{t("controlTower.integrations")}</button>}
     </nav>
     {loading ? <section className="ct-loading"><span/><span/><span/></section> : null}
     {!loading && tab === "imports" && <section className="ct-workspace">
       <aside className="ct-list">
         {imports.length === 0 && <p className="ct-empty">{t("controlTower.noImports")}</p>}
-        {imports.map((item) => <button key={item.id} className={item.id === selected?.id ? "active" : ""} onClick={() => setSelectedId(item.id)}>
+        {imports.map((item) => <button key={item.id} className={item.id === selected?.id ? "active" : ""} onClick={() => { setSelectedId(item.id); reveal('control-tower-shipment'); }}>
           <span><b>{item.reference}</b><small>{item.supplier?.name || t("controlTower.unknownSupplier")}</small></span>
           <em className={`ct-signal ${item.vessel?.ais_freshness}`}>{readable(item.vessel?.ais_freshness)}</em>
           <small>{readable(item.current_milestone?.type)} · {item.containers.length} {t("controlTower.containers")}</small>
         </button>)}
       </aside>
       {selected && <article className="ct-detail"><EntityDocuments entityType="shipment" entityId={selected.id}/>
-        <header><div><span>{selected.supplier?.name || t("controlTower.unknownSupplier")}</span><h2>{selected.reference}</h2></div><button onClick={() => navigate(selected.links.shipment)}>{t("controlTower.openShipment")}<ExternalLink size={15}/></button></header>
+        <header><div><span>{selected.supplier?.name || t("controlTower.unknownSupplier")}</span><h2 id="control-tower-shipment" tabIndex={-1}>{selected.reference}</h2></div><button onClick={() => navigate(selected.links.shipment)}>{t("controlTower.openShipment")}<ExternalLink size={15}/></button></header>
         <div className="ct-facts">
           <span><small>{t("controlTower.route")}</small><b>{selected.origin || "Unknown"} → {selected.destination || "Unknown"}</b></span>
           <span><small>ETD / ETA</small><b>{formatDate(selected.etd)} / {formatDate(selected.eta)}</b></span>
@@ -139,6 +136,5 @@ export default function SupplyChainControlTower() {
       {attention.map((issue) => <article key={issue.id} className={`ct-issue ${issue.severity}`}><AlertTriangle/><div><span>{readable(issue.exception_type)} · {issue.shipment?.tracking_number || issue.purchase_order?.po_number}</span><b>{issue.description}</b><small>{formatDate(issue.detected_at)}</small></div><div>{issue.next_action && <button onClick={() => navigate(issue.next_action.url)}>{issue.next_action.label}</button>}{canManage && issue.status === "active" && <button className="secondary" onClick={() => resolveIssue(issue.id)}>{t("controlTower.resolve")}</button>}</div></article>)}
       {attention.length === 0 && <p className="ct-empty">{t("controlTower.noAttention")}</p>}
     </section>}
-    {!loading && tab === "integrations" && <section className="ct-integrations">{integrations.map((provider) => <article key={provider.id}><span className={`ct-health ${provider.health_state}`}/><div><h3>{provider.display_name}</h3><p>{readable(provider.category)} · {provider.enabled ? t("controlTower.enabled") : t("controlTower.disabled")}</p><small>{provider.last_data_received_at ? `${t("controlTower.lastData")}: ${formatDate(provider.last_data_received_at)}` : t("controlTower.noDataYet")}</small>{provider.last_error && <em>{provider.last_error}</em>}</div><b>{readable(provider.health_state)}</b></article>)}</section>}
   </main>;
 }

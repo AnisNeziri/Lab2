@@ -7,13 +7,32 @@ test.describe('Authentication and route protection', () => {
     await logout(page)
   })
 
+  test('login reuses its profile and a restored session verifies it once', async ({ page }) => {
+    let profileReads = 0
+    page.on('request', request => {
+      if (new URL(request.url()).pathname === '/api/me') profileReads += 1
+    })
+    await login(page)
+    await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible()
+    expect(profileReads).toBe(0)
+
+    const verification = page.waitForResponse(response => new URL(response.url()).pathname === '/api/me')
+    await page.reload()
+    expect((await verification).ok()).toBe(true)
+    await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible()
+    expect(profileReads).toBe(1)
+  })
+
   test('@smoke invalid credentials show a useful error', async ({ page }) => {
     await page.goto('/login')
+    await expect(page.getByLabel('Email address')).toHaveAttribute('placeholder', 'Enter your email')
     await page.getByLabel('Email address').fill(users.admin.email)
     await page.getByLabel('Password', { exact: true }).fill('incorrect-password')
     await page.getByRole('button', { name: 'Enter workspace' }).click()
     await expect(page.getByRole('alert')).toContainText(/incorrect|invalid|credentials/i)
     await expect(page).toHaveURL(/\/login$/)
+    await page.goto('/register')
+    await expect(page.getByLabel('Company name', { exact: true })).toHaveAttribute('placeholder', 'Company Name')
   })
 
   test('@smoke protected URLs redirect anonymous users', async ({ page }) => {

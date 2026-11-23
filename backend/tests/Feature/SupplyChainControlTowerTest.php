@@ -160,6 +160,25 @@ class SupplyChainControlTowerTest extends TestCase
         $this->assertSame(1, IntegrationOperationLog::where('integration_provider_id', $provider->id)->count());
     }
 
+    public function test_accounting_can_look_up_the_latest_ecb_reference_without_reusing_an_old_rate(): void
+    {
+        $this->actingAsApiUser('accountant');
+        Http::fake(['https://www.ecb.europa.eu/*' => Http::sequence()
+            ->push('<Cube><Cube time="2026-09-03"><Cube currency="USD" rate="1.2000"/></Cube></Cube>')
+            ->push('<Cube><Cube time="2026-09-04"><Cube currency="USD" rate="1.2500"/></Cube></Cube>')]);
+
+        $url = '/api/accounting/reference-rate?base=EUR&quote=USD';
+        $this->getJson($url)->assertOk()->assertJsonPath('rate', '1.2000000000');
+        $this->travel(7)->hours();
+        $this->getJson($url)->assertOk()->assertJsonPath('rate', '1.2500000000');
+        $this->getJson($url.'&rate_date=2026-09-03')->assertOk()->assertJsonPath('rate', '1.2000000000');
+        $this->getJson($url.'&rate_date=2026-09-02')->assertUnprocessable();
+        $this->assertDatabaseCount('journal_entries', 0);
+
+        $this->actingAsApiUser('staff');
+        $this->getJson($url)->assertForbidden();
+    }
+
     private function shipment(string $tracking): Shipment
     {
         return Shipment::create($this->tenantAttributes([

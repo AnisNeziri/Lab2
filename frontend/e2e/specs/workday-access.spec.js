@@ -32,6 +32,31 @@ test('@smoke accountant can download a VAT workbook for the selected finance per
   expect(workbook.includes(Buffer.from('xl/workbook.xml'))).toBe(true)
 })
 
+test('purchasing can open a purchase order without requesting finance accounts', async ({ page }) => {
+  await login(page, 'purchasing')
+  const financeRequests = []
+  page.on('request', request => {
+    if (new URL(request.url()).pathname === '/api/finance/accounts') financeRequests.push(request.url())
+  })
+  await page.goto('/purchase-orders')
+  await expect(page.getByRole('heading', { name: 'Purchase Orders', exact: true })).toBeVisible()
+  const token = await page.evaluate(() => localStorage.getItem('api_token'))
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+  const suppliers = await (await page.request.get('/api/suppliers', { headers })).json()
+  const created = await page.request.post('/api/purchase-orders', { headers, data: {
+    supplier_id: (suppliers.data || suppliers)[0].id, ordered_at: '2026-09-14', currency: 'EUR',
+    status: 'draft', items: [{ description: 'Role check fixture', unit: 'pcs', quantity: 1, unit_price: 10 }],
+  } })
+  expect(created.ok(), await created.text()).toBe(true)
+  const order = await created.json()
+  await page.goto(`/purchase-orders?po=${order.id}`)
+  await expect(page.getByRole('heading', { name: order.po_number, exact: true })).toBeVisible()
+  const orderActions = page.getByRole('button', { name: `Actions for ${order.po_number}` })
+  await orderActions.click()
+  await expect(page.getByRole('menuitem', { name: 'Record payment' })).toHaveCount(0)
+  expect(financeRequests).toEqual([])
+})
+
 for (const [role, route, endpoint, restricted] of [
   ['sales', '/customers', '/customer-workspace', '/accounting/periods'],
   ['warehouse', '/warehouse-operations?tab=locator', '/warehouses', '/purchase-requests'],
@@ -39,6 +64,10 @@ for (const [role, route, endpoint, restricted] of [
   ['superadmin', '/superadmin', '/superadmin/dashboard', '/customer-workspace'],
 ]) {
   test(`@smoke ${role} can open the work area and restricted records stay inaccessible`, async ({ page }) => {
+    const companyRequests = []
+    if (role === 'superadmin') page.on('request', request => {
+      if (/\/api\/settings\/(workspace|preferences)$/.test(new URL(request.url()).pathname)) companyRequests.push(request.url())
+    })
     await login(page, role)
     const receiptRequests = []
     if (role === 'warehouse') page.on('request', request => {
@@ -65,6 +94,7 @@ for (const [role, route, endpoint, restricted] of [
       await expect(page.locator('.sidebar a[href="/customers"]')).toHaveCount(0)
       await page.goto('/customers')
       await expect(page).toHaveURL(/\/superadmin$/)
+      expect(companyRequests).toEqual([])
     }
   })
 }

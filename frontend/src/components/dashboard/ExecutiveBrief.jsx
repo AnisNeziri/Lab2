@@ -32,7 +32,7 @@ const evidenceLabels={overdue:['Overdue','Me vonesë'],available:['Available','N
 
 
 
-export default function ExecutiveBrief({profile}) {
+export default function ExecutiveBrief({profile, children}) {
 
   const {language}=useTranslation(),t=(en,sq)=>language==='sq'?sq:en
 
@@ -88,6 +88,9 @@ export default function ExecutiveBrief({profile}) {
 
       {d.attention.length>3&&<button type="button" className="secondary executive-more" onClick={()=>setExpanded(!expanded)}>{expanded?t('Show top three','Shfaq tre kryesoret'):t(`Show all ${d.attention.length} review items`,`Shfaq të ${d.attention.length} zërat për shqyrtim`)}</button>}
 
+    </>}
+    {children}
+    {d&&<>
       {['owner','sales','manager'].includes(profile)&&d.sales&&<div className="executive-sales"><div><span>{t('Recorded daily-sale activity','Aktiviteti i regjistruar i shitjeve ditore')}</span><strong>{businessMoney(d.sales.document_total,d.sales.currency,language)}</strong><small>{d.sales.count} {d.sales.count===1?t('document · selected period','dokument · periudha e zgjedhur'):t('documents · selected period','dokumente · periudha e zgjedhur')}</small></div><details><summary>{t('Source basis · not booked revenue','Baza burimore · jo të ardhura kontabël')}</summary><p>{t('Document totals, counted once. Excludes standalone invoices and later credits/returns; not booked revenue or profit.','Totalet e dokumenteve, të numëruara një herë. Përjashton faturat e pavarura dhe kreditimet/kthimet e mëvonshme; nuk janë të ardhura ose fitim kontabël.')} <Link to={d.sales.url}>{t('Open sales','Hap shitjet')}</Link></p></details></div>}
 
       {books&&<><div className="executive-facts">

@@ -31,9 +31,12 @@ import FinanceBank from "../components/finance/FinanceBank";
 import FinancePeriods from "../components/finance/FinancePeriods";
 import FinanceRecovery from "../components/finance/FinanceRecovery";
 import { AccountingSetup } from "./AccountingSetup";
+import ExchangeRateLookup from '../components/finance/ExchangeRateLookup';
+import { useRevealTarget } from '../hooks/useRevealTarget';
 import "./AccountingControlCenter.css";
 
 export default function AccountingControlCenter() {
+  const reveal = useRevealTarget();
   const language = useSettingsStore((s) => s.language);
   const user = useAuthStore((s) => s.user),
     permissions = useAuthStore((s) => s.permissions);
@@ -154,7 +157,10 @@ export default function AccountingControlCenter() {
         : tabs.some((x) => x[0] === requested)
           ? requested
           : "overview";
-  const go = (next, extra = {}) => setParams({ tab: next, ...extra });
+  const go = (next, extra = {}) => {
+    setParams({ tab: next, ...extra });
+    reveal('finance-workspace-panel');
+  };
   const value = {
     language,
     t,
@@ -183,8 +189,8 @@ export default function AccountingControlCenter() {
             </h1>
             <p>
               {t(
-                "Company books, open obligations and the next action in one workspace.",
-                "Librat e kompanisë, detyrimet e hapura dhe veprimi i radhës në një hapësirë.",
+                "Review what customers owe, what you owe suppliers, and what needs attention before month close.",
+                "Shqyrto borxhet e klientëve, detyrimet ndaj furnitorëve dhe çfarë kërkon vëmendje para mbylljes mujore.",
               )}
             </p>
           </div>
@@ -211,7 +217,7 @@ export default function AccountingControlCenter() {
             </button>
           </div>
         </header>
-        <section className="dc9-financial-basis" aria-label={t('Financial basis','Baza financiare')}><strong>{t('Posted Books','Librat e postuar')}</strong><p>{dates.from} — {dates.to} · {t('GL balances through the end date; activity within this period.','Gjendjet e librit kryesor deri në fund; aktiviteti brenda periudhës.')}</p><p>{summary.data?t(summary.data.controls_reconciled?'Current subledgers reconciled':'Current subledgers have differences',summary.data.controls_reconciled?'Nënlibrat aktualë janë rakorduar':'Nënlibrat aktualë kanë diferenca'):t('Checking reconciliation…','Duke kontrolluar rakordimin…')} · <Link to="/accounting?tab=reconciliation">{t('Investigate current balances','Shqyrto gjendjet aktuale')}</Link></p><p>{t(summary.data?.opening_readiness?.status==='verified'?'Opening balances verified':'Opening balances: unverified',summary.data?.opening_readiness?.status==='verified'?'Gjendjet fillestare janë verifikuar':'Gjendjet fillestare: të paverifikuara')} · {can('onboarding.view')&&<Link to="/onboarding">{t('Company opening','Hapja e kompanisë')}</Link>}</p><details><summary>{t('Currency support','Mbështetja e valutave')}</summary><small>{t('Foreign-currency customer invoicing and cross-currency transfers are not supported. Supplier payment exchange rates remain attached to their source records.','Faturimi i klientëve në valutë të huaj dhe transferet ndërmjet valutave nuk mbështeten. Kurset e pagesave të furnitorëve ruhen në regjistrimet burimore.')}</small></details></section>
+        <section className="dc9-financial-basis" aria-label={t('Financial basis','Baza financiare')}><strong>{t('Posted Books','Librat e postuar')}</strong><p>{dates.from} — {dates.to} · {t('GL balances through the end date; activity within this period.','Gjendjet e librit kryesor deri në fund; aktiviteti brenda periudhës.')}</p><p>{summary.data?t(summary.data.controls_reconciled?'Current subledgers reconciled':'Current subledgers have differences',summary.data.controls_reconciled?'Nënlibrat aktualë janë rakorduar':'Nënlibrat aktualë kanë diferenca'):t('Checking reconciliation…','Duke kontrolluar rakordimin…')} · <Link to="/accounting?tab=reconciliation">{t('Investigate current balances','Shqyrto gjendjet aktuale')}</Link></p><p>{t(summary.data?.opening_readiness?.status==='verified'?'Opening balances verified':'Opening balances: unverified',summary.data?.opening_readiness?.status==='verified'?'Gjendjet fillestare janë verifikuar':'Gjendjet fillestare: të paverifikuara')} · {can('onboarding.view')&&<Link to="/onboarding">{t('Company opening','Hapja e kompanisë')}</Link>}</p><details><summary>{t('Currency support','Mbështetja e valutave')}</summary><small>{t('Foreign-currency customer invoicing and cross-currency transfers are not supported. Supplier payment exchange rates remain attached to their source records.','Faturimi i klientëve në valutë të huaj dhe transferet ndërmjet valutave nuk mbështeten. Kurset e pagesave të furnitorëve ruhen në regjistrimet burimore.')}</small>{can("accounting.reports.view") && <ExchangeRateLookup />}</details></section>
         <nav
           className="fc-tabs"
           aria-label={t("Finance workspace", "Hapësira financiare")}
@@ -245,6 +251,7 @@ export default function AccountingControlCenter() {
             {periods.error}
           </p>
         )}
+        <div className="fc-tab-panel" id="finance-workspace-panel" tabIndex={-1} role="region" aria-label={tabs.find(([id]) => id === tab)?.[2]}>
         {["overview", "owner"].includes(tab) && (
           <QueryState query={summary}>
             {(data) => <ControlOverview data={data} owner={tab === "owner"} />}
@@ -271,6 +278,7 @@ export default function AccountingControlCenter() {
           />
         )}
         {tab === "reconciliation" && <FinanceRecovery />}
+        </div>
       </main>
     </FinanceContext.Provider>
   );
@@ -309,8 +317,8 @@ function ControlOverview({ data, owner }) {
             value={data.integrity_status}
             good={data.integrity_status === "READY"}
           />{" "}
-          {t("Books balanced", "Librat balancohen")}:{" "}
-          <b>{data.books_balanced ? t("Yes", "Po") : t("No", "Jo")}</b>
+          {t("Posted debits equal credits", "Debiti i postuar barazohet me kreditin")}:{" "}
+          <b>{data.opening_readiness?.posted_journal_count === 0 ? t("No journal entries posted", "Nuk ka regjistrime të postuara") : data.books_balanced ? t("Yes", "Po") : t("No", "Jo")}</b>
         </span>
         <span>
           {t("Current period", "Periudha aktuale")}:{" "}

@@ -13,6 +13,8 @@
 .auto-condition-row>select,.auto-condition-row>input { flex:1 1 130px; }
 .auto-condition-row>fieldset { flex:1 1 90%; }
 .auto-buttons { display:flex; flex-wrap:wrap; gap:.6rem; margin:1rem 0; }
+.auto-pagination { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; justify-items:stretch; gap:.65rem; width:fit-content; max-width:100%; margin:1rem 0 1.25rem; }
+.auto-pagination > span { min-width:3.5rem; text-align:center; white-space:nowrap; font-variant-numeric:tabular-nums; color:var(--text-muted); }
 .automation-page button { border:1px solid var(--border-color); border-radius:8px; padding:.6rem .9rem; cursor:pointer; background:var(--surface-raised); color:var(--text-color); min-height:40px; }
 .automation-page button:hover:not(:disabled),.automation-page button.selected { border-color:#3185cf; box-shadow:0 0 0 1px #3185cf; }
 .automation-page button:disabled { opacity:.5; cursor:not-allowed; }

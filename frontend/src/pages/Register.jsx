@@ -108,7 +108,7 @@ function Register({ onRegisterSuccess, onBackHome, onLogin }) {
                   name="company_name"
                   type="text"
                   required
-                  placeholder="Acme Corporation"
+                  placeholder={text('Company Name', 'Emri i kompanisë')}
                   value={companyName}
                   onChange={(event) => setCompanyName(event.target.value)}
                 />

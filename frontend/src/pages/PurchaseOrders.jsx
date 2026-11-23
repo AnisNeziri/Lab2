@@ -23,6 +23,7 @@ import { useTranslation } from "../hooks/useTranslation";
 import SuccessAnimation from "../components/SuccessAnimation";
 import { getWarehouses, getWarehouseLocations } from "../api/warehouseOperations";
 import { getFinancialAccounts } from "../api/advancedOperations";
+import { useRevealTarget } from "../hooks/useRevealTarget";
 import { useAuthStore } from "../store/authStore";
 import EntityContext from "../components/EntityContext";
 import { BusinessFacts, NextStep, WorkflowSteps } from "../components/WorkflowSummary";
@@ -113,11 +114,17 @@ const traceAllocationsFor = (line, state) => {
 
 export default function PurchaseOrders() {
   const { t, language } = useTranslation();
+  const reveal = useRevealTarget();
   const [detailParams, setDetailParams] = useSearchParams();
   const money = (value, currency = 'EUR') => businessMoney(value, currency, language);
   const displayDate = value => businessDate(value, language);
   const permissions = useAuthStore((state) => state.permissions);
   const canOverrideExpiredReceipt = permissions.includes("inventory.expired.override");
+  const canManage = permissions.includes("purchase_orders.manage");
+  const canPay = permissions.includes("purchase_orders.payments");
+  const canReceivePurchase = permissions.includes("purchase_orders.receive");
+  const canExport = permissions.includes("purchase_orders.export");
+  const needsPaymentAccounts = canPay && permissions.includes("financial_accounts.view");
   const [orders, setOrders] = useState([]);
   const [pagination, setPagination] = useState({
     current_page: 1,
@@ -223,6 +230,7 @@ export default function PurchaseOrders() {
   }, []);
 
   useEffect(() => {
+    if (mode !== "payment" || !needsPaymentAccounts) return;
     let active = true;
     getFinancialAccounts()
       .then((response) => {
@@ -232,7 +240,7 @@ export default function PurchaseOrders() {
       })
       .catch(() => { if (active) setFinancialAccounts([]); });
     return () => { active = false; };
-  }, []);
+  }, [mode, needsPaymentAccounts]);
 
   const filterKey = JSON.stringify([search, supplierFilter, orderStatus, paymentStatus, orderedDate, dueDate, sort]);
   const previousFilters = useRef(filterKey);
@@ -311,9 +319,9 @@ export default function PurchaseOrders() {
   useEffect(() => {
     const requestedOrder = Number(detailParams.get('po'));
     if (Number.isInteger(requestedOrder) && requestedOrder > 0) loadOrder(requestedOrder);
-    else { detailRequest.current++; setSelected(null); setMode(detailParams.get('new')==='1'?'order':''); setLoading(false); }
+    else { detailRequest.current++; setSelected(null); setMode(canManage && detailParams.get('new')==='1'?'order':''); setLoading(false); }
     return () => { detailRequest.current++; };
-  }, [detailParams.get('po'),detailParams.get('new')]);
+  }, [detailParams.get('po'),detailParams.get('new'),canManage]);
 
   const beginNew = () => {
     if(busy||!confirmDiscard())return;
@@ -324,6 +332,7 @@ export default function PurchaseOrders() {
     const primary = warehouses.find((warehouse) => warehouse.is_default);
     setForm({ ...emptyOrder(), warehouse_id: primary ? String(primary.id) : "" });
     setMode("order");
+    reveal('purchase-order-editor');
     setError("");
     setMessage("");
   };
@@ -356,12 +365,14 @@ export default function PurchaseOrders() {
       })),
     });
     setMode("order");
+    reveal('purchase-order-editor');
   };
   const beginPayment = () => {
     if(busy||!confirmDiscard())return;
     setEditorEpoch(x=>x+1);
     setPayment(emptyPayment());
     setMode("payment");
+    reveal('purchase-order-editor');
   };
   const beginReceipt = () => {
     if(busy||!confirmDiscard())return;
@@ -394,6 +405,7 @@ export default function PurchaseOrders() {
         })),
     );
     setMode("receive");
+    reveal('purchase-order-editor');
   };
   const beginStatus = () => {
     if(busy||!confirmDiscard())return;
@@ -403,6 +415,7 @@ export default function PurchaseOrders() {
       reason: "",
     });
     setMode("status");
+    reveal('purchase-order-editor');
   };
 
   const updateLine = (index, field, value) => {
@@ -619,15 +632,15 @@ export default function PurchaseOrders() {
         reference={shipmentSuccess?.reference}
         onClose={() => setShipmentSuccess(null)}
       />
-      <PageHeader title={t("po.title")} description={t("po.subtitle")} actions={<button className="workspace-primary" onClick={beginNew}>
+      <PageHeader title={t("po.title")} description={t("po.subtitle")} actions={canManage && <button className="workspace-primary" onClick={beginNew}>
             <Plus size={16} />
             {t("po.new")}
           </button>}/>
       {error && <div className="form-error-banner" role="alert">{error}</div>}
       {message && <div className="success-banner" role="status">{message}</div>}
 
-      {mode === "order" && (
-        <section className="card">
+      {canManage && mode === "order" && (
+        <section className="card" id="purchase-order-editor" tabIndex={-1}>
           <h3>{selected ? t("po.edit") : t("po.new")}</h3>
           <form className="form-grid" onSubmit={submitOrder}>
             <label>
@@ -862,8 +875,8 @@ export default function PurchaseOrders() {
         </section>
       )}
 
-      {selected && mode === "payment" && (
-        <section className="card">
+      {selected && canPay && mode === "payment" && (
+        <section className="card" id="purchase-order-editor" tabIndex={-1}>
           <h3>{t("po.recordPayment")}</h3>
           <form className="form-grid" onSubmit={submitPayment}>
             <p>
@@ -952,7 +965,7 @@ export default function PurchaseOrders() {
                 )}
               </select>
             </label>
-            <label>
+            {needsPaymentAccounts && <label>
               {t("payments.moneyAccount")}
               <select
                 value={payment.financial_account_id}
@@ -967,7 +980,7 @@ export default function PurchaseOrders() {
                   </option>
                 ))}
               </select>
-            </label>
+            </label>}
             <label>
               {t("po.reference")}
               <input
@@ -1000,8 +1013,8 @@ export default function PurchaseOrders() {
         </section>
       )}
 
-      {selected && mode === "receive" && (
-        <section className="card">
+      {selected && canReceivePurchase && mode === "receive" && (
+        <section className="card" id="purchase-order-editor" tabIndex={-1}>
           <h3>{t("po.receiveProducts")}</h3>
           <form className="form-grid" onSubmit={submitReceipt}>
             <label>{t("warehouseOps.destinationWarehouse")}<select required value={receiptMeta.warehouse_id} onChange={(e) => setReceiptMeta({ ...receiptMeta, warehouse_id: e.target.value, location_id: "" })}><option value="">{t("common.select")}</option>{warehouses.filter((warehouse) => warehouse.is_active).map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select></label>
@@ -1088,8 +1101,8 @@ export default function PurchaseOrders() {
         </section>
       )}
 
-      {selected && mode === "status" && (
-        <section className="card">
+      {selected && canManage && mode === "status" && (
+        <section className="card" id="purchase-order-editor" tabIndex={-1}>
           <h3>{t("po.changeStatus")}</h3>
           <form className="form-grid" onSubmit={submitStatus}>
             <label>
@@ -1145,15 +1158,15 @@ export default function PurchaseOrders() {
               </p>
             </div>
             <div className="table-actions">
-              <RowActions label={selected.po_number} actions={[
-                {label:t("po.edit"),disabled:busy||["completed","cancelled"].includes(selected.status),onClick:beginEdit},
-                {label:t("po.recordPayment"),disabled:busy||Number(selected.remaining_balance)<=0||selected.status==='cancelled',onClick:beginPayment},
-                {label:t("po.receiveProducts"),disabled:busy||["completed","cancelled"].includes(selected.status)||!selected.items.some(i=>Number(i.remaining_quantity)>0),onClick:beginReceipt},
-                {label:t("po.changeStatus"),disabled:busy||["partially_received","cancelled","completed"].includes(selected.status),onClick:beginStatus},
-                {label:t("po.export"),onClick:exportStatement},
-                {label:t("po.cancelOrder"),danger:true,disabled:busy||["received","partially_received","completed","cancelled"].includes(selected.status)||Number(selected.total_paid)>0,onClick:cancelOrder},
-                selected.status==='completed'&&{label:t("po.deleteOrder"),danger:true,disabled:busy,onClick:removeCompletedOrder},
-              ]}/>
+              {(canManage || canPay || canReceivePurchase || canExport) && <RowActions label={selected.po_number} actions={[
+                canManage && {label:t("po.edit"),disabled:busy||["completed","cancelled"].includes(selected.status),onClick:beginEdit},
+                canPay && {label:t("po.recordPayment"),disabled:busy||Number(selected.remaining_balance)<=0||selected.status==='cancelled',onClick:beginPayment},
+                canReceivePurchase && {label:t("po.receiveProducts"),disabled:busy||["completed","cancelled"].includes(selected.status)||!selected.items.some(i=>Number(i.remaining_quantity)>0),onClick:beginReceipt},
+                canManage && {label:t("po.changeStatus"),disabled:busy||["partially_received","cancelled","completed"].includes(selected.status),onClick:beginStatus},
+                canExport && {label:t("po.export"),onClick:exportStatement},
+                canManage && {label:t("po.cancelOrder"),danger:true,disabled:busy||["received","partially_received","completed","cancelled"].includes(selected.status)||Number(selected.total_paid)>0,onClick:cancelOrder},
+                canManage && selected.status==='completed'&&{label:t("po.deleteOrder"),danger:true,disabled:busy,onClick:removeCompletedOrder},
+              ]}/>}
               <button className="secondary" onClick={backToOrders}>{t("po.back")}</button>
             </div>
           </div>
@@ -1164,7 +1177,7 @@ export default function PurchaseOrders() {
             {label:t("po.expectedDate"),value:displayDate(selected.expected_at)},
           ]}/>
           <WorkflowSteps label={language==='sq'?'Ecuria e blerjes':'Purchasing progress'} steps={language==='sq'?['Porosia','Transporti','Pranimi','Fatura','Pagesa']:['Order','Shipment','Receipt','Bill','Payment']} current={['draft','confirmed'].includes(selected.status)?0:selected.status==='ordered'?1:selected.status==='partially_received'?2:['received','completed'].includes(selected.status)?3:-1}/>
-          {!['cancelled','completed'].includes(selected.status) && <NextStep title={language==='sq'?'Hapi i radhës':'Next step'} action={['draft','confirmed'].includes(selected.status)?<button disabled={busy} onClick={beginStatus}>{t('po.changeStatus')}</button>:selected.items.some(i=>Number(i.remaining_quantity)>0)?<button disabled={busy} onClick={beginReceipt}>{t('po.receiveProducts')}</button>:null}>
+          {!['cancelled','completed'].includes(selected.status) && <NextStep title={language==='sq'?'Hapi i radhës':'Next step'} action={['draft','confirmed'].includes(selected.status)?canManage&&<button disabled={busy} onClick={beginStatus}>{t('po.changeStatus')}</button>:canReceivePurchase&&selected.items.some(i=>Number(i.remaining_quantity)>0)?<button disabled={busy} onClick={beginReceipt}>{t('po.receiveProducts')}</button>:null}>
             {['draft','confirmed'].includes(selected.status)?(language==='sq'?'Shqyrto porosinë dhe konfirmo gjendjen para transportit.':'Review the purchase order and confirm its status before shipment.'):(language==='sq'?'Shqyrto dërgesat e lidhura. Regjistro vetëm mallin që ka mbërritur realisht. Faturat dhe pagesat shqyrtohen veçmas.':'Review linked shipments. Record only goods that have physically arrived. Supplier bills and payments are reviewed separately.')}
           </NextStep>}
           <div className="form-row">
@@ -1264,7 +1277,7 @@ export default function PurchaseOrders() {
                     <td>{row.note || "—"}</td>
                     <td>{row.user?.name || "—"}</td>
                     <td>{row.status === "reversed" ? t("po.paymentReversedStatus") : t("po.paymentCompletedStatus")}</td>
-                    <td>{row.status !== "reversed" ? <button type="button" className="danger" disabled={busy} onClick={() => reverseRecordedPayment(row)}>{t("po.reversePayment")}</button> : row.reversal_reason || "—"}</td>
+                    <td>{canPay && row.status !== "reversed" ? <button type="button" className="danger" disabled={busy} onClick={() => reverseRecordedPayment(row)}>{t("po.reversePayment")}</button> : row.reversal_reason || "—"}</td>
                   </tr>
                 ))
               ) : (

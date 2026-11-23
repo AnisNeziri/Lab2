@@ -58,8 +58,8 @@ export default function NotificationCenter({ onNavigate }) {
   }, [setNotifications])
 
   useEffect(() => {
-    fetchNotifications()
-  }, [fetchNotifications])
+    if (isOpen) void fetchNotifications()
+  }, [isOpen, fetchNotifications])
 
   useEffect(() => {
     const refreshNotifications = () => void fetchNotifications()
@@ -77,7 +77,7 @@ export default function NotificationCenter({ onNavigate }) {
     window.addEventListener('scroll', updatePanelPosition, true)
 
     function handlePointerDown(event) {
-      if (!mutationPending.current && panelRef.current && !panelRef.current.contains(event.target)) {
+      if (!mutationPending.current && panelRef.current && !panelRef.current.contains(event.target) && !bellRef.current?.contains(event.target)) {
         setIsOpen(false)
       }
     }

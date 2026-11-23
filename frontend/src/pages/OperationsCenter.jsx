@@ -34,6 +34,17 @@ const rows = (value) => value?.data || value || [];
 const label = (translations, en, sq) => translations === text.sq ? sq : en;
 const uuid = () => crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 const tabPermissions = { locator:'inventory.view', counts:'inventory.counts.manage', expiry:'inventory.view', replenish:'replenishment.view', catalogue:'supplier_catalogue.view', landed:'landed_costs.manage', returns:'returns.view', matching:'supplier_invoices.view' };
+const tabLookups = {
+  locator: ['products', 'warehouses', 'locations'],
+  counts: ['products', 'warehouses', 'locations'],
+  expiry: ['products', 'warehouses'],
+  replenish: ['warehouses'],
+  catalogue: ['products', 'suppliers'],
+  landed: ['receipts'],
+  returns: ['products', 'customers', 'suppliers', 'locations', 'warehouses', 'accounts'],
+  matching: ['receipts', 'suppliers', 'orders', 'products'],
+};
+const emptyLookups = { products: [], suppliers: [], warehouses: [], locations: [], customers: [], orders: [], receipts: [], accounts: [] };
 const err = (error, fallback) => error?.errors ? Object.values(error.errors).flat().join(" ") : error?.message || fallback;
 
 function Field({ label, children }) { return <label className="ops-field"><span>{label}</span>{children}</label>; }
@@ -52,7 +63,9 @@ export default function OperationsCenter() {
   const permittedTab = value => can(tabPermissions[value]) ? value : Object.keys(tabPermissions).find(id => can(tabPermissions[id]));
   const [tab, setTab] = useState(() => permittedTab(tabFromUrl(pageParams)));
   const requestVersion = useRef(0);
-  const [meta, setMeta] = useState({ products: [], suppliers: [], warehouses: [], locations: [], customers: [], orders: [], receipts: [], accounts: [] });
+  const [lookupResult, setLookupResult] = useState(null);
+  const lookupRequest = useRef(0);
+  const meta = lookupResult?.tab === tab ? lookupResult.data : emptyLookups;
   const [data, setData] = useState([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -60,15 +73,24 @@ export default function OperationsCenter() {
   const [landedReverseId, setLandedReverseId] = useState("");
 
   const loadMeta = useCallback(async () => {
-    const safe = (promise) => promise.catch(() => []);
-    const [products, suppliers, warehouses, customers, orders, receipts, accounts] = await Promise.all([
-      safe(getAllProducts()), safe(getSuppliers()), safe(getWarehouses()), can('debts.view') ? safe(collectPages(getCustomerDebts)) : [],
-      can('purchase_orders.view') ? safe(collectPages(getPurchaseOrders)) : [], safe(collectPages(getGoodsReceipts)), can('financial_accounts.view') ? safe(getFinancialAccounts()) : [],
-    ]);
-    const warehouseRows = rows(warehouses);
-    const locations = (await Promise.all(warehouseRows.map((warehouse) => getWarehouseLocations(warehouse.id).catch(() => [])))).flatMap(rows);
-    setMeta({ products: rows(products), suppliers: rows(suppliers), warehouses: warehouseRows, locations, customers: rows(customers), orders: rows(orders), receipts: rows(receipts), accounts: rows(accounts) });
-  }, [can]);
+    const version = ++lookupRequest.current;
+    const canReadSuppliers = ['suppliers.manage','supplier_catalogue.view','procurement.view','purchase_orders.view','finance.view'].some(can);
+    const lookup = {
+      products: () => getAllProducts(),
+      suppliers: canReadSuppliers && getSuppliers,
+      warehouses: getWarehouses,
+      locations: () => getWarehouseLocations(),
+      customers: can('debts.view') && (() => collectPages(getCustomerDebts)),
+      orders: can('purchase_orders.view') && (() => collectPages(getPurchaseOrders)),
+      receipts: can('purchase_orders.view') && (() => collectPages(getGoodsReceipts)),
+      accounts: can('financial_accounts.view') && getFinancialAccounts,
+    };
+    const entries = await Promise.all((tabLookups[tab] ?? []).filter(key => lookup[key]).map(async key => {
+      const result = await lookup[key]().catch(() => []);
+      return [key, rows(result)];
+    }));
+    if (version === lookupRequest.current) setLookupResult({ tab, data: { ...emptyLookups, ...Object.fromEntries(entries) } });
+  }, [can, tab]);
 
   const loaders = useMemo(() => ({
     locator: () => getBinInventory({ per_page: 200 }), counts: () => getInventoryCounts({ per_page: 100 }), expiry: () => getExpiringInventory({ within_days: 365 }),
@@ -82,11 +104,11 @@ export default function OperationsCenter() {
     const version = ++requestVersion.current;
     setBusy(true); setNotice("");
     try { const result = await loaders[tab](); const loaded=rows(result); const costId=Number(pageParams.get('landed_cost')); if(tab==='landed'&&costId){const cost=loaded.find(item=>item.id===costId)||await getLandedCost(costId);if(!loaded.some(item=>item.id===cost.id))loaded.unshift(cost);if(version===requestVersion.current)setLandedReverseId(cost.status==='posted'?String(cost.id):'')} if (version === requestVersion.current) { setData(loaded); setFailed(false); } }
-    catch (error) { if (version === requestVersion.current) { setNotice(err(error, t.error)); setFailed(true); } }
+    catch (error) { if (version === requestVersion.current) { setNotice(err(error, '')); setFailed(true); } }
     finally { if (version === requestVersion.current) setBusy(false); }
-  }, [loaders, tab, t.error, can, pageParams]);
+  }, [loaders, tab, can, pageParams]);
 
-  useEffect(() => { loadMeta().catch((error) => { setNotice(err(error, t.error)); setFailed(true); }); }, [loadMeta, t.error]);
+  useEffect(() => { void loadMeta(); return () => { lookupRequest.current += 1; }; }, [loadMeta]);
   useEffect(() => { setData([]); reload(); return () => { requestVersion.current += 1; }; }, [reload]);
 
   const done = async (operation) => {
@@ -108,7 +130,7 @@ export default function OperationsCenter() {
   return <div className="operations-center">
     <header className="ops-hero"><div><p>{tx("AIMS OPERATIONS")}</p><h1>{t.title}</h1><span>{t.sub}</span></div><button className="secondary" onClick={reload} disabled={busy}><RefreshCw size={16} /> {t.refresh}</button></header>
     <nav className="ops-tabs">{tabs.map(([id, label, Icon]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => {setTab(id);setPageParams({tab:id})}}><Icon size={17} />{label}</button>)}</nav>
-    <Notice value={notice} error={failed} />
+    <Notice value={notice || (failed ? t.error : '')} error={failed} />
     {tab === "landed" && data.some((item) => item.status === "posted") && <section className="ops-panel"><div className="ops-actions"><select aria-label={t.reverseLanded} value={landedReverseId} onChange={(event) => setLandedReverseId(event.target.value)}><option value="">{t.reverseLanded}</option>{data.filter((item) => item.status === "posted").map((item) => <option key={item.id} value={item.id}>{item.reference_number || `#${item.id}`} · {item.amount} {item.currency}</option>)}</select><button type="button" className="danger" disabled={busy || !landedReverseId} onClick={() => { const reason = window.prompt(t.reverseReason); if (reason?.trim()) done(() => reverseLandedCost(Number(landedReverseId), reason.trim())).then(() => setLandedReverseId("")); }}>{t.reverseLanded}</button></div></section>}
     {busy && data.length === 0 ? <p className="page-message">{t.loading}</p> : null}
     {tab === "locator" && <Locator data={data} meta={meta} run={done} t={t} can={can} />}

@@ -18,21 +18,22 @@ export function quoteDraft(comparison, supplier, t) {
 
 export default function PurchasePortfolio({ lines, setLines, budget, setBudget, buffer, setBuffer, language, canManage }) {
   const t = (en,sq) => language === 'sq' ? sq : en
-  const [result,setResult] = useState(null)
+  const [response,setResponse] = useState(null)
   const [error,setError] = useState('')
   const [busy,setBusy] = useState(false)
   const [run,setRun] = useState(0)
   const payload = JSON.stringify({ lines:lines.map(({ product_id, quantity, unit, warehouse_id, supplier_id, required_by, priority, assumed_unit_price, assumed_extra_cost }) =>
     Object.fromEntries(Object.entries({ product_id, quantity, unit, warehouse_id, supplier_id, required_by, priority, assumed_unit_price, assumed_extra_cost }).filter(([,v]) => v !== '' && v != null))),
     ...(budget !== '' && { budget }), ...(buffer !== '' && { buffer }) })
+  const result = response?.payload === payload ? response.data : null
   useEffect(() => {
-    if (!lines.length || lines.some(line => !line.product_id || !(Number(line.quantity) > 0))) { setBusy(false); setResult(null); setError(''); return }
-    setBusy(true); setResult(null); setError('')
+    if (!lines.length || lines.some(line => !line.product_id || !(Number(line.quantity) > 0))) { setBusy(false); setResponse(null); setError(''); return }
+    setBusy(true); setResponse(null); setError('')
     const controller = new AbortController()
     const timer = setTimeout(async () => {
       try {
         const next = await apiRequest('/procurement/purchase-comparison', { method:'POST', body:payload, signal:controller.signal })
-        if (!controller.signal.aborted) setResult(next)
+        if (!controller.signal.aborted) setResponse({payload,data:next})
       } catch (err) {
         if (!controller.signal.aborted) setError(err.message)
       } finally { if (!controller.signal.aborted) setBusy(false) }
@@ -51,7 +52,7 @@ export default function PurchasePortfolio({ lines, setLines, budget, setBudget, 
   const baseScenario = result?.scenarios[1]
 
   return <section id="purchase-portfolio" className="card purchase-panel" aria-labelledby="portfolio-title">
-    <h2 id="portfolio-title">{t('Purchasing plan','Plani i blerjeve')}</h2>
+    <h2 id="portfolio-title" tabIndex={-1}>{t('Purchasing plan','Plani i blerjeve')}</h2>
     <p>{t('Add up to five products from the supplier comparison. Edit quantities and review the cost and cash impact together.',
       'Shto deri në pesë produkte nga krahasimi i furnitorëve. Ndrysho sasitë dhe shqyrto së bashku koston dhe ndikimin në arkë.')}</p>
     {!lines.length && <p>{t('Compare a product above, then add it to the plan.','Krahaso një produkt më sipër, pastaj shtoje në plan.')}</p>}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
 // Loaded only for PDF previews. Worker and document bytes stay local to AIMS.
 export default function DocumentPdfPreview({ url, t }) {
@@ -13,9 +14,9 @@ export default function DocumentPdfPreview({ url, t }) {
   useEffect(() => {
     let active = true, task
     setError(''); setPdf(null); setPageNumber(1)
-    import('pdfjs-dist/legacy/build/pdf.mjs').then(library => {
+    import('pdfjs-dist/build/pdf.mjs').then(library => {
       if (!active) return
-      library.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/legacy/build/pdf.worker.min.mjs', import.meta.url).href
+      library.GlobalWorkerOptions.workerSrc = workerUrl
       task = library.getDocument({ url, isEvalSupported: false, enableXfa: false, maxImageSize: 16_777_216 })
       return task.promise.then(document => { if (active) setPdf(document) })
     }).catch(e => { if (active) { setError(e.message); setRendering(false) } })

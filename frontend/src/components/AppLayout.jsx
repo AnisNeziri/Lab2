@@ -21,7 +21,6 @@ export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
-  const [assistantGuide, setAssistantGuide] = useState(0);
   const [assistantRequest, setAssistantRequest] = useState(null);
   useEffect(() => {
     const open = event => { setAssistantOpen(true); setAssistantRequest({...event.detail, nonce: Date.now()}); };
@@ -97,7 +96,7 @@ export default function AppLayout() {
       />
 
       <div className="main-content" id="workspace-main" tabIndex={-1}>
-        <WorkspaceContext onHelp={() => { setAssistantOpen(true); setAssistantGuide(value => value + 1); }}/>
+        <WorkspaceContext onOpenAssistant={() => setAssistantOpen(true)}/>
         <SystemStatusBanner/>
         <FinanceWorkspaceNav/>
         <div key={location.pathname} className="page-transition">
@@ -105,7 +104,7 @@ export default function AppLayout() {
         </div>
       </div>
       <SecurityConfirmation/>
-      <AimsAssistant open={assistantOpen} onClose={closeAssistant} guideRequest={assistantGuide} request={assistantRequest}/>
+      <AimsAssistant open={assistantOpen} onClose={closeAssistant} request={assistantRequest}/>
     </div>
   );
 }

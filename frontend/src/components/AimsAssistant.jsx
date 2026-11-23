@@ -1,4 +1,4 @@
-import { AskAimsGlyph as MessageCircle, AskAimsGlyph as Sparkles } from './icons/AimsGlyph'
+import { AskAimsGlyph as Sparkles } from './icons/AimsGlyph'
 
 import { useEffect, useRef, useState } from 'react'
 
@@ -15,7 +15,7 @@ import { useAuthStore } from '../store/authStore'
 
 import { canOpenPage } from '../config/pageAccess'
 
-import { askIntelligence, assistantStatus, assistantUsage } from '../api/assistant'
+import { askIntelligence, assistantUsage } from '../api/assistant'
 
 import { assistantHelpRequest, assistantIntent, assistantRequestError, guideAnswer, safeRecordPath } from './assistantPresentation'
 
@@ -29,13 +29,13 @@ import './AimsAssistant.css'
 
 
 
-export default function AimsAssistant({open=true,onClose,guideRequest,request,embedded=false}) {
+export default function AimsAssistant({open=true,onClose,request,embedded=false}) {
 
   const {language,t:translate}=useTranslation(),sq=language==='sq',t=(en,al)=>sq?al:en,location=useLocation()
 
   const {user,permissions}=useAuthStore(),identity=`${user?.company_id}:${user?.id}:${permissions.slice().sort().join('|')}`
 
-  const [messages,setMessages]=useState([]),[question,setQuestion]=useState(''),[busy,setBusy]=useState(false),[status,setStatus]=useState(null),[usage,setUsage]=useState(null),[statusError,setStatusError]=useState(false),[context,setContext]=useState([])
+  const [messages,setMessages]=useState([]),[question,setQuestion]=useState(''),[busy,setBusy]=useState(false),[usage,setUsage]=useState(null),[context,setContext]=useState([])
 
   const [attachmentEpoch,setAttachmentEpoch]=useState(0)
   const [cooldown,setCooldown]=useState(0)
@@ -57,17 +57,13 @@ export default function AimsAssistant({open=true,onClose,guideRequest,request,em
 
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;abortRequest.current?.abort();sequence.current++}},[])
 
-  useEffect(()=>{clear(false);setStatus(null);setCooldown(0)},[identity])
+  useEffect(()=>{clear(false);setUsage(null);setCooldown(0)},[identity])
 
   useEffect(()=>{
     if(!cooldown)return
     const timer=setTimeout(()=>setCooldown(0),Math.max(0,cooldown-Date.now()))
     return()=>clearTimeout(timer)
   },[cooldown])
-
-  useEffect(()=>{if(!open)return;let live=true;setStatusError(false);assistantStatus().then(r=>{if(live)setStatus(r)}).catch(()=>{if(live)setStatusError(true)});return()=>{live=false}},[open,identity])
-
-  useEffect(()=>{if(guideRequest)append({kind:'guide',data:guideAnswer(location.pathname+location.search,language)})},[guideRequest])
 
   useEffect(()=>{if(request?.question)send(request.question,request.entity)},[request])
 
@@ -130,46 +126,44 @@ export default function AimsAssistant({open=true,onClose,guideRequest,request,em
   const sendingDisabled=busy||Boolean(cooldown)
 
   const suggestions=[['What needs my attention?','Çfarë kërkon vëmendjen time?']]
+  if(location.pathname === '/customer-debts' && canOpenPage('/customer-debts',permissions)) suggestions.unshift(['Who owes us the most?','Kush na ka më shumë borxh?'])
+  else if(location.pathname.startsWith('/shipments') && canOpenPage('/shipments/my-shipments',permissions)) suggestions.unshift(['Where is my incoming stock?','Ku është stoku që presim?'])
+  else if(canOpenPage('/stock',permissions)) suggestions.push(['Which products may run out?','Cilat produkte mund të mbarojnë?'])
 
-  if(canOpenPage('/stock',permissions))suggestions.push(['Which products may run out?','Cilat produkte mund të mbarojnë?'])
-
-  if(canOpenPage('/shipments/my-shipments',permissions))suggestions.push(['Where is my incoming stock?','Ku është stoku që presim?'])
-
-  if(canOpenPage('/customer-debts',permissions))suggestions.push(['Who owes us the most?','Kush na ka më shumë borxh?'])
-
-  if(suggestions.length<4)suggestions.push(['How do I use this page?','Si përdoret kjo faqe?'])
+  if(!embedded) suggestions.push(['How do I use this page?','Si përdoret kjo faqe?'])
 
   if(!open)return null
 
   const content=<aside className={`aims-assistant ${embedded?'is-embedded':''}`} aria-label={t('AIMS Assistant','Asistenti AIMS')}>
 
-    <div className="assistant-heading"><Sparkles size={21} strokeWidth={1.8}/><div><strong>{t('Ask AIMS','Pyet AIMS')}</strong><small>{t('Evidence first · human control','Dëshmitë së pari · kontroll njerëzor')}</small></div><button type="button" onClick={clear} aria-label={t('Clear conversation','Pastro bisedën')}><Trash2 size={17}/></button>{!embedded&&<button type="button" onClick={onClose} aria-label={t('Close assistant','Mbyll asistentin')}><X size={20}/></button>}</div>
-
-    <details className="assistant-privacy"><summary>{t('Data, analysis & draft preparation','Të dhëna, analiza dhe përgatitje draftesh')}</summary><p>{t('No cloud AI or external data transmission. Answers use authorized evidence. Reading retrieves company data. Preparing analysis saves an analysis job; preparing a business draft saves reviewable work after confirmation. Approved commitments are executed in their business workflow with the required permissions.','Pa AI në cloud ose dërgim të jashtëm të dhënash. Përgjigjet përdorin dëshmi të autorizuara. Leximi merr të dhëna të kompanisë. Analiza ruan një punë analize; drafti i biznesit ruan punë për shqyrtim pas konfirmimit. Angazhimet e miratuara kryhen në rrjedhën përkatëse me lejet e kërkuara.')}</p></details>
-
-    <div className="assistant-page"><span>{statusError?t('Assistant connection unavailable. Try your question again.','Lidhja me asistentin nuk është e disponueshme. Provo pyetjen përsëri.'):status?t('Connected to AIMS evidence','I lidhur me të dhënat e AIMS'):t('Connecting to local AIMS…','Duke u lidhur me AIMS lokal…')}</span>{!embedded&&<Link to="/intelligence-assistant" onClick={onClose}>{t('Open workspace','Hap hapësirën')}</Link>}</div>
+    <div className="assistant-heading"><Sparkles size={21} strokeWidth={1.8}/><div><strong>{embedded?t('Conversation','Biseda'):t('Ask AIMS','Pyet AIMS')}</strong></div>{!embedded&&<Link className="assistant-full-chat" to="/intelligence-assistant" onClick={onClose}>{t('Open full chat','Hap bisedën e plotë')}</Link>}{messages.length>0&&<button type="button" onClick={clear} aria-label={t('Clear conversation','Pastro bisedën')}><Trash2 size={17}/></button>}{!embedded&&<button type="button" onClick={onClose} aria-label={t('Close assistant','Mbyll asistentin')}><X size={20}/></button>}</div>
 
     {context.length>0&&<div className="assistant-context"><span>{t('Current context','Konteksti aktual')}: {context.map(e=>e.title||t('Selected record','Regjistrimi i zgjedhur')).join(' · ')}</span><button disabled={busy} type="button" onClick={()=>{conversation.current=null;setContext([]);input.current?.focus()}} aria-label={t('Clear context','Pastro kontekstin')}><X size={14}/>{t('Clear','Pastro')}</button></div>}
 
     <div ref={transcript} className="assistant-transcript" role="log" aria-live="polite" aria-label={t('Assistant conversation','Biseda me asistentin')}>
 
-      <AssistantAttachments key={`${identity}:${attachmentEpoch}`} language={language} page={location.pathname} question={question}/>
-
-      {!messages.length&&<div className="assistant-welcome"><h3>{t('What needs your attention?','Çfarë kërkon vëmendjen tënde?')}</h3><p>{t('Ask naturally in English, Albanian, or both. Names and SKUs work too. If several records match, AIMS will ask you to choose.','Pyet natyrshëm në shqip, anglisht, ose të dyja. Mund të përdorësh emra dhe SKU. Kur ka disa regjistrime, AIMS të kërkon të zgjedhësh.')}</p></div>}
+      {!messages.length&&<div className="assistant-welcome">
+        <h3>{t('How can I help?','Si mund të të ndihmoj?')}</h3>
+        <p>{t('Ask about your company in English or Albanian.','Pyet për kompaninë tënde në shqip ose anglisht.')}</p>
+        <div className="assistant-suggestions">{suggestions.map(([en,al])=><button key={en} disabled={sendingDisabled} onClick={()=>send(t(en,al))}>{t(en,al)}</button>)}</div>
+      </div>}
 
       {messages.map(m=><article key={m.key} className={`assistant-message ${m.kind==='user'?'is-user':m.kind==='error'?'is-error':''}`}>
 
         {m.kind==='reply'?<IntelligenceReply reply={m.reply} language={language} busy={sendingDisabled} onSelect={(e,q)=>send(q||m.original,e)}/>:m.kind==='guide'?<><p>{m.data.text}</p><ol>{m.data.steps.map(step=><li key={step}>{step}</li>)}</ol><div className="assistant-links">{m.data.links.filter(p=>safeRecordPath(p)&&canOpenPage(p,permissions)).map(p=>{const entry=navigationContext(p)?.entry;return <Link key={p} to={p} onClick={!embedded?onClose:undefined}>{entry?.label?translate(entry.label):entry?.[sq?'sq':'en']||t('Open module','Hap modulin')} ↗</Link>})}</div></>:<><p role={m.kind==='error'?'alert':undefined}>{m.text}</p>{m.kind==='error'&&m.retryable&&<button className="assistant-retry" disabled={sendingDisabled} onClick={()=>send(m.original,m.selected)}>{t('Retry question','Provo pyetjen përsëri')}</button>}</>}
 
-      </article>)}{busy&&<div className="assistant-working" role="status"><span className="assistant-processing-mark" aria-hidden="true"/><div><strong>{t('Checking your question and permitted sources','Duke shqyrtuar pyetjen dhe burimet e lejuara')}</strong><small>{t('Local AI can take several seconds. You can keep using AIMS.','AI lokal mund të marrë disa sekonda. Mund të vazhdosh punën në AIMS.')}</small></div><button type="button" onClick={stopWaiting}>{t('Stop waiting','Ndalo pritjen')}</button></div>}
+      </article>)}{busy&&<div className="assistant-working" role="status"><span className="assistant-processing-mark" aria-hidden="true"/><strong>{t('Checking your question…','Duke shqyrtuar pyetjen…')}</strong><button type="button" onClick={stopWaiting}>{t('Stop waiting','Ndalo pritjen')}</button></div>}
 
     </div>
 
-    <div className="assistant-suggestions">{suggestions.slice(0,4).map(([en,al])=><button key={en} disabled={sendingDisabled} onClick={()=>send(t(en,al))}>{t(en,al)}</button>)}</div>
-
     <form className="assistant-composer" onSubmit={e=>{e.preventDefault();send()}}><label className="sr-only" htmlFor={embedded?'aims-copilot-question':'aims-assistant-question'}>{t('Question for AIMS','Pyetje për AIMS')}</label><textarea rows={1} id={embedded?'aims-copilot-question':'aims-assistant-question'} ref={input} value={question} onChange={e=>{setQuestion(e.target.value);e.target.style.height='auto';e.target.style.height=Math.min(120,e.target.scrollHeight)+'px'}} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();if(!sendingDisabled)send()}}} maxLength={600} placeholder={t('Ask about your business…','Pyet për biznesin tënd…')}/><button type="submit" disabled={sendingDisabled||!question.trim()} aria-label={t('Send question','Dërgo pyetjen')}><Send size={18}/></button></form>
 
-    {embedded&&permissions.includes('activity.view')&&<details className="assistant-usage"><summary onClick={()=>{if(!usage)assistantUsage().then(setUsage).catch(()=>{})}}>{t('Assistant usage · last 30 days','Përdorimi i asistentit · 30 ditët e fundit')}</summary>{usage&&<p>{t('Queries','Pyetjet')}: {usage.queries} · {t('Follow-ups','Vazhdimet')}: {usage.follow_ups} · {t('Tool failures','Gabimet e mjeteve')}: {usage.tool_failures} · {t('Helpful feedback','Vlerësime të dobishme')}: {usage.feedback.helpful}</p>}</details>}
+    {embedded&&<details className="assistant-tools">
+      <summary>{t('More tools','Mjete të tjera')}</summary>
+      <p>{t('AIMS uses records you can access. Review and confirm a draft before saving it.','AIMS përdor regjistrimet ku ke qasje. Shqyrto dhe konfirmo draftin para ruajtjes.')}</p>
+      <AssistantAttachments key={`${identity}:${attachmentEpoch}`} language={language} page={location.pathname} question={question}/>
+      {permissions.includes('activity.view')&&<details className="assistant-usage"><summary onClick={()=>{if(!usage)assistantUsage().then(setUsage).catch(()=>{})}}>{t('Assistant usage · last 30 days','Përdorimi i asistentit · 30 ditët e fundit')}</summary>{usage&&<p>{t('Queries','Pyetjet')}: {usage.queries} · {t('Follow-ups','Vazhdimet')}: {usage.follow_ups} · {t('Tool failures','Gabimet e mjeteve')}: {usage.tool_failures} · {t('Helpful feedback','Vlerësime të dobishme')}: {usage.feedback.helpful}</p>}</details>}
+    </details>}
 
   </aside>
 

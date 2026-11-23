@@ -514,6 +514,7 @@ Route::middleware('auth.token')->group(function () {
             Route::get('/quality/suppliers/{supplier}/scorecard', [QualityController::class, 'scorecard'])->middleware('permission:supplier_performance.view');
             Route::put('/quality/score-weights', [QualityController::class, 'scoreWeights'])->middleware('permission:quality.templates.manage');
             Route::prefix('accounting')->group(function () {
+                Route::get('/reference-rate', [IntegrationController::class, 'ecb'])->middleware(['permission:accounting.reports.view', 'throttle:20,1']);
                 Route::post('/initialize', [AccountingController::class, 'initialize'])->middleware('permission:accounting.settings.manage');
                 Route::get('/ap/aging', [AccountingController::class, 'payableAging'])->middleware('permission:finance.view');
                 Route::get('/ap/suppliers/{supplier}/workbench', [AccountingController::class, 'supplierWorkbench'])->middleware('permission:supplier_invoices.view');

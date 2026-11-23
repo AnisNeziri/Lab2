@@ -5,3 +5,4 @@
 /* Review links from Action Center put the approval before the creation form. */
 .procurement-page[data-view=approvals] .procurement-grid { grid-template-columns:minmax(0,1fr); }
 .procurement-page[data-view=approvals] .procurement-grid > section { order:-1; }
+.procurement-result { display: grid; gap: 1rem; min-width: 0; }

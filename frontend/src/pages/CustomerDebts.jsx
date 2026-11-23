@@ -19,6 +19,7 @@ import { getFinancialAccounts } from "../api/advancedOperations";
 import { useTranslation } from "../hooks/useTranslation";
 import { useAuthStore } from "../store/authStore";
 import EntityContext from "../components/EntityContext";
+import { useRevealTarget } from "../hooks/useRevealTarget";
 import { BusinessFacts } from "../components/WorkflowSummary";
 import RowActions from "../components/RowActions";
 import CustomerSalesSummary from "../components/CustomerSalesSummary";
@@ -128,6 +129,8 @@ export default function CustomerDebts() {
   const [overrideReason, setOverrideReason] = useState("");
   const [overrideBusy, setOverrideBusy] = useState(false);
   const [showCreditReport, setShowCreditReport] = useState(false);
+  const reveal = useRevealTarget();
+  const openedFromList = useRef(null);
   const [reportRows, setReportRows] = useState([]);
   const [reportSummary, setReportSummary] = useState({});
   const [reportFilter, setReportFilter] = useState("all");
@@ -281,6 +284,10 @@ export default function CustomerDebts() {
       const customer = await getCustomerDebt(id);
       if (ticket !== detailRequest.current) return;
       setSelected(customer);
+      if (openedFromList.current === id) {
+        openedFromList.current = null;
+        reveal('customer-debt-sheet');
+      }
       setMode("");
       clearCreditBlock();
       setError("");
@@ -291,8 +298,16 @@ export default function CustomerDebts() {
     }
   };
 
-  const open = id => setDetailParams(current => { const next = new URLSearchParams(current); next.set('customer', id); return next; });
+  const open = id => {
+    if (Number(detailParams.get('customer')) === Number(id) && selected) {
+      reveal('customer-debt-sheet');
+      return;
+    }
+    openedFromList.current = Number(id);
+    setDetailParams(current => { const next = new URLSearchParams(current); next.set('customer', id); return next; });
+  };
   const backToCustomers = () => {
+    openedFromList.current = null;
     detailRequest.current++;
     setLoading(false);
     setSelected(null); setMode(''); setCorrection(null); clearCreditBlock();
@@ -313,6 +328,7 @@ export default function CustomerDebts() {
       setForm(emptyForm());
     }
     setMode(nextMode);
+    reveal('customer-debt-form');
     clearCreditBlock();
     setMessage("");
     setError("");
@@ -459,6 +475,7 @@ export default function CustomerDebts() {
   };
 
   const correct = (transaction) => {
+    reveal('customer-debt-correction');
     setMode("");
     setCorrection({
       transaction,
@@ -533,13 +550,14 @@ export default function CustomerDebts() {
   return (
     <main className="page-stack">
       <PageHeader title={t("debts.title")} description={t("debts.subtitle")} actions={<div className="table-actions">
-            {canManageCustomers&&<Link to={selected?`/customers?customer=${selected.id}`:'/customers'}>{language==='sq'?'Hap pamjen 360 të klientit':'Open Customer 360'}</Link>}
+            {canManageCustomers&&<Link className="btn btn-secondary debt-workspace-link" to={selected?`/customers?customer=${selected.id}`:'/customers'}>{selected ? (language==='sq'?'Pamja 360 e klientit':'Customer 360') : (language==='sq'?'Klientët dhe shitjet':'Customers & Sales')}</Link>}
             <button
               className="secondary"
               onClick={() => {
                 setShowCreditReport((current) => !current);
                 backToCustomers();
                 clearCreditBlock();
+                reveal(showCreditReport ? 'customer-debt-list' : 'customer-credit-report');
               }}
             >
               <BarChart3 size={16} />
@@ -556,7 +574,7 @@ export default function CustomerDebts() {
       {message && <div className="success-banner" role="status">{message}</div>}
 
       {mode && (
-        <section className="card">
+        <section className="card" id="customer-debt-form" tabIndex={-1}>
           <h3>
             {mode === "customer"
               ? t("debts.newCustomer")
@@ -873,7 +891,7 @@ export default function CustomerDebts() {
       )}
 
       {showCreditReport ? (
-        <section className="card credit-report-section">
+        <section className="card credit-report-section" id="customer-credit-report" tabIndex={-1}>
           <div className="section-header">
             <div>
               <h2>{t("debts.creditReport")}</h2>
@@ -1003,7 +1021,7 @@ export default function CustomerDebts() {
           </div>
         </section>
       ) : selected ? (
-        <section className="card table-wrap">
+        <section className="card table-wrap" id="customer-debt-sheet" tabIndex={-1}>
           <div className="section-header">
             <div>
               <div className="customer-credit-title">
@@ -1063,11 +1081,8 @@ export default function CustomerDebts() {
               </div>
             )}
           </section>
-          <EntityContext entityType="customer" entityId={selected.id} />
-          <CustomerSalesSummary customerId={selected.id} />
-
           {correction && (
-            <section className="inline-editor">
+            <section className="inline-editor" id="customer-debt-correction" tabIndex={-1}>
               <div className="section-header">
                 <div>
                   <h3>{t("debts.correctionTitle")}</h3>
@@ -1212,58 +1227,7 @@ export default function CustomerDebts() {
               </form>
             </section>
           )}
-          <section className="credit-metrics-grid">
-            <article className="stat-card">
-              <p className="stat-label">{t("debts.currentDebt")}</p>
-              <p className="stat-value">{euro(selectedCredit.current_debt)}</p>
-            </article>
-            <article className="stat-card">
-              <p className="stat-label">{t("debts.advance")}</p>
-              <p className="stat-value">{euro(selectedCredit.advance)}</p>
-            </article>
-            <article className="stat-card">
-              <p className="stat-label">{t("debts.exposure")}</p>
-              <p className="stat-value">{euro(selectedCredit.total_exposure)}</p>
-            </article>
-            <article className="stat-card">
-              <p className="stat-label">{t("debts.availableCredit")}</p>
-              <p className="stat-value">{hasValue(selectedCredit.available_credit) ? euro(selectedCredit.available_credit) : t("debts.unlimited")}</p>
-            </article>
-            <article className="stat-card">
-              <p className="stat-label">{t("debts.utilization")}</p>
-              <p className="stat-value">{percent(selectedCredit.utilization_percent)}</p>
-            </article>
-            <article className="stat-card">
-              <p className="stat-label">{t("debts.overdue")}</p>
-              <p className="stat-value">{euro(selectedCredit.overdue)}</p>
-            </article>
-            <article className="stat-card">
-              <p className="stat-label">{t("debts.oldestOverdue")}</p>
-              <p className="stat-value">{dateOnly(selectedCredit.oldest_overdue_date)}</p>
-            </article>
-            <article className="stat-card">
-              <p className="stat-label">{t("debts.creditLimit")}</p>
-              <p className="stat-value">{hasValue(selectedCredit.credit_limit) ? euro(selectedCredit.credit_limit) : t("debts.unlimited")}</p>
-            </article>
-          </section>
-          <section className="credit-aging-section">
-            <div className="section-header">
-              <h3>{t("debts.agingTitle")}</h3>
-              <small>{t("debts.agingHint")}</small>
-            </div>
-            <div className="credit-aging-grid">
-              {["current", "1_30", "31_60", "61_90", "90_plus"].map((bucket) => (
-                <article key={bucket} className={bucket === "90_plus" && Number(selectedCredit.aging?.[bucket]) > 0 ? "is-danger" : ""}>
-                  <span>{t(`debts.aging.${bucket}`)}</span>
-                  <strong>{euro(selectedCredit.aging?.[bucket])}</strong>
-                </article>
-              ))}
-            </div>
-          </section>
-          <div className="credit-ledger-dates">
-            <span>{t("debts.lastPayment")}: <strong>{dateOnly(selected.ledger_summary?.last_payment_at)}</strong></span>
-            <span>{t("debts.lastDebt")}: <strong>{dateOnly(selected.ledger_summary?.last_debt_at)}</strong></span>
-          </div>
+          <h3 className="debt-history-heading">{language === 'sq' ? 'Historiku i borxhit' : 'Debt history'}</h3>
           <table className="product-table">
             <thead>
               <tr>
@@ -1337,9 +1301,66 @@ export default function CustomerDebts() {
               )}
             </tbody>
           </table>
+          <section className="credit-metrics-grid">
+            <article className="stat-card">
+              <p className="stat-label">{t("debts.currentDebt")}</p>
+              <p className="stat-value">{euro(selectedCredit.current_debt)}</p>
+            </article>
+            <article className="stat-card">
+              <p className="stat-label">{t("debts.advance")}</p>
+              <p className="stat-value">{euro(selectedCredit.advance)}</p>
+            </article>
+            <article className="stat-card">
+              <p className="stat-label">{t("debts.exposure")}</p>
+              <p className="stat-value">{euro(selectedCredit.total_exposure)}</p>
+            </article>
+            <article className="stat-card">
+              <p className="stat-label">{t("debts.availableCredit")}</p>
+              <p className="stat-value">{hasValue(selectedCredit.available_credit) ? euro(selectedCredit.available_credit) : t("debts.unlimited")}</p>
+            </article>
+            <article className="stat-card">
+              <p className="stat-label">{t("debts.utilization")}</p>
+              <p className="stat-value">{percent(selectedCredit.utilization_percent)}</p>
+            </article>
+            <article className="stat-card">
+              <p className="stat-label">{t("debts.overdue")}</p>
+              <p className="stat-value">{euro(selectedCredit.overdue)}</p>
+            </article>
+            <article className="stat-card">
+              <p className="stat-label">{t("debts.oldestOverdue")}</p>
+              <p className="stat-value">{dateOnly(selectedCredit.oldest_overdue_date)}</p>
+            </article>
+            <article className="stat-card">
+              <p className="stat-label">{t("debts.creditLimit")}</p>
+              <p className="stat-value">{hasValue(selectedCredit.credit_limit) ? euro(selectedCredit.credit_limit) : t("debts.unlimited")}</p>
+            </article>
+          </section>
+          <section className="credit-aging-section">
+            <div className="section-header">
+              <h3>{t("debts.agingTitle")}</h3>
+              <small>{t("debts.agingHint")}</small>
+            </div>
+            <div className="credit-aging-grid">
+              {["current", "1_30", "31_60", "61_90", "90_plus"].map((bucket) => (
+                <article key={bucket} className={bucket === "90_plus" && Number(selectedCredit.aging?.[bucket]) > 0 ? "is-danger" : ""}>
+                  <span>{t(`debts.aging.${bucket}`)}</span>
+                  <strong>{euro(selectedCredit.aging?.[bucket])}</strong>
+                </article>
+              ))}
+            </div>
+          </section>
+          <div className="credit-ledger-dates">
+            <span>{t("debts.lastPayment")}: <strong>{dateOnly(selected.ledger_summary?.last_payment_at)}</strong></span>
+            <span>{t("debts.lastDebt")}: <strong>{dateOnly(selected.ledger_summary?.last_debt_at)}</strong></span>
+          </div>
+          <details className="entity-context debt-supporting-records">
+            <summary>{language==='sq'?'Dokumentet, kontabiliteti dhe porositë':'Documents, accounting & orders'}</summary>
+            <EntityContext entityType="customer" entityId={selected.id} />
+            <CustomerSalesSummary customerId={selected.id} />
+          </details>
         </section>
       ) : (
-        <section className="card">
+        <section className="card" id="customer-debt-list" tabIndex={-1}>
           <div className="filter-toolbar">
             <input
               placeholder={t("debts.search")}

@@ -648,7 +648,7 @@ export default function Warehouse3DMap() {
       {/* Toolbar */}
       <div className="warehouse-3d-toolbar" style={{ position: 'absolute', top: 16, left: 16, right: 16, zIndex: 10, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', pointerEvents: 'none' }}>
         <div className="warehouse-3d-heading">
-          <div style={{ color: 'white', fontSize: 18, fontWeight: 700 }}>{tx("3D Warehouse Map")}</div>
+          <h1 style={{ color: 'white', fontSize: 18, fontWeight: 700, margin: 0 }}>{tx("3D Warehouse Map")}</h1>
           <div style={{ color: '#64748b', fontSize: 12, marginTop: 2 }}>
             {allShelves.length} {tx("sections ·")} {floorCount} {tx("Floors")} &nbsp;·&nbsp;
             <span style={{ color: lowStockCount > 0 ? '#fb923c' : '#4ade80' }}>{lowStockCount} {tx("low-stock sections")}</span>

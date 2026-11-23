@@ -10,13 +10,14 @@ export default function PreferencesProvider({ children }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const mustChangePassword = useAuthStore((state) => state.mustChangePassword)
   const user = useAuthStore((state) => state.user)
+  const companySession = isAuthenticated && !mustChangePassword && Boolean(user?.company_id) && user?.role !== 'superadmin'
   const loadFromUser = useSettingsStore((state) => state.loadFromUser)
   const syncFromApi = useSettingsStore((state) => state.syncFromApi)
   const loadWorkspace = useWorkspaceStore(state => state.load)
 
   useEffect(() => {
-    if (!mustChangePassword) loadWorkspace(isAuthenticated ? user : null)
-  }, [isAuthenticated, mustChangePassword, user?.id, user?.company_id, loadWorkspace])
+    loadWorkspace(companySession ? user : null)
+  }, [companySession, user?.id, user?.company_id, loadWorkspace])
 
   useEffect(() => {
     if (user?.preferences) {
@@ -26,17 +27,17 @@ export default function PreferencesProvider({ children }) {
 
   useEffect(() => {
     let active = true
-    if (isAuthenticated && !mustChangePassword) {
+    if (companySession) {
       syncFromApi().catch(() => {}).finally(() => {
         if (active) setLoadedUserId(user?.id)
       })
     }
     return () => { active = false }
-  }, [isAuthenticated, mustChangePassword, user?.id, syncFromApi])
+  }, [companySession, user?.id, user?.company_id, syncFromApi])
 
   // Feature routes must not redirect using stale cached preferences while the
   // initial server settings are still loading. Later refreshes stay invisible.
-  if (isAuthenticated && !mustChangePassword && loadedUserId !== user?.id) {
+  if (companySession && loadedUserId !== user?.id) {
     return <p className="page-message" role="status">{t('common.loading')}</p>
   }
 

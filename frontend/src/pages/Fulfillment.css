@@ -2,3 +2,8 @@
 .fulfillment-page > .fulfillment-heading{background:transparent;color:var(--text-color,#172033);border:0;box-shadow:none}
 .fulfillment-page > .fulfillment-heading h1{color:var(--text-color,#172033)}
 .fulfillment-page .fulfillment-panel summary{cursor:pointer;min-height:44px;overflow-wrap:anywhere}
+@media (max-width: 600px) {
+  .fulfillment-metrics { gap: .5rem; }
+  .fulfillment-metrics article { gap: .2rem; padding: .6rem .7rem; border-radius: 10px; font-size: .85rem; line-height: 1.25; }
+  .fulfillment-metrics strong { font-size: 1.3rem; }
+}

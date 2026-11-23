@@ -2,6 +2,16 @@ import { create } from 'zustand'
 import { getCurrentUser } from '../api/login'
 import { storePurchasingDraft } from '../utils/purchasingDraft'
 
+let sessionVersion = 0
+let profileVerified = false
+let profileRequest = null
+
+function resetProfileVerification(verified) {
+  sessionVersion += 1
+  profileVerified = verified
+  profileRequest = null
+}
+
 function isTokenExpired(token) {
   if (!token) return true
 
@@ -26,6 +36,7 @@ export const useAuthStore = create((set, get) => ({
   authReady: false,
 
   setAuth: (token, user, refreshToken = null) => {
+    resetProfileVerification(true)
     const accessToken = token
     const nextRefreshToken = refreshToken ?? get().refreshToken
 
@@ -82,6 +93,7 @@ export const useAuthStore = create((set, get) => ({
   },
 
   clearAuth: () => {
+    resetProfileVerification(false)
     storePurchasingDraft(get().user, null)
     set({
       token: null,
@@ -110,21 +122,28 @@ export const useAuthStore = create((set, get) => ({
     return get().permissions.includes(permission)
   },
 
-  syncSession: async () => {
+  syncSession: () => {
     const { token, isAuthenticated } = get()
-    if (!isAuthenticated || !token || isTokenExpired(token)) {
+    if (!isAuthenticated || !token || isTokenExpired(token) || profileVerified) {
       return
     }
+    if (profileRequest) return profileRequest
 
-    try {
-      const user = await getCurrentUser()
+    const version = sessionVersion
+    profileRequest = getCurrentUser().then(user => {
+      if (version !== sessionVersion) return
+      profileVerified = true
       get().updateUser(user)
-    } catch {
-      // Keep cached session if profile refresh fails transiently.
-    }
+    }).catch(() => {
+      // Keep the cached session if profile verification fails transiently.
+    }).finally(() => {
+      if (version === sessionVersion) profileRequest = null
+    })
+    return profileRequest
   },
 
   hydrate: () => {
+    if (get().authReady) return
     try {
       const token = localStorage.getItem('api_token')
       const refreshToken = localStorage.getItem('refresh_token')

@@ -20,9 +20,28 @@
 .purchasing-decisions details[open] > summary { margin-bottom: .75rem; }
 .purchasing-decisions details > p { margin-bottom: .65rem; }
 .purchasing-decisions [role=alert] { font-weight: 600; }
-.purchase-steps { display:flex; flex-wrap:wrap; gap:.45rem .75rem; }
-.purchase-steps > * { display:inline-flex; align-items:center; gap:.35rem; padding:.45rem .65rem; border:1px solid var(--border,var(--border-color)); border-radius:.5rem; }
-.purchase-steps > span { color:var(--text-secondary,inherit); }
+.purchase-disclosure { border-block-start: 1px solid var(--border-color); padding-block-start: .85rem; }
+.purchasing-decisions fieldset > .purchase-disclosure { margin-block-start: 1rem; }
+.purchase-disclosure > summary,
+.purchasing-decisions .purchase-panel > summary { list-style: none; }
+.purchase-disclosure > summary::-webkit-details-marker,
+.purchasing-decisions .purchase-panel > summary::-webkit-details-marker { display: none; }
+.purchase-disclosure > summary::after,
+.purchasing-decisions .purchase-panel > summary::after {
+  content: '';
+  display: inline-block;
+  width: .45rem;
+  height: .45rem;
+  margin-inline-start: .7rem;
+  border-inline-end: 2px solid currentColor;
+  border-block-end: 2px solid currentColor;
+  transform: translateY(-.14rem) rotate(45deg);
+}
+.purchase-disclosure[open] > summary::after,
+.purchasing-decisions .purchase-panel[open] > summary::after {
+  transform: translateY(.08rem) rotate(225deg);
+}
+.purchase-scenarios-form { display: grid; gap: .9rem; }
 .purchase-evidence ul { max-height:22rem; overflow:auto; }
 .purchase-evidence li { padding:.3rem 0; overflow-wrap:anywhere; }
 .purchasing-decisions [id] { scroll-margin-top: 1rem; }
@@ -38,4 +57,17 @@
 @media (prefers-reduced-motion: no-preference) {
   .purchase-option { animation: purchase-in 160ms ease-out both; }
   @keyframes purchase-in { from { opacity: .8; transform: translateY(.2rem); } }
+}
+.purchase-decision-result {
+  border-inline-start: 3px solid var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 6%, var(--surface-soft));
+}
+.purchase-decision-result > strong { font-size: 1.04rem; }
+.purchase-decision-result .purchase-actions { margin-block-start: .25rem; }
+.purchase-decision-result .btn-primary {
+  min-height: 44px;
+  padding: .55rem .95rem;
+  border-radius: var(--radius-sm, .5rem);
+  text-decoration: none;
+  font-weight: 600;
 }

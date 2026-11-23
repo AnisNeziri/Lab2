@@ -133,7 +133,7 @@ test('enabled warehouse maps render and layout navigation works in both language
     await preferences(page,theme,language)
     await page.goto('/warehouse-3d')
     await expect(page.locator('.warehouse-3d-page canvas')).toBeVisible()
-    await expectNoDocumentOverflow(page)
+    await expectNoDocumentOverflow(page, 2, page.locator('.warehouse-3d-page h1'))
     // Headless CI software-renders this 3D scene; trace/actionability round trips
     // can consume the default 10s even when the real click navigates correctly.
     await page.getByRole('button',{name:language==='en'?'Edit layout':'Ndrysho planimetrinë',exact:true}).click({timeout:30_000})

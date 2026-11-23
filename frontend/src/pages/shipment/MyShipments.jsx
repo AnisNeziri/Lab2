@@ -18,6 +18,7 @@ import ShipmentWorkspace from '../../components/ShipmentWorkspace'
 import EntityDocuments from '../../components/EntityDocuments'
 import WorkspaceModal from '../../components/WorkspaceModal'
 import { useTranslation } from '../../hooks/useTranslation'
+import { revealElement, useRevealTarget } from '../../hooks/useRevealTarget'
 import { businessDate } from '../../utils/businessFormat'
 import {
   archiveShipment,
@@ -70,6 +71,7 @@ function formatDate(value, language, withTime = false) {
 
 export default function MyShipments() {
   const { t, language } = useTranslation()
+  const reveal = useRevealTarget()
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedShipmentId = Number(searchParams.get('shipment')) || null
   const permissions = useAuthStore((state) => state.permissions)
@@ -112,7 +114,7 @@ export default function MyShipments() {
 
   useEffect(() => {
     if (!focusShipmentId || selected?.id !== focusShipmentId || !selected.cargo) return
-    shipmentDetail.current?.querySelector('.cargo-heading')?.scrollIntoView({ block: 'start', behavior: 'auto' })
+    revealElement(shipmentDetail.current)
     setFocusShipmentId(null)
   }, [focusShipmentId, selected?.id, selected?.cargo])
 
@@ -283,6 +285,7 @@ export default function MyShipments() {
     try {
       const result = await lookupVessel(vesselIdentifier.trim())
       setVesselLookup(result)
+      reveal('vessel-lookup-result')
     } catch (err) {
       setVesselLookup(null)
       setError(err.message || t('shipments.lookupError'))
@@ -306,6 +309,7 @@ export default function MyShipments() {
       setPurchaseOrderId('')
       await loadShipments()
       setSelectedId(created.id)
+      setFocusShipmentId(created.id)
     } catch (err) {
       setError(err.message || t('shipments.trackError'))
     } finally {
@@ -396,7 +400,7 @@ export default function MyShipments() {
                 </button>
               </form>
 
-              {lookupVesselData ? <article className="vessel-lookup-result" aria-live="polite">
+              {lookupVesselData ? <article className="vessel-lookup-result" id="vessel-lookup-result" tabIndex={-1} aria-live="polite">
                 <Ship size={28} />
                 <div>
                   <h3>{lookupVesselData.name || `MMSI ${lookupVesselData.mmsi}`}</h3>
@@ -469,7 +473,7 @@ export default function MyShipments() {
           </div>
         </div>
 
-        <div className="shipments-detail" ref={shipmentDetail}>
+        <div className="shipments-detail" id="selected-shipment-details" tabIndex={-1} ref={shipmentDetail}>
           {selected ? (
             <>
               <ShipmentWorkspace shipment={selected}/>

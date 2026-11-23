@@ -643,3 +643,7 @@
     color: #111;
   }
 }
+.fc-tab-panel { display: grid; gap: 1rem; min-width: 0; }
+.fc-rate-lookup { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin-top: .75rem; }
+.fc-rate-lookup input { width: 5rem; }
+.fc-rate-lookup :is(small, output) { flex-basis: 100%; }

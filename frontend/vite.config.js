@@ -10,7 +10,7 @@ const proxy = {
 
 export default defineConfig({
   plugins: [react()],
-  optimizeDeps: { include: ['pdfjs-dist/legacy/build/pdf.mjs'] },
+  optimizeDeps: { include: ['pdfjs-dist/build/pdf.mjs'] },
   preview: { proxy },
   server: {
     port: 5173,
@@ -19,11 +19,14 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          charts: ['recharts'],
-          realtime: ['laravel-echo', 'pusher-js'],
-          state: ['zustand'],
+        manualChunks(id) {
+          const module = id.replaceAll('\\', '/')
+          if (/\/node_modules\/(react|react-dom|react-router-dom|react-router|scheduler)\//.test(module)) return 'vendor'
+          if (module.includes('/node_modules/recharts/')) return 'charts'
+          if (/\/node_modules\/(laravel-echo|pusher-js)\//.test(module)) return 'realtime'
+          if (module.includes('/node_modules/zustand/')) return 'state'
+          if (module.endsWith('/three/build/three.core.js')) return 'three-core'
+          if (module.endsWith('/three/build/three.module.js')) return 'three-renderer'
         },
       },
     },
