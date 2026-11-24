@@ -36,7 +36,7 @@
     <div class="sale">
         <div class="sale-heading">
             {{ $labels['customer'] }} #{{ $loop->iteration }} — {{ $sale->sale_number }}
-            <span class="total">{{ $labels['total'] }}: {{ number_format($sale->total_amount, 2) }}</span>
+            <span class="total">{{ $labels['total'] }}: {{ number_format($sale->total_amount, 2) }} {{ \App\Support\CompanyCurrency::normalize($company?->base_currency) }}</span>
         </div>
         <table class="items">
             <thead><tr>
@@ -45,7 +45,7 @@
             </tr></thead>
             <tbody>
             @foreach($sale->items as $item)
-                <tr><td class="num">{{ $loop->iteration }}</td><td>{{ $item->product_name }}</td><td>{{ $item->unit }}</td><td class="qty">{{ $item->quantity }}</td><td class="price">{{ number_format($item->unit_price, 2) }}</td><td class="amount">{{ number_format($item->line_total, 2) }}</td></tr>
+                <tr><td class="num">{{ $loop->iteration }}</td><td>{{ $item->product_name }}</td><td>{{ $item->unit }}</td><td class="qty">{{ $item->quantity }}</td><td class="price">{{ number_format($item->unit_price, 2) }} {{ \App\Support\CompanyCurrency::normalize($company?->base_currency) }}</td><td class="amount">{{ number_format($item->line_total, 2) }} {{ \App\Support\CompanyCurrency::normalize($company?->base_currency) }}</td></tr>
             @endforeach
             </tbody>
         </table>
@@ -55,6 +55,6 @@
     <div class="empty">—</div>
 @endforelse
 
-<div class="day-total">{{ $labels['day_total'] }}: {{ number_format($sales->sum('total_amount'), 2) }}</div>
+<div class="day-total">{{ $labels['day_total'] }}: {{ number_format($sales->sum('total_amount'), 2) }} {{ \App\Support\CompanyCurrency::normalize($company?->base_currency) }}</div>
 </body>
 </html>

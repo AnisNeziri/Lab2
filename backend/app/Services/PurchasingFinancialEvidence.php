@@ -103,10 +103,6 @@ final class PurchasingFinancialEvidence
     {
         $base = CompanyCurrency::forCompanyId((int) auth()->user()->company_id);
 
-        return PurchaseOrderPayment::where('status', 'completed')->where(fn ($q) => $q
-            ->whereNull('currency')->orWhere('currency', '')
-            ->orWhere(fn ($q) => $q->where('currency', '!=', $base)
-                ->where(fn ($q) => $q->whereNull('exchange_rate')->orWhere('exchange_rate', '<=', 0)
-                    ->orWhereNull('exchange_rate_date')->orWhereColumn('exchange_rate_date', '>', 'payment_date'))));
+        return PurchaseOrderPayment::where('status', 'completed')->missingCurrencyEvidence($base);
     }
 }

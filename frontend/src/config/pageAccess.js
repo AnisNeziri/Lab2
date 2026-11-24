@@ -19,6 +19,7 @@ export const pagePermissions = {
   reports: ['reports.view'],
   'purchase-orders': ['purchase_orders.view'],
   procurement: ['procurement.view'],
+  suppliers: ['suppliers.manage', 'supplier_catalogue.view', 'procurement.view', 'purchase_orders.view', 'finance.view'],
   fulfillment: ['fulfillment.view'],
   'order-hub': ['fulfillment.view'],
   documents: ['documents.view'],

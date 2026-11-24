@@ -19,6 +19,215 @@ class InvoiceComplianceTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_evidenced_foreign_customer_invoice_settlements_and_credit_keep_books_in_eur(): void
+    {
+        $this->actingAsApiUser();
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2025-12-31 14:00:00', 'Europe/Belgrade'));
+        $this->putJson('/api/invoice-profile', $this->profile(['is_vat_registered' => false, 'vat_number' => null]))->assertOk();
+        $date = '2025-12-31';
+        $invoiceData = ['buyer' => $this->buyer(), 'invoice_date' => $date, 'supply_date' => $date, 'currency' => 'USD',
+            'items' => [['description' => 'Synthetic service', 'quantity' => 2, 'unit' => 'service', 'unit_price' => 500, 'tax_treatment' => 'non_vat', 'vat_rate' => 0]]];
+        $this->postJson('/api/invoices', $invoiceData)->assertUnprocessable()->assertJsonValidationErrors('exchange_rate');
+        $invoiceData += ['exchange_rate' => '0.90', 'exchange_rate_source' => 'Synthetic historical quote', 'exchange_rate_date' => $date];
+        $invoice = $this->postJson('/api/invoices', $invoiceData)->assertCreated()->json('id');
+        $this->postJson("/api/invoices/$invoice/issue")->assertOk()->assertJsonPath('currency', 'USD')->assertJsonPath('exchange_snapshot.base_total', '900.00');
+        $bank = app(\App\Services\FinancialAccountService::class)->createAccount(['name' => 'Synthetic settlement bank', 'type' => 'bank', 'currency' => 'EUR', 'opening_balance' => 1000, 'opening_date' => $date]);
+        $payments = ['invoice_id' => $invoice, 'payment_method' => 'bank_transfer', 'financial_account_id' => $bank->id,
+            'payment_date' => $date, 'exchange_rate_date' => $date, 'exchange_rate_source' => 'Synthetic bank evidence'];
+        $first = [...$payments, 'amount' => 200, 'exchange_rate' => '0.95', 'idempotency_key' => 'fx-first'];
+        $firstId = $this->postJson('/api/payments', $first)->assertCreated()->assertJsonPath('exchange_snapshot.received_base', '190.00')
+            ->assertJsonPath('exchange_snapshot.carrying_base', '180.00')->json('id');
+        $this->postJson('/api/payments', $first)->assertCreated()->assertJsonPath('id', $firstId);
+        $this->postJson('/api/payments', [...$first, 'exchange_rate' => '0.94'])->assertUnprocessable();
+        $second = [...$payments, 'amount' => 300, 'exchange_rate' => '0.85', 'idempotency_key' => 'fx-second'];
+        $secondId = $this->postJson('/api/payments', $second)->assertCreated()->assertJsonPath('exchange_snapshot.carrying_base', '270.00')->json('id');
+        $this->postJson("/api/payments/$firstId/reverse", ['reason' => 'A newer FX allocation exists.'])->assertUnprocessable();
+        $accounting = app(\App\Services\AccountingService::class);
+        $profit = $accounting->profitAndLoss(null, $date);
+        foreach (['revenue' => '900.00', 'other_gains' => '10.00', 'other_losses' => '15.00', 'net_profit' => '895.00'] as $key => $amount) {
+            $this->assertSame($amount, $profit[$key], $key);
+        }
+        $this->assertSame('450.00', $accounting->reconciliation(false)['rows']['accounts_receivable']['operational_amount']);
+        $this->assertSame('1445.00', $accounting->reconciliation(false)['rows']['cash_bank']['gl_amount']);
+        $dated = fn (string $on) => collect(app(\App\Services\DatedFinancialReconciliation::class)->report($on)['rows'])->firstWhere('control', 'accounts_receivable');
+        $this->assertSame('450.00', $dated($date)['operational_amount']);
+        $this->assertTrue($accounting->trialBalance(null, $date)['balanced']);
+        $next = '2026-01-01';
+        $this->travelTo(\Illuminate\Support\Carbon::parse("$next 14:00:00", 'Europe/Belgrade'));
+        $this->postJson("/api/payments/$secondId/reverse", ['reason' => 'Reverse second bank settlement.'])->assertOk();
+        $this->assertSame('450.00', $dated($date)['gl_amount']);
+        $this->assertSame('720.00', $dated($next)['gl_amount']);
+        $unpaid = $this->postJson('/api/invoices', $invoiceData)->assertCreated()->json('id');
+        $this->postJson("/api/invoices/$unpaid/issue")->assertOk();
+        $this->postJson("/api/invoices/$unpaid/credit-note", ['reason' => 'Synthetic cancellation before collection.'])
+            ->assertCreated()->assertJsonPath('exchange_snapshot.base_total', '900.00');
+        $this->assertSame('720.00', $accounting->reconciliation(false)['rows']['accounts_receivable']['gl_amount']);
+        $this->travelBack();
+    }
+
+    public function test_year_end_asset_and_foreign_positions_close_and_carry_forward(): void
+    {
+        $this->actingAsApiUser();
+        $date = '2025-12-31';
+        $this->travelTo(\Illuminate\Support\Carbon::parse("$date 14:00:00", 'Europe/Belgrade'));
+        $this->putJson('/api/invoice-profile', $this->profile(['is_vat_registered' => false, 'vat_number' => null]))->assertOk();
+        $accounting = app(\App\Services\AccountingService::class);
+        $bank = app(\App\Services\FinancialAccountService::class)->createAccount(['name' => 'Year-end bank', 'type' => 'bank', 'currency' => 'EUR', 'opening_balance' => 1000, 'opening_date' => $date]);
+        $postedExpense = fn (string $number, array $attributes) => $this->postJson('/api/finance/expenses', [
+            'vendor_name' => 'Synthetic supply company', 'vendor_business_number' => '811111111', 'document_type' => 'purchase_invoice',
+            'document_number' => $number, 'invoice_date' => $date, 'received_date' => $date, 'currency' => 'EUR',
+            'source_type' => 'domestic', 'asset_treatment' => 'ordinary', 'category' => 'professional_services',
+            'business_purpose' => 'Synthetic close', 'net_amount' => 100, 'vat_rate' => 0, 'vat_amount' => 0,
+            'vat_treatment' => 'non_vat', 'input_vat_eligible' => false, ...$attributes,
+        ])->assertCreated()->json('id');
+        $foreignBill = $postedExpense('CLOSE-USD-BILL', [
+            'currency' => 'USD', 'source_type' => 'import', 'exchange_rate' => '0.90', 'exchange_rate_date' => $date, 'exchange_rate_source' => 'Synthetic invoice quotation',
+        ]);
+        $this->postJson("/api/finance/expenses/$foreignBill/post")->assertOk();
+        $assetBill = $postedExpense('CLOSE-ASSET', ['category' => 'capital_asset', 'asset_treatment' => 'investment', 'net_amount' => 365]);
+        $category = $this->postJson('/api/accounting/fixed-assets/categories', [
+            'name' => 'Test fixtures', 'minimum_cost' => 200, 'useful_life_months' => 12, 'policy_reference' => 'Synthetic board approval',
+        ])->assertCreated()->json('id');
+        $asset = $this->postJson("/api/accounting/fixed-assets/bills/$assetBill", [
+            'category_id' => $category, 'asset_number' => 'CLOSE-01', 'name' => 'Test fitting',
+            'residual_value' => 0, 'reason' => 'Synthetic documented acquisition.',
+        ])->assertCreated()->json('id');
+        $this->postJson("/api/finance/expenses/$assetBill/post")->assertOk();
+        $this->postJson("/api/accounting/fixed-assets/$asset/in-service", ['date' => $date, 'reason' => 'Synthetic first use.'])->assertOk();
+        $this->postJson("/api/accounting/fixed-assets/$asset/entries", [
+            'kind' => 'depreciation', 'date' => $date, 'reason' => 'One day of book depreciation.', 'request_key' => 'close-asset',
+        ])->assertCreated()->assertJsonPath('depreciation_delta', '1.00');
+
+        $invoice = $this->postJson('/api/invoices', [
+            'buyer' => $this->buyer(), 'invoice_date' => $date, 'supply_date' => $date, 'issue_now' => true,
+            'currency' => 'USD', 'exchange_rate' => '0.90', 'exchange_rate_source' => 'Synthetic invoice quotation', 'exchange_rate_date' => $date,
+            'items' => [['description' => 'Synthetic sales service', 'quantity' => 1, 'unit' => 'service', 'unit_price' => 1000, 'tax_treatment' => 'non_vat', 'vat_rate' => 0]],
+        ])->assertCreated()->json('id');
+        foreach ([[200, '0.95'], [300, '0.85']] as [$amount, $rate]) {
+            $this->postJson('/api/payments', ['invoice_id' => $invoice, 'financial_account_id' => $bank->id, 'amount' => $amount,
+                'payment_method' => 'bank_transfer', 'payment_date' => $date, 'exchange_rate' => $rate, 'exchange_rate_date' => $date,
+                'exchange_rate_source' => 'Synthetic settlement evidence', 'idempotency_key' => 'closing-'.$amount])->assertCreated();
+        }
+        $rec = app(\App\Services\BankReconciliationService::class);
+        $csv = \Illuminate\Http\UploadedFile::fake()->createWithContent('close-bank.csv', "Date,Amount,Balance\n$date,190.00,1190.00\n$date,255.00,1445.00\n");
+        $statement = $rec->import($bank, $csv, ['date' => 'Date', 'amount' => 'Amount', 'balance' => 'Balance']);
+        $transactions = $bank->transactions()->orderBy('id')->get();
+        foreach ($statement->rows->values() as $index => $row) {
+            $rec->reconcile($row, $transactions[$index]);
+        }
+        $this->postJson("/api/finance/bank-statements/{$statement->id}/complete")->assertOk()->assertJsonPath('balance_control.difference', '0.00');
+
+        $period = $this->postJson('/api/accounting/periods', ['name' => 'Synthetic FY2025', 'starts_at' => '2025-01-01', 'ends_at' => $date])->assertCreated()->json('id');
+        $path = "/api/accounting/periods/$period";
+        $this->postJson("$path/fx-preview")->assertOk()->assertJsonPath('issues.0', 'Provide the closing EUR rate and evidence for USD.');
+        $this->putJson("$path/status", ['status' => 'closed', 'reason' => 'Attempt before foreign review.'])->assertUnprocessable();
+        $quote = ['USD' => ['exchange_rate' => '0.94', 'exchange_rate_date' => $date, 'exchange_rate_source' => 'Approved synthetic year-end quote']];
+        $preview = $this->postJson("$path/fx-preview", ['rates' => $quote])->assertOk()
+            ->assertJsonPath('adjustments.ar', '20.00')->assertJsonPath('adjustments.ap', '4.00')->json();
+        $approval = ['rates' => $quote, 'fingerprint' => $preview['fingerprint'], 'reason' => 'Reviewed closing monetary positions.'];
+        $this->postJson("$path/fx-approve", [...$approval, 'fingerprint' => str_repeat('0', 64)])->assertUnprocessable();
+        $approved = $this->postJson("$path/fx-approve", $approval)->assertCreated()->json('id');
+        $this->postJson("$path/fx-approve", $approval)->assertCreated()->assertJsonPath('id', $approved);
+        $this->postJson("$path/fx-preview")->assertOk()->assertJsonPath('rates.USD.rate', '0.94000000')->assertJsonCount(0, 'issues');
+        $this->getJson("$path/tax-review")->assertNoContent();
+
+        $control = collect(app(\App\Services\DatedFinancialReconciliation::class)->report($date)['rows'])->keyBy('control');
+        $this->assertSame('470.00', $control['accounts_receivable']['gl_amount']);
+        $this->assertSame('459.00', $control['accounts_payable']['gl_amount']);
+        $this->assertTrue($control->every(fn ($row) => $row['reconciled']));
+        $this->assertTrue($accounting->trialBalance(null, $date)['balanced']);
+        $balance = $accounting->balanceSheet($date);
+        $this->assertSame('2279.00', $balance['assets']);
+        $this->assertSame('1820.00', $balance['total_equity']);
+        $profit = $accounting->profitAndLoss(null, $date);
+        $this->assertSame('820.00', $profit['net_profit']);
+        $this->assertSame('1445.00', $accounting->cashFlow(null, $date)['closing_cash']);
+        $taxInputs = ['rate_percent' => '10', 'policy_reference' => 'Synthetic actual-income policy. Separate book and tax depreciation.', 'adjustments' => [
+            ['direction' => 'add', 'amount' => '1.00', 'reason' => 'Add back synthetic book depreciation.'],
+            ['direction' => 'deduct', 'amount' => '0.60', 'reason' => 'Deduct independently approved synthetic tax depreciation.'],
+        ]];
+        $tax = $this->postJson("$path/tax-preview", $taxInputs)->assertOk()->assertJsonPath('profit_before_tax', '820.00')
+            ->assertJsonPath('taxable_profit', '820.40')->assertJsonPath('current_tax', '82.04')->json();
+        $taxInputs['fingerprint'] = $tax['fingerprint'];
+        $taxId = $this->postJson("$path/tax-review", $taxInputs)->assertCreated()->json('id');
+        $this->postJson("$path/tax-review", $taxInputs)->assertCreated()->assertJsonPath('id', $taxId);
+        $this->assertSame('737.96', $accounting->profitAndLoss(null, $date)['net_profit']);
+        $this->assertSame('541.04', $accounting->balanceSheet($date)['liabilities']);
+        $this->assertSame('1737.96', $accounting->balanceSheet($date)['total_equity']);
+        $this->putJson("$path/status", ['status' => 'closed', 'reason' => 'Synthetic close reviewed.'])->assertOk()->assertJsonPath('status', 'closed');
+        $this->postJson("/api/accounting/fixed-assets/$asset/entries", [
+            'kind' => 'impairment', 'date' => $date, 'amount' => 100, 'reason' => 'Attempt after the close.', 'request_key' => 'late-impair',
+        ])->assertUnprocessable()->assertJsonPath('code', 'accounting_period_locked');
+        $next = $accounting->balanceSheet('2026-01-01');
+        $this->assertSame('737.96', $next['retained_earnings_brought_forward']);
+        $this->assertSame('-16.00', $next['current_earnings']);
+        $this->assertSame('1721.96', $next['total_equity']);
+        $this->travelBack();
+    }
+
+    public function test_kosovo_cash_limits_use_the_complete_transaction_and_effective_date(): void
+    {
+        [$product, $customer] = $this->setupInvoiceData();
+        $date = \App\Support\CompanyClock::today()->toDateString();
+        $payload = $this->payload($product, 3, $customer);
+        $invoice = $this->postJson('/api/invoices', $payload)->assertCreated()->json('id');
+        $this->postJson("/api/invoices/$invoice/issue")->assertOk()->assertJsonPath('grand_total', '354.00');
+        $pay = ['invoice_id' => $invoice, 'amount' => 100, 'payment_date' => $date, 'payment_method' => 'cash', 'idempotency_key' => 'threshold-split'];
+        $this->postJson('/api/payments', $pay)->assertUnprocessable()->assertJsonValidationErrors('payment_method');
+        $this->postJson('/api/payments', [...$pay, 'payment_method' => 'bank_transfer', 'in_kind_amount' => '40.00'])
+            ->assertUnprocessable()->assertJsonValidationErrors('in_kind_amount');
+        $cash = app(\App\Services\FinancialAccountService::class)->createAccount(['name' => 'Test cash', 'type' => 'cashbox', 'currency' => 'EUR', 'opening_balance' => 0]);
+        $this->postJson('/api/payments', [...$pay, 'payment_method' => 'bank_transfer', 'financial_account_id' => $cash->id])->assertUnprocessable()->assertJsonValidationErrors('payment_method');
+        $this->postJson('/api/payments', [...$pay, 'payment_method' => 'bank_transfer'])->assertCreated();
+        $this->postJson('/api/payments', [...$pay, 'idempotency_key' => 'remaining-split'])->assertUnprocessable()->assertJsonValidationErrors('payment_method');
+        $this->assertDatabaseCount('payment_transactions', 1);
+        $audit = \App\Models\ActivityLog::query()->where('action', 'accounting.kosovo_cash_control.checked')->where('entity_id', $invoice)->sole();
+        $this->assertSame('08/L-257, art. 6(9)', $audit->new_value['rule']);
+        $this->assertSame('electronic', $audit->new_value['basis']);
+
+        $person = Customer::create($this->tenantAttributes(['name' => 'Synthetic private purchaser', 'customer_type' => 'individual']));
+        $this->postJson("/api/customers/{$person->id}/debts", ['amount' => 2000.01, 'transaction_date' => '2026-06-01', 'idempotency_key' => 'private-receivable'])->assertCreated();
+        $privatePayment = ['amount' => 50, 'transaction_date' => '2026-06-01', 'idempotency_key' => 'private-instalment'];
+        $this->postJson("/api/customers/{$person->id}/payments", [...$privatePayment, 'payment_method' => 'cash'])->assertUnprocessable()->assertJsonValidationErrors('payment_method');
+        $this->postJson("/api/customers/{$person->id}/payments", [...$privatePayment, 'payment_method' => 'card'])->assertCreated();
+
+        $policy = app(\App\Services\Kosovo\CashPaymentPolicy::class);
+        $this->assertNull($policy->threshold('2024-01-26', 'business', true));
+        $this->assertSame(100, $policy->threshold('2024-01-27', 'business', true)['limit']);
+        $this->assertSame(2000, $policy->threshold('2026-06-01', 'individual', true)['limit']);
+        $policy->assertAllowed('2026-06-01', '300.00', 'business', 'cash');
+        $policy->assertAllowed('2026-06-01', '2000.00', 'individual', 'cash');
+        $policy->assertAllowed('2026-05-31', '2000.01', 'individual', 'cash');
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        $policy->assertAllowed('2026-06-01', '2000.01', 'individual', 'cash');
+    }
+
+    public function test_kosovo_invoice_profile_and_base_currency_cannot_conflict(): void
+    {
+        $this->actingAsApiUser();
+        $this->putJson('/api/settings/preferences', ['base_currency' => 'USD'])->assertOk();
+        $this->putJson('/api/invoice-profile', $this->profile())->assertUnprocessable()->assertJsonValidationErrors('country_code');
+        $this->putJson('/api/settings/preferences', ['base_currency' => 'EUR'])->assertOk();
+        $this->putJson('/api/invoice-profile', $this->profile())->assertOk();
+        $this->putJson('/api/settings/preferences', ['base_currency' => 'USD'])->assertUnprocessable()->assertJsonValidationErrors('base_currency');
+    }
+
+    public function test_company_base_invoice_snapshot_print_and_credit_keep_the_recorded_currency(): void
+    {
+        $this->actingAsApiUser();
+        $this->putJson('/api/settings/preferences', ['base_currency' => 'USD'])->assertOk();
+        $this->putJson('/api/invoice-profile', $this->profile(['country_code' => 'US', 'is_vat_registered' => false]))->assertOk();
+        $date = now('Europe/Belgrade');
+        $invoice = $this->postJson('/api/invoices', [
+            'buyer' => $this->buyer(), 'invoice_date' => $date->toDateString(), 'supply_date' => $date->toDateString(),
+            'items' => [['description' => 'Fictional non-taxable sale', 'unit' => 'm', 'quantity' => 2.5, 'unit_price' => 10, 'vat_rate' => 0, 'tax_treatment' => 'non_vat']],
+        ])->assertCreated()->assertJsonPath('currency', 'USD')->json('id');
+        $this->postJson("/api/invoices/$invoice/issue")->assertOk()->assertJsonPath('grand_total', '25.00');
+        $this->get("/api/invoices/$invoice/print")->assertOk()->assertSee('USD 25.00');
+        $this->postJson("/api/invoices/$invoice/credit-note", ['reason' => 'Fictional order corrected'])->assertCreated()->assertJsonPath('currency', 'USD');
+        $this->assertDatabaseHas('journal_entries', ['source_type' => 'invoice', 'source_id' => $invoice, 'currency' => 'USD', 'total_debit' => 25, 'total_credit' => 25]);
+    }
+
     public function test_invoice_profile_is_persistent_and_company_scoped(): void
     {
         $this->actingAsApiUser();

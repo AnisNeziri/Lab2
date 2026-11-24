@@ -1,13 +1,14 @@
 <?php
 namespace App\Support;
 
+use App\Models\Company;
 use Carbon\CarbonImmutable;
 
 final class CompanyClock
 {
-    public static function timezone(): string
+    public static function timezone(?Company $company = null): string
     {
-        return auth()->user()?->company?->timezone ?: (config('production.timezone') ?: config('app.timezone', 'UTC'));
+        return ($company ?? auth()->user()?->company)?->timezone ?: (config('production.timezone') ?: config('app.timezone', 'UTC'));
     }
 
     public static function now(): CarbonImmutable

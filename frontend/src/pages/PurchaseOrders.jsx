@@ -25,12 +25,14 @@ import { getWarehouses, getWarehouseLocations } from "../api/warehouseOperations
 import { getFinancialAccounts } from "../api/advancedOperations";
 import { useRevealTarget } from "../hooks/useRevealTarget";
 import { useAuthStore } from "../store/authStore";
+import { useSettingsStore } from "../store/settingsStore";
+import { useCompanyTimezone } from "../hooks/useCompanyTimezone";
+import { companyDate } from "../utils/companyDate";
 import EntityContext from "../components/EntityContext";
 import { BusinessFacts, NextStep, WorkflowSteps } from "../components/WorkflowSummary";
 import RowActions from "../components/RowActions";
 import { useUnsavedNavigation } from "../hooks/useUnsavedNavigation";
 
-const today = () => new Date().toISOString().slice(0, 10);
 const dateOnly = (value) => (value ? String(value).slice(0, 10) : "—");
 const emptyLine = () => ({
   id: null,
@@ -40,26 +42,26 @@ const emptyLine = () => ({
   quantity: 1,
   unit_price: 0,
 });
-const emptyOrder = () => ({
+const emptyOrder = (date, currency) => ({
   supplier_id: "",
-  ordered_at: today(),
+  ordered_at: date,
   expected_at: "",
   due_at: "",
-  currency: "EUR",
+  currency,
   warehouse_id: "",
   exchange_rate: "",
-  exchange_rate_date: today(),
+  exchange_rate_date: date,
   exchange_rate_source: "",
   status: "draft",
   notes: "",
   change_reason: "",
   items: [emptyLine()],
 });
-const emptyPayment = () => ({
-  exchange_rate: "", exchange_rate_date: today(), exchange_rate_source: "",
+const emptyPayment = (date) => ({
+  exchange_rate: "", exchange_rate_date: date, exchange_rate_source: "",
   amount: "",
   expense_id: "",
-  payment_date: today(),
+  payment_date: date,
   payment_method: "bank_transfer",
   financial_account_id: "",
   reference_number: "",
@@ -114,9 +116,12 @@ const traceAllocationsFor = (line, state) => {
 
 export default function PurchaseOrders() {
   const { t, language } = useTranslation();
+  const timeZone = useCompanyTimezone();
+  const baseCurrency = useSettingsStore(state => state.base_currency);
+  const today = () => companyDate(timeZone);
   const reveal = useRevealTarget();
   const [detailParams, setDetailParams] = useSearchParams();
-  const money = (value, currency = 'EUR') => businessMoney(value, currency, language);
+  const money = (value, currency = baseCurrency) => businessMoney(value, currency, language);
   const displayDate = value => businessDate(value, language);
   const permissions = useAuthStore((state) => state.permissions);
   const canOverrideExpiredReceipt = permissions.includes("inventory.expired.override");
@@ -138,8 +143,8 @@ export default function PurchaseOrders() {
   const [selected, setSelected] = useState(null);
   const detailRequest = useRef(0);
   const [mode, setMode] = useState("");
-  const [form, setForm] = useState(emptyOrder());
-  const [payment, setPayment] = useState(emptyPayment());
+  const [form, setForm] = useState(() => emptyOrder(today(), baseCurrency));
+  const [payment, setPayment] = useState(() => emptyPayment(today()));
   const [receipt, setReceipt] = useState([]);
   const [receiptKey, setReceiptKey] = useState("");
   const [receiptMeta, setReceiptMeta] = useState({ warehouse_id: "", location_id: "", received_at: today(), supplier_document_number: "", notes: "", allow_expired_receipt: false, expired_receipt_reason: "" });
@@ -330,7 +335,7 @@ export default function PurchaseOrders() {
     setDetailParams(current=>{const next=new URLSearchParams(current);next.delete('po');next.set('new','1');return next;});
     setSelected(null);
     const primary = warehouses.find((warehouse) => warehouse.is_default);
-    setForm({ ...emptyOrder(), warehouse_id: primary ? String(primary.id) : "" });
+    setForm({ ...emptyOrder(today(), baseCurrency), warehouse_id: primary ? String(primary.id) : "" });
     setMode("order");
     reveal('purchase-order-editor');
     setError("");
@@ -370,7 +375,7 @@ export default function PurchaseOrders() {
   const beginPayment = () => {
     if(busy||!confirmDiscard())return;
     setEditorEpoch(x=>x+1);
-    setPayment(emptyPayment());
+    setPayment(emptyPayment(today()));
     setMode("payment");
     reveal('purchase-order-editor');
   };
@@ -452,9 +457,9 @@ export default function PurchaseOrders() {
         expected_at: form.expected_at || null,
         due_at: form.due_at || null,
         warehouse_id: form.warehouse_id ? Number(form.warehouse_id) : null,
-        exchange_rate: form.currency === "EUR" ? null : Number(form.exchange_rate),
-        exchange_rate_date: form.currency === "EUR" ? null : form.exchange_rate_date,
-        exchange_rate_source: form.currency === "EUR" ? null : form.exchange_rate_source,
+        exchange_rate: form.currency === baseCurrency ? null : Number(form.exchange_rate),
+        exchange_rate_date: form.currency === baseCurrency ? null : form.exchange_rate_date,
+        exchange_rate_source: form.currency === baseCurrency ? null : form.exchange_rate_source,
         notes: form.notes || null,
         change_reason: form.change_reason || null,
         items: form.items.map((line) => ({
@@ -490,9 +495,9 @@ export default function PurchaseOrders() {
       await recordPurchaseOrderPayment(selected.id, {
         ...payment,
         amount: Number(payment.amount),
-        exchange_rate: selected.currency === "EUR" ? null : Number(payment.exchange_rate),
-        exchange_rate_date: selected.currency === "EUR" ? null : payment.exchange_rate_date,
-        exchange_rate_source: selected.currency === "EUR" ? null : payment.exchange_rate_source.trim(),
+        exchange_rate: selected.currency === baseCurrency ? null : Number(payment.exchange_rate),
+        exchange_rate_date: selected.currency === baseCurrency ? null : payment.exchange_rate_date,
+        exchange_rate_source: selected.currency === baseCurrency ? null : payment.exchange_rate_source.trim(),
         expense_id: payment.expense_id ? Number(payment.expense_id) : null,
         financial_account_id: payment.financial_account_id ? Number(payment.financial_account_id) : undefined,
         reference_number: payment.reference_number || null,
@@ -704,7 +709,7 @@ export default function PurchaseOrders() {
                 value={form.currency}
                 onChange={(e) => setForm({ ...form, currency: e.target.value })}
               >
-                {["EUR", "USD", "ALL", "GBP", "CNY"].map((code) => (
+                {[...new Set([baseCurrency, form.currency, "EUR", "USD", "ALL", "GBP", "CHF", "CNY"])].map((code) => (
                   <option key={code}>{code}</option>
                 ))}
               </select>
@@ -720,7 +725,7 @@ export default function PurchaseOrders() {
                 <option value="ordered">{statusText("ordered")}</option>
               </select>
             </label>
-            {form.currency !== "EUR" && <>
+            {form.currency !== baseCurrency && <>
               <label>{t("po.exchangeRate")}<input required type="number" min="0.000001" step="0.000001" value={form.exchange_rate} onChange={(e) => setForm({ ...form, exchange_rate: e.target.value })} /></label>
               <label>{t("po.exchangeRateDate")}<input required type="date" value={form.exchange_rate_date} onChange={(e) => setForm({ ...form, exchange_rate_date: e.target.value })} /></label>
               <label>{t("po.exchangeRateSource")}<input required value={form.exchange_rate_source} onChange={(e) => setForm({ ...form, exchange_rate_source: e.target.value })} placeholder="CBK / Bank / Customs" /></label>
@@ -943,7 +948,7 @@ export default function PurchaseOrders() {
                 }
               />
             </label>
-            {selected.currency !== "EUR" && <>
+            {selected.currency !== baseCurrency && <>
               <label>{t("po.exchangeRate")}<input required type="number" min="0.000001" step="0.000001" value={payment.exchange_rate} onChange={e=>setPayment({...payment,exchange_rate:e.target.value})}/></label>
               <label>{t("po.exchangeRateDate")}<input required type="date" max={payment.payment_date} value={payment.exchange_rate_date} onChange={e=>setPayment({...payment,exchange_rate_date:e.target.value})}/></label>
               <label>{t("po.exchangeRateSource")}<input required value={payment.exchange_rate_source} onChange={e=>setPayment({...payment,exchange_rate_source:e.target.value})}/></label>
@@ -976,7 +981,7 @@ export default function PurchaseOrders() {
                 <option value="">{t("payments.noMoneyAccount")}</option>
                 {financialAccounts.map((account) => (
                   <option key={account.id} value={account.id}>
-                    {account.name} · {account.type === "cashbox" ? t("finance.cash") : t("finance.bankTransfer")} ({account.currency || "EUR"})
+                    {account.name} · {account.type === "cashbox" ? t("finance.cash") : t("finance.bankTransfer")} ({account.currency || baseCurrency})
                   </option>
                 ))}
               </select>

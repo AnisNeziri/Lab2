@@ -88,13 +88,13 @@ final class FinancialIntelligenceEvidence {
  private function capital(string $currency):array {
   $rows=[];$categories=[];$warehouses=[];$total='0.00';$missing=0;
   $plans=InventoryRecommendation::whereNotNull('planning_key')->whereIn('status',['open','viewed'])->latest('id')->get()->unique('product_id')->keyBy('product_id');
-  foreach(Product::with(['category','warehouseStock.warehouse'])->get() as $p){if($p->inventory_value===null){$missing++;continue;}$value=Money::normalize($p->inventory_value);$total=Money::add($total,$value);$plan=$plans->get($p->id)?->explanation??[];$unitCost=$p->weighted_average_cost;
+  foreach(Product::with(['category','warehouseStock.warehouse'])->get() as $p){if($p->inventory_value===null){if($p->quantity>0)$missing++;continue;}$value=Money::normalize($p->inventory_value);$total=Money::add($total,$value);$plan=$plans->get($p->id)?->explanation??[];$unitCost=$p->weighted_average_cost;
    $excess=$unitCost!==null&&isset($plan['excess_quantity'])?Money::multiply(min(max(0,$p->quantity),max(0,$plan['excess_quantity'])),$unitCost):null;$slow=($plan['optimization_state']??null)==='slow_moving';
    $rows[]=['id'=>$p->id,'name'=>$p->name,'quantity'=>$p->quantity,'unit'=>$p->unit,'value'=>$value,'excess_value'=>$excess,'slow_moving_value'=>$slow?$value:null,'planned_purchase_despite_excess'=>Money::minor($excess??0)>0&&($plan['base_quantity']??0)>0,'url'=>'/inventory-intelligence?view=planning&product='.$p->id];
    $key=$p->category?->name??'Uncategorised';$categories[$key]=Money::add($categories[$key]??0,$value);
    foreach($p->warehouseStock as $stock){$name=$stock->warehouse?->name??'Unknown warehouse';if($unitCost!==null)$warehouses[$name]=Money::add($warehouses[$name]??0,Money::multiply($stock->quantity,$unitCost));}
   }
   usort($rows,fn($a,$b)=>Money::compare($b['value'],$a['value']));
-  return ['currency'=>$currency,'total'=>!$rows&&$missing?null:$total,'products'=>$rows,'categories'=>$categories,'warehouses'=>$warehouses,'unvalued_products'=>$missing,'warehouse_qualification'=>'Quantity × existing weighted-average unit cost; product inventory_value remains the valuation authority. Unlocated inventory is not assigned to a warehouse.','qualification'=>'Slow/excess stock remains an asset. No write-down or lost-money claim.'];
+  return ['currency'=>$currency,'total'=>$missing?null:$total,'products'=>$rows,'categories'=>$categories,'warehouses'=>$warehouses,'unvalued_products'=>$missing,'warehouse_qualification'=>'Quantity × existing weighted-average unit cost; product inventory_value remains the valuation authority. Unlocated inventory is not assigned to a warehouse.','qualification'=>$missing?'The total is unavailable until remaining stock is valued. Product, category and warehouse figures cover records with valuation evidence.':'Slow and excess stock remains an asset.'];
  }
 }

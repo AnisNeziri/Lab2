@@ -39,10 +39,7 @@ class DailySaleController extends Controller
     {
         $validated = $request->validate(['date' => ['required', 'date']]);
 
-        return response()->json([
-            'date' => $validated['date'],
-            'notes' => $this->dailySales->dayNotes($validated['date']),
-        ]);
+        return response()->json($this->dailySales->dayContext($validated['date']));
     }
 
     public function updateDayNotes(Request $request): JsonResponse

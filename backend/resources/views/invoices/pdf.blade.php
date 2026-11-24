@@ -55,6 +55,7 @@
     $isDraft = $invoice->status === 'draft';
     $isLegacy = $invoice->compliance_status === 'legacy';
     $isVoid = $invoice->status === 'void';
+    $currencyPrefix = ($invoice->currency ?: 'EUR') === 'EUR' ? '€' : $invoice->currency.' ';
     $amountSign = $invoice->document_type === 'credit_note' ? '− ' : '';
 @endphp
 
@@ -139,11 +140,11 @@
             <td>{{ $item->description }}@if($item->sku_snapshot)<br><span class="muted">{{ $labels['sku'] }}: {{ $item->sku_snapshot }}</span>@endif @if($item->tax_treatment !== 'standard')<br><span class="muted">{{ str_replace('_', ' ', strtoupper($item->tax_treatment)) }}</span>@endif @if($item->tax_legal_reference)<br><span class="muted">{{ $labels['legal_basis'] }}: {{ $item->tax_legal_reference }}</span>@endif</td>
             <td class="center unit">{{ $item->unit }}</td>
             <td class="right quantity">{{ rtrim(rtrim(number_format((float)$item->quantity, 3, '.', ''), '0'), '.') }}</td>
-            <td class="right">€{{ number_format((float)$item->unit_price, 2) }}</td>
-            <td class="right">€{{ number_format((float)$item->discount_amount, 2) }}</td>
-            <td class="right">€{{ number_format((float)$item->taxable_amount, 2) }}</td>
+            <td class="right">{{ $currencyPrefix }}{{ number_format((float)$item->unit_price, 2) }}</td>
+            <td class="right">{{ $currencyPrefix }}{{ number_format((float)$item->discount_amount, 2) }}</td>
+            <td class="right">{{ $currencyPrefix }}{{ number_format((float)$item->taxable_amount, 2) }}</td>
             <td class="right">{{ number_format((float)$item->vat_rate, 0) }}%</td>
-            <td class="right"><strong>{{ $amountSign }}€{{ number_format((float)$item->line_total, 2) }}</strong></td>
+            <td class="right"><strong>{{ $amountSign }}{{ $currencyPrefix }}{{ number_format((float)$item->line_total, 2) }}</strong></td>
         </tr>
     @endforeach
     </tbody>
@@ -151,20 +152,24 @@
 
 <div class="invoice-summary-block">
 <table class="totals">
-    <tr><td>{{ $labels['subtotal'] }}</td><td class="right">{{ $amountSign }}€{{ number_format((float)$invoice->subtotal, 2) }}</td></tr>
-    <tr><td>{{ $labels['discount'] }}</td><td class="right">{{ $invoice->document_type === 'credit_note' ? '' : '− ' }}€{{ number_format((float)$invoice->discount_total, 2) }}</td></tr>
-    <tr><td>{{ $labels['taxable_total'] }}</td><td class="right">{{ $amountSign }}€{{ number_format((float)$invoice->taxable_total, 2) }}</td></tr>
-    <tr><td>{{ $labels['vat_total'] }}</td><td class="right">{{ $amountSign }}€{{ number_format((float)$invoice->vat_total, 2) }}</td></tr>
-    <tr class="grand"><td>{{ $labels['grand_total'] }}</td><td class="right">{{ $amountSign }}€{{ number_format((float)$invoice->grand_total, 2) }}</td></tr>
-    <tr><td>{{ data_get($invoice->source_settlement, 'basis') === 'customer_ledger' ? 'Shlyer në regjistrin e klientit / Settled in customer ledger' : $labels['paid'] }}</td><td class="right">€{{ number_format((float) data_get($invoice->source_settlement, 'settled', $invoice->total_paid), 2) }}</td></tr>
-    <tr><td>{{ $labels['balance'] }}</td><td class="right">€{{ number_format((float) data_get($invoice->source_settlement, 'outstanding', $invoice->remaining_balance), 2) }}</td></tr>
+    <tr><td>{{ $labels['subtotal'] }}</td><td class="right">{{ $amountSign }}{{ $currencyPrefix }}{{ number_format((float)$invoice->subtotal, 2) }}</td></tr>
+    <tr><td>{{ $labels['discount'] }}</td><td class="right">{{ $invoice->document_type === 'credit_note' ? '' : '− ' }}{{ $currencyPrefix }}{{ number_format((float)$invoice->discount_total, 2) }}</td></tr>
+    <tr><td>{{ $labels['taxable_total'] }}</td><td class="right">{{ $amountSign }}{{ $currencyPrefix }}{{ number_format((float)$invoice->taxable_total, 2) }}</td></tr>
+    <tr><td>{{ $labels['vat_total'] }}</td><td class="right">{{ $amountSign }}{{ $currencyPrefix }}{{ number_format((float)$invoice->vat_total, 2) }}</td></tr>
+    <tr class="grand"><td>{{ $labels['grand_total'] }}</td><td class="right">{{ $amountSign }}{{ $currencyPrefix }}{{ number_format((float)$invoice->grand_total, 2) }}</td></tr>
+    @if (isset($invoice->exchange_snapshot['base_total']))
+    <tr><td>Recorded EUR equivalent / Kundërvlera e regjistruar në EUR</td><td class="right">{{ $amountSign }}€{{ number_format((float) $invoice->exchange_snapshot['base_total'], 2) }}</td></tr>
+    <tr><td>EUR rate and date / Kursi EUR dhe data</td><td class="right">{{ $invoice->exchange_snapshot['rate'] }} · {{ $invoice->exchange_snapshot['date'] }}</td></tr>
+    @endif
+    <tr><td>{{ data_get($invoice->source_settlement, 'basis') === 'customer_ledger' ? 'Shlyer në regjistrin e klientit / Settled in customer ledger' : $labels['paid'] }}</td><td class="right">{{ $currencyPrefix }}{{ number_format((float) data_get($invoice->source_settlement, 'settled', $invoice->total_paid), 2) }}</td></tr>
+    <tr><td>{{ $labels['balance'] }}</td><td class="right">{{ $currencyPrefix }}{{ number_format((float) data_get($invoice->source_settlement, 'outstanding', $invoice->remaining_balance), 2) }}</td></tr>
 </table>
 
 <table class="summary">
     <thead><tr><th colspan="4">{{ $labels['vat_summary'] }}</th></tr><tr><th>{{ $labels['vat_rate'] }}</th><th>{{ $labels['taxable'] }}</th><th>{{ $labels['vat'] }}</th><th>{{ $labels['legal_basis'] }}</th></tr></thead>
     <tbody>
     @foreach($vatSummary as $row)
-        <tr><td>{{ str_replace('_', ' ', strtoupper($row['tax_treatment'])) }} {{ number_format($row['vat_rate'], 0) }}%</td><td class="right">{{ $amountSign }}€{{ number_format($row['taxable_amount'], 2) }}</td><td class="right">{{ $amountSign }}€{{ number_format($row['vat_amount'], 2) }}</td><td>{{ $row['legal_reference'] ?: '—' }}</td></tr>
+        <tr><td>{{ str_replace('_', ' ', strtoupper($row['tax_treatment'])) }} {{ number_format($row['vat_rate'], 0) }}%</td><td class="right">{{ $amountSign }}{{ $currencyPrefix }}{{ number_format($row['taxable_amount'], 2) }}</td><td class="right">{{ $amountSign }}{{ $currencyPrefix }}{{ number_format($row['vat_amount'], 2) }}</td><td>{{ $row['legal_reference'] ?: '—' }}</td></tr>
     @endforeach
     </tbody>
 </table>

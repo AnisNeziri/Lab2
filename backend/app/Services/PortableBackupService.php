@@ -74,6 +74,7 @@ class PortableBackupService
             'financial_intelligence_snapshots','financial_intelligence_observations','financial_intelligence_policies',
             'accounting_accounts', 'accounting_periods', 'accounting_posting_mappings',
             'journal_entries', 'journal_lines', 'accounting_exceptions', 'accounting_recovery_attempts',
+            'fixed_asset_categories', 'fixed_assets', 'fixed_asset_entries', 'fx_revaluations', 'corporate_tax_reviews',
             'invoice_profiles', 'invoice_sequences', 'invoices', 'invoice_items',
             'payment_transactions', 'expenses', 'expense_payments',
             'supplier_invoice_items', 'supplier_invoice_payment_allocations',
@@ -116,6 +117,7 @@ class PortableBackupService
         'journal_entries', 'journal_lines', 'accounting_exceptions', 'accounting_recovery_attempts',
         'financial_accounts', 'invoice_profiles', 'invoice_sequences', 'invoices', 'invoice_items', 'payment_transactions',
         'expenses', 'expense_payments', 'customer_debt_entries', 'customer_debt_transactions',
+        'fixed_asset_categories', 'fixed_assets', 'fixed_asset_entries', 'fx_revaluations', 'corporate_tax_reviews',
         'customer_settlement_allocations', 'customer_allocation_requests',
         'purchase_orders', 'purchase_order_items', 'purchase_order_payments', 'purchase_order_changes', 'procurement_awards',
         'supplier_invoice_payment_allocations',
@@ -562,7 +564,8 @@ class PortableBackupService
 
             $prefixTables=['daily-sale'=>'daily_sales','invoice'=>'invoices','invoice-payment'=>'payment_transactions','customer-debt'=>'customer_debt_transactions','expense'=>'expenses','expense-payment'=>'expense_payments',
                 'purchase-order-payment'=>'purchase_order_payments','stock-movement'=>'stock_movements','landed-cost'=>'landed_costs','landed-reversal-adjustment'=>'landed_costs','supplier-allocation'=>'supplier_payment_allocation_requests',
-                'financial-transaction'=>'financial_account_transactions','financial-transfer'=>'financial_account_transfers','financial-opening'=>'financial_accounts','reversal'=>'journal_entries','order-invoice-tax'=>'invoices','order-return-tax'=>'invoices'];
+                'financial-transaction'=>'financial_account_transactions','financial-transfer'=>'financial_account_transfers','financial-opening'=>'financial_accounts','reversal'=>'journal_entries','order-invoice-tax'=>'invoices','order-return-tax'=>'invoices',
+                'fixed-asset-entry'=>'fixed_asset_entries','fx-revaluation'=>'fx_revaluations','corporate-tax'=>'corporate_tax_reviews'];
             foreach($activeData['journal_entries']??[] as $original){
                 $targetId=$idMap['journal_entries'][(string)$original['id']]??null;if(!$targetId)continue;
                 $key=$original['source_key']??'';
@@ -1020,6 +1023,32 @@ class PortableBackupService
         $columns = collect(Schema::getColumns($table))->reject(fn (array $column) => $column['generation'] !== null)->pluck('name')->flip();
         $row = array_intersect_key($row, $columns->all());
         if($table==='bank_statement_rows')$row['source_fingerprint']=null;
+        if ($table === 'fx_revaluations' && ! empty($row['snapshot'])) {
+            $snapshot = json_decode((string) $row['snapshot'], true, 512, JSON_THROW_ON_ERROR);
+            foreach ($snapshot['items'] as &$position) {
+                $source = $position['side'] === 'ar' ? 'invoices' : 'expenses';
+                $mapped = $idMap[$source][(string) $position['id']] ?? null;
+                if (! $mapped) {
+                    throw ValidationException::withMessages(['file' => 'The revaluation backup is missing one of its foreign invoice sources.']);
+                }
+                $position['id'] = (int) $mapped;
+            }
+            unset($position);
+            $row['snapshot'] = json_encode($snapshot, JSON_THROW_ON_ERROR);
+            $row['fingerprint'] = hash('sha256', $row['snapshot']);
+        }
+        if ($table === 'corporate_tax_reviews' && ! empty($row['snapshot'])) {
+            $snapshot = json_decode((string) $row['snapshot'], true, 512, JSON_THROW_ON_ERROR);
+            foreach ($snapshot['adjustments'] as &$adjustment) {
+                if ($id = $adjustment['journal_entry_id'] ?? null) {
+                    $adjustment['journal_entry_id'] = (int) ($idMap['journal_entries'][(string) $id]
+                        ?? throw ValidationException::withMessages(['file' => 'A tax worksheet source journal could not be restored.']));
+                }
+            }
+            unset($adjustment);
+            $row['snapshot'] = json_encode($snapshot, JSON_THROW_ON_ERROR);
+            $row['fingerprint'] = hash('sha256', $row['snapshot']);
+        }
         if($table==='accounting_periods'&&!empty($row['close_snapshot'])){
             $proof=json_decode((string)$row['close_snapshot'],true,512,JSON_THROW_ON_ERROR);
             $proof['historical']=true;$proof['archive_reason']='Original installation close evidence. Embedded identifiers and fingerprint remain historical; reopening and closing again regenerates company-local proof.';

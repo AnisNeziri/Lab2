@@ -30,6 +30,7 @@ export default function FinanceBillForm({ original, onClose, onSaved }) {
     received_date: dateOnly(original?.received_date || today),
     due_date: original?.due_date ? dateOnly(original.due_date) : "",
     currency: original?.currency || "EUR",
+    source_type: original?.source_type || "domestic",
     exchange_rate: original?.exchange_rate || "",
     exchange_rate_date: original?.exchange_rate_date
       ? dateOnly(original.exchange_rate_date)
@@ -72,23 +73,24 @@ export default function FinanceBillForm({ original, onClose, onSaved }) {
       category: "inventory",
       currency: p.currency,
       goods_receipt_ids: receipts.map((r) => r.id),
-      items: p.items.map((l) => ({
-        purchase_order_item_id: l.id,
-        goods_receipt_item_id:
-          receipts
-            .flatMap((r) => r.items || [])
-            .find((i) => i.purchase_order_item_id === l.id)?.id || null,
-        product_id: l.product_id,
-        description: l.description,
-        quantity: l.quantity,
-        unit: l.unit,
-        unit_price: l.unit_price,
-      })),
+      items: p.items.flatMap((l) => {
+        const sources = receipts.flatMap((r) => r.items || [])
+          .filter((item) => Number(item.purchase_order_item_id) === Number(l.id) && Number(item.accepted_quantity) > 0);
+        return (sources.length ? sources : [null]).map((source) => ({
+          purchase_order_item_id: l.id,
+          goods_receipt_item_id: source?.id ?? null,
+          product_id: l.product_id,
+          description: l.description,
+          quantity: source?.accepted_quantity ?? l.quantity,
+          unit: l.unit,
+          unit_price: l.unit_price,
+        }));
+      }),
     }));
   }, [order.data, adopted]);
   const field = (key, value) => {
     setDirty(true);
-    setForm({ ...form, [key]: value });
+    setForm((current) => ({ ...current, [key]: value }));
   };
   const line = (i, key, value) =>
     field(
@@ -107,9 +109,8 @@ export default function FinanceBillForm({ original, onClose, onSaved }) {
       (sum, l) =>
         sum +
         Math.round(
-          Number(l.quantity || 0) *
-            Number(l.unit_price || 0) *
-            Number(form.vat_rate),
+          Math.round(Number(l.quantity || 0) * Number(l.unit_price || 0) * 100) *
+            Number(form.vat_rate) / 100,
         ),
       0,
     ) / 100;
@@ -127,8 +128,7 @@ export default function FinanceBillForm({ original, onClose, onSaved }) {
         order.data?.supplier?.name ||
         `Supplier #${form.supplier_id}`,
       document_type: "purchase_invoice",
-      source_type: "domestic",
-      asset_treatment: "ordinary",
+      asset_treatment: form.category === "capital_asset" ? "investment" : "ordinary",
       description: form.items.map((l) => l.description).join("; "),
       business_purpose:
         form.business_purpose || (form.category === "inventory" ? null : ""),
@@ -192,6 +192,12 @@ export default function FinanceBillForm({ original, onClose, onSaved }) {
           maxLength={255}
           onChange={(e) => field("vendor_name", e.target.value)}
         />
+        <Field label={t('Purchase source', 'Burimi i blerjes')}>
+          <select value={form.source_type} onChange={(e) => field('source_type', e.target.value)}>
+            <option value="domestic">{t('Domestic purchase', 'Blerje vendore')}</option>
+            <option value="import">{t('Import supplier invoice', 'Faturë e furnitorit për import')}</option>
+          </select>
+        </Field>
         <div className="fc-form-grid">
           <Field
             label={t(
@@ -347,12 +353,13 @@ export default function FinanceBillForm({ original, onClose, onSaved }) {
               "professional_services",
               "bank_fees",
               "insurance",
+              "capital_asset",
               "maintenance",
               "office",
               "other",
             ].map((x) => (
               <option value={x} key={x}>
-                {x.replaceAll("_", " ")}
+                {x === "capital_asset" ? t("Investment asset", "Aset investimi") : x.replaceAll("_", " ")}
               </option>
             ))}
           </select>
@@ -379,16 +386,16 @@ export default function FinanceBillForm({ original, onClose, onSaved }) {
                       <input
                         type="checkbox"
                         checked={form.goods_receipt_ids.includes(r.id)}
-                        onChange={(e) =>
-                          field(
-                            "goods_receipt_ids",
-                            e.target.checked
-                              ? [...form.goods_receipt_ids, r.id]
-                              : form.goods_receipt_ids.filter(
-                                  (id) => id !== r.id,
-                                ),
-                          )
-                        }
+                        onChange={(e) => {
+                          const selected = e.target.checked;
+                          const removed = new Set((r.items || []).map((item) => Number(item.id)));
+                          setDirty(true);
+                          setForm((current) => ({
+                            ...current,
+                            goods_receipt_ids: selected ? [...current.goods_receipt_ids, r.id] : current.goods_receipt_ids.filter((id) => id !== r.id),
+                            items: selected ? current.items : current.items.map((item) => removed.has(Number(item.goods_receipt_item_id)) ? { ...item, goods_receipt_item_id: null } : item),
+                          }));
+                        }}
                       />
                       {r.receipt_number || `#${r.id}`} ·{" "}
                       {dateOnly(r.received_at)}
@@ -411,6 +418,18 @@ export default function FinanceBillForm({ original, onClose, onSaved }) {
               value={l.description}
               onChange={(e) => line(i, "description", e.target.value)}
             />
+            {l.purchase_order_item_id && (
+              <Field label={t('Goods receipt line', 'Rreshti i pranimit të mallit')}>
+                <select value={l.goods_receipt_item_id || ''} onChange={(e) => line(i, 'goods_receipt_item_id', Number(e.target.value) || null)}>
+                  <option value="">{t('Choose receipt line', 'Zgjidh rreshtin e pranimit')}</option>
+                  {(order.data?.goods_receipts || []).filter((receipt) => form.goods_receipt_ids.includes(receipt.id)).flatMap((receipt) =>
+                    (receipt.items || []).filter((item) => Number(item.purchase_order_item_id) === Number(l.purchase_order_item_id)).map((item) => (
+                      <option key={item.id} value={item.id}>{receipt.receipt_number || `#${receipt.id}`} · {item.accepted_quantity} {l.unit}</option>
+                    ))
+                  )}
+                </select>
+              </Field>
+            )}
             <Field
               label={t("Invoiced quantity", "Sasia e faturuar")}
               required

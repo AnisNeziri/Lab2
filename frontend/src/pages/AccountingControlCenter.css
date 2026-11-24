@@ -208,6 +208,34 @@
   color: var(--text-muted);
   font-size: 0.7rem;
 }
+.fc-recon-amount-label { display: none; }
+.fc-recon-source details { margin-top: 0.35rem; color: var(--text-muted); }
+.fc-recon-source summary { cursor: pointer; }
+
+@media screen and (max-width: 650px) {
+  .fc-reconciliation-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .fc-reconciliation-table :is(table, tbody) { display: block; }
+  .fc-reconciliation-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.65rem;
+    padding: 0.85rem 0;
+    border-bottom: 1px solid var(--border-color);
+  }
+  .fc-reconciliation-table :is(td, .num) { padding: 0; border: 0; text-align: left; min-width: 0; }
+  .fc-recon-source { grid-column: 1 / -1; }
+  .fc-recon-status { grid-column: 1 / 3; }
+  .fc-recon-action { justify-self: end; }
+  .fc-reconciliation-table .fc-amount { white-space: normal; overflow-wrap: anywhere; }
+  .fc-recon-amount-label { display: block; color: var(--text-muted); font-size: 0.68rem; }
+}
+
 .fc-table-scroll tfoot {
   font-weight: 700;
   border-top: 2px solid var(--border-color);
@@ -644,6 +672,12 @@
   }
 }
 .fc-tab-panel { display: grid; gap: 1rem; min-width: 0; }
+@media (max-width: 480px) {
+  .fc-closing-rate-form .fc-table-scroll table { table-layout: fixed; }
+  .fc-closing-rate-form .fc-table-scroll th,
+  .fc-closing-rate-form .fc-table-scroll td { white-space: normal; overflow-wrap: anywhere; padding-inline: .4rem; }
+  .fc-closing-rate-form .fc-amount { white-space: normal; }
+}
 .fc-rate-lookup { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin-top: .75rem; }
 .fc-rate-lookup input { width: 5rem; }
 .fc-rate-lookup :is(small, output) { flex-basis: 100%; }

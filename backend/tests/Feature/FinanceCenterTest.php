@@ -128,6 +128,14 @@ class FinanceCenterTest extends TestCase
         $ordinary = $this->postJson('/api/finance/expenses', $this->expense(['document_number' => 'OP-1']))->assertCreated();
         $this->postJson('/api/finance/expenses/'.$ordinary->json('id').'/post')->assertOk();
         $asset = $this->postJson('/api/finance/expenses', $this->expense(['document_number' => 'ASSET-1', 'asset_treatment' => 'investment', 'category' => 'capital_asset']))->assertCreated();
+        $this->postJson('/api/finance/expenses/'.$asset->json('id').'/post')->assertUnprocessable()->assertJsonValidationErrors('expense_id');
+        $category = $this->postJson('/api/accounting/fixed-assets/categories', [
+            'name' => 'Equipment', 'minimum_cost' => 50, 'useful_life_months' => 36, 'policy_reference' => 'Synthetic accounting policy',
+        ])->assertCreated()->json('id');
+        $this->postJson('/api/accounting/fixed-assets/bills/'.$asset->json('id'), [
+            'category_id' => $category, 'asset_number' => 'EQUIP-1', 'name' => 'Test equipment',
+            'residual_value' => 0, 'reason' => 'Equipment approved for operating use.',
+        ])->assertCreated();
         $this->postJson('/api/finance/expenses/'.$asset->json('id').'/post')->assertOk();
 
         $this->getJson('/api/finance/overview?date_from=2026-08-01&date_to=2026-08-31')

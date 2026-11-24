@@ -18,6 +18,7 @@ class ExpensePaymentRequest extends FormRequest
             'exchange_rate_source' => ['nullable', 'string', 'max:255'],
             'payment_date' => ['required', 'date'],
             'payment_method' => ['required', Rule::in(['cash', 'bank_transfer', 'card', 'cheque', 'other'])],
+            'in_kind_amount' => ['prohibited'],
             'reference_number' => ['nullable', 'string', 'max:255'],
             'idempotency_key' => ['required', 'string', 'max:100'],
             'note' => ['nullable', 'string', 'max:2000'],

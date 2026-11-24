@@ -98,9 +98,12 @@ class AccountingReportQueries
             ->when($from, fn ($q) => $q->where('j.posting_date', '>=', $from))->where('j.posting_date', '<', CarbonImmutable::parse($to)->addDay()->toDateString());
         $cash = $base()->whereIn('l.accounting_account_id', $cashIds)->groupBy('j.id')
             ->selectRaw('j.id, ROUND(SUM(l.debit)-SUM(l.credit),2) net')->havingRaw('ROUND(SUM(l.debit)-SUM(l.credit),2) <> 0');
+        $kind = DB::connection()->getQueryGrammar()->wrap('l.dimensions->cash_flow_class');
+        $paymentKind = "COALESCE((SELECT source_type FROM journal_entries original WHERE original.id=j.reversal_of_id), j.source_type)";
         $classes = $base()->join('accounting_accounts as a', 'a.id', '=', 'l.accounting_account_id')
             ->whereNotIn('l.accounting_account_id', $cashIds)->groupBy('j.id')
-            ->selectRaw("j.id, CASE WHEN COUNT(DISTINCT a.cash_flow_class)=1 AND SUM(CASE WHEN a.cash_flow_class IS NULL THEN 1 ELSE 0 END)=0 THEN MIN(a.cash_flow_class) ELSE 'unclassified' END flow_class");
+            ->selectRaw("j.id, CASE WHEN SUM(CASE WHEN $kind='investing' AND $paymentKind IN ('invoice_payment','expense_payment') THEN 1 ELSE 0 END)>0 THEN 'investing'
+                WHEN COUNT(DISTINCT a.cash_flow_class)=1 AND SUM(CASE WHEN a.cash_flow_class IS NULL THEN 1 ELSE 0 END)=0 THEN MIN(a.cash_flow_class) ELSE 'unclassified' END flow_class");
         $groups = DB::query()->fromSub($cash, 'cash')->leftJoinSub($classes, 'classes', 'classes.id', '=', 'cash.id')
             ->selectRaw("COALESCE(classes.flow_class, 'unclassified') flow_class, SUM(cash.net) amount, COUNT(*) entries")
             ->groupBy('classes.flow_class')->get();

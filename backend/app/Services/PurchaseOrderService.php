@@ -293,6 +293,12 @@ class PurchaseOrderService
             $linkedExpense = ! empty($data['expense_id'])
                 ? Expense::query()->findOrFail((int) $data['expense_id'])
                 : null;
+            $account = $this->financialAccounts->baseSettlementAccount($data['financial_account_id'] ?? null, $base);
+            $policy = app(\App\Services\Kosovo\CashPaymentPolicy::class);
+            if ($base === 'EUR' && ! $policy->isElectronic($data['payment_method'], $account) && $policy->applies()) {
+                $orderValue = $policy->evidencedDomesticOrderValue($order);
+                $policy->assertAllowed($data['payment_date'], $orderValue ?? $policy->orderBaseValue($order), $orderValue === null ? null : 'business', $data['payment_method'], $account, $order);
+            }
             $payment = PurchaseOrderPayment::create([
                 'company_id' => $order->company_id,
                 'purchase_order_id' => $order->id,

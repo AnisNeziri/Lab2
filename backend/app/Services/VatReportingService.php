@@ -64,7 +64,8 @@ class VatReportingService
         $unmapped = [];
         $warnings = [];
         $expression = $this->salesTreatment();
-        $sales = $this->sales()->where('i.invoice_date', '>=', $from)->where('i.invoice_date', '<', CarbonImmutable::parse($to)->addDay()->toDateString())->selectRaw('i.document_type, l.vat_rate, '.$expression.' AS treatment, COUNT(*) AS source_count, ROUND(SUM(l.taxable_amount),2) AS net, ROUND(SUM(l.vat_amount),2) AS vat, ROUND(SUM(l.line_total),2) AS gross, SUM(CASE WHEN SUBSTR(i.supply_date,1,7)<>SUBSTR(i.invoice_date,1,7) THEN 1 ELSE 0 END) AS timing_items')
+        $rate = $this->salesExchangeRate();
+        $sales = $this->sales()->where('i.invoice_date', '>=', $from)->where('i.invoice_date', '<', CarbonImmutable::parse($to)->addDay()->toDateString())->selectRaw('i.document_type, l.vat_rate, '.$expression." AS treatment, COUNT(*) AS source_count, ROUND(SUM(l.taxable_amount*$rate),2) AS net, ROUND(SUM(l.vat_amount),2) AS vat, ROUND(SUM(l.line_total*$rate),2) AS gross, SUM(CASE WHEN SUBSTR(i.supply_date,1,7)<>SUBSTR(i.invoice_date,1,7) THEN 1 ELSE 0 END) AS timing_items")
             ->groupBy('i.document_type', 'l.vat_rate', DB::raw($expression))->get();
         foreach ($sales as $g) {
             $box = $this->salesBox($g->treatment, (string) $g->vat_rate, $g->document_type);
@@ -171,7 +172,9 @@ class VatReportingService
             return $this->controlDocuments($period, $book, $page);
         }
         if ($book === 'sales') {
-            $q = $this->sales()->where('i.invoice_date', '>=', $from)->where('i.invoice_date', '<', CarbonImmutable::parse($to)->addDay()->toDateString())->select(['l.id', 'i.id as source_id', 'i.invoice_number as reference', 'i.invoice_date as date', 'i.supply_date', 'i.document_type', 'l.description', 'l.taxable_amount as net', 'l.vat_amount as vat', 'l.line_total as gross', 'l.tax_snapshot'])
+            $rate = $this->salesExchangeRate();
+            $q = $this->sales()->where('i.invoice_date', '>=', $from)->where('i.invoice_date', '<', CarbonImmutable::parse($to)->addDay()->toDateString())->select(['l.id', 'i.id as source_id', 'i.invoice_number as reference', 'i.invoice_date as date', 'i.supply_date', 'i.document_type', 'l.description', 'l.vat_amount as vat', 'l.tax_snapshot'])
+                ->selectRaw("ROUND(l.taxable_amount*$rate,2) AS net, ROUND(l.line_total*$rate,2) AS gross")
                 ->orderBy('i.invoice_date')->orderBy('l.id');
         } else {
             $q = $this->purchases()->where(fn ($q) => $q->where('e.vat_period', $period)->orWhere(fn ($v) => $v->where('e.reversal_date', '>=', $from)->where('e.reversal_date', '<', CarbonImmutable::parse($to)->addDay()->toDateString())))
@@ -231,7 +234,8 @@ class VatReportingService
         if ($book === 'output') {
             $sales->whereRaw($this->salesTreatment()." IN ('taxable','standard')");
         }
-        $sales->selectRaw("'sales' AS book,l.id,i.id AS source_id,i.invoice_number AS reference,i.invoice_date AS date,l.description,l.taxable_amount AS net,l.vat_amount AS vat,l.line_total AS gross");
+        $rate = $this->salesExchangeRate();
+        $sales->selectRaw("'sales' AS book,l.id,i.id AS source_id,i.invoice_number AS reference,i.invoice_date AS date,l.description,ROUND(l.taxable_amount*$rate,2) AS net,l.vat_amount AS vat,ROUND(l.line_total*$rate,2) AS gross");
         $purchase = $this->purchases()->where('e.vat_period', $period);
         if ($book === 'output') {
             $purchase->where(fn ($q) => $q->where(fn ($v) => $v->where('e.document_type', 'credit_note')->whereIn('e.vat_rate', [18, 8])->whereRaw('ROUND(e.deductible_vat_amount_eur,2)=ROUND(e.vat_amount_eur+e.self_assessed_vat_amount_eur,2)'))->orWhere(fn ($v) => $v->where('e.document_type', '!=', 'credit_note')->where('e.vat_treatment', 'reverse_charge')->where('e.vat_rate', 18)));
@@ -255,6 +259,13 @@ class VatReportingService
     public function unclassifiedSales(string $from, string $to): int
     {
         return DailySale::query()->finalized()->where('sale_date', '>=', $from)->where('sale_date', '<', CarbonImmutable::parse($to)->addDay()->toDateString())->whereNotExists(fn ($q) => $q->selectRaw('1')->from('invoices as i')->whereColumn('i.daily_sale_id', 'daily_sales.id')->whereColumn('i.company_id', 'daily_sales.company_id')->whereNotNull('i.issued_at')->where('i.invoice_date','<',CarbonImmutable::parse($to)->addDay()->toDateString())->where('i.status', '!=', 'void'))->count();
+    }
+
+    private function salesExchangeRate(): string
+    {
+        $rate = DB::connection()->getQueryGrammar()->wrap('i.exchange_snapshot->rate');
+
+        return "COALESCE(CAST($rate AS DECIMAL(18,8)),1)";
     }
 
     private function sales(): Builder

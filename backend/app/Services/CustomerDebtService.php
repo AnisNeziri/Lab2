@@ -194,6 +194,25 @@ class CustomerDebtService
     {
         return DB::transaction(function () use ($customer, $data) {
             $this->lockCompany();
+            $base = \App\Support\CompanyCurrency::forCompanyId($customer->company_id);
+            $account = $this->accounts->baseSettlementAccount($data['financial_account_id'] ?? null, $base);
+            $policy = app(\App\Services\Kosovo\CashPaymentPolicy::class);
+            $method = $data['payment_method'] ?? null;
+            if ($base === 'EUR' && ! $policy->isElectronic($method, $account) && $policy->applies()
+                && (empty($data['idempotency_key']) || ! $customer->debtTransactions()->where('idempotency_key', $data['idempotency_key'])->exists())) {
+                $date = isset($data['transaction_date']) ? CarbonImmutable::parse($data['transaction_date'])->toDateString() : CompanyClock::today()->toDateString();
+                $positions = app(ReceivablePositionQueries::class)->rows($date, [$customer->id]);
+                $open = DB::query()->fromSub($positions, 'position')->where('position.outstanding_amount', '>', 0);
+                $orderTotal = (clone $open)->leftJoin('outbound_dispatches as dispatch', fn ($join) => $join->on('dispatch.daily_sale_id', '=', 'position.daily_sale_id')->where('dispatch.company_id', $customer->company_id))
+                    ->leftJoin('sales_orders as sale_order', fn ($join) => $join->on('sale_order.id', '=', 'dispatch.sales_order_id')->where('sale_order.company_id', $customer->company_id))
+                    ->where('sale_order.currency', $base)->max('sale_order.total_amount');
+                $orderId = data_get($data, 'metadata.sales_order_id');
+                $linkedOrderTotal = $orderId ? SalesOrder::query()->whereKey($orderId)->where('customer_id', $customer->id)
+                    ->where('company_id', $customer->company_id)->where('currency', $base)->value('total_amount') : null;
+                $orderTotal = Money::maximum($orderTotal ?? 0, $linkedOrderTotal ?? 0);
+                $total = Money::maximum($data['amount'], Money::maximum($open->max('capacity') ?? 0, $orderTotal));
+                $policy->assertAllowed($date, $total, $customer->customer_type, $method, $account, $customer);
+            }
             $transaction = $this->record($customer, $data, 'payment', false);
             if (! empty($data['financial_account_id']) && ! $transaction->financial_account_transaction_id) {
                 $ledger = $this->accounts->post((int) $data['financial_account_id'], [
@@ -258,6 +277,7 @@ class CustomerDebtService
                 'metadata' => [
                     'corrects_transaction_id' => $locked->id,
                     'correction_reason' => $data['reason'],
+                    'sales_order_id' => data_get($locked->metadata, 'sales_order_id'),
                     'previous_values' => $before,
                 ],
             ];

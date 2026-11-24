@@ -186,6 +186,19 @@ class FinancialAccountService
         });
     }
 
+    public function baseSettlementAccount(?int $accountId, string $baseCurrency): ?FinancialAccount
+    {
+        if (! $accountId) {
+            return null;
+        }
+        $account = FinancialAccount::query()->findOrFail($accountId);
+        if ($account->currency !== $baseCurrency) {
+            throw ValidationException::withMessages(['financial_account_id' => ['Choose an account in the company base currency. This settlement does not carry the historical cost of foreign bank funds.']]);
+        }
+
+        return $account;
+    }
+
     public function transfer(array $data): FinancialAccountTransfer
     {
         return DB::transaction(function () use ($data) {

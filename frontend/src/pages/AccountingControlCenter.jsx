@@ -6,7 +6,9 @@ import { RefreshCw, CalendarCheck, Scale } from 'lucide-react';
 import { useAuthStore } from "../store/authStore";
 import { NextStep } from "../components/WorkflowSummary";
 import { useSessionState } from "../hooks/useSessionState";
+import { useCompanyTimezone } from "../hooks/useCompanyTimezone";
 import { useSettingsStore } from "../store/settingsStore";
+import { companyDate } from "../utils/companyDate";
 import * as api from "../api/accounting";
 import {
   Amount,
@@ -14,7 +16,6 @@ import {
   FinanceContext,
   Field,
   QueryState,
-  localToday,
   useFinance,
   useFinanceQuery,
   errorMessage,
@@ -30,6 +31,7 @@ import FinanceLanded from "../components/finance/FinanceLanded";
 import FinanceBank from "../components/finance/FinanceBank";
 import FinancePeriods from "../components/finance/FinancePeriods";
 import FinanceRecovery from "../components/finance/FinanceRecovery";
+import FinanceFixedAssets from "../components/finance/FinanceFixedAssets";
 import { AccountingSetup } from "./AccountingSetup";
 import ExchangeRateLookup from '../components/finance/ExchangeRateLookup';
 import { useRevealTarget } from '../hooks/useRevealTarget';
@@ -43,7 +45,7 @@ export default function AccountingControlCenter() {
   const can = useCallback((p) => permissions.includes(p), [permissions]);
   const t = (en, sq) => (language === "sq" ? sq || en : en);
   const [params, setParams] = useSearchParams();
-  const today = localToday(user?.company?.timezone);
+  const today = companyDate(useCompanyTimezone());
   const [dates, setDates] = useSessionState("accounting.dates", {
     from: `${today.slice(0, 7)}-01`,
     to: today,
@@ -122,6 +124,7 @@ export default function AccountingControlCenter() {
       t("Landed cost", "Kostoja e importit"),
       "landed_costs.manage",
     ],
+    ...(can("finance.view") ? [["assets", Building2, t("Fixed assets", "Asetet fikse"), "accounting.journal.view"]] : []),
     [
       "reconciliation",
       Scale,
@@ -217,7 +220,7 @@ export default function AccountingControlCenter() {
             </button>
           </div>
         </header>
-        <section className="dc9-financial-basis" aria-label={t('Financial basis','Baza financiare')}><strong>{t('Posted Books','Librat e postuar')}</strong><p>{dates.from} — {dates.to} · {t('GL balances through the end date; activity within this period.','Gjendjet e librit kryesor deri në fund; aktiviteti brenda periudhës.')}</p><p>{summary.data?t(summary.data.controls_reconciled?'Current subledgers reconciled':'Current subledgers have differences',summary.data.controls_reconciled?'Nënlibrat aktualë janë rakorduar':'Nënlibrat aktualë kanë diferenca'):t('Checking reconciliation…','Duke kontrolluar rakordimin…')} · <Link to="/accounting?tab=reconciliation">{t('Investigate current balances','Shqyrto gjendjet aktuale')}</Link></p><p>{t(summary.data?.opening_readiness?.status==='verified'?'Opening balances verified':'Opening balances: unverified',summary.data?.opening_readiness?.status==='verified'?'Gjendjet fillestare janë verifikuar':'Gjendjet fillestare: të paverifikuara')} · {can('onboarding.view')&&<Link to="/onboarding">{t('Company opening','Hapja e kompanisë')}</Link>}</p><details><summary>{t('Currency support','Mbështetja e valutave')}</summary><small>{t('Foreign-currency customer invoicing and cross-currency transfers are not supported. Supplier payment exchange rates remain attached to their source records.','Faturimi i klientëve në valutë të huaj dhe transferet ndërmjet valutave nuk mbështeten. Kurset e pagesave të furnitorëve ruhen në regjistrimet burimore.')}</small>{can("accounting.reports.view") && <ExchangeRateLookup />}</details></section>
+        <section className="dc9-financial-basis" aria-label={t('Financial basis','Baza financiare')}><strong>{t('Posted Books','Librat e postuar')}</strong><p>{dates.from} — {dates.to} · {t('GL balances through the end date; activity within this period.','Gjendjet e librit kryesor deri në fund; aktiviteti brenda periudhës.')}</p><p>{summary.data?t(summary.data.controls_reconciled?'Current subledgers reconciled':'Current subledgers need review',summary.data.controls_reconciled?'Nënlibrat aktualë janë rakorduar':'Nënlibrat aktualë kërkojnë shqyrtim'):t('Checking reconciliation…','Duke kontrolluar rakordimin…')} · <Link to="/accounting?tab=reconciliation">{t('Investigate current balances','Shqyrto gjendjet aktuale')}</Link></p><p>{t(summary.data?.opening_readiness?.status==='verified'?'Opening balances verified':'Opening balances: unverified',summary.data?.opening_readiness?.status==='verified'?'Gjendjet fillestare janë verifikuar':'Gjendjet fillestare: të paverifikuara')} · {can('onboarding.view')&&<Link to="/onboarding">{t('Company opening','Hapja e kompanisë')}</Link>}</p><details><summary>{t('Currency support','Mbështetja e valutave')}</summary><small>{t('Standalone non-VAT invoices can use documented foreign rates and settle into a EUR bank account. VAT invoices and cross-currency transfers require separate review.','Faturat individuale pa TVSH mund të përdorin kurse të dokumentuara dhe të shlyhen në llogari bankare në EUR. Faturat me TVSH dhe transferet ndërmjet valutave kërkojnë shqyrtim të veçantë.')}</small>{can("accounting.reports.view") && <ExchangeRateLookup />}</details></section>
         <nav
           className="fc-tabs"
           aria-label={t("Finance workspace", "Hapësira financiare")}
@@ -261,6 +264,7 @@ export default function AccountingControlCenter() {
         {tab === "accounts" && <FinanceAccounts />}
         {tab === "ar" && <FinanceReceivables />}
         {tab === "ap" && <FinancePayables />}
+        {tab === "assets" && <FinanceFixedAssets today={today} />}
         {tab === "bank" && <FinanceBank />}
         {tab === "landed" && <FinanceLanded />}
         {tab === "reports" && <FinanceReports />}
@@ -550,48 +554,55 @@ function Reconciliation({ data }) {
 }
 function ReconciliationDetail({ data }) {
   const { t } = useFinance();
+  const labels = {
+    accounts_receivable: t('Accounts receivable', 'Llogaritë e arkëtueshme'),
+    customer_advances: t('Customer advances', 'Paradhëniet e klientëve'),
+    accounts_payable: t('Accounts payable', 'Llogaritë e pagueshme'),
+    supplier_advances: t('Supplier advances', 'Paradhëniet e furnitorëve'),
+    inventory: t('Inventory', 'Inventari'),
+    cash_bank: t('Cash and bank', 'Arka dhe banka'),
+  };
+  const amounts = [
+    ['operational_amount', t('Operational total', 'Totali operativ')],
+    ['gl_amount', t('GL total', 'Totali në librin kryesor')],
+    ['difference', t('Difference', 'Diferenca')],
+  ];
   return (
     <><OpeningReconciliationReview/><section className="fc-panel">
       <h2>{t("Subledgers ↔ General Ledger", "Nënlibrat ↔ libri kryesor")}</h2>
       <p className="fc-caption">{data.reconciliation_basis}</p>
-      <div className="fc-table-scroll">
-        <table>
-          <thead>
-            <tr>
-              {[
-                "Subsystem",
-                "Operational total",
-                "GL total",
-                "Difference",
-                "Status",
-                "",
-              ].map((x) => (
-                <th key={x}>{t(x)}</th>
-              ))}
+      <div className="fc-table-scroll fc-reconciliation-table">
+        <table role="table">
+          <thead role="rowgroup">
+            <tr role="row">
+              <th role="columnheader" scope="col">{t('Subsystem', 'Nënlibri')}</th>
+              {amounts.map(([key, label]) => <th role="columnheader" scope="col" key={key}>{label}</th>)}
+              <th role="columnheader" scope="col">{t('Status', 'Statusi')}</th>
+              <th role="columnheader" scope="col">{t('Action', 'Veprimi')}</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody role="rowgroup">
             {Object.values(data.reconciliation.rows).map((r) => (
-              <tr key={r.control}>
-                <td>
-                  {r.control.replaceAll("_", " ")}
-                  {r.evidence_issues?.map((issue, i) => (
-                    <small key={i}>{issue}</small>
-                  ))}
+              <tr role="row" key={r.control}>
+                <td role="cell" className="fc-recon-source">
+                  <strong>{labels[r.control] || r.control.replaceAll('_', ' ')}</strong>
+                  {r.evidence_issues?.length > 0 && (
+                    <details>
+                      <summary>{t('What evidence is missing?', 'Cilat prova mungojnë?')}</summary>
+                      {r.evidence_issues.map(issue => <small key={issue}>{issue}</small>)}
+                    </details>
+                  )}
                 </td>
-                <td className="num">
-                  <Amount value={r.operational_amount} />
+                {amounts.map(([key, label]) => (
+                  <td role="cell" key={key} className="num">
+                    <span className="fc-recon-amount-label" aria-hidden="true">{label}</span>
+                    <Amount value={r[key]} />
+                  </td>
+                ))}
+                <td role="cell" className="fc-recon-status">
+                  <Badge value={r.status === 'evidence_required' ? t('Evidence needed', 'Kërkohen prova') : r.status} good={r.reconciled} />
                 </td>
-                <td className="num">
-                  <Amount value={r.gl_amount} />
-                </td>
-                <td className="num">
-                  <Amount value={r.difference} />
-                </td>
-                <td>
-                  <Badge value={r.status} good={r.reconciled} />
-                </td>
-                <td>
+                <td role="cell" className="fc-recon-action">
                   <Link to={r.drilldown_url}>
                     {t("Investigate", "Hetoni")} ↗
                   </Link>

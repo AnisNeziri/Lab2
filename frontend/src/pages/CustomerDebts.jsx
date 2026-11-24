@@ -27,15 +27,17 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useSessionState } from '../hooks/useSessionState';
 import { businessDate, businessMoney } from '../utils/businessFormat';
 import "./CustomerDebts.css";
+import { useCompanyTimezone } from "../hooks/useCompanyTimezone";
+import { useSettingsStore } from "../store/settingsStore";
+import { companyDate } from "../utils/companyDate";
 
-const today = () => new Date().toISOString().slice(0, 10);
 const hasValue = (value) => value !== null && value !== undefined && value !== "";
 const percent = (value) => hasValue(value) ? `${Number(value).toFixed(1)}%` : "—";
 const firstError = (errors, field) => {
   const value = errors?.[field];
   return Array.isArray(value) ? value[0] : value;
 };
-const emptyForm = () => ({
+const emptyForm = (date) => ({
   name: "",
   business_name: "",
   phone: "",
@@ -48,7 +50,7 @@ const emptyForm = () => ({
   credit_status: "normal",
   credit_hold_reason: "",
   amount: "",
-  transaction_date: today(),
+  transaction_date: date,
   due_date: "",
   payment_method: "cash",
   financial_account_id: "",
@@ -95,8 +97,11 @@ const reportState = (row) => {
 
 export default function CustomerDebts() {
   const { t, language } = useTranslation();
+  const timeZone = useCompanyTimezone();
+  const baseCurrency = useSettingsStore(state => state.base_currency);
+  const blankForm = () => emptyForm(companyDate(timeZone));
   const [detailParams, setDetailParams] = useSearchParams();
-  const euro = value => businessMoney(value, 'EUR', language);
+  const money = value => businessMoney(value, baseCurrency, language);
   const dateOnly = value => businessDate(value, language);
   const permissions = useAuthStore((state) => state.permissions);
   const canManageCustomers = permissions.includes("customers.manage");
@@ -118,7 +123,7 @@ export default function CustomerDebts() {
     last_page: 1,
   });
   const [mode, setMode] = useState("");
-  const [form, setForm] = useState(emptyForm());
+  const [form, setForm] = useState(blankForm);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -323,9 +328,9 @@ export default function CustomerDebts() {
   const begin = (nextMode) => {
     setCorrection(null);
     if (nextMode === "edit" && selected) {
-      setForm({ ...emptyForm(), ...selected });
+      setForm({ ...blankForm(), ...selected });
     } else {
-      setForm(emptyForm());
+      setForm(blankForm());
     }
     setMode(nextMode);
     reveal('customer-debt-form');
@@ -385,7 +390,7 @@ export default function CustomerDebts() {
         }
       }
       setMode("");
-      setForm(emptyForm());
+      setForm(blankForm());
       clearCreditBlock();
       setMessage(t("debts.saved"));
       await load(page);
@@ -439,7 +444,7 @@ export default function CustomerDebts() {
         approval_request_id: approval.id,
       });
       setMode("");
-      setForm(emptyForm());
+      setForm(blankForm());
       clearCreditBlock();
       setMessage(t("debts.overrideCompleted"));
       await load(page);
@@ -480,8 +485,8 @@ export default function CustomerDebts() {
     setCorrection({
       transaction,
       amount: String(transaction.amount ?? ""),
-      transaction_date: dateOnly(transaction.transaction_date),
-      due_date: transaction.due_date ? dateOnly(transaction.due_date) : "",
+      transaction_date: String(transaction.transaction_date || '').slice(0, 10),
+      due_date: String(transaction.due_date || '').slice(0, 10),
       payment_method: transaction.payment_method || "",
       reference_number: transaction.reference_number || "",
       note: transaction.note || "",
@@ -700,7 +705,7 @@ export default function CustomerDebts() {
               <>
                 <p>
                   <strong>{selected?.name}</strong> — {t("debts.currentDebt")}:{" "}
-                  {euro(selected?.current_debt)}
+                  {money(selected?.current_debt)}
                 </p>
                 <label>
                   {mode === "payment"
@@ -777,14 +782,14 @@ export default function CustomerDebts() {
                         <option value="">{t("payments.noMoneyAccount")}</option>
                         {financialAccounts.map((account) => (
                           <option key={account.id} value={account.id}>
-                            {account.name} · {account.type === "cashbox" ? t("finance.cash") : t("finance.bankTransfer")} ({account.currency || "EUR"})
+                            {account.name} · {account.type === "cashbox" ? t("finance.cash") : t("finance.bankTransfer")} ({account.currency || baseCurrency})
                           </option>
                         ))}
                       </select>
                     </label>
                     <p>
                       {t("debts.remainingDebt")}:{" "}
-                      <strong>{euro(remainingPreview)}</strong>
+                      <strong>{money(remainingPreview)}</strong>
                     </p>
                   </>
                 )}
@@ -832,19 +837,19 @@ export default function CustomerDebts() {
               <div className="credit-block-metrics">
                 <span>
                   <small>{t("debts.creditLimit")}</small>
-                  <strong>{hasValue(creditBlock.credit_limit) ? euro(creditBlock.credit_limit) : t("debts.noCreditLimit")}</strong>
+                  <strong>{hasValue(creditBlock.credit_limit) ? money(creditBlock.credit_limit) : t("debts.noCreditLimit")}</strong>
                 </span>
                 <span>
                   <small>{t("debts.exposure")}</small>
-                  <strong>{euro(creditBlock.current_exposure ?? selectedCredit.total_exposure)}</strong>
+                  <strong>{money(creditBlock.current_exposure ?? selectedCredit.total_exposure)}</strong>
                 </span>
                 <span>
                   <small>{t("debts.projectedExposure")}</small>
-                  <strong>{euro(creditBlock.projected_exposure)}</strong>
+                  <strong>{money(creditBlock.projected_exposure)}</strong>
                 </span>
                 <span>
                   <small>{t("debts.proposedAmount")}</small>
-                  <strong>{euro(creditBlock.transaction?.amount)}</strong>
+                  <strong>{money(creditBlock.transaction?.amount)}</strong>
                 </span>
               </div>
               {approval && (
@@ -905,19 +910,19 @@ export default function CustomerDebts() {
           <section className="credit-report-summary">
             <article className="stat-card">
               <p className="stat-label">{t("debts.totalReceivables")}</p>
-              <p className="stat-value">{euro(reportSummary.total_receivables)}</p>
+              <p className="stat-value">{money(reportSummary.total_receivables)}</p>
             </article>
             <article className="stat-card">
               <p className="stat-label">{t("debts.totalOverdue")}</p>
-              <p className="stat-value">{euro(reportSummary.total_overdue)}</p>
+              <p className="stat-value">{money(reportSummary.total_overdue)}</p>
             </article>
             <article className="stat-card">
               <p className="stat-label">{t("debts.total90Plus")}</p>
-              <p className="stat-value">{euro(reportSummary.total_90_plus)}</p>
+              <p className="stat-value">{money(reportSummary.total_90_plus)}</p>
             </article>
             <article className="stat-card">
               <p className="stat-label">{t("debts.totalAdvances")}</p>
-              <p className="stat-value">{euro(reportSummary.total_advances)}</p>
+              <p className="stat-value">{money(reportSummary.total_advances)}</p>
             </article>
           </section>
           <div className="filter-toolbar credit-report-toolbar">
@@ -980,13 +985,13 @@ export default function CustomerDebts() {
                         </button>
                         <small>{row.business_name || ""}</small>
                       </td>
-                      <td>{euro(row.debt)}</td>
-                      <td>{euro(row.advance)}</td>
-                      <td>{euro(row.exposure)}</td>
-                      <td>{euro(row.overdue)}</td>
-                      <td>{euro(row.overdue_90_plus)}</td>
-                      <td>{hasValue(row.credit_limit) ? euro(row.credit_limit) : t("debts.unlimited")}</td>
-                      <td>{hasValue(row.available_credit) ? euro(row.available_credit) : t("debts.unlimited")}</td>
+                      <td>{money(row.debt)}</td>
+                      <td>{money(row.advance)}</td>
+                      <td>{money(row.exposure)}</td>
+                      <td>{money(row.overdue)}</td>
+                      <td>{money(row.overdue_90_plus)}</td>
+                      <td>{hasValue(row.credit_limit) ? money(row.credit_limit) : t("debts.unlimited")}</td>
+                      <td>{hasValue(row.available_credit) ? money(row.available_credit) : t("debts.unlimited")}</td>
                       <td>{percent(row.utilization_percent)}</td>
                       <td><span className={`credit-state-badge ${state}`}>{t(`debts.state.${state}`)}</span></td>
                       <td>{dateOnly(row.oldest_overdue_date)}</td>
@@ -1053,9 +1058,9 @@ export default function CustomerDebts() {
             </div>
           </div>
           <BusinessFacts label={language==='sq'?'Gjendja financiare e klientit':'Customer financial position'} facts={[
-            {label:t("debts.currentDebt"),value:euro(selectedCredit.current_debt)},
-            {label:t("debts.overdue"),value:euro(selectedCredit.overdue)},
-            {label:t("debts.advance"),value:euro(selectedCredit.advance)},
+            {label:t("debts.currentDebt"),value:money(selectedCredit.current_debt)},
+            {label:t("debts.overdue"),value:money(selectedCredit.overdue)},
+            {label:t("debts.advance"),value:money(selectedCredit.advance)},
           ]}/>
           <nav className="workspace-actions" aria-label={language==='sq'?'Regjistrimet e klientit':'Customer records'}>
             {permissions.includes('fulfillment.view') && <Link to={'/order-hub?customer='+selected.id}>{language==='sq'?'Porositë e klientit':'Customer orders'}</Link>}
@@ -1064,7 +1069,7 @@ export default function CustomerDebts() {
           <section className="credit-policy-strip">
             <div>
               <small>{t("debts.creditLimit")}</small>
-              <strong>{hasValue(selectedCredit.credit_limit) ? euro(selectedCredit.credit_limit) : t("debts.noCreditLimit")}</strong>
+              <strong>{hasValue(selectedCredit.credit_limit) ? money(selectedCredit.credit_limit) : t("debts.noCreditLimit")}</strong>
             </div>
             <div>
               <small>{t("debts.paymentTerms")}</small>
@@ -1270,10 +1275,10 @@ export default function CustomerDebts() {
                       <td>{tx.daily_sale_id ? `#${tx.daily_sale_id}` : "—"}</td>
                       <td>
                         {decrease ? "−" : "+"}
-                        {euro(tx.amount)}
+                        {money(tx.amount)}
                       </td>
-                      <td>{euro(tx.balance_before)}</td>
-                      <td>{euro(tx.balance_after)}</td>
+                      <td>{money(tx.balance_before)}</td>
+                      <td>{money(tx.balance_after)}</td>
                       <td>{paymentText(tx.payment_method)}</td>
                       <td>
                         {tx.note || "—"}
@@ -1304,19 +1309,19 @@ export default function CustomerDebts() {
           <section className="credit-metrics-grid">
             <article className="stat-card">
               <p className="stat-label">{t("debts.currentDebt")}</p>
-              <p className="stat-value">{euro(selectedCredit.current_debt)}</p>
+              <p className="stat-value">{money(selectedCredit.current_debt)}</p>
             </article>
             <article className="stat-card">
               <p className="stat-label">{t("debts.advance")}</p>
-              <p className="stat-value">{euro(selectedCredit.advance)}</p>
+              <p className="stat-value">{money(selectedCredit.advance)}</p>
             </article>
             <article className="stat-card">
               <p className="stat-label">{t("debts.exposure")}</p>
-              <p className="stat-value">{euro(selectedCredit.total_exposure)}</p>
+              <p className="stat-value">{money(selectedCredit.total_exposure)}</p>
             </article>
             <article className="stat-card">
               <p className="stat-label">{t("debts.availableCredit")}</p>
-              <p className="stat-value">{hasValue(selectedCredit.available_credit) ? euro(selectedCredit.available_credit) : t("debts.unlimited")}</p>
+              <p className="stat-value">{hasValue(selectedCredit.available_credit) ? money(selectedCredit.available_credit) : t("debts.unlimited")}</p>
             </article>
             <article className="stat-card">
               <p className="stat-label">{t("debts.utilization")}</p>
@@ -1324,7 +1329,7 @@ export default function CustomerDebts() {
             </article>
             <article className="stat-card">
               <p className="stat-label">{t("debts.overdue")}</p>
-              <p className="stat-value">{euro(selectedCredit.overdue)}</p>
+              <p className="stat-value">{money(selectedCredit.overdue)}</p>
             </article>
             <article className="stat-card">
               <p className="stat-label">{t("debts.oldestOverdue")}</p>
@@ -1332,7 +1337,7 @@ export default function CustomerDebts() {
             </article>
             <article className="stat-card">
               <p className="stat-label">{t("debts.creditLimit")}</p>
-              <p className="stat-value">{hasValue(selectedCredit.credit_limit) ? euro(selectedCredit.credit_limit) : t("debts.unlimited")}</p>
+              <p className="stat-value">{hasValue(selectedCredit.credit_limit) ? money(selectedCredit.credit_limit) : t("debts.unlimited")}</p>
             </article>
           </section>
           <section className="credit-aging-section">
@@ -1344,7 +1349,7 @@ export default function CustomerDebts() {
               {["current", "1_30", "31_60", "61_90", "90_plus"].map((bucket) => (
                 <article key={bucket} className={bucket === "90_plus" && Number(selectedCredit.aging?.[bucket]) > 0 ? "is-danger" : ""}>
                   <span>{t(`debts.aging.${bucket}`)}</span>
-                  <strong>{euro(selectedCredit.aging?.[bucket])}</strong>
+                  <strong>{money(selectedCredit.aging?.[bucket])}</strong>
                 </article>
               ))}
             </div>
@@ -1424,8 +1429,8 @@ export default function CustomerDebts() {
                         <small>{row.business_name || ""}</small>
                       </td>
                       <td>{row.phone || "—"}</td>
-                      <td>{euro(row.current_debt)}</td>
-                      <td>{euro(row.current_credit)}</td>
+                      <td>{money(row.current_debt)}</td>
+                      <td>{money(row.current_credit)}</td>
                       <td>
                         {dateOnly(row.debt_transactions_max_transaction_date)}
                       </td>

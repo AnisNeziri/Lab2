@@ -27,6 +27,7 @@ class Invoice extends Model
         'compliance_status',
         'payment_status',
         'currency',
+        'exchange_snapshot',
         'invoice_date',
         'supply_date',
         'supply_time',
@@ -72,6 +73,7 @@ class Invoice extends Model
             'updated_by' => 'integer',
             'seller_snapshot' => 'array',
             'buyer_snapshot' => 'array',
+            'exchange_snapshot' => 'array',
             'subtotal' => 'decimal:2',
             'discount_total' => 'decimal:2',
             'taxable_total' => 'decimal:2',
@@ -96,7 +98,7 @@ class Invoice extends Model
     protected static function booted(): void
     {
         static::updating(function (self $invoice) {
-            if ($invoice->getOriginal('issued_at') && $invoice->isDirty(['invoice_date','currency','subtotal','discount_total','taxable_total','vat_total','grand_total','seller_snapshot','buyer_snapshot'])) {
+            if ($invoice->getOriginal('issued_at') && $invoice->isDirty(['invoice_date','currency','exchange_snapshot','subtotal','discount_total','taxable_total','vat_total','grand_total','seller_snapshot','buyer_snapshot'])) {
                 throw \Illuminate\Validation\ValidationException::withMessages(['tax'=>'Posted invoice tax evidence cannot be edited. Use a linked correction.']);
             }
         });

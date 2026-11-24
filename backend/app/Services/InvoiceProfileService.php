@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\InvoiceProfile;
+use App\Support\CompanyCurrency;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class InvoiceProfileService
@@ -52,10 +54,14 @@ class InvoiceProfileService
         // can verify official fiscal receipt identifiers.
         $data['sales_mode'] = 'business_only';
 
-        $profile = InvoiceProfile::query()->updateOrCreate(
-            ['company_id' => Auth::user()->company_id],
-            $data,
-        );
+        $profile = DB::transaction(function () use ($data) {
+            $company = Auth::user()->company()->lockForUpdate()->firstOrFail();
+            if ($data['country_code'] === 'XK' && CompanyCurrency::normalize($company->base_currency) !== 'EUR') {
+                throw ValidationException::withMessages(['country_code' => ['Set up EUR accounting before configuring a Kosovo invoice profile.']]);
+            }
+
+            return InvoiceProfile::query()->updateOrCreate(['company_id' => $company->id], $data);
+        });
 
         return $this->response($profile->fresh());
     }

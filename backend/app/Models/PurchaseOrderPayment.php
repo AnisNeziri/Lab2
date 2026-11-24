@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Traits\BelongsToCompany;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -19,6 +20,15 @@ class PurchaseOrderPayment extends Model
     protected function casts(): array
     {
         return ['amount' => 'decimal:2', 'exchange_rate' => 'decimal:6', 'exchange_rate_date'=>'date:Y-m-d', 'amount_eur' => 'decimal:2', 'payment_date' => 'date:Y-m-d', 'paid_at' => 'datetime', 'reversal_date' => 'date:Y-m-d', 'reversed_at' => 'datetime'];
+    }
+
+    public function scopeMissingCurrencyEvidence(Builder $query, string $baseCurrency): Builder
+    {
+        return $query->where(fn ($q) => $q->whereNull('currency')->orWhere('currency', '')
+            ->orWhere(fn ($foreign) => $foreign->where('currency', '!=', $baseCurrency)
+                ->where(fn ($fx) => $fx->whereNull('exchange_rate')->orWhere('exchange_rate', '<=', 0)
+                    ->orWhereNull('exchange_rate_date')->orWhereColumn('exchange_rate_date', '>', 'payment_date')
+                    ->orWhereNull('exchange_rate_source')->orWhereRaw("TRIM(exchange_rate_source) = ''"))));
     }
 
     public function purchaseOrder(): BelongsTo

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Traits\BelongsToCompany;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -74,6 +75,14 @@ class StockMovement extends Model
             'inventory_value_before' => 'decimal:6',
             'inventory_value_after' => 'decimal:6',
         ];
+    }
+
+    public function scopeMissingValuation(Builder $query, ?string $from = null, ?string $to = null): Builder
+    {
+        return $query->where('affects_company_quantity', true)->where('quantity', '>', 0)
+            ->whereNull('cost_total')
+            ->when($from, fn ($q) => $q->whereDate('occurred_at', '>=', $from))
+            ->when($to, fn ($q) => $q->whereDate('occurred_at', '<=', $to));
     }
 
     public function product(): BelongsTo

@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { useUiText } from "../hooks/useUiText";
+import { useCompanyTimezone } from "../hooks/useCompanyTimezone";
+import { companyDate } from "../utils/companyDate";
 import * as api from "../api/accounting";
 import {
   useFinance,
@@ -9,7 +11,6 @@ import {
   QueryState,
 } from "../components/finance/FinanceShared";
 import "./AccountingCore.css";
-const today = () => new Date().toISOString().slice(0, 10);
 export function AccountingSetup({ accounts, run, refresh }) {
   const { t } = useFinance();
   const query = useFinanceQuery(async () => {
@@ -54,13 +55,14 @@ export function AccountingSetup({ accounts, run, refresh }) {
 }
 function OpeningSetup({ data, accounts, run }) {
   const tx = useUiText();
+  const timeZone = useCompanyTimezone();
   const blank = () => ({
     accounting_account_id: "",
     description: "",
     debit: "",
     credit: "",
   });
-  const [date, setDate] = useState(today()),
+  const [date, setDate] = useState(() => companyDate(timeZone)),
     [lines, setLines] = useState([blank(), blank()]);
   if (!data) return <p>{tx("Loading opening setup…")}</p>;
   if (data.finalized)

@@ -33,20 +33,23 @@ class DatedFinancialReconciliation
         $arDelta = "CASE WHEN $legacy THEN CASE WHEN type IN ('debt_added','positive_adjustment','opening_balance') THEN amount WHEN type IN ('payment','negative_adjustment','return','cancellation') THEN -amount ELSE 0 END ELSE balance_after-balance_before END";
         $ledger = CustomerDebtTransaction::query()->whereDate('transaction_date', '<=', $to)->selectRaw("COALESCE(SUM($arDelta),0) ar,COALESCE(SUM(credit_after-credit_before),0) advance,SUM(CASE WHEN $legacy AND amount>0 THEN 1 ELSE 0 END) legacy")->first();
         $standalone = app(ReceivableReports::class)->positions($to)->where('source', 'invoice');
-        $foreignAR = (clone $standalone)->where('currency', '!=', $currency)->count();
-        $ar = Money::add($ledger->ar, (clone $standalone)->where('currency', $currency)->sum('outstanding'));
+        $foreignAR = (clone $standalone)->whereNull('base_outstanding')->count();
+        $ar = Money::add($ledger->ar, $standalone->sum('base_outstanding'));
         $ap = Money::normalize(app(PayableReports::class)->positions($to)->sum('base_outstanding'));
         $apCurrencyUnsupported = $currency !== 'EUR' && DB::table('expenses')->where('company_id', $company)->whereIn('status', ['posted', 'reversed'])->whereDate('invoice_date', '<=', $to)->exists();
         $allocations = DB::table('supplier_payment_allocation_requests as r')->join('purchase_order_payments as p', fn ($j) => $j->on('p.id', '=', 'r.purchase_order_payment_id')->where('p.company_id', $company))
             ->where('r.company_id', $company)->whereRaw('COALESCE(r.allocation_date,DATE(r.allocated_at)) <= ?', [$to])->where(fn ($q) => $q->where('r.status', 'completed')->orWhere(fn ($r) => $r->where('r.status', 'reversed')->whereRaw('COALESCE(r.reversal_date,DATE(r.reversed_at)) > ?', [$to])))
             ->sum(DB::raw('ROUND(r.amount*COALESCE(p.exchange_rate,1),2)'));
         $advancePayments = $this->effective(PurchaseOrderPayment::query(), 'payment_date', $to);
+        $advancesWithoutRate = (clone $advancePayments)->where('amount', '>', 0)->missingCurrencyEvidence($currency)->count();
         $supplierAdvances = Money::subtract((clone $advancePayments)->sum(DB::raw('ROUND(amount*COALESCE(exchange_rate,1),2)')), $allocations);
 
         // Roll the current carried valuation back using independent source
         // snapshots. Missing historical evidence blocks proof, never guesses.
         $future = StockMovement::query()->where('affects_company_quantity', true)->whereDate('occurred_at', '>', $to);
         $unknownMovement = (clone $future)->where(fn ($q) => $q->whereNull('inventory_value_before')->orWhereNull('inventory_value_after'))->count();
+        $uncostedMovements = StockMovement::query()->missingValuation(Auth::user()->company->accounting_start_date?->toDateString(), $to)->count();
+        $unvaluedStock = Product::query()->where('quantity', '>', 0)->whereNull('inventory_value')->whereNull('weighted_average_cost')->whereNull('purchase_price')->count();
         $movementDelta = (clone $future)->selectRaw('product_id,SUM(ROUND(inventory_value_after,2)-ROUND(inventory_value_before,2)) delta')->groupBy('product_id');
         $landed = DB::table('landed_cost_accounting_entries as e')->join('landed_cost_allocations as a', fn ($j) => $j->on('a.id', '=', 'e.landed_cost_allocation_id')->where('a.company_id', $company))->where('e.company_id', $company);
         $landedDelta = (clone $landed)->selectRaw('e.product_id,SUM(CASE WHEN DATE(e.posted_at)>? THEN ROUND(a.inventory_value_after,2)-ROUND(a.inventory_value_before,2) ELSE 0 END)+SUM(CASE WHEN e.reversal_date>? THEN ROUND(e.reversal_inventory_value_after,2)-ROUND(e.reversal_inventory_value_before,2) ELSE 0 END) delta', [$to, $to])->groupBy('e.product_id');
@@ -80,10 +83,11 @@ class DatedFinancialReconciliation
 
             return Money::decimal($tb->whereIn('id', $ids)->sum(fn ($r) => Money::minor($r['closing_balance'])));
         };
-        $values = ['accounts_receivable' => $ar, 'customer_advances' => Money::normalize($ledger->advance), 'accounts_payable' => $ap, 'supplier_advances' => $supplierAdvances, 'inventory' => Money::normalize($inventory), 'cash_bank' => $cash];
+        $fx = app(FxRevaluationService::class)->currentAdjustments($to);
+        $values = ['accounts_receivable' => Money::add($ar, $fx['ar']), 'customer_advances' => Money::normalize($ledger->advance), 'accounts_payable' => Money::add($ap, $fx['ap']), 'supplier_advances' => $supplierAdvances, 'inventory' => Money::normalize($inventory), 'cash_bank' => $cash];
         $issues = ['accounts_receivable' => $foreignAR ? ['Foreign customer invoices lack a supported historical base-currency valuation.'] : [],
-            'customer_advances' => [], 'accounts_payable' => $apCurrencyUnsupported ? ['Supplier expense accounting currently uses the EUR base-currency foundation.'] : [], 'supplier_advances' => [],
-            'inventory' => array_values(array_filter([$unknownMovement ? "$unknownMovement later inventory movements lack valuation snapshots." : null, $unknownLanded ? "$unknownLanded legacy landed-cost reversals lack per-product dated valuation evidence." : null])),
+            'customer_advances' => [], 'accounts_payable' => $apCurrencyUnsupported ? ['Supplier expense accounting currently uses the EUR base-currency foundation.'] : [], 'supplier_advances' => $advancesWithoutRate ? ["$advancesWithoutRate supplier payments lack original currency or dated exchange-rate evidence."] : [],
+            'inventory' => array_values(array_filter([$uncostedMovements ? "$uncostedMovements inventory movements lack cost evidence." : null, $unvaluedStock ? "$unvaluedStock products with stock lack valuation evidence." : null, $unknownMovement ? "$unknownMovement later inventory movements lack valuation snapshots." : null, $unknownLanded ? "$unknownLanded legacy landed-cost reversals lack per-product dated valuation evidence." : null])),
             'cash_bank' => $unknownBankOpening ? ['A nonzero financial-account opening lacks a supported date or base-currency quote.'] : []];
         if ((int) $ledger->legacy > 0) {
             $issues['accounts_receivable'][] = 'Legacy customer records lack position snapshots; verify opening and reversal evidence.';
@@ -92,13 +96,16 @@ class DatedFinancialReconciliation
         $rows = [];
         foreach ($values as $key => $operational) {
             $control = $key === 'cash_bank' ? ($gl('cash') !== null && $gl('bank') !== null ? Money::add($gl('cash'), $gl('bank')) : null) : $gl($key);
+            if (in_array($key, ['inventory', 'supplier_advances'], true) && $issues[$key]) {
+                $operational = null;
+            }
             if (in_array($key, ['customer_advances', 'accounts_payable'], true) && $control !== null) {
                 $control = Money::subtract(0, $control);
             }
             if ($control === null) {
                 $issues[$key][] = 'Configure the control-account mapping before proving this balance.';
             }
-            $difference = $control === null ? null : Money::subtract($operational, $control);
+            $difference = $control === null || $operational === null ? null : Money::subtract($operational, $control);
             $ok = ! $issues[$key] && $difference !== null && Money::compare($difference, 0) === 0;
             $rows[] = ['control' => $key, 'operational_amount' => $operational, 'gl_amount' => $control, 'difference' => $difference, 'reconciled' => $ok, 'status' => $issues[$key] ? 'evidence_required' : ($ok ? 'reconciled' : 'mismatch'), 'evidence_issues' => $issues[$key],
                 'drilldown_url' => '/accounting?tab='.match ($key) {

@@ -130,6 +130,9 @@ class SupplierInvoiceMatchingService
     {
         return DB::transaction(function () use ($expense) {
             $locked = Expense::query()->lockForUpdate()->findOrFail($expense->id);
+            if ($locked->approved_at || $locked->status === 'reversed') {
+                return $this->show($locked);
+            }
             $summary = $this->calculateSummary($locked);
             $old = $locked->only(['match_status', 'match_summary']);
             $locked->update(['match_status' => $summary['status'], 'match_summary' => $summary]);
@@ -146,12 +149,14 @@ class SupplierInvoiceMatchingService
         return DB::transaction(function () use ($expense, $reason) {
             DB::table('companies')->where('id', Auth::user()->company_id)->lockForUpdate()->first();
             $locked = Expense::query()->lockForUpdate()->findOrFail($expense->id);
-            $this->recalculate($locked);
-            $locked->refresh();
             if ($locked->approved_at) {
                 return $this->show($locked);
             }
             if(!in_array($locked->status,['draft','posted'],true))throw ValidationException::withMessages(['supplier_invoice'=>'Only an active draft or posted bill can be approved. A reversal remains part of its history.']);
+            $locked = $this->recalculate($locked);
+            if (! empty($locked->match_summary['approval_blocked'])) {
+                throw ValidationException::withMessages(['items' => ['Resolve the conflicting receipt allocation or unit of measure before posting this bill.']]);
+            }
             if (in_array($locked->match_status, ['exception', 'unmatched'], true) && blank($reason)) {
                 throw ValidationException::withMessages(['reason' => ['Explain why this supplier invoice can be approved despite matching exceptions.']]);
             }
@@ -196,20 +201,23 @@ class SupplierInvoiceMatchingService
             if ($poItem && $receiptItem && (int) $receiptItem->purchase_order_item_id !== (int) $poItem->id) {
                 throw ValidationException::withMessages(['items' => ['The selected receipt line does not belong to the selected Purchase Order line.']]);
             }
+            $poItem ??= $receiptItem?->purchaseOrderItem;
             $sourceProductId = $poItem?->product_id ?? $receiptItem?->product_id;
             if ($sourceProductId && ! empty($line['product_id']) && (int) $line['product_id'] !== (int) $sourceProductId) {
                 throw ValidationException::withMessages(['items' => ['The selected product does not match its Purchase Order or receipt line.']]);
             }
-            $quantity = round((float) $line['quantity'], 3);
-            $unitPrice = round((float) $line['unit_price'], 4);
-            $vatRate = round((float) ($line['vat_rate'] ?? 0), 3);
-            $net = round($quantity * $unitPrice, 2);
-            $vat = round($net * $vatRate / 100, 2);
+            $receiptItemId = $receiptItem?->id;
+            if (! $receiptItemId && $poItem && $linkedReceiptIds->isNotEmpty()) {
+                $candidates = $poItem->receiptItems()->whereIn('goods_receipt_id', $linkedReceiptIds)->limit(2)->pluck('id');
+                $receiptItemId = $candidates->count() === 1 ? $candidates->first() : null;
+            }
+            [$quantity, $unitPrice, $vatRate, $net, $vat] = $this->lineAmounts($line);
             SupplierInvoiceItem::create([
                 ...$line, 'company_id' => $expense->company_id, 'expense_id' => $expense->id,
+                'purchase_order_item_id' => $poItem?->id, 'goods_receipt_item_id' => $receiptItemId,
                 'product_id' => $line['product_id'] ?? $poItem?->product_id ?? $receiptItem?->product_id,
                 'quantity' => $quantity, 'unit_price' => $unitPrice, 'vat_rate' => $vatRate,
-                'net_amount' => $net, 'vat_amount' => $vat, 'total_amount' => round($net + $vat, 2),
+                'net_amount' => $net, 'vat_amount' => $vat, 'total_amount' => Money::add($net, $vat),
             ]);
         }
     }
@@ -237,51 +245,92 @@ class SupplierInvoiceMatchingService
         $taxTolerance = (float) ($company->supplier_match_tax_tolerance ?? config('procurement.matching.tax_tolerance', .02));
         $expense->load(['supplierInvoiceItems.purchaseOrderItem', 'purchaseOrder', 'goodsReceipts:id']);
         $linkedReceiptIds = $expense->goodsReceipts->pluck('id');
+        $orderLineIds = $expense->supplierInvoiceItems->pluck('purchase_order_item_id')->filter()->unique();
+        $receiptLines = GoodsReceiptItem::query()->whereIn('purchase_order_item_id', $orderLineIds)
+            ->whereHas('receipt', fn ($q) => $q->where('company_id', $expense->company_id))
+            ->get(['id', 'goods_receipt_id', 'purchase_order_item_id', 'ordered_unit', 'accepted_quantity'])
+            ->groupBy('purchase_order_item_id');
+        $postedLines = SupplierInvoiceItem::query()->whereIn('purchase_order_item_id', $orderLineIds)
+            ->where('expense_id', '!=', $expense->id)->whereHas('expense', fn ($q) => $q->where('status', 'posted'))
+            ->with('expense.goodsReceipts:id')->get()->groupBy('purchase_order_item_id');
+        $receiptFor = function (SupplierInvoiceItem $line, $receiptIds) use ($receiptLines) {
+            $candidates = $receiptLines->get($line->purchase_order_item_id, collect())->whereIn('goods_receipt_id', $receiptIds);
+            if ($line->goods_receipt_item_id) {
+                return $candidates->firstWhere('id', $line->goods_receipt_item_id);
+            }
+
+            return $candidates->count() === 1 ? $candidates->first() : null;
+        };
+        $currentByReceipt = $expense->supplierInvoiceItems->groupBy(fn ($line) => $receiptFor($line, $linkedReceiptIds)?->id ?? 0);
+        $currentByOrder = $expense->supplierInvoiceItems->groupBy('purchase_order_item_id');
         $lines = [];
         $hasException = false;
         $hasPartial = false;
+        $approvalBlocked = false;
+        $expectedRate = in_array($expense->vat_treatment, ['standard', 'reduced'], true) ? $expense->vat_rate : 0;
         foreach ($expense->supplierInvoiceItems as $line) {
             $poItem = $line->purchaseOrderItem;
-            $received = $poItem && $linkedReceiptIds->isNotEmpty()
-                ? (float) $poItem->receiptItems()->whereIn('goods_receipt_id', $linkedReceiptIds)->sum('accepted_quantity')
-                : 0.0;
-            $otherInvoiced = $poItem ? (float) SupplierInvoiceItem::query()
-                ->where('purchase_order_item_id', $poItem->id)->where('expense_id', '!=', $expense->id)
-                ->whereHas('expense', fn ($q) => $q->where('status', '!=', 'reversed'))->sum('quantity') : 0.0;
+            $receiptLine = $receiptFor($line, $linkedReceiptIds);
+            $priorOnOrder = $postedLines->get($line->purchase_order_item_id, collect());
+            $priorByReceipt = $priorOnOrder->groupBy(fn ($prior) => $receiptFor($prior, $prior->expense->goodsReceipts->pluck('id'))?->id ?? 0);
+            $received = (float) ($receiptLine?->accepted_quantity ?? 0);
+            $priorOnReceipt = $receiptLine ? $priorByReceipt->get($receiptLine->id, collect()) : collect();
+            $otherInvoiced = (float) $priorOnReceipt->sum('quantity');
+            $priorOrderQuantity = (float) $priorOnOrder->sum('quantity');
             $ordered = (float) ($poItem?->quantity ?? 0);
             $invoiced = (float) $line->quantity;
-            $quantityVariance = round(($otherInvoiced + $invoiced) - $received, 3);
+            $receiptClaims = $receiptLine ? $currentByReceipt->get($receiptLine->id) : collect([$line]);
+            $quantityVariance = round($otherInvoiced + $receiptClaims->sum('quantity') - $received, 3);
             $priceVariance = round((float) $line->unit_price - (float) ($poItem?->unit_price ?? $line->unit_price), 4);
-            $expectedVat = round((float) $line->net_amount * (float) $line->vat_rate / 100, 2);
-            $taxVariance = round((float) $line->vat_amount - $expectedVat, 2);
+            $taxVariance = Money::subtract($line->vat_amount, Money::product([$line->net_amount, $expectedRate, '0.01']));
             $issues = [];
+            $blocked = false;
             if (! $poItem) {
                 $issues[] = 'invoice_line_without_po';
             }
             if ($poItem && $received <= $quantityTolerance) {
-                $issues[] = 'invoice_without_receipt';
+                $needsReceiptLine = $receiptLine === null && $linkedReceiptIds->isNotEmpty();
+                $issues[] = $needsReceiptLine ? 'receipt_line_required' : 'invoice_without_receipt';
+                $blocked = $needsReceiptLine;
+            }
+            if ($receiptLine && $priorByReceipt->has(0)) {
+                $issues[] = 'prior_bill_receipt_unverified';
+            }
+            if ($poItem && (strcasecmp(trim($line->unit), trim($poItem->unit)) !== 0
+                || ($receiptLine && $receiptLine->ordered_unit && strcasecmp(trim($line->unit), trim($receiptLine->ordered_unit)) !== 0))) {
+                $issues[] = 'unit_mismatch';
+                $blocked = true;
             }
             if ($poItem && $received > $ordered + $quantityTolerance) {
                 $issues[] = 'receipt_exceeds_po';
             }
             if ($quantityVariance > $quantityTolerance) {
                 $issues[] = 'invoiced_quantity_exceeds_received';
+                if ($receiptLine && ($priorOnReceipt->isNotEmpty() || $receiptClaims->count() > 1)) {
+                    $issues[] = 'receipt_allocation_conflict';
+                    $blocked = true;
+                }
+            }
+            if ($poItem && $priorOrderQuantity > 0 && round($priorOrderQuantity + $currentByOrder->get($poItem->id)->sum('quantity') - $ordered, 3) > $quantityTolerance) {
+                $issues[] = 'previous_billing_exceeds_order';
+                $blocked = true;
             }
             if (abs($priceVariance) > $priceTolerance) {
                 $issues[] = 'unit_price_variance';
             }
-            if (abs($taxVariance) > $taxTolerance) {
+            if (abs((float) $taxVariance) > $taxTolerance || Money::compareDecimal($line->vat_rate, $expectedRate) !== 0) {
                 $issues[] = 'tax_variance';
             }
+            $approvalBlocked = $approvalBlocked || $blocked;
             if ($issues) {
                 $hasException = true;
             }
-            if ($poItem && $received + $quantityTolerance < $ordered) {
+            if ($poItem && $receiptLines->get($poItem->id, collect())->sum('accepted_quantity') + $quantityTolerance < $ordered) {
                 $hasPartial = true;
             }
             $priceVarianceTotal = Money::multiply((string) $priceVariance, (string) $invoiced);
             $matchFlags = array_values(array_filter([! $poItem ? 'NO_PO' : null, $poItem && $received <= $quantityTolerance ? 'NO_RECEIPT' : null, $quantityVariance > $quantityTolerance ? 'QUANTITY_VARIANCE' : null, abs($priceVariance) > $priceTolerance ? 'PRICE_VARIANCE' : null]));
-            $variance = ['priceVarianceTotal' => $priceVarianceTotal, 'matchFlags' => $matchFlags, ...compact('ordered', 'received', 'otherInvoiced', 'invoiced', 'quantityVariance', 'priceVariance', 'taxVariance', 'issues')];
+            $variance = ['priceVarianceTotal' => $priceVarianceTotal, 'matchFlags' => $matchFlags, 'receipt_item_id' => $receiptLine?->id, 'approval_blocked' => $blocked, ...compact('ordered', 'received', 'otherInvoiced', 'invoiced', 'quantityVariance', 'priceVariance', 'taxVariance', 'issues')];
             $line->update(['variance' => $variance]);
             $lines[] = ['line_id' => $line->id, ...$variance];
         }
@@ -289,6 +338,7 @@ class SupplierInvoiceMatchingService
 
         return [
             'status' => $status, 'calculated_at' => now()->toIso8601String(), 'lines' => $lines,
+            'approval_blocked' => $approvalBlocked,
             'tolerances' => ['quantity' => $quantityTolerance, 'unit_price' => $priceTolerance, 'tax' => $taxTolerance],
             'match_label' => ! $expense->purchase_order_id ? 'NO_PO' : ($hasException ? 'NEEDS_REVIEW' : ($hasPartial ? 'PARTIAL_MATCH' : 'MATCHED')),
             'price_variance_total' => Money::normalize(collect($lines)->sum('priceVarianceTotal')),
@@ -299,11 +349,22 @@ class SupplierInvoiceMatchingService
 
     private function validateDocumentTotals(array $data): void
     {
-        $lineNet = round(collect($data['items'])->sum(fn ($line) => (float) $line['quantity'] * (float) $line['unit_price']), 2);
-        $lineVat = round(collect($data['items'])->sum(fn ($line) => round((float) $line['quantity'] * (float) $line['unit_price'], 2) * (float) ($line['vat_rate'] ?? 0) / 100), 2);
-        if (abs($lineNet - (float) $data['net_amount']) > .02 || abs($lineVat - (float) $data['vat_amount']) > .02) {
+        $amounts = array_map(fn ($line) => $this->lineAmounts($line), $data['items']);
+        $netCents = array_sum(array_map(fn ($line) => Money::minor($line[3]), $amounts));
+        $vatCents = array_sum(array_map(fn ($line) => Money::minor($line[4]), $amounts));
+        if (abs($netCents - Money::minor($data['net_amount'])) > 2 || abs($vatCents - Money::minor($data['vat_amount'])) > 2) {
             throw ValidationException::withMessages(['items' => ['Supplier invoice line totals must equal the document net and VAT totals.']]);
         }
+    }
+
+    private function lineAmounts(array $line): array
+    {
+        $quantity = Money::normalizeDecimal($line['quantity'], 3);
+        $price = Money::normalizeDecimal($line['unit_price'], 4);
+        $rate = Money::normalizeDecimal($line['vat_rate'] ?? 0, 3);
+        $net = Money::multiply($quantity, $price);
+
+        return [$quantity, $price, $rate, $net, Money::product([$net, $rate, '0.01'])];
     }
 
     private function validatePurchaseOrderCurrency(?PurchaseOrder $purchaseOrder, string $currency): void

@@ -72,8 +72,11 @@ class OutboundFulfillmentTest extends TestCase
         $this->assertTrue($sale->finalized_at->gte($sale->inventory_applied_at));
         $sales=app(\App\Services\DailySaleService::class);
         $this->assertFalse($sales->todaySummary()['day_closed']);
+        $book = '/api/daily-sales/day-notes?date='.$sale->sale_date->toDateString();
+        $this->getJson($book)->assertOk()->assertJsonPath('day_closed', false);
         $sales->finalizeDay($sale->sale_date->toDateString());
         $this->assertTrue($sales->todaySummary()['day_closed']);
+        $this->getJson($book)->assertOk()->assertJsonPath('day_closed', true);
         $firstFinalized=$sale->finalized_at->toIso8601String();
         $sales->finalizeDay($sale->sale_date->toDateString());
         $this->assertSame($firstFinalized,$sale->fresh()->finalized_at->toIso8601String());

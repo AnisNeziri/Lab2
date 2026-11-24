@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\AccountingPeriod;
 use App\Models\CustomerDebtTransaction;
 use App\Models\Invoice;
+use App\Models\StockMovement;
 use App\Support\CompanyClock;
 use App\Support\CompanyCurrency;
 use App\Support\Money;
@@ -93,10 +94,18 @@ class FinanceAssistantFacts
                 $previousTo = $end->subMonthNoOverflow()->endOfMonth()->toDateString();
                 $current = app(AccountingService::class)->profitAndLoss($from, $to);
                 $previous = app(AccountingService::class)->profitAndLoss($previousFrom, $previousTo);
-                $hasPrevious = collect($previous['accounts'])->contains(fn ($a) => Money::compare($a['debit_movement'], 0) !== 0 || Money::compare($a['credit_movement'], 0) !== 0);
+                $currentUncosted = StockMovement::query()->missingValuation($from, $to)->exists();
+                $previousUncosted = StockMovement::query()->missingValuation($previousFrom, $previousTo)->exists();
+                foreach (['cost_of_goods_sold', 'gross_profit', 'net_profit'] as $key) {
+                    if ($currentUncosted) $current[$key] = null;
+                    if ($previousUncosted) $previous[$key] = null;
+                }
+                $hasPrevious = $previousUncosted || collect($previous['accounts'])->contains(fn ($a) => Money::compare($a['debit_movement'], 0) !== 0 || Money::compare($a['credit_movement'], 0) !== 0);
                 $keys = ['revenue', 'cost_of_goods_sold', 'gross_profit', 'operating_expenses', 'other_gains_losses', 'net_profit'];
 
-                return ['currency' => $current['currency'], 'from' => $from, 'to' => $to, 'comparison_from' => $previousFrom, 'comparison_to' => $previousTo, 'current' => array_intersect_key($current, array_flip($keys)), 'previous' => $hasPrevious ? array_intersect_key($previous, array_flip($keys)) : null, 'difference' => $hasPrevious ? Money::subtract($current['net_profit'], $previous['net_profit']) : null, 'qualification' => 'Posted results only. Date ranges are explicit. Differences identify accounting contributors, not proven commercial causes. No growth percentage is calculated without prior activity.'];
+                return ['currency' => $current['currency'], 'from' => $from, 'to' => $to, 'comparison_from' => $previousFrom, 'comparison_to' => $previousTo, 'current' => array_intersect_key($current, array_flip($keys)), 'previous' => $hasPrevious ? array_intersect_key($previous, array_flip($keys)) : null,
+                    'difference' => $hasPrevious && ! $currentUncosted && ! $previousUncosted ? Money::subtract($current['net_profit'], $previous['net_profit']) : null,
+                    'qualification' => $currentUncosted || $previousUncosted ? 'Inventory cost evidence is missing. Finance must verify cost of sales before comparing profits.' : 'Figures come from posted accounting records for the selected dates. Differences identify changes in the ledger.'];
         }
         abort(404);
     }
@@ -296,7 +305,15 @@ class FinanceAssistantFacts
                         $p = (array) $p;
                         $cards[] = ['tool' => $tool, 'title' => $p['customer_name'], 'url' => '/accounting?tab=ar&customer='.$p['customer_id'], 'summary' => $p['reference_number'] ?: '#'.$p['id'], 'metrics' => [['label' => $sq ? 'Pa caktim të shprehur' : 'Without explicit attribution', 'value' => $p['unassigned'], 'unit' => $currency]]];
                     }break;
-                case 'finance_profit':$text = ($sq ? 'Rezultati neto i postuar: ' : 'Posted net result: ').$format($data['current']['net_profit']).'. '.($data['previous'] ? ($sq ? 'Ndryshimi kundrejt periudhës së krahasimit: ' : 'Change against the comparison period: ').$format($data['difference']).'.' : ($sq ? 'Nuk ka aktivitet të mëparshëm për krahasim.' : 'No prior activity exists for comparison.'));
+                case 'finance_profit':
+                    $text = $data['current']['net_profit'] === null
+                        ? ($sq ? 'Fitimi neto nuk mund të konfirmohet. Financat duhet të verifikojnë kostot e stokut.' : 'Net profit is unavailable until Finance verifies inventory costs.')
+                        : ($sq ? 'Rezultati neto i postuar: ' : 'Posted net result: ').$format($data['current']['net_profit']).'.';
+                    if ($data['difference'] !== null) {
+                        $text .= ($sq ? ' Ndryshimi kundrejt periudhës së krahasimit: ' : ' Change against the comparison period: ').$format($data['difference']).'.';
+                    } elseif ($data['current']['net_profit'] !== null) {
+                        $text .= $data['previous'] ? ($sq ? ' Periudha e krahasimit ka kosto të paverifikuara.' : ' The comparison period has unverified costs.') : ($sq ? ' Nuk ka aktivitet të mëparshëm për krahasim.' : ' No prior activity exists for comparison.');
+                    }
                     $metrics = [[$sq ? 'Të ardhurat' : 'Revenue', $data['current']['revenue']], [$sq ? 'Kostoja e shitjeve' : 'Cost of sales', $data['current']['cost_of_goods_sold']], [$sq ? 'Shpenzimet operative' : 'Operating expenses', $data['current']['operating_expenses']]];
                     if ($data['previous']) {
                         $cards[] = ['tool' => $tool, 'title' => $data['comparison_from'].' — '.$data['comparison_to'], 'url' => $url, 'summary' => $sq ? 'Periudha e krahasimit' : 'Comparison period', 'metrics' => [['label' => $sq ? 'Rezultati neto' : 'Net result', 'value' => $data['previous']['net_profit'], 'unit' => $currency]]];

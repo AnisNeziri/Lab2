@@ -514,6 +514,18 @@ Route::middleware('auth.token')->group(function () {
             Route::get('/quality/suppliers/{supplier}/scorecard', [QualityController::class, 'scorecard'])->middleware('permission:supplier_performance.view');
             Route::put('/quality/score-weights', [QualityController::class, 'scoreWeights'])->middleware('permission:quality.templates.manage');
             Route::prefix('accounting')->group(function () {
+                Route::prefix('fixed-assets')->controller(\App\Http\Controllers\Api\FixedAssetController::class)->group(function () {
+                    Route::get('/', 'index')->middleware(['permission:accounting.journal.view', 'permission:finance.view']);
+                    Route::post('/categories', 'category')->middleware('permission:accounting.settings.manage');
+                    Route::get('/{asset}', 'show')->middleware(['permission:accounting.journal.view', 'permission:finance.view']);
+                    Route::post('/bills/{expense}', 'prepare')->middleware(['permission:accounting.journal.post', 'permission:finance.view']);
+                    Route::delete('/bills/{expense}', 'withdraw')->middleware(['permission:accounting.journal.post', 'permission:finance.view']);
+                    Route::post('/{asset}/in-service', 'placeInService')->middleware('permission:accounting.journal.post');
+                    Route::post('/{asset}/sale', 'prepareSale')->middleware(['permission:accounting.journal.post', 'permission:invoices.manage']);
+                    Route::delete('/entries/{assetEntry}/sale', 'withdrawSale')->middleware(['permission:accounting.journal.post', 'permission:invoices.manage']);
+                    Route::post('/{asset}/entries', 'post')->middleware('permission:accounting.journal.post');
+                    Route::post('/entries/{assetEntry}/reverse', 'reverse')->middleware('permission:accounting.journal.reverse');
+                });
                 Route::get('/reference-rate', [IntegrationController::class, 'ecb'])->middleware(['permission:accounting.reports.view', 'throttle:20,1']);
                 Route::post('/initialize', [AccountingController::class, 'initialize'])->middleware('permission:accounting.settings.manage');
                 Route::get('/ap/aging', [AccountingController::class, 'payableAging'])->middleware('permission:finance.view');
@@ -540,6 +552,11 @@ Route::middleware('auth.token')->group(function () {
                 Route::post('/periods', [AccountingController::class, 'storePeriod'])->middleware('permission:accounting.periods.manage');
                 Route::put('/periods/{period}/status', [AccountingController::class, 'periodStatus'])->middleware('permission:accounting.periods.manage');
                 Route::get('/periods/{period}/readiness', [AccountingController::class, 'periodReadiness'])->middleware('permission:accounting.periods.manage');
+                Route::post('/periods/{period}/fx-preview', [\App\Http\Controllers\Api\FxRevaluationController::class, 'preview'])->middleware(['permission:accounting.periods.manage', 'permission:accounting.reports.view']);
+                Route::post('/periods/{period}/fx-approve', [\App\Http\Controllers\Api\FxRevaluationController::class, 'approve'])->middleware(['permission:accounting.periods.close', 'permission:accounting.journal.post']);
+                Route::get('/periods/{period}/tax-review', [\App\Http\Controllers\Api\CorporateTaxReviewController::class, 'show'])->middleware(['permission:accounting.periods.manage', 'permission:accounting.reports.view']);
+                Route::post('/periods/{period}/tax-preview', [\App\Http\Controllers\Api\CorporateTaxReviewController::class, 'preview'])->middleware(['permission:accounting.periods.manage', 'permission:accounting.reports.view']);
+                Route::post('/periods/{period}/tax-review', [\App\Http\Controllers\Api\CorporateTaxReviewController::class, 'approve'])->middleware(['permission:accounting.periods.close', 'permission:accounting.journal.post']);
                 Route::get('/source-journals', [AccountingController::class, 'sourceJournals'])->middleware('permission:accounting.journal.view');
                 Route::get('/journals', [AccountingController::class, 'journals'])->middleware('permission:accounting.journal.view');
                 Route::post('/journals', [AccountingController::class, 'storeJournal'])->middleware('permission:accounting.journal.create');

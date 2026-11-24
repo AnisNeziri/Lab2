@@ -3,8 +3,14 @@
 namespace App\Services;
 
 use App\Models\Invoice;
+use App\Models\FinancialAccount;
 use App\Models\PaymentTransaction;
+use App\Services\Kosovo\CashPaymentPolicy;
+use App\Support\CompanyCurrency;
+use App\Support\CompanyClock;
+use App\Support\InvoiceExchange;
 use App\Support\Money;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +29,8 @@ class PaymentService
         $companyId = $this->requireCompanyId();
         abort_unless((int) $invoice->company_id === $companyId, 404);
 
-        return DB::transaction(function () use ($invoice, $data) {
+        return DB::transaction(function () use ($invoice, $data, $companyId) {
+            DB::table('companies')->where('id', $companyId)->lockForUpdate()->first();
             $invoice = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
             if ($invoice->daily_sale_id && $invoice->dailySale?->outboundDispatch) throw ValidationException::withMessages(['order'=>['Record this payment through the linked order/customer ledger to avoid receiving it twice.']]);
             if ($invoice->document_type === 'credit_note' || in_array($invoice->status, ['draft', 'void', 'credited'], true)) {
@@ -32,6 +39,11 @@ class PaymentService
                 ]);
             }
 
+            $date = isset($data['payment_date']) ? CarbonImmutable::parse($data['payment_date'])->toDateString() : CompanyClock::today()->toDateString();
+            $base = CompanyCurrency::forCompanyId($invoice->company_id);
+            $currency = $invoice->currency ?: $base;
+            $foreign = $currency !== $base;
+            $rate = $foreign ? InvoiceExchange::snapshot($data, $date) : null;
             if (! empty($data['idempotency_key'])) {
                 $existing = PaymentTransaction::query()
                     ->where('company_id', $invoice->company_id)
@@ -44,10 +56,11 @@ class PaymentService
                     $mismatch = $existing->status !== 'completed'
                         || (isset($data['amount']) && Money::compare($existing->amount, $data['amount']) !== 0)
                         || $existing->payment_method !== ($data['payment_method'] ?? 'cash')
-                        || $existing->payment_date?->toDateString() !== ($data['payment_date'] ?? \App\Support\CompanyClock::today()->toDateString())
+                        || $existing->payment_date?->toDateString() !== $date
                         || ($existing->reference_number ?? '') !== ($data['reference_number'] ?? '')
                         || ($existing->note ?? '') !== ($data['note'] ?? '')
-                        || (int) ($existing->financial_account_id ?? 0) !== (int) ($data['financial_account_id'] ?? 0);
+                        || (int) ($existing->financial_account_id ?? 0) !== (int) ($data['financial_account_id'] ?? 0)
+                        || ($foreign && array_intersect_key($existing->exchange_snapshot ?? [], $rate) !== $rate);
                     if ($mismatch) {
                         throw ValidationException::withMessages([
                             'idempotency_key' => ['This payment key was already used with different payment details.'],
@@ -58,9 +71,24 @@ class PaymentService
                 }
             }
 
+            $account = ! empty($data['financial_account_id']) ? FinancialAccount::query()->findOrFail($data['financial_account_id']) : null;
+            if ($account && $account->currency !== $base) {
+                throw ValidationException::withMessages(['financial_account_id' => ['Choose a financial account in the invoice currency.']]);
+            }
+            if ($foreign && ($base !== 'EUR' || ! isset($invoice->exchange_snapshot['base_total']) || $account?->type !== 'bank'
+                || ! in_array($data['payment_method'] ?? null, ['bank_transfer', 'card'], true)
+                || $date < $invoice->invoice_date->toDateString() || $date > CompanyClock::today()->toDateString())) {
+                throw ValidationException::withMessages(['currency' => ['Use an evidenced historical invoice and an electronic settlement into a EUR bank account. The settlement date must fall between issuance and today.']]);
+            }
+
             $invoiceTotal = Money::compare($invoice->grand_total, $invoice->total_amount) >= 0
                 ? Money::normalize($invoice->grand_total)
                 : Money::normalize($invoice->total_amount);
+            if (($invoice->seller_snapshot['country_code'] ?? null) === 'XK' && $base === 'EUR') {
+                app(CashPaymentPolicy::class)->assertAllowed(
+                    $date, $invoice->exchange_snapshot['base_total'] ?? $invoiceTotal, $invoice->buyer_snapshot['customer_type'] ?? null, $data['payment_method'] ?? 'cash', $account, $invoice,
+                );
+            }
             $remainingBefore = Money::maximum('0.00', Money::subtract($invoiceTotal, $invoice->total_paid));
             if (Money::compare($remainingBefore, '0.00') <= 0) {
                 throw ValidationException::withMessages(['invoice_id' => ['This invoice has already been fully paid.']]);
@@ -68,8 +96,19 @@ class PaymentService
             $amount = isset($data['amount']) ? Money::normalize($data['amount']) : $remainingBefore;
             if (Money::compare($amount, '0.00') <= 0 || Money::compare($amount, $remainingBefore) > 0) {
                 throw ValidationException::withMessages([
-                    'amount' => ['Payment must be greater than zero and cannot exceed the remaining balance of €'.number_format($invoice->remaining_balance, 2).'.'],
+                    'amount' => ['Payment must be greater than zero and cannot exceed the remaining balance of '.number_format($invoice->remaining_balance, 2).' '.$currency.'.'],
                 ]);
+            }
+            $received = $amount;
+            if ($foreign) {
+                $received = Money::multiply($amount, $rate['rate']);
+                $oldCarrying = Money::multiply($remainingBefore, $invoice->exchange_snapshot['rate']);
+                $newCarrying = Money::multiply(Money::subtract($remainingBefore, $amount), $invoice->exchange_snapshot['rate']);
+                $carrying = Money::subtract($oldCarrying, $newCarrying);
+                if (Money::compare($received, 0) <= 0 || Money::compare($carrying, 0) <= 0) {
+                    throw ValidationException::withMessages(['amount' => ['Group instalments whose converted value rounds to zero before recording the settlement.']]);
+                }
+                $rate = [...$rate, 'carrying_base' => $carrying, 'received_base' => $received];
             }
 
             $transaction = PaymentTransaction::create([
@@ -77,21 +116,22 @@ class PaymentService
                 'invoice_id' => $invoice->id,
                 'user_id' => Auth::id(),
                 'amount' => $amount,
+                'exchange_snapshot' => $rate,
                 'status' => 'completed',
                 'payment_method' => $data['payment_method'] ?? 'cash',
                 'transaction_ref' => 'TXN-'.strtoupper(Str::random(12)),
                 'reference_number' => $data['reference_number'] ?? null,
                 'idempotency_key' => $data['idempotency_key'] ?? (string) Str::uuid(),
                 'note' => $data['note'] ?? null,
-                'payment_date' => $data['payment_date'] ?? \App\Support\CompanyClock::today()->toDateString(),
+                'payment_date' => $date,
                 'paid_at' => now(),
                 'financial_account_id' => $data['financial_account_id'] ?? null,
             ]);
 
             if (! empty($data['financial_account_id'])) {
                 $ledger = $this->accounts->post((int) $data['financial_account_id'], [
-                    'type' => 'inflow', 'amount' => $amount,
-                    'transaction_date' => $data['payment_date'] ?? \App\Support\CompanyClock::today()->toDateString(),
+                    'type' => 'inflow', 'amount' => $received,
+                    'transaction_date' => $date,
                     'source_type' => 'invoice_payment', 'source_id' => $transaction->id,
                     'counterparty' => $invoice->buyer_name ?? null,
                     'reference_number' => $data['reference_number'] ?? $transaction->transaction_ref,
@@ -136,6 +176,7 @@ class PaymentService
         abort_unless((int) $payment->company_id === $companyId, 404);
 
         return DB::transaction(function () use ($payment, $reason, $companyId) {
+            DB::table('companies')->where('id', $companyId)->lockForUpdate()->first();
             $payment = PaymentTransaction::query()->lockForUpdate()->findOrFail($payment->id);
             abort_unless((int) $payment->company_id === $companyId, 404);
 
@@ -151,6 +192,10 @@ class PaymentService
                 throw ValidationException::withMessages([
                     'payment' => ['This payment cannot be reversed for the current invoice state.'],
                 ]);
+            }
+            if ($payment->exchange_snapshot && PaymentTransaction::query()->where('invoice_id', $invoice->id)
+                ->where('status', 'completed')->where('id', '>', $payment->id)->exists()) {
+                throw ValidationException::withMessages(['payment' => ['Reverse later active settlements first to preserve the historical exchange calculation.']]);
             }
 
             $payment->update([

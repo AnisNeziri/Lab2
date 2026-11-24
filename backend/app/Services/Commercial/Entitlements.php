@@ -9,7 +9,7 @@ use Illuminate\Validation\ValidationException;
 final class Entitlements
 {
     public const CAPABILITIES=['core','inventory','wms','sales','crm','procurement','shipments','accounting','tax','workforce','payroll','intelligence','automation','integrations','mcp','analytics'];
-    public const PACKAGES=['platform'=>self::CAPABILITIES,'distribution'=>['core','inventory','wms','sales','crm','procurement','shipments','accounting'],'core-accounting'=>['core','inventory','accounting']];
+    public const PACKAGES=['platform'=>self::CAPABILITIES,'distribution'=>['core','inventory','wms','sales','crm','procurement','shipments','accounting','analytics','intelligence','tax'],'core-accounting'=>['core','inventory','accounting']];
 
     public static function capability(string $permission): string
     {
@@ -99,7 +99,9 @@ final class Entitlements
             default=>'core',
         };
         $state=$this->state($u->company_id);
-        if (!in_array($cap,$state['capabilities'],true)) abort(response()->json(['message'=>ucfirst($cap).' is not enabled for this company.','code'=>'CAPABILITY_NOT_ENABLED','capability'=>$cap],403));
+        // Invoice and bill editors use the read-only code catalogue without the Tax & VAT module.
+        $availableCaps = $path === 'tax/available-codes' && $r->isMethodSafe() ? ['tax', 'sales', 'accounting'] : [$cap];
+        if (!array_intersect($availableCaps, $state['capabilities'])) abort(response()->json(['message'=>ucfirst($cap).' is not enabled for this company.','code'=>'CAPABILITY_NOT_ENABLED','capability'=>$cap],403));
         if (!$state['write_allowed'] && !$r->isMethodSafe() && !$r->is('api/security*','api/commercial*','api/logout','api/change-password','api/intelligence-assistant/ask','api/procurement/purchase-comparison')) abort(response()->json(['message'=>'The license needs administrator review. Existing records remain available.','code'=>'LICENSE_REVIEW_REQUIRED'],403));
     }
 }

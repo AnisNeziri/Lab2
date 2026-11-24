@@ -21,6 +21,7 @@ class PurchaseOrderPaymentRequest extends FormRequest
             'exchange_rate_date'=>'nullable|date|before_or_equal:payment_date',
             'exchange_rate_source'=>'nullable|string|max:255',
             'payment_method' => ['required', Rule::in(['cash', 'bank_transfer', 'card', 'cheque', 'other'])],
+            'in_kind_amount' => ['prohibited'],
             'reference_number' => ['nullable', 'string', 'max:255'],
             'note' => ['nullable', 'string', 'max:2000'],
             'idempotency_key' => ['required', 'string', 'max:100'],

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\{OrderIntake, SalesOrder, DailySale, Invoice, CustomerDebtTransaction, FinancialAccount};
+use App\Support\CompanyCurrency;
 use App\Support\Money;
 use Illuminate\Support\Facades\{Auth, DB};
 use Illuminate\Validation\ValidationException;
@@ -85,7 +86,9 @@ class OrderWorkflowService
             $sale=DailySale::with('items')->lockForUpdate()->findOrFail($saleId);
             $existing=Invoice::where('daily_sale_id',$sale->id)->where('document_type','invoice')->first();
             if($existing)return app(InvoiceService::class)->find($existing);
-            if($order->currency!=='EUR')$this->fail('The current invoice module supports EUR only.');
+            if ($order->currency !== CompanyCurrency::current()) {
+                $this->fail('This order uses a foreign currency. A supported historical exchange-rate and settlement workflow is required before issuing its invoice.');
+            }
             $data=['customer_id'=>$order->customer_id,'invoice_date'=>\App\Support\CompanyClock::today()->toDateString(),'supply_date'=>$sale->sale_date->toDateString(),'notes'=>'Order '.$order->order_number.' / '.$sale->sale_number,'items'=>$sale->items->map(fn($i)=>['product_id'=>$i->product_id,'description'=>$i->product_name,'quantity'=>$i->quantity,'unit'=>$i->unit,'unit_price'=>$i->unit_price,'warehouse_id'=>$i->warehouse_id])->all()];
             if(!$order->customer_id)$data['buyer']=['legal_name'=>$sale->customer_name];
             return app(InvoiceService::class)->createDraft($data,$sale);

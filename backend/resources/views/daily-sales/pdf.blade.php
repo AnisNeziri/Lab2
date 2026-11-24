@@ -160,8 +160,8 @@
                     <td>{{ $item->product_name }}</td>
                     <td class="unit">{{ $item->unit }}</td>
                     <td class="qty">{{ $item->quantity }}</td>
-                    <td class="price">{{ number_format($item->unit_price, 2) }}</td>
-                    <td class="amount">{{ number_format($item->line_total, 2) }}</td>
+                    <td class="price">{{ number_format($item->unit_price, 2) }} {{ \App\Support\CompanyCurrency::normalize($company?->base_currency) }}</td>
+                    <td class="amount">{{ number_format($item->line_total, 2) }} {{ \App\Support\CompanyCurrency::normalize($company?->base_currency) }}</td>
                 </tr>
             @endforeach
         </tbody>
@@ -174,7 +174,7 @@
                 <div style="min-height: 48px; margin-top: 6px;">{{ $sale->notes ?: ' ' }}</div>
             </td>
             <td style="width: 35%;">
-                <div class="total-row">{{ $labels['total'] }}: {{ number_format($sale->total_amount, 2) }}</div>
+                <div class="total-row">{{ $labels['total'] }}: {{ number_format($sale->total_amount, 2) }} {{ \App\Support\CompanyCurrency::normalize($company?->base_currency) }}</div>
                 <div class="signature-line">
                     <strong>{{ $labels['signature'] }}</strong><br>
                     {{ $sale->signature_name ?: ' ' }}

@@ -952,6 +952,7 @@ function SupplierBill({ bill: b, onClose }) {
             <th>{t("Item", "Artikulli")}</th>
             <th className="num">{t("Ordered", "Porositur")}</th>
             <th className="num">{t("Received", "Pranuar")}</th>
+            <th className="num">{t('Billed on this receipt', 'Faturuar më parë për këtë pranim')}</th>
             <th className="num">{t("Invoiced", "Faturuar")}</th>
             <th className="num">
               {t("Quantity variance", "Diferenca e sasisë")}
@@ -967,7 +968,7 @@ function SupplierBill({ bill: b, onClose }) {
                 {l.description}
                 <small>{l.unit}</small>
               </td>
-              {["ordered", "received", "invoiced", "quantityVariance"].map(
+              {["ordered", "received", "otherInvoiced", "invoiced", "quantityVariance"].map(
                 (k) => (
                   <td className="num" key={k}>
                     {l.variance?.[k] ?? "—"}
@@ -981,8 +982,21 @@ function SupplierBill({ bill: b, onClose }) {
                 />
               </td>
               <td>
-                {l.variance?.matchFlags?.map((x) => (
-                  <Badge key={x} value={x} />
+                {l.variance?.approval_blocked && <Badge value={t('Resolve before posting', 'Zgjidhe para postimit')} good={false} />}
+                {l.variance?.issues?.map((issue) => (
+                  <small key={issue}>{({
+                    invoice_line_without_po: t('No purchase order line', 'Mungon rreshti i porosisë'),
+                    invoice_without_receipt: t('No accepted receipt quantity', 'Mungon sasia e pranuar'),
+                    receipt_line_required: t('Select the exact receipt line', 'Zgjidh rreshtin e saktë të pranimit'),
+                    prior_bill_receipt_unverified: t('Review the earlier bill’s receipt evidence', 'Shqyrto dëshminë e pranimit për faturën e mëparshme'),
+                    unit_mismatch: t('Invoice and receipt must use the order unit', 'Fatura dhe pranimi duhet të përdorin njësinë e porosisë'),
+                    receipt_exceeds_po: t('Receipt quantity exceeds the order', 'Sasia e pranuar tejkalon porosinë'),
+                    invoiced_quantity_exceeds_received: t('Invoice exceeds the accepted quantity', 'Fatura tejkalon sasinë e pranuar'),
+                    receipt_allocation_conflict: t('These lines exceed the receipt quantity after earlier billing', 'Këta rreshta tejkalojnë sasinë e pranimit pas faturimit të mëparshëm'),
+                    previous_billing_exceeds_order: t('Cumulative billing exceeds the order quantity', 'Faturimi i përgjithshëm tejkalon sasinë e porosisë'),
+                    unit_price_variance: t('Price differs from the order', 'Çmimi ndryshon nga porosia'),
+                    tax_variance: t('Line tax differs from the bill’s tax classification', 'TVSH-ja në rresht ndryshon nga klasifikimi i faturës'),
+                  })[issue] || issue.replaceAll('_', ' ')}</small>
                 ))}
               </td>
             </tr>
@@ -1010,7 +1024,7 @@ function SupplierBill({ bill: b, onClose }) {
           !b.approved_at &&
           can("supplier_invoices.approve") &&
           can("supplier_invoices.post") && (
-            <button onClick={() => setAction("approve")}>
+            <button disabled={matching.approval_blocked} onClick={() => setAction("approve")}>
               {t("Review approval & posting", "Shqyrto aprovimin dhe postimin")}
             </button>
           )}

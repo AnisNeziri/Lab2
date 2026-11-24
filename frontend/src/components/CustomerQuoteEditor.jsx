@@ -4,9 +4,11 @@ import {crmRequest} from '../api/customerWorkspace'
 import {apiRequest,buildApiUrl} from '../api/client'
 import {businessMoney} from '../utils/businessFormat'
 import {businessError} from '../utils/businessErrors'
+import {useCompanyTimezone} from '../hooks/useCompanyTimezone'
+import {addCalendarDays, companyDate} from '../utils/companyDate'
 
 export default function CustomerQuoteEditor({customer,opportunityId,draft,t,language,onClose,onSaved}){
- const day=new Date().toLocaleDateString('en-CA'),expires=new Date(Date.now()+7*86400000).toLocaleDateString('en-CA')
+ const day=companyDate(useCompanyTimezone()),expires=addCalendarDays(day,7)
  const [form,setForm]=useState({customer_id:customer.id,order_channel_id:'',opportunity_id:opportunityId||'',quote_date:day,expires_on:expires,payment_type:'credit',notes:'',billing_address:customer.billing_address||customer.address||'',delivery_address:customer.address||'',idempotency_key:crypto.randomUUID(),items:[],...(draft?{order_channel_id:draft.order_channel_id,opportunity_id:draft.opportunity_id||'',quote_date:String(draft.quote_date).slice(0,10),expires_on:String(draft.expires_on).slice(0,10),payment_type:draft.payment_type,notes:draft.notes||'',billing_address:draft.billing_address||'',delivery_address:draft.delivery_address||'',items:draft.items.map(i=>({product_id:i.product_id,name:i.description,unit:i.unit,quantity:i.quantity})),expected_revision:draft.edit_revision}:{})})
  const [channels,setChannels]=useState([]),[opportunities,setOpportunities]=useState([]),[locations,setLocations]=useState([]),[search,setSearch]=useState(''),[products,setProducts]=useState([]),[prices,setPrices]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[lookupError,setLookupError]=useState('')
  const revision=useRef(0),pending=useRef(false)

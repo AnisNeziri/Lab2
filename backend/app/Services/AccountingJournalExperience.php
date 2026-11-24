@@ -26,6 +26,9 @@ class AccountingJournalExperience
         'customer_debt_transaction' => ['CustomerDebtTransaction', 'Customer Ledger', 'debts.view', '/customer-debts?transaction='],
         'expense' => ['Expense', 'Supplier Bill / Expense', 'finance.view', '/finance?expense='],
         'expense_payment' => ['ExpensePayment', 'Supplier Payment', 'finance.view', '/finance?expense_payment='],
+        'fixed_asset_entry' => ['FixedAssetEntry', 'Fixed Asset Entry', 'finance.view', '/accounting?tab=assets&asset='],
+        'fx_revaluation' => ['FxRevaluation', 'Closing Currency Revaluation', 'accounting.periods.manage', '/accounting?tab=periods&period='],
+        'corporate_tax_review' => ['CorporateTaxReview', 'Current Corporate Income Tax', 'accounting.periods.manage', '/accounting?tab=periods&period='],
         'purchase_order_payment' => ['PurchaseOrderPayment', 'Supplier Advance', 'purchase_orders.view', '/purchase-orders?payment='],
         'supplier_payment_allocation' => ['SupplierInvoicePaymentAllocation', 'Supplier Advance Applied', 'supplier_invoices.view', '/operations-center?tab=matching&allocation='],
         'stock_movement' => ['StockMovement', 'Inventory Movement', 'inventory.view', '/stock?movement='],
@@ -96,6 +99,9 @@ class AccountingJournalExperience
                 if ($j->source_type === 'expense_payment') {
                     $url = '/finance?expense='.$record->expense_id;
                 }
+                if ($j->source_type === 'fixed_asset_entry') $url = $config[3].$record->fixed_asset_id;
+                if ($j->source_type === 'fx_revaluation') $url = $config[3].$record->accounting_period_id;
+                if ($j->source_type === 'corporate_tax_review') $url = $config[3].$record->accounting_period_id;
                 if ($j->source_type === 'purchase_order_payment' && $record->purchase_order_id) {
                     $url = '/purchase-orders?po='.$record->purchase_order_id.'&payment='.$record->id;
                 }

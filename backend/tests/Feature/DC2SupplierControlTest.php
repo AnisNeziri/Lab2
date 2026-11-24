@@ -25,7 +25,7 @@ class DC2SupplierControlTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function context(int $quantity = 10000, float $price = 2.5): array
+    private function context(int|float $quantity = 10000, float $price = 2.5, array $orderOptions = []): array
     {
         $this->actingAsApiUser('admin');
         Auth::setUser(User::where('company_id', $this->apiCompany->id)->firstOrFail());
@@ -33,7 +33,7 @@ class DC2SupplierControlTest extends TestCase
         $supplier = Supplier::create($this->tenantAttributes(['name' => 'DC2 supplier']));
         $category = Category::create($this->tenantAttributes(['name' => 'DC2 fabrics']));
         $product = Product::create($this->tenantAttributes(['category_id' => $category->id, 'supplier_id' => $supplier->id, 'name' => 'DC2 fabric', 'sku' => 'DC2-FAB', 'quantity' => 0, 'unit' => 'm', 'price' => 5, 'purchase_price' => $price]));
-        $id = $this->postJson('/api/purchase-orders', ['supplier_id' => $supplier->id, 'ordered_at' => '2026-09-01', 'currency' => 'EUR', 'status' => 'ordered', 'items' => [['product_id' => $product->id, 'description' => 'Fabric', 'quantity' => $quantity, 'unit' => 'm', 'unit_price' => $price]]])->assertCreated()->json('id');
+        $id = $this->postJson('/api/purchase-orders', ['supplier_id' => $supplier->id, 'ordered_at' => '2026-09-01', 'currency' => 'EUR', 'status' => 'ordered', 'items' => [['product_id' => $product->id, 'description' => 'Fabric', 'quantity' => $quantity, 'unit' => 'm', 'unit_price' => $price]], ...$orderOptions])->assertCreated()->json('id');
 
         return [$supplier, $product, PurchaseOrder::findOrFail($id)];
     }
@@ -45,13 +45,154 @@ class DC2SupplierControlTest extends TestCase
         return PurchaseOrderPayment::where('idempotency_key', $key)->firstOrFail();
     }
 
-    private function bill(Supplier $supplier, ?PurchaseOrder $po, int $quantity = 10000, float $price = 2.5, array $overrides = []): array
+    private function bill(Supplier $supplier, ?PurchaseOrder $po, int|float $quantity = 10000, float $price = 2.5, array $overrides = []): array
     {
         return [...['supplier_id' => $supplier->id, 'purchase_order_id' => $po?->id, 'vendor_name' => $supplier->name, 'vendor_business_number' => '811111111',
             'document_type' => 'purchase_invoice', 'document_number' => 'DC2-BILL', 'source_type' => 'domestic', 'asset_treatment' => 'ordinary', 'category' => $po ? 'inventory' : 'rent', 'business_purpose' => 'Company operations',
             'invoice_date' => '2026-09-15', 'received_date' => '2026-09-15', 'due_date' => '2026-10-15', 'currency' => 'EUR', 'exchange_rate' => 1,
             'net_amount' => $quantity * $price, 'vat_rate' => 0, 'vat_amount' => 0, 'vat_treatment' => 'non_vat', 'input_vat_eligible' => false, 'deductible_vat_amount' => 0,
             'items' => [['purchase_order_item_id' => $po?->items->first()->id, 'product_id' => $po?->items->first()->product_id, 'description' => $po ? 'Fabric' : 'Office rent', 'quantity' => $quantity, 'unit' => $po ? 'm' : 'month', 'unit_price' => $price, 'vat_rate' => 0]]], ...$overrides];
+    }
+
+    public function test_partial_receipts_are_independent_and_approval_rechecks_competing_claims(): void
+    {
+        [$supplier, , $po] = $this->context(10, 20);
+        foreach ([4.25, 5.75] as $quantity) {
+            $this->postJson("/api/purchase-orders/{$po->id}/receive", [
+                'items' => [['id' => $po->items->first()->id, 'quantity' => $quantity]], 'idempotency_key' => (string) Str::uuid(),
+            ])->assertOk();
+        }
+        [$first, $second] = GoodsReceipt::query()->where('purchase_order_id', $po->id)->oldest('id')->get()->all();
+        $draft = $this->bill($supplier, $po, 4.25, 20, ['goods_receipt_ids' => [$first->id]]);
+        $billOne = $this->postJson('/api/supplier-invoices', $draft)->assertCreated()->assertJsonPath('match_status', 'matched')->json('id');
+        $competing = $this->postJson('/api/supplier-invoices', [...$draft, 'document_number' => 'COMPETING'])->assertCreated()->assertJsonPath('match_status', 'matched')->json('id');
+        $this->postJson("/api/supplier-invoices/$billOne/approve", [])->assertOk();
+        $this->postJson("/api/supplier-invoices/$billOne/recalculate")->assertOk()->assertJsonPath('match_status', 'approved');
+        $this->postJson("/api/supplier-invoices/$competing/approve", ['reason' => 'Previously considered independent stock.'])->assertUnprocessable()->assertJsonValidationErrors('items');
+        $this->assertFalse(JournalEntry::query()->where('source_key', 'expense:'.$competing)->exists());
+
+        $split = $this->bill($supplier, $po, 3, 20, ['document_number' => 'SPLIT', 'goods_receipt_ids' => [$second->id]]);
+        $split['net_amount'] = 120;
+        $split['items'][] = $split['items'][0];
+        $splitId = $this->postJson('/api/supplier-invoices', $split)->assertCreated()->assertJsonPath('match_summary.approval_blocked', true)->json('id');
+        $this->postJson("/api/supplier-invoices/$splitId/approve", ['reason' => 'Tried two lines on one receipt.'])->assertUnprocessable();
+
+        $billTwo = $this->postJson('/api/supplier-invoices', $this->bill($supplier, $po, 5.75, 20, ['document_number' => 'SECOND-RECEIPT', 'goods_receipt_ids' => [$second->id]]))
+            ->assertCreated()->assertJsonPath('match_status', 'matched')->assertJsonPath('match_summary.lines.0.otherInvoiced', 0)->json('id');
+        $this->postJson("/api/supplier-invoices/$billTwo/approve", [])->assertOk();
+        $this->postJson("/api/supplier-invoices/$billTwo/approve", [])->assertOk();
+        $this->assertSame(2, JournalEntry::where('source_type', 'expense')->count());
+        $this->assertSame('200.00', app(AccountingService::class)->reconciliation(false)['rows']['accounts_payable']['gl_amount']);
+    }
+
+    public function test_domestic_order_cash_limit_applies_to_partial_bills_and_order_payments(): void
+    {
+        [$supplier, , $po] = $this->context(10, 40);
+        \App\Models\InvoiceProfile::create($this->tenantAttributes(['legal_name' => 'Synthetic Kosovo Buyer', 'country_code' => 'XK', 'registered_address' => 'Synthetic Street', 'municipality' => 'Prishtina']));
+        $payment = ['amount' => 100, 'payment_date' => '2026-09-20', 'payment_method' => 'cash', 'idempotency_key' => (string) Str::uuid()];
+        $this->postJson("/api/purchase-orders/{$po->id}/payments", $payment)->assertUnprocessable()->assertJsonValidationErrors('payment_method');
+        $this->postJson("/api/purchase-orders/{$po->id}/receive", [
+            'items' => [['id' => $po->items->first()->id, 'quantity' => 5]], 'idempotency_key' => (string) Str::uuid(),
+        ])->assertOk();
+        $receipt = GoodsReceipt::query()->where('purchase_order_id', $po->id)->value('id');
+        $bill = $this->postJson('/api/supplier-invoices', $this->bill($supplier, $po, 5, 40, ['goods_receipt_ids' => [$receipt]]))
+            ->assertCreated()->json('id');
+        $this->postJson("/api/supplier-invoices/$bill/approve", [])->assertOk();
+
+        $this->postJson("/api/finance/expenses/$bill/payments", $payment)->assertUnprocessable()->assertJsonValidationErrors('payment_method');
+        $this->postJson("/api/purchase-orders/{$po->id}/payments", $payment)->assertUnprocessable()->assertJsonValidationErrors('payment_method');
+        $this->assertDatabaseCount('expense_payments', 0);
+        $this->assertDatabaseCount('purchase_order_payments', 0);
+    }
+
+    public function test_import_advances_partial_receipts_bills_and_late_freight_reconcile_to_sales(): void
+    {
+        [$supplier, $product, $po] = $this->context(10, 20, ['currency' => 'USD', 'exchange_rate' => '0.90', 'exchange_rate_date' => '2026-09-01', 'exchange_rate_source' => 'Fictional approved PO quotation']);
+        $today = CompanyClock::today()->toDateString();
+        $warehouse = $this->postJson('/api/warehouses', ['name' => 'Import warehouse', 'code' => 'KS-IMPORT', 'is_default' => true])->assertCreated()->json('id');
+        $bank = app(\App\Services\FinancialAccountService::class)->createAccount(['name' => 'Synthetic import bank', 'type' => 'bank', 'currency' => 'EUR', 'opening_balance' => 2000, 'opening_date' => '2026-09-01']);
+        \App\Models\InvoiceProfile::create($this->tenantAttributes(['legal_name' => 'Synthetic Kosovo Textile Company', 'business_registration_number' => '811234567', 'fiscal_number' => '600987654', 'registered_address' => 'Synthetic Street', 'municipality' => 'Prishtina', 'country_code' => 'XK', 'invoice_prefix' => 'KSINV', 'credit_note_prefix' => 'KSCN', 'is_vat_registered' => true, 'vat_number' => '330987654', 'sales_mode' => 'business_only']));
+        $this->postJson("/api/purchase-orders/{$po->id}/payments", ['amount' => 50, 'payment_date' => '2026-09-02', 'payment_method' => 'bank_transfer', 'financial_account_id' => $bank->id, 'idempotency_key' => 'import-advance', 'exchange_rate' => '0.90', 'exchange_rate_date' => '2026-09-02', 'exchange_rate_source' => 'Fictional bank advance'])->assertCreated();
+
+        $shipment = \App\Models\Shipment::create($this->tenantAttributes(['tracking_number' => 'DC391-FABRIC', 'transport_mode' => 'sea', 'status' => 'in_transit']));
+        $orderLine = $po->items->first()->id;
+        $cargo = $this->putJson("/api/shipments/{$shipment->id}/logistics", ['purchase_order_id' => $po->id, 'warehouse_id' => $warehouse, 'arrival_date' => '2026-09-10', 'items' => [['purchase_order_item_id' => $orderLine, 'product_id' => $product->id, 'description' => 'Fabric', 'unit' => 'm', 'quantity' => 10, 'loaded_quantity' => 10, 'base_quantity' => 10]]])->assertOk()->json('items.0.id');
+        $billIds = [];
+        foreach ([4.25, 5.75] as $index => $quantity) {
+            $receipt = ['received_at' => '2026-09-1'.$index.' 10:00:00', 'warehouse_id' => $warehouse, 'idempotency_key' => (string) Str::uuid(), 'items' => [['id' => $orderLine, 'shipment_item_id' => $cargo, 'quantity' => $quantity]]];
+            $this->postJson("/api/purchase-orders/{$po->id}/receive", $receipt)->assertOk();
+            $this->postJson("/api/purchase-orders/{$po->id}/receive", $receipt)->assertOk();
+            $receiptId = GoodsReceipt::where('purchase_order_id', $po->id)->latest('id')->value('id');
+            $firstReceiptId ??= $receiptId;
+            $invoice = $this->bill($supplier, $po, $quantity, 20, ['document_number' => 'IMPORT-BILL-'.$index, 'source_type' => 'import', 'goods_receipt_ids' => [$receiptId], 'currency' => 'USD', 'exchange_rate' => '0.90', 'exchange_rate_date' => '2026-09-15', 'exchange_rate_source' => 'Fictional historical bill quotation']);
+            $billIds[] = $billId = $this->postJson('/api/supplier-invoices', $invoice)->assertCreated()->json('id');
+            $this->postJson("/api/supplier-invoices/$billId/approve", [])->assertOk();
+        }
+        $this->assertDatabaseCount('goods_receipts', 2);
+        $accounting = app(AccountingService::class);
+        $this->assertSame('135.00', $accounting->reconciliation(false)['rows']['accounts_payable']['gl_amount']);
+        foreach ([35, 115] as $index => $amount) {
+            $this->postJson('/api/finance/expenses/'.$billIds[$index].'/payments', ['amount' => $amount, 'payment_date' => $today, 'payment_method' => 'bank_transfer', 'financial_account_id' => $bank->id, 'exchange_rate' => '0.95', 'exchange_rate_date' => $today, 'exchange_rate_source' => 'Fictional settlement confirmation', 'idempotency_key' => 'import-supplier-settlement-'.$index])->assertCreated();
+        }
+        $expense = ['vendor_name' => 'Fictional agent', 'source_type' => 'domestic', 'asset_treatment' => 'ordinary', 'business_purpose' => 'Synthetic import verification', 'invoice_date' => $today, 'received_date' => $today, 'currency' => 'EUR', 'vat_rate' => 0, 'vat_amount' => 0, 'vat_treatment' => 'non_vat', 'input_vat_eligible' => false];
+        $customs = $this->postJson('/api/finance/expenses', [...$expense, 'source_type' => 'import', 'category' => 'taxes_fees', 'document_type' => 'customs_document', 'document_number' => 'SYNTH-CUSTOMS', 'import_taxable_base' => 200, 'net_amount' => 0, 'vat_rate' => 18, 'vat_amount' => 36, 'vat_treatment' => 'import_vat', 'input_vat_eligible' => true, 'deductible_vat_amount' => 36])->assertCreated()->json('id');
+        $this->postJson("/api/finance/expenses/$customs/post")->assertOk();
+        $freight = $this->postJson('/api/finance/expenses', [...$expense, 'category' => 'transport', 'document_type' => 'purchase_invoice', 'document_number' => 'SYNTH-FREIGHT', 'net_amount' => 50])->assertCreated()->json('id');
+        $office = $this->postJson('/api/finance/expenses', [...$expense, 'category' => 'office', 'document_type' => 'purchase_invoice', 'document_number' => 'SYNTH-OFFICE', 'net_amount' => 20])->assertCreated()->json('id');
+        foreach ([$freight => 50, $office => 20] as $id => $amount) {
+            $this->postJson("/api/finance/expenses/$id/post")->assertOk();
+            $this->postJson("/api/finance/expenses/$id/payments", ['amount' => $amount, 'payment_date' => $today, 'payment_method' => 'bank_transfer', 'financial_account_id' => $bank->id, 'idempotency_key' => 'import-overhead-'.$id])->assertCreated();
+        }
+        $this->postJson('/api/daily-sales', ['sale_date' => $today, 'items' => [['product_id' => $product->id, 'product_name' => $product->name, 'warehouse_id' => $warehouse, 'quantity' => 2.5, 'unit' => 'm', 'unit_price' => 40]]])->assertCreated();
+        $landed = $this->postJson('/api/landed-costs', ['goods_receipt_id' => $firstReceiptId, 'source_expense_id' => $freight, 'cost_type' => 'freight', 'amount' => 50, 'currency' => 'EUR', 'allocation_method' => 'quantity', 'idempotency_key' => (string) Str::uuid()])->assertCreated()->json('id');
+        $this->postJson("/api/landed-costs/$landed/post")->assertOk();
+        $this->postJson("/api/landed-costs/$landed/post")->assertOk();
+        $allocation = \App\Models\LandedCostAccountingEntry::where('landed_cost_id', $landed)->sole();
+        $this->assertSame('3.188', $allocation->remaining_quantity_at_post);
+        $this->assertSame('1.062', $allocation->quantity_recognized_in_cogs);
+        $this->assertSame('37.500000', $allocation->inventory_adjustment_amount);
+        $this->assertSame('12.500000', $allocation->cogs_adjustment_amount);
+        $invoice = $this->postJson('/api/invoices', ['invoice_date' => $today, 'supply_date' => $today, 'buyer' => ['legal_name' => 'Synthetic furniture shop', 'business_registration_number' => '812222222', 'address' => 'Test street', 'country_code' => 'XK'], 'items' => [['product_id' => $product->id, 'description' => 'Fabric', 'quantity' => 1.5, 'unit' => 'm', 'unit_price' => 40, 'warehouse_id' => $warehouse, 'vat_rate' => 18, 'tax_treatment' => 'standard']]])->assertCreated()->json('id');
+        $this->postJson("/api/invoices/$invoice/issue")->assertOk()->assertJsonPath('grand_total', '70.80');
+        $this->postJson('/api/payments', ['invoice_id' => $invoice, 'amount' => 20, 'payment_date' => $today, 'payment_method' => 'bank_transfer', 'financial_account_id' => $bank->id, 'idempotency_key' => 'import-customer-receipt'])->assertCreated();
+
+        $reconciliation = app(\App\Services\BankReconciliationService::class);
+        $csv = "Date,Amount,Balance\n2026-09-02,-45.00,1955.00\n$today,-33.25,1921.75\n$today,-109.25,1812.50\n$today,-50.00,1762.50\n$today,-20.00,1742.50\n$today,20.00,1762.50\n";
+        $statement = $reconciliation->import($bank, \Illuminate\Http\UploadedFile::fake()->createWithContent('synthetic-statement.csv', $csv), ['date' => 'Date', 'amount' => 'Amount', 'balance' => 'Balance']);
+        $journalCount = JournalEntry::count();
+        $transactions = $bank->transactions()->orderBy('id')->get();
+        $this->assertCount(6, $transactions);
+        foreach ($statement->rows->values() as $index => $row) {
+            $reconciliation->reconcile($row, $transactions[$index]);
+        }
+        $this->postJson("/api/finance/bank-statements/{$statement->id}/complete")->assertOk()->assertJsonPath('balance_control.difference', '0.00');
+        $this->assertSame($journalCount, JournalEntry::count());
+
+        // 10m at €18, then 2.5m sold before €50 freight. The remaining 75% of that freight is €37.50.
+        // The second sale uses the resulting €23/m carrying cost. All amounts below are independent expectations.
+        $this->assertEquals(6, $product->fresh()->quantity);
+        $this->assertSame('23.000000', $product->fresh()->weighted_average_cost);
+        $controls = $accounting->reconciliation(false);
+        $this->assertTrue($controls['all_reconciled'], json_encode($controls));
+        foreach (['inventory' => '138.00', 'accounts_receivable' => '50.80', 'accounts_payable' => '36.00', 'supplier_advances' => '0.00', 'customer_advances' => '0.00', 'cash_bank' => '1862.50'] as $key => $amount) {
+            $this->assertSame($amount, $controls['rows'][$key]['gl_amount'], $key);
+        }
+        $profit = $accounting->profitAndLoss(null, $today);
+        foreach (['revenue' => '160.00', 'cost_of_goods_sold' => '92.00', 'gross_profit' => '68.00', 'operating_expenses' => '20.00', 'other_losses' => '7.50', 'net_profit' => '40.50'] as $key => $amount) {
+            $this->assertSame($amount, $profit[$key], $key);
+        }
+        $vat = app(\App\Services\VatReportingService::class)->reconciliation(null, $today);
+        $this->assertTrue($vat['reconciled']);
+        $this->assertSame('36.00', $vat['controls']['input_vat']['gl_total']);
+        $this->assertSame('10.80', $vat['controls']['output_vat']['gl_total']);
+        $balance = $accounting->balanceSheet($today);
+        $this->assertSame('2087.30', $balance['assets']);
+        $this->assertSame('46.80', $balance['liabilities']);
+        $this->assertSame('2040.50', $balance['total_equity']);
+        $this->assertTrue($accounting->trialBalance(null, $today)['balanced']);
+        $cashFlow = $accounting->cashFlow(null, $today);
+        $this->assertTrue($cashFlow['reconciles']);
+        $this->assertSame('1862.50', $cashFlow['closing_cash']);
     }
 
     public function test_supplier_draft_never_allocates_advance_or_changes_posted_books(): void

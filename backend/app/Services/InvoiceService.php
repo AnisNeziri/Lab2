@@ -9,6 +9,7 @@ use App\Models\InvoiceProfile;
 use App\Models\InvoiceSequence;
 use App\Models\Product;
 use App\Models\StockMovement;
+use App\Support\CompanyCurrency;
 use App\Support\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -179,7 +180,7 @@ class InvoiceService
                 'document_type' => 'invoice',
                 'compliance_status' => 'draft',
                 'buyer_snapshot' => $buyer ?: null,
-                'currency' => 'EUR',
+                ...$this->draftCurrency($data, $sourceSale !== null),
                 'invoice_date' => $data['invoice_date'],
                 'issued_at' => null,
                 'supply_date' => $data['supply_date'],
@@ -202,6 +203,25 @@ class InvoiceService
 
             return $this->find($invoice->fresh());
         });
+    }
+
+    private function draftCurrency(array $data, bool $fromDispatch, ?Invoice $draft = null): array
+    {
+        $base = CompanyCurrency::current();
+        $currency = strtoupper($data['currency'] ?? $draft?->currency ?? $base);
+        if ($currency === $base) {
+            return ['currency' => $base, 'exchange_snapshot' => null];
+        }
+        if ($base !== 'EUR' || $fromDispatch || ! in_array($currency, ['USD', 'GBP', 'CHF', 'ALL', 'RSD', 'TRY', 'CNY'], true)) {
+            throw ValidationException::withMessages(['currency' => ['Select a supported standalone invoice currency in a company with EUR books.']]);
+        }
+        if (! isset($data['exchange_rate'], $data['exchange_rate_date'], $data['exchange_rate_source'])
+            && ! array_key_exists('currency', $data) && $draft?->exchange_snapshot) {
+            return ['currency' => $currency, 'exchange_snapshot' => $draft->exchange_snapshot];
+        }
+        $date = CarbonImmutable::parse($data['invoice_date'])->toDateString();
+
+        return ['currency' => $currency, 'exchange_snapshot' => \App\Support\InvoiceExchange::snapshot($data, $date)];
     }
 
     public function createAndIssue(array $data): Invoice
@@ -231,6 +251,7 @@ class InvoiceService
                 'customer_id' => $data['customer_id'] ?? null,
                 'customer_name' => $buyer['legal_name'] ?? null,
                 'buyer_snapshot' => $buyer ?: null,
+                ...$this->draftCurrency($data, $invoice->daily_sale_id !== null, $invoice),
                 'invoice_date' => $data['invoice_date'],
                 'supply_date' => $data['supply_date'],
                 'supply_time' => $data['supply_time'] ?? null,
@@ -256,6 +277,7 @@ class InvoiceService
         DB::transaction(function () use ($invoice) {
             $invoice = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
             $this->ensureDraft($invoice);
+            $this->assertNoAssetSaleApproval($invoice);
             $invoice->delete();
         });
     }
@@ -267,6 +289,7 @@ class InvoiceService
         return DB::transaction(function () use ($invoice, $reason) {
             $invoice = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
             $this->ensureDraft($invoice);
+            $this->assertNoAssetSaleApproval($invoice);
             $invoice->update([
                 'status' => 'void',
                 'payment_status' => 'void',
@@ -281,11 +304,19 @@ class InvoiceService
         });
     }
 
+    private function assertNoAssetSaleApproval(Invoice $invoice): void
+    {
+        if (\App\Models\FixedAssetEntry::query()->where('sale_invoice_id', $invoice->id)->exists()) {
+            throw ValidationException::withMessages(['invoice' => ['Withdraw the draft asset-sale approval before voiding or deleting this invoice.']]);
+        }
+    }
+
     public function issue(Invoice $invoice): Invoice
     {
         $this->assertInvoiceCompany($invoice);
 
         return DB::transaction(function () use ($invoice) {
+            \Illuminate\Support\Facades\DB::table('companies')->where('id', $invoice->company_id)->lockForUpdate()->first();
             $invoice = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
             if ($invoice->issued_at && in_array($invoice->status, ['issued', 'partially_paid', 'paid'], true)) {
                 app(InvoiceArchiveService::class)->archive($invoice);
@@ -299,6 +330,9 @@ class InvoiceService
             $profile = InvoiceProfile::query()->first();
             if (! $profile) {
                 throw ValidationException::withMessages(['profile' => ['Complete the company invoice profile before issuing an invoice.']]);
+            }
+            if ($profile->country_code === 'XK' && CompanyCurrency::current() !== 'EUR') {
+                throw ValidationException::withMessages(['currency' => ['A Kosovo invoice profile requires EUR as the company accounting currency. Have an accountant review the company setup.']]);
             }
             $missing = $this->profiles->missingRequiredFields($profile);
             if ($missing !== []) {
@@ -334,6 +368,21 @@ class InvoiceService
             $this->validateTaxes($invoice, $profile, $buyer);
 
             $issuedAt = $this->businessNow();
+            $assets = app(FixedAssetService::class);
+            $assetSale = $assets->saleForIssue($invoice, $issuedAt->toDateString());
+            $exchange = $invoice->exchange_snapshot;
+            if ($invoice->currency !== CompanyCurrency::current()) {
+                if (! $exchange || $profile->is_vat_registered || $invoice->items->contains(fn (InvoiceItem $line) => $line->tax_treatment !== 'non_vat')) {
+                    throw ValidationException::withMessages(['currency' => ['Foreign-currency issuance currently requires an evidenced non-VAT invoice. Use the EUR invoice workflow for VAT supplies.']]);
+                }
+                if ($exchange['date'] > $issuedAt->toDateString()) {
+                    throw ValidationException::withMessages(['exchange_rate_date' => ['The rate must be effective by the invoice issue date.']]);
+                }
+                $exchange['base_total'] = Money::multiply($invoice->grand_total, $exchange['rate']);
+                if (Money::compare($exchange['base_total'], 0) <= 0) {
+                    throw ValidationException::withMessages(['exchange_rate' => ['The rate produces a zero EUR invoice value. Review the source rate and amount.']]);
+                }
+            }
             if ($invoice->due_at && $invoice->due_at->toDateString() < $issuedAt->toDateString()) {
                 throw ValidationException::withMessages(['due_date' => ['The due date cannot be earlier than the actual issue date.']]);
             }
@@ -351,6 +400,7 @@ class InvoiceService
                 'buyer_snapshot' => $buyer,
                 'customer_name' => $buyer['legal_name'],
                 'invoice_date' => $issuedAt->toDateString(),
+                'exchange_snapshot' => $exchange,
                 'payment_terms' => $this->issuedPaymentTerms($invoice->payment_terms, $profile),
                 'issued_at' => $issuedAt,
                 'issued_by' => Auth::id(),
@@ -360,6 +410,9 @@ class InvoiceService
             ]);
             $invoice->update(['integrity_hash' => $this->integrityHash($invoice->fresh('items'))]);
             $this->operationalAccounting->postInvoice($invoice->fresh('items'));
+            if ($assetSale) {
+                $assets->postSale($assetSale, $invoice);
+            }
             if ($invoice->daily_sale_id && $invoice->dailySale?->outboundDispatch) {
                 $dispatch=$invoice->dailySale->outboundDispatch;
                 if ($dispatch->order->payment_type === 'cash') $invoice->update(['total_paid'=>$invoice->grand_total,'payment_status'=>'paid','status'=>'paid','paid_at'=>now()]);
@@ -381,6 +434,7 @@ class InvoiceService
         if ($original->daily_sale_id) throw ValidationException::withMessages(['order'=>['This invoice documents an order sale. Process the return through the order; do not reverse the sale or stock twice.']]);
 
         return DB::transaction(function () use ($original, $reason) {
+            DB::table('companies')->where('id', $original->company_id)->lockForUpdate()->first();
             $original = Invoice::query()->lockForUpdate()->findOrFail($original->id);
             $existing = Invoice::query()
                 ->where('original_invoice_id', $original->id)
@@ -419,7 +473,8 @@ class InvoiceService
                 'compliance_status' => 'compliant_b2b',
                 'seller_snapshot' => $original->seller_snapshot,
                 'buyer_snapshot' => $original->buyer_snapshot,
-                'currency' => 'EUR',
+                'currency' => $original->currency ?: 'EUR',
+                'exchange_snapshot' => $original->exchange_snapshot,
                 'invoice_date' => $issuedAt->toDateString(),
                 'issued_at' => $issuedAt,
                 'issued_by' => Auth::id(),
@@ -462,6 +517,7 @@ class InvoiceService
                 'integrity_hash' => $this->integrityHash($credit->fresh('items')),
             ]);
             $this->operationalAccounting->creditInvoice($credit->fresh('items'), $original, $reason);
+            app(FixedAssetService::class)->reverseSale($original, $issuedAt->toDateString(), $reason);
 
             app(InvoiceArchiveService::class)->archive($credit->fresh());
             return $this->find($credit->fresh());
@@ -557,7 +613,7 @@ class InvoiceService
             } catch (ValidationException $exception) {
                 throw ValidationException::withMessages(['items' => collect($exception->errors())->flatten()->all()]);
             }
-            $priceValue = $input['unit_price'] ?? $product?->selling_price ?? $product?->price;
+            $priceValue = $input['unit_price'] ?? ($invoice->exchange_snapshot ? null : ($product?->selling_price ?? $product?->price));
             if ($priceValue === null) {
                 throw ValidationException::withMessages(['items' => ["Enter a unit price for {$description}."]]);
             }
@@ -990,7 +1046,7 @@ class InvoiceService
             'notes' => $invoice->notes,
             'seller' => $invoice->seller_snapshot,
             'buyer' => $invoice->buyer_snapshot,
-            'currency' => 'EUR',
+            'currency' => $invoice->currency ?: 'EUR',
             'sequence' => [$invoice->sequence_year, $invoice->sequence_number],
             'issued_by' => $invoice->issued_by,
             'fiscal_receipt_number' => $invoice->fiscal_receipt_number,
@@ -1003,6 +1059,9 @@ class InvoiceService
             ]))->values()->all(),
         ];
 
+        if ($invoice->exchange_snapshot) {
+            $payload['exchange_snapshot'] = $invoice->exchange_snapshot;
+        }
         if ($invoice->items->contains(fn($item) => $item->tax_snapshot !== null || $item->pricing_mode !== null)) {
             $payload['tax_evidence'] = $invoice->items->map(fn($item) => $item->only(['tax_code_id','tax_snapshot','pricing_mode','pricing_discount_amount','sef_category_id']))->values()->all();
         }

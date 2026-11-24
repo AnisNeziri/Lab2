@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'allow_predictable_seed' => (bool) env('AIMS_ALLOW_PREDICTABLE_DEMO_SEED', false),
     'version' => 'pm3-v1',
     'seed' => 20261006,
     'days' => 90,

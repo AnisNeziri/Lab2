@@ -4,9 +4,12 @@ import { orderHub } from '../api/orderHub'
 import * as fulfillment from '../api/fulfillment'
 import { getFinancialAccounts } from '../api/advancedOperations'
 import { downloadInvoicePdf } from '../api/invoices'
+import { useCompanyTimezone } from '../hooks/useCompanyTimezone'
+import { companyDate } from '../utils/companyDate'
 
 export default function OrderConnections({detail,t,language,permissions,busy,run}) {
-  const navigate=useNavigate(),o=detail.order,c=detail.connections||{},[verified,setVerified]=useState(false),[recipient,setRecipient]=useState(''),[accounts,setAccounts]=useState([]),[payment,setPayment]=useState({amount:'',financial_account_id:'',payment_method:'cash',transaction_date:new Date().toLocaleDateString('en-CA')})
+  const timeZone = useCompanyTimezone()
+  const navigate=useNavigate(),o=detail.order,c=detail.connections||{},[verified,setVerified]=useState(false),[recipient,setRecipient]=useState(''),[accounts,setAccounts]=useState([]),[payment,setPayment]=useState(()=>({amount:'',financial_account_id:'',payment_method:'cash',transaction_date:companyDate(timeZone)}))
   const paymentKey=useRef(crypto.randomUUID()),readyKey=useRef(crypto.randomUUID()),dispatchKey=useRef(crypto.randomUUID())
   const canPay=permissions.includes('debts.payments')&&permissions.includes('financial_accounts.adjust')&&permissions.includes('fulfillment.manage')
   const canMarkReady=permissions.includes('fulfillment.manage')&&permissions.includes('fulfillment.pick')

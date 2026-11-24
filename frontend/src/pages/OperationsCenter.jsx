@@ -23,6 +23,8 @@ import {
 } from "../api/advancedOperations";
 import { useSettingsStore } from "../store/settingsStore";
 import { useAuthStore } from "../store/authStore";
+import { useCompanyTimezone } from "../hooks/useCompanyTimezone";
+import { companyDate } from "../utils/companyDate";
 import "./OperationsCenter.css";
 
 const text = {
@@ -267,7 +269,7 @@ function Replenishment({ data, meta, run, t, can }) {
 function Catalogue({ data, meta, run, t, can, baseCurrency }) {
  const tx = useUiText()
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = companyDate(useCompanyTimezone());
   const blank = () => ({ product_id: "", supplier_id: "", supplier_sku: "", purchase_price: "", currency: baseCurrency, exchange_rate_to_base: 1, exchange_rate_date: today, pack_size: 1, minimum_order_quantity: 0, usual_lead_time_days: 0, is_preferred: false, is_active: true, supplier_description: "", price_effective_at: today, price_change_reason: "" });
   const [form, setForm] = useState(blank);
   const [editing, setEditing] = useState(null);
@@ -304,12 +306,13 @@ function CatalogueInsights({ performance, history, baseCurrency }) {
 }
 
 function LandedCosts({ data, meta, run, t, can, baseCurrency }) {
+  const timeZone = useCompanyTimezone();
   const [sourceParams]=useSearchParams();
  const tx = useUiText()
 
   const [sourceBills,setSourceBills]=useState([]),[sourceBillError,setSourceBillError]=useState("");
   useEffect(()=>{let alive=true;if(can('finance.view'))getExpenses({status:'posted',per_page:50}).then(d=>alive&&setSourceBills(d.data||[])).catch(e=>alive&&setSourceBillError(e.message));return()=>{alive=false}},[]);
-  const [form, setForm] = useState({ source_expense_id:"", goods_receipt_id: sourceParams.get('receipt')||"", cost_type: "freight", amount: "", currency: baseCurrency, exchange_rate_to_base: 1, exchange_rate_date: new Date().toISOString().slice(0, 10), allocation_method: "value", reference_number: "", description: "" });
+  const [form, setForm] = useState(() => ({ source_expense_id:"", goods_receipt_id: sourceParams.get('receipt')||"", cost_type: "freight", amount: "", currency: baseCurrency, exchange_rate_to_base: 1, exchange_rate_date: companyDate(timeZone), allocation_method: "value", reference_number: "", description: "" }));
   const [receipt, setReceipt] = useState(null);
   const [receiptBusy, setReceiptBusy] = useState(false);
   const [selectedItems, setSelectedItems] = useState([]);
@@ -424,10 +427,11 @@ function Returns({ data, meta, run, t, can, baseCurrency }) {
 }
 
 function SupplierMatching({ data, meta, run, t, can }) {
+  const timeZone = useCompanyTimezone();
  const tx = useUiText()
 
   const blankLine = (vatRate = 0) => ({ product_id: "", purchase_order_item_id: "", description: "", quantity: 1, unit: "pcs", unit_price: 0, vat_rate: vatRate });
-  const [form, setForm] = useState({ supplier_id: "", purchase_order_id: "", document_number: "", invoice_date: new Date().toISOString().slice(0, 10), vat_rate: 0, input_vat_eligible: false, lines: [blankLine()] });
+  const [form, setForm] = useState(() => ({ supplier_id: "", purchase_order_id: "", document_number: "", invoice_date: companyDate(timeZone), vat_rate: 0, input_vat_eligible: false, lines: [blankLine()] }));
   const [order, setOrder] = useState(null);
   const [receiptDetails, setReceiptDetails] = useState([]);
   const [selectedReceiptIds, setSelectedReceiptIds] = useState([]);

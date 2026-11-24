@@ -3,21 +3,81 @@ namespace Tests\Feature;
 
 use Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use App\Models\{Category, Customer, Product, DailySale, Invoice, InvoiceProfile, JournalEntry};
+use App\Models\{Category, Customer, Product, DailySale, Invoice, InvoiceProfile, JournalEntry, Shipment, Supplier};
 
 class OrderWorkflowTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function fixture(string $terms='cash'): array
+    private function fixture(string $terms='cash', int $price=5): array
     {
         $this->actingAsApiUser();
         $category=Category::create($this->tenantAttributes(['name'=>'Handles']));
         $warehouse=$this->postJson('/api/warehouses',['name'=>'Main','code'=>'MAIN','is_default'=>true])->assertCreated()->json();
-        $p=$this->postJson('/api/products',['name'=>'Door handle','sku'=>'HANDLE','barcode'=>'123456789012','category_id'=>$category->id,'default_warehouse_id'=>$warehouse['id'],'unit'=>'pcs','quantity'=>20,'min_quantity'=>1,'purchase_price'=>2,'selling_price'=>5,'price'=>5])->assertCreated()->json();
+        $p=$this->postJson('/api/products',['name'=>'Door handle','sku'=>'HANDLE','barcode'=>'123456789012','category_id'=>$category->id,'default_warehouse_id'=>$warehouse['id'],'unit'=>'pcs','quantity'=>20,'min_quantity'=>1,'purchase_price'=>2,'selling_price'=>$price,'price'=>$price])->assertCreated()->json();
         $c=Customer::create($this->tenantAttributes(['name'=>'Order buyer','business_name'=>'Order buyer LLC','business_registration_number'=>'811222333','address'=>'Main Street','is_active'=>true,'current_debt'=>0,'current_credit'=>0,'email'=>'order@example.test']));
         $i=$this->postJson('/api/order-hub/orders',['idempotency_key'=>'manual-first','customer_id'=>$c->id,'order_date'=>today()->toDateString(),'payment_type'=>$terms,'items'=>[['product_id'=>$p['id'],'quantity'=>4]]])->assertCreated()->assertJsonPath('state','validated')->json();
         return [$p,$c,$i];
+    }
+
+    public function test_fractional_import_can_be_received_delivered_and_invoiced_without_duplicate_stock(): void
+    {
+        $this->actingAsApiUser();
+        $date = \App\Support\CompanyClock::today()->toDateString();
+        $category = Category::create($this->tenantAttributes(['name' => 'Fabric']));
+        $supplier = Supplier::create($this->tenantAttributes(['name' => 'Wholesale textiles']));
+        $warehouse = $this->postJson('/api/warehouses', ['name' => 'Main', 'code' => 'MAIN', 'is_default' => true])->assertCreated()->json('id');
+        $product = $this->postJson('/api/products', [
+            'name' => 'Imported linen', 'sku' => 'LINEN-M', 'barcode' => '123456789012',
+            'category_id' => $category->id, 'supplier_id' => $supplier->id, 'default_warehouse_id' => $warehouse,
+            'unit' => 'm', 'quantity' => 0, 'min_quantity' => 1, 'purchase_price' => 2, 'selling_price' => 5, 'price' => 5,
+        ])->assertCreated()->json('id');
+        $po = $this->postJson('/api/purchase-orders', [
+            'supplier_id' => $supplier->id, 'ordered_at' => $date, 'status' => 'ordered',
+            'warehouse_id' => $warehouse, 'currency' => 'EUR',
+            'items' => [['product_id' => $product, 'description' => 'Linen', 'unit' => 'm', 'quantity' => 12.5, 'unit_price' => 2]],
+        ])->assertCreated()->json();
+        $shipment = Shipment::create($this->tenantAttributes(['tracking_number' => 'DC38-IMPORT', 'transport_mode' => 'sea', 'status' => 'in_transit']));
+        $arrived = $this->putJson('/api/shipments/'.$shipment->id.'/logistics', [
+            'purchase_order_id' => $po['id'], 'warehouse_id' => $warehouse, 'arrival_date' => $date,
+            'items' => [['purchase_order_item_id' => $po['items'][0]['id'], 'product_id' => $product,
+                'description' => 'Linen', 'unit' => 'm', 'quantity' => 12.5, 'loaded_quantity' => 12.5, 'base_quantity' => 12.5]],
+        ])->assertOk()->assertJsonPath('purchase_order_id', $po['id'])->json();
+        $receiptPath = "/api/purchase-orders/{$po['id']}/receive";
+        $receiptLine = ['id' => $po['items'][0]['id'], 'shipment_item_id' => $arrived['items'][0]['id']];
+        $receipt = ['idempotency_key' => (string) \Illuminate\Support\Str::uuid(), 'items' => [$receiptLine + ['quantity' => 7.75]]];
+        $this->postJson($receiptPath, $receipt)->assertOk()->assertJsonPath('status', 'partially_received');
+        $this->postJson($receiptPath, $receipt)->assertOk()->assertJsonPath('status', 'partially_received');
+        $this->assertEquals(7.75, Product::findOrFail($product)->quantity);
+        $this->postJson($receiptPath, ['idempotency_key' => (string) \Illuminate\Support\Str::uuid(), 'items' => [$receiptLine + ['quantity' => 4.75]]])
+            ->assertOk()->assertJsonPath('status', 'received');
+        $this->assertDatabaseCount('goods_receipts', 2);
+
+        $buyer = Customer::create($this->tenantAttributes(['name' => 'Curtain shop', 'business_name' => 'Curtain shop LLC',
+            'business_registration_number' => '811222333', 'address' => 'Main Street', 'is_active' => true]));
+        $intake = $this->postJson('/api/order-hub/orders', [
+            'idempotency_key' => 'dc38-order', 'customer_id' => $buyer->id, 'order_date' => $date, 'payment_type' => 'cash',
+            'items' => [['product_id' => $product, 'quantity' => 5.5, 'unit' => 'm']],
+        ])->assertCreated()->json();
+        $path = "/api/order-hub/intakes/{$intake['id']}";
+        $this->postJson($path.'/confirm', ['idempotency_key' => 'dc38-confirm'])->assertOk();
+        $ready = $this->postJson($path.'/ready', ['idempotency_key' => 'dc38-pack', 'verified' => true])->assertOk()->json('order');
+        $outbound = "/api/sales-orders/{$ready['id']}";
+        $dispatchPayload = ['idempotency_key' => 'dc38-dispatch', 'package_ids' => [$ready['packages'][0]['id']]];
+        $dispatch = $this->postJson($outbound.'/dispatch', $dispatchPayload)->assertOk()->json('dispatches.0');
+        $this->postJson($outbound.'/dispatch', $dispatchPayload)->assertOk()->assertJsonCount(1, 'dispatches');
+        $this->postJson($outbound.'/delivery', ['idempotency_key' => 'dc38-delivery-part', 'dispatch_id' => $dispatch['id'], 'recipient' => 'Buyer',
+            'items' => [['package_item_id' => $dispatch['packages'][0]['items'][0]['id'], 'quantity' => 3.125]]])
+            ->assertOk()->assertJsonPath('status', 'partially_delivered');
+        $this->postJson($outbound.'/delivery', ['idempotency_key' => 'dc38-delivery-rest', 'dispatch_id' => $dispatch['id'], 'recipient' => 'Buyer'])
+            ->assertOk()->assertJsonPath('status', 'delivered');
+
+        InvoiceProfile::create($this->tenantAttributes(['legal_name'=>'Wholesale textiles','business_registration_number'=>'811234567','fiscal_number'=>'600987654','is_vat_registered'=>true,'vat_number'=>'330987654','registered_address'=>'Main 1','municipality'=>'Prishtine','country_code'=>'XK','invoice_prefix'=>'INV','credit_note_prefix'=>'CN','default_language'=>'bilingual','sales_mode'=>'business_only','default_payment_terms_days'=>0]));
+        $invoice = $this->postJson($path.'/invoice', ['daily_sale_id' => $dispatch['daily_sale_id']])->assertCreated()->json('id');
+        $this->postJson("/api/invoices/{$invoice}/issue")->assertOk()->assertJsonPath('grand_total', '27.50');
+        $this->assertEquals(7, Product::findOrFail($product)->quantity);
+        $this->assertDatabaseCount('daily_sales', 1);
+        $this->assertDatabaseCount('invoices', 1);
     }
 
     public function test_search_default_channel_ready_sale_invoice_and_stock_remain_connected(): void
@@ -93,6 +153,22 @@ class OrderWorkflowTest extends TestCase
         $this->assertEquals('0.00',DailySale::firstOrFail()->paid_amount);
         $this->getJson($path)->assertOk()->assertJsonPath('states.payment','paid')->assertJsonPath('states.paid_amount','20.00')->assertJsonPath('states.remaining_amount','0.00');
         $this->assertDatabaseCount('daily_sales',1);$this->assertEquals(16,Product::find($p['id'])->quantity);
+    }
+
+    public function test_kosovo_order_advance_checks_the_undispatched_order_and_normalizes_the_date(): void
+    {
+        [, $customer, $intake] = $this->fixture('prepaid', 100);
+        $customer->update(['customer_type' => 'business']);
+        InvoiceProfile::create($this->tenantAttributes(['legal_name' => 'Synthetic Kosovo Seller', 'country_code' => 'XK', 'registered_address' => 'Synthetic Street', 'municipality' => 'Prishtina']));
+        $accounts = app(\App\Services\FinancialAccountService::class);
+        $cash = $accounts->createAccount(['name' => 'Cash', 'type' => 'cashbox', 'currency' => 'EUR', 'opening_balance' => 0]);
+        $bank = $accounts->createAccount(['name' => 'Bank', 'type' => 'bank', 'currency' => 'EUR', 'opening_balance' => 0]);
+        $path = '/api/order-hub/intakes/'.$intake['id'].'/payment';
+        $payment = ['idempotency_key' => 'partial-advance', 'amount' => '20.00', 'transaction_date' => '09/20/2026', 'payment_method' => 'cash', 'financial_account_id' => $cash->id];
+        $this->postJson($path, $payment)->assertUnprocessable()->assertJsonValidationErrors('payment_method');
+        $this->assertDatabaseCount('financial_account_transactions', 0);
+        $this->postJson($path, [...$payment, 'payment_method' => 'bank_transfer', 'financial_account_id' => $bank->id])->assertOk();
+        $this->assertDatabaseCount('financial_account_transactions', 1);
     }
 
     public function test_order_invoice_displays_customer_ledger_settlement_without_duplicate_receipts(): void

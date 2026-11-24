@@ -18,14 +18,6 @@ export const errorMessage = (e) =>
   e?.errors
     ? Object.values(e.errors).flat().join(" ")
     : e?.message || "Unable to complete this action.";
-export function localToday(timeZone) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
 export function useFinanceQuery(fetcher, dependencies) {
   const queryKey = JSON.stringify(dependencies);
   const pending = { key: queryKey, data: null, loading: true, error: "" };

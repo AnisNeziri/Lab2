@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use App\Support\CompanyCurrency;
+use App\Support\Money;
 
 class LandedCostService
 {
@@ -105,6 +106,9 @@ class LandedCostService
             $taxBasis = null;
             if (!empty($data['source_expense_id'])) {
                 $source=\App\Models\Expense::query()->lockForUpdate()->findOrFail($data['source_expense_id']);
+                if ($source->asset_treatment === 'investment' || $source->category === 'capital_asset') {
+                    throw ValidationException::withMessages(['source_expense_id' => 'Investment bills use the fixed asset workflow and cannot also capitalize inventory.']);
+                }
                 if ($source->status!=='posted' || $source->document_type==='credit_note' || $source->supplierCredits()->exists())
                     throw ValidationException::withMessages(['source_expense_id'=>'Use a posted bill without active supplier credit notes.']);
                 if (strtoupper($source->currency)!==strtoupper($data['currency']) || abs((float)$source->exchange_rate-$rate)>0.00000001)
@@ -182,6 +186,9 @@ class LandedCostService
 
             if ($landedCost->source_expense_id) {
                 $source=\App\Models\Expense::query()->lockForUpdate()->findOrFail($landedCost->source_expense_id);
+                if ($source->asset_treatment === 'investment' || $source->category === 'capital_asset') {
+                    throw ValidationException::withMessages(['source_expense_id' => 'Investment bills cannot also capitalize inventory.']);
+                }
                 if($source->status!=='posted' || $source->supplierCredits()->exists())throw ValidationException::withMessages(['source_expense_id'=>'The linked bill is no longer eligible for capitalization. Review its corrections.']);
             }
             $allocations = $landedCost->allocations()->orderBy('id')->lockForUpdate()->get();
@@ -294,7 +301,8 @@ class LandedCostService
                 }
                 $receiptItem = GoodsReceiptItem::query()->lockForUpdate()->findOrFail($allocation->goods_receipt_item_id);
                 $product = Product::query()->lockForUpdate()->findOrFail($allocation->product_id);
-                $split = $this->recognitionSplit($receiptItem, $product, (float) $allocation->allocated_amount);
+                $split = $this->recognitionSplit($receiptItem, $product, (float) $allocation->allocated_amount,
+                    ! array_key_exists('remaining_quantity_for_allocation', $entry->calculation_evidence ?? []));
                 $inventoryAmount = (float) $split['inventory_adjustment_amount'];
                 $valuation=$this->costing->applyLandedCostAdjustment($product, -$inventoryAmount);
                 $entry->update(['reversal_date'=>\App\Support\CompanyClock::today()->toDateString(),'reversal_inventory_value_before'=>$valuation['inventory_value_before'],'reversal_inventory_value_after'=>$valuation['inventory_value_after']]);
@@ -428,6 +436,7 @@ class LandedCostService
         GoodsReceiptItem $receiptItem,
         Product $product,
         float $allocatedAmount,
+        bool $legacyQuantityRounding = false,
     ): array {
         $lineQuantity = $this->inventoryQuantity($receiptItem);
         $receiptProductItems = GoodsReceiptItem::query()
@@ -460,7 +469,7 @@ class LandedCostService
         if ($receiptMovements->isEmpty() || $receiptProductQuantity <= 0) {
             $fallbackPool = min($receiptProductQuantity > 0 ? $receiptProductQuantity : $lineQuantity, $currentQuantity);
             $lineShare = $receiptProductQuantity > 0 ? $lineQuantity / $receiptProductQuantity : 1;
-            $remainingLineQuantity = round(min($lineQuantity, $fallbackPool * $lineShare), 3);
+            $remainingLineQuantity = min($lineQuantity, $fallbackPool * $lineShare);
             $method = 'current_stock_cap_fallback_v1';
         } else {
             // The receipt is recorded atomically, so all same-product receipt
@@ -495,18 +504,22 @@ class LandedCostService
 
             $receiptPool = min(max(0, $receiptPool), $currentQuantity, $receiptProductQuantity);
             $lineShare = $receiptProductQuantity > 0 ? $lineQuantity / $receiptProductQuantity : 0;
-            $remainingLineQuantity = round(min($lineQuantity, $receiptPool * $lineShare), 3);
+            $remainingLineQuantity = min($lineQuantity, $receiptPool * $lineShare);
         }
 
-        $soldQuantity = round(max(0, $lineQuantity - $remainingLineQuantity), 3);
+        // The stock unit has three stored decimals. The accounting share of a
+        // mixed receipt can be finer than that quantity and must drive the cost.
+        $remainingLineQuantity = round($remainingLineQuantity, $legacyQuantityRounding ? 3 : 9);
+        $recordedRemainingQuantity = round($remainingLineQuantity, 3);
+        $soldQuantity = round(max(0, $lineQuantity - $recordedRemainingQuantity), 3);
         $inventoryAmount = $lineQuantity > 0
-            ? round($allocatedAmount * ($remainingLineQuantity / $lineQuantity), 6)
+            ? (float) Money::multiply($allocatedAmount, Money::divide($remainingLineQuantity, $lineQuantity, 12), 6)
             : 0.0;
         $cogsAmount = round($allocatedAmount - $inventoryAmount, 6);
 
         return [
             'receipt_quantity' => $lineQuantity,
-            'remaining_quantity_at_post' => $remainingLineQuantity,
+            'remaining_quantity_at_post' => $recordedRemainingQuantity,
             'quantity_recognized_in_cogs' => $soldQuantity,
             'inventory_adjustment_amount' => $inventoryAmount,
             'cogs_adjustment_amount' => $cogsAmount,
@@ -521,6 +534,7 @@ class LandedCostService
                 'first_later_outbound_movement_id' => $firstLaterOutboundId,
                 'last_later_outbound_movement_id' => $lastLaterOutboundId,
                 'product_quantity_at_post' => $currentQuantity,
+                'remaining_quantity_for_allocation' => $remainingLineQuantity,
                 'amount_check' => round($inventoryAmount + $cogsAmount, 6),
             ],
         ];

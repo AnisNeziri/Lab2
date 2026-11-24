@@ -59,7 +59,8 @@ class OperationalAccountingService
 
     public function postInvoice(Invoice $invoice): ?JournalEntry
     {
-        if (($invoice->currency ?: 'EUR') !== CompanyCurrency::forCompanyId($invoice->company_id)) {
+        $exchange = $invoice->exchange_snapshot;
+        if (($invoice->currency ?: 'EUR') !== CompanyCurrency::forCompanyId($invoice->company_id) && ! isset($exchange['base_total'])) {
             throw \Illuminate\Validation\ValidationException::withMessages(['currency'=>'Customer invoice accounting requires the company base currency. Historical foreign-currency invoice valuation is not yet supported.']);
         }
         if ($invoice->daily_sale_id && JournalEntry::query()->where('source_module', 'sales')
@@ -71,14 +72,14 @@ class OperationalAccountingService
         $total = Money::normalize($invoice->grand_total ?: $invoice->total_amount);
         $vat = Money::normalize($invoice->vat_total ?: 0);
         $revenue = Money::subtract($total, $vat);
-        $lines = [['mapping' => 'accounts_receivable', 'debit' => $total]];
-        if (Money::compare($revenue, '0') > 0) $lines[] = ['mapping' => 'sales_revenue', 'credit' => $revenue];
+        $lines = [['mapping' => 'accounts_receivable', 'debit' => $exchange['base_total'] ?? $total, 'foreign_debit' => $exchange ? $total : 0]];
+        if (Money::compare($revenue, '0') > 0) $lines[] = ['mapping' => 'sales_revenue', 'credit' => $exchange['base_total'] ?? $revenue, 'foreign_credit' => $exchange ? $revenue : 0];
         if (Money::compare($vat, '0') > 0) $lines = [...$lines,...app(TaxCodeService::class)->outputLines($invoice)];
 
         return $this->accounting->postMapped(
             'sales', 'invoice', $invoice->id, 'invoice:'.$invoice->id,
             $invoice->invoice_date->toDateString(), 'Invoice '.$invoice->invoice_number,
-            $lines, $invoice->currency ?: CompanyCurrency::forCompanyId($invoice->company_id), 1,
+            $lines, $invoice->currency ?: CompanyCurrency::forCompanyId($invoice->company_id), $exchange['rate'] ?? 1, $exchange ?? [],
         );
     }
 
@@ -96,13 +97,23 @@ class OperationalAccountingService
     {
         $payment->loadMissing('invoice');
         $amount = Money::normalize($payment->amount);
+        $exchange = $payment->exchange_snapshot;
+        $received = $exchange['received_base'] ?? $amount;
+        $carrying = $exchange['carrying_base'] ?? $amount;
+        $lines = [$this->settlementLine($payment->financial_account_id, $this->cashMapping($payment->payment_method), 'debit', $received)];
+        if (Money::compare($carrying, 0) > 0) {
+            $assetDisposal = \App\Models\FixedAssetEntry::query()->where('sale_invoice_id', $payment->invoice_id)->whereNotNull('journal_entry_id')->exists();
+            $lines[] = ['mapping' => 'accounts_receivable', 'credit' => $carrying, 'foreign_credit' => $exchange ? $amount : 0,
+                'dimensions' => $assetDisposal ? ['cash_flow_class' => 'investing'] : null];
+        }
+        $gain = Money::subtract($received, $carrying);
+        if (Money::compare($gain, 0) !== 0) {
+            $lines[] = Money::compare($gain, 0) > 0 ? ['mapping' => 'fx_gain', 'credit' => $gain] : ['mapping' => 'fx_loss', 'debit' => Money::subtract(0, $gain)];
+        }
         $entry = $this->accounting->postMapped(
             'sales', 'invoice_payment', $payment->id, 'invoice-payment:'.$payment->id,
             $payment->payment_date->toDateString(), 'Invoice payment '.$payment->invoice->invoice_number,
-            [
-                $this->settlementLine($payment->financial_account_id, $this->cashMapping($payment->payment_method), 'debit', $amount),
-                ['mapping' => 'accounts_receivable', 'credit' => $amount],
-            ], CompanyCurrency::forCompanyId($payment->company_id), 1,
+            $lines, $exchange ? $payment->invoice->currency : CompanyCurrency::forCompanyId($payment->company_id), $exchange['rate'] ?? 1, $exchange ?? [],
         );
         $this->linkFinancialTransaction($payment->financial_account_transaction_id, $entry);
         return $entry;

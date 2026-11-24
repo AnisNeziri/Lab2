@@ -54,6 +54,9 @@ class FinancialControlService
             'revenue' => $pl['revenue'], 'expenses' => $pl['operating_expenses'], 'gross_profit' => $pl['gross_profit'], 'net_profit' => $pl['net_profit']];
         $counts = $this->counts();
         $reconciliation = $this->accounting->reconciliation(false);
+        if ($reconciliation['rows']['inventory']['status'] === 'evidence_required') {
+            $summary['inventory_value'] = $summary['gross_profit'] = $summary['net_profit'] = null;
+        }
         $integrity = $this->integrity->checks();
         $attention = [];
         $opening=OnboardingSession::query()->latest('id')->first(['id','status','approved_at','verified_at','verification']);
@@ -62,7 +65,7 @@ class FinancialControlService
         foreach ($reconciliation['rows'] as $row) {
             if (! $row['reconciled']) {
                 $attention[] = ['code' => 'control_'.$row['control'], 'severity' => 'critical', 'count' => 1,
-                    'label' => ucwords(str_replace('_', ' ', $row['control'])).' differs from the General Ledger', 'difference' => $row['difference'], 'url' => '/accounting?tab=reconciliation'];
+                    'label' => $row['evidence_issues'][0] ?? ucwords(str_replace('_', ' ', $row['control'])).' differs from the General Ledger', 'difference' => $row['difference'], 'url' => '/accounting?tab=reconciliation'];
             }
         }
         foreach ($integrity as $check) {
@@ -235,12 +238,21 @@ class FinancialControlService
         $checks[] = $this->check('period_ended', 'The selected period has ended', $to <= CompanyClock::today()->toDateString() ? 0 : 1, 'periods');
         $checks[] = $this->check('trial_balance', 'Trial Balance is balanced', $tb['balanced'] ? 0 : 1, 'reports');
         $checks[] = $this->check('balance_sheet', 'Balance Sheet is balanced', $bs['balanced'] ? 0 : 1, 'reports');
+        $assets = app(FixedAssetService::class);
+        $assetControl = $assets->reconciliation($to);
+        $checks[] = $this->check('fixed_assets', 'Fixed asset register reconciles at period end', $assetControl['reconciled'] ? 0 : 1, 'assets');
+        $checks[] = $this->check('fixed_asset_depreciation', 'Depreciation is posted through period end', $assets->outstandingDepreciationCount($to), 'assets');
+        $checks[] = $this->check('closing_fx', 'Foreign monetary balances have current closing review', app(FxRevaluationService::class)->readyForClose($period) ? 0 : 1, 'periods');
+        $incomeTax = app(\App\Services\Kosovo\CorporateTaxReviewService::class);
+        if ($incomeTax->latest($period)) {
+            $checks[] = $this->check('tax_review_current', 'Approved current tax agrees with the pre-tax ledger result', $incomeTax->readyIfReviewed($period) ? 0 : 1, 'periods');
+        }
         foreach ($reconciliation['rows'] as $row) {
             $checks[] = [...$this->check($row['control'], ucwords(str_replace('_', ' ', $row['control'])).' reconciles at period end', $row['reconciled'] ? 0 : 1, 'reconciliation'), 'difference' => $row['difference'], 'detail' => implode(' ', $row['evidence_issues'])];
         }
         foreach ($currentReconciliation['rows'] as $row) {
             if (! $row['reconciled']) {
-                $checks[] = [...$this->check('current_'.$row['control'], ucwords(str_replace('_', ' ', $row['control'])).' currently differs from GL', 1, 'reconciliation'), 'difference' => $row['difference']];
+                $checks[] = [...$this->check('current_'.$row['control'], ucwords(str_replace('_', ' ', $row['control'])).' needs reconciliation', 1, 'reconciliation'), 'difference' => $row['difference'], 'detail' => implode(' ', $row['evidence_issues'] ?? [])];
             }
         }
         $checks[] = [...$this->check('inventory_integrity', 'Inventory quantities and trace states reconcile', $inventory['issue_count'], 'reconciliation'), 'examples' => $inventory['examples']];

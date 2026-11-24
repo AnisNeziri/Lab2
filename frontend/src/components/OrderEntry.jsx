@@ -4,6 +4,8 @@ import { apiRequest } from '../api/client'
 import { useAuthStore } from '../store/authStore'
 import { isMeterUnit } from '../utils/formatQuantity'
 import { useUnsavedNavigation } from '../hooks/useUnsavedNavigation'
+import { useCompanyTimezone } from '../hooks/useCompanyTimezone'
+import { companyDate } from '../utils/companyDate'
 
 function SearchPicker({kind,t,onSelect,label}) {
   const [search,setSearch]=useState(''),[rows,setRows]=useState([]),[open,setOpen]=useState(false),[active,setActive]=useState(0),[error,setError]=useState(''),[loading,setLoading]=useState(false)
@@ -26,7 +28,8 @@ function SearchPicker({kind,t,onSelect,label}) {
 
 export default function OrderEntry({t,busy,channels,initial,onSubmit,onCancel}) {
   const permissions=useAuthStore(s=>s.permissions)
-  const [form,setForm]=useState(()=>({...initial,channel_id:'',order_date:initial?.order_date||new Date().toLocaleDateString('en-CA'),payment_type:initial?.payment_type||'cash',customer:initial?.customer||{},items:initial?.items||[]}))
+  const timeZone = useCompanyTimezone()
+  const [form,setForm]=useState(()=>({...initial,channel_id:'',order_date:initial?.order_date||companyDate(timeZone),payment_type:initial?.payment_type||'cash',customer:initial?.customer||{},items:initial?.items||[]}))
   const original=useRef(JSON.stringify(form))
   const dirty=JSON.stringify(form)!==original.current
   const discardMessage=t('Discard unsaved order changes?','Të hidhen poshtë ndryshimet e paruajtura të porosisë?')

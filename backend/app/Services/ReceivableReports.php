@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Models\PaymentTransaction;
 use App\Support\CompanyClock;
 use App\Support\CompanyCurrency;
+use App\Support\InvoiceExchange;
 use App\Support\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Auth;
@@ -31,17 +32,21 @@ class ReceivableReports
         $ledger = DB::query()->fromSub(app(ReceivablePositionQueries::class)->rows($asOf, $ids), 'd')
             ->join('customers as c', fn ($j) => $j->on('c.id', '=', 'd.customer_id')->where('c.company_id', $company))
             ->leftJoin('daily_sales as s', fn ($j) => $j->on('s.id', '=', 'd.daily_sale_id')->where('s.company_id', $company))
-            ->selectRaw("'customer_ledger' source,d.id source_id,d.customer_id,c.name customer_name,d.reference_number reference,d.transaction_date invoice_date,d.due_date,? currency,COALESCE(s.created_by,d.user_id) salesperson_id,d.outstanding_amount outstanding,d.legacy_snapshot", [$base]);
+            ->selectRaw("'customer_ledger' source,d.id source_id,d.customer_id,c.name customer_name,d.reference_number reference,d.transaction_date invoice_date,d.due_date,? currency,COALESCE(s.created_by,d.user_id) salesperson_id,d.outstanding_amount outstanding,d.legacy_snapshot,d.outstanding_amount base_outstanding", [$base]);
+        $history = InvoiceExchange::jsonAmount('payment_transactions.exchange_snapshot->carrying_base');
         $payments = PaymentTransaction::query()->whereDate('payment_date', '<=', $asOf)
             ->where(fn ($q) => $q->whereNull('reversed_at')->orWhereRaw('COALESCE(reversal_date,DATE(reversed_at)) > ?', [$asOf]))
-            ->selectRaw('invoice_id,SUM(amount) paid')->groupBy('invoice_id');
+            ->selectRaw("invoice_id,SUM(amount) paid,SUM(COALESCE($history,amount)) paid_base")->groupBy('invoice_id');
         $credits = Invoice::query()->where('document_type', 'credit_note')->whereNotNull('issued_at')
             ->whereDate('invoice_date', '<=', $asOf)->where(fn ($q) => $q->whereNull('voided_at')->orWhereDate('voided_at', '>', $asOf))
             ->selectRaw('original_invoice_id,SUM(grand_total) credited')->groupBy('original_invoice_id');
+        $baseTotal = InvoiceExchange::jsonAmount('invoices.exchange_snapshot->base_total');
+        $face = 'CASE WHEN invoices.grand_total>invoices.total_amount THEN invoices.grand_total ELSE invoices.total_amount END';
         $invoices = $this->invoices($asOf)->leftJoinSub($payments->toBase(), 'p', 'p.invoice_id', '=', 'invoices.id')
             ->leftJoinSub($credits->toBase(), 'cr', 'cr.original_invoice_id', '=', 'invoices.id')
             ->where(fn ($q) => $q->whereNull('invoices.voided_at')->orWhereDate('invoices.voided_at', '>', $asOf))
-            ->selectRaw("'invoice' source,invoices.id source_id,invoices.customer_id,invoices.customer_name,invoices.invoice_number reference,invoices.invoice_date,invoices.due_at due_date,invoices.currency,invoices.created_by salesperson_id,CASE WHEN invoices.grand_total>invoices.total_amount THEN invoices.grand_total ELSE invoices.total_amount END-COALESCE(p.paid,0)-COALESCE(cr.credited,0) outstanding,0 legacy_snapshot");
+            ->selectRaw("'invoice' source,invoices.id source_id,invoices.customer_id,invoices.customer_name,invoices.invoice_number reference,invoices.invoice_date,invoices.due_at due_date,invoices.currency,invoices.created_by salesperson_id,$face-COALESCE(p.paid,0)-COALESCE(cr.credited,0) outstanding,0 legacy_snapshot,
+                CASE WHEN invoices.currency=? THEN $face-COALESCE(p.paid,0)-COALESCE(cr.credited,0) ELSE $baseTotal-COALESCE(p.paid_base,0) END base_outstanding", [$base]);
         $union = $ledger->unionAll($invoices->toBase());
         $q = DB::query()->fromSub($union, 'ar')->whereRaw('outstanding > 0.005');
         foreach (['customer_id', 'currency', 'salesperson_id'] as $key) {

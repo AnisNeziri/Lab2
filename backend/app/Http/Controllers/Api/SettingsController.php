@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\InvoiceProfile;
 use App\Support\UserPreferences;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -44,7 +45,10 @@ class SettingsController extends Controller
                 // lock, so the first business record cannot race this setting.
                 $company = $user->company()->lockForUpdate()->firstOrFail();
                 if ($currency !== strtoupper((string) ($company->base_currency ?: 'EUR'))) {
-                    foreach (['products', 'product_suppliers', 'landed_costs', 'purchase_orders', 'stock_movements', 'daily_sales', 'invoices', 'expenses'] as $table) {
+                    if ($currency !== 'EUR' && InvoiceProfile::query()->where('country_code', 'XK')->exists()) {
+                        throw ValidationException::withMessages(['base_currency' => ['A Kosovo invoice profile requires EUR as the company accounting currency.']]);
+                    }
+                    foreach (['products', 'product_suppliers', 'landed_costs', 'purchase_orders', 'stock_movements', 'daily_sales', 'invoices', 'expenses', 'journal_entries', 'financial_accounts', 'customer_debt_transactions', 'sales_orders', 'customer_quotations'] as $table) {
                         if (Schema::hasTable($table) && Schema::hasColumn($table, 'company_id')
                             && DB::table($table)->where('company_id', $company->id)->exists()) {
                             throw ValidationException::withMessages([

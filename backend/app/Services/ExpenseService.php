@@ -127,6 +127,9 @@ class ExpenseService
         DB::transaction(function () use ($expense) {
             $expense = Expense::query()->lockForUpdate()->findOrFail($expense->id);
             $this->ensureDraft($expense);
+            if (\App\Models\FixedAssetEntry::query()->where('expense_id', $expense->id)->exists()) {
+                throw ValidationException::withMessages(['expense' => ['Withdraw the draft capitalization decision before deleting this bill.']]);
+            }
             if ($expense->payments()->exists() || $expense->purchaseOrderPaymentAllocations()->where('amount','>',0)->exists()) {
                 throw ValidationException::withMessages(['expense' => ['A draft with payments cannot be deleted.']]);
             }
@@ -233,7 +236,10 @@ class ExpenseService
                 'status' => 'reversed', 'reversal_date' => \App\Support\CompanyClock::today()->toDateString(), 'reversed_at' => now(), 'reversed_by' => Auth::id(),
                 'reversal_reason' => trim($reason), 'updated_by' => Auth::id(),
             ]);
-            $this->accounting->reverseSource('supplier_accounting', 'expense:'.$expense->id, \App\Support\CompanyClock::today()->toDateString(), $reason);
+            $journal = $this->accounting->reverseSource('supplier_accounting', 'expense:'.$expense->id, \App\Support\CompanyClock::today()->toDateString(), $reason);
+            if ($journal) {
+                app(FixedAssetService::class)->reverseBill($expense, $journal, $reason);
+            }
 
             return $this->find($expense->fresh());
         });
@@ -287,6 +293,15 @@ class ExpenseService
             if (Money::compare($amount, $remaining) > 0) {
                 throw ValidationException::withMessages(['amount' => ['Payment cannot exceed the remaining expense balance.']]);
             }
+            $account = $this->accounts->baseSettlementAccount($data['financial_account_id'] ?? null, 'EUR');
+            $policy = app(\App\Services\Kosovo\CashPaymentPolicy::class);
+            if (! $policy->isElectronic($data['payment_method'], $account)
+                && $expense->source_type === 'domestic' && in_array($expense->document_type, ['purchase_invoice', 'fiscal_receipt'], true) && $policy->applies()) {
+                $verifiedBusiness = $expense->supplier_id || filled($expense->vendor_business_number) || filled($expense->vendor_vat_number);
+                $orderValue = $expense->purchaseOrder ? $policy->evidencedDomesticOrderValue($expense->purchaseOrder) : null;
+                $policy->assertAllowed($data['payment_date'], Money::maximum($expense->gross_amount_eur, $orderValue ?? 0), $verifiedBusiness ? 'business' : null, $data['payment_method'], $account, $expense);
+            }
+
             $payment = ExpensePayment::create([
                 'company_id' => $expense->company_id, 'expense_id' => $expense->id,
                 'amount' => $amount, 'amount_eur' => Money::multiply($amount, $paymentRate),

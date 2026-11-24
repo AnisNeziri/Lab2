@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Product;
+use Illuminate\Validation\ValidationException;
 
 class InventoryCostingService
 {
@@ -49,8 +50,8 @@ class InventoryCostingService
 
         if ($affectsCompanyQuantity && $type === 'in') {
             $movementUnitCost = $finalUnitCost ?? $averageBefore;
-            if ($movementUnitCost !== null) {
-                $priorValue = $valueBefore ?? round($quantityBefore * ($averageBefore ?? 0), 6);
+            if ($movementUnitCost !== null && ($quantityBefore <= 0 || $valueBefore !== null)) {
+                $priorValue = $valueBefore ?? 0;
                 $valueAfter = round($priorValue + ($quantity * $movementUnitCost), 6);
                 $averageAfter = $quantityAfter > 0
                     ? round($valueAfter / $quantityAfter, 6)
@@ -107,7 +108,11 @@ class InventoryCostingService
             ];
         }
 
-        $newValue = round(($valueBefore ?? 0) + $amount, 6);
+        if ($valueBefore === null) {
+            throw ValidationException::withMessages(['inventory' => ["Review the opening or historical cost for {$product->sku} before adjusting its carried inventory value."]]);
+        }
+
+        $newValue = round($valueBefore + $amount, 6);
         $newAverage = round($newValue / $quantity, 6);
         $product->forceFill([
             'weighted_average_cost' => $newAverage,

@@ -106,6 +106,10 @@ class DailySaleService
                 unset($item);
             }
             $totals = $this->calculateTotals($items);
+            $policy = app(\App\Services\Kosovo\CashPaymentPolicy::class);
+            if ($fulfillmentLineTotals === null && $policy->applies()) {
+                $policy->assertAllowed($data['sale_date'], $totals['amount'], null, 'cash');
+            }
 
             $sale = DailySale::create([
                 'company_id' => $user->company_id,
@@ -156,6 +160,10 @@ class DailySaleService
 
             $items = $this->normalizeItems($data['items'] ?? []);
             $totals = $this->calculateTotals($items);
+            $policy = app(\App\Services\Kosovo\CashPaymentPolicy::class);
+            if ($policy->applies()) {
+                $policy->assertAllowed($data['sale_date'] ?? $sale->sale_date->toDateString(), $totals['amount'], null, 'cash');
+            }
 
             $sale->update([
                 'sale_date' => $data['sale_date'] ?? $sale->sale_date,
@@ -307,9 +315,17 @@ class DailySaleService
         ];
     }
 
-    public function dayNotes(string $date): ?string
+    public function dayContext(string $date): array
     {
-        return DailySalesDay::query()->whereDate('sale_date', $date)->value('notes');
+        $day = DailySalesDay::query()->whereDate('sale_date', $date)->first();
+
+        return [
+            'date' => $date,
+            'notes' => $day?->notes,
+            'day_closed' => $day?->closed_at
+                ? $day->covers(DailySale::whereDate('sale_date', $date)->get(['id', 'status']))
+                : false,
+        ];
     }
 
     public function updateDayNotes(string $date, ?string $notes): string

@@ -204,6 +204,8 @@ function Statement({ type, data: d, range, onAccount }) {
           ["operating_profit", "Operating profit", "Fitimi operativ"],
           ["other_gains", "Other income", "Të ardhurat e tjera"],
           ["other_losses", "Other expenses", "Shpenzimet e tjera"],
+          ["profit_before_tax", "Profit before tax", "Fitimi para tatimit"],
+          ["income_tax", "Current income tax", "Tatimi aktual në të ardhura"],
           ["net_profit", "Net profit / loss", "Fitimi / humbja neto"],
         ]
       : type === "balance"

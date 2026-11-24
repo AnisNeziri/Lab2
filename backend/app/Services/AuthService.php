@@ -155,6 +155,7 @@ class AuthService
             'role' => $user->role,
             'company_id' => $user->company_id,
             'company_name' => $user->company?->name,
+            'business_timezone' => \App\Support\CompanyClock::timezone($user->company),
             'must_change_password' => $user->must_change_password,
             'email_verified' => $user->email_verified_at !== null,
             'permissions' => app(PermissionService::class)->forUser($user),

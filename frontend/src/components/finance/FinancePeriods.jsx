@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import * as api from "../../api/accounting";
 import WorkspaceModal from "../WorkspaceModal";
+import FinanceClosingRates from "./FinanceClosingRates";
+import FinanceCorporateTaxReview from "./FinanceCorporateTaxReview";
 import { ReasonAction } from "./FinanceSubledgers";
 import {
   Badge,
@@ -20,6 +22,8 @@ export default function FinancePeriods() {
   const selected=params.get("period")||"",setSelected=value=>setParams({...Object.fromEntries(params),period:value});
   const [create, setCreate] = useState(false),
     [status, setStatus] = useState("");
+  const [showRates, setShowRates] = useState(false);
+  const [showTax, setShowTax] = useState(false);
   const period = periods.find((p) => p.id === Number(selected));
   const readiness = useFinanceQuery(
     () => (period ? api.getAccountingPeriodReadiness(period.id) : null),
@@ -85,6 +89,14 @@ export default function FinancePeriods() {
                   <p className="fc-caption">{r.basis}</p>
                   <p className="fc-caption">{r.retained_earnings_policy}</p>
                   <div className="fc-toolbar">
+                    {can("accounting.reports.view") && <button type="button" className="secondary" onClick={() => setShowRates(true)}>
+                      {t("Closing currency review", "Shqyrtimi i valutave në mbyllje")}
+                    </button>}
+                    {can("accounting.reports.view") && String(period.starts_at).slice(5, 10) === "01-01" && String(period.ends_at).slice(5, 10) === "12-31" &&
+                      String(period.starts_at).slice(0, 4) === String(period.ends_at).slice(0, 4) &&
+                      <button type="button" className="secondary" onClick={() => setShowTax(true)}>
+                        {t("Corporate tax worksheet", "Fleta e tatimit të korporatave")}
+                      </button>}
                     {period.status === "open" && (
                       <button
                         disabled={busy}
@@ -151,6 +163,8 @@ export default function FinancePeriods() {
           )}
         </>
       )}
+      {showRates && period && <FinanceClosingRates key={period.id} period={period} onClose={() => setShowRates(false)} />}
+      {showTax && period && <FinanceCorporateTaxReview key={period.id} period={period} onClose={() => setShowTax(false)} />}
       <p>
         <Link to="/accounting?tab=reconciliation">
           {t("Open financial reconciliation", "Hap rakordimin financiar")} ↗

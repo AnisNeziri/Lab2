@@ -16,7 +16,11 @@ import WorkspaceModal from "../components/WorkspaceModal";
 import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from "../hooks/useTranslation";
 import { useRevealTarget } from "../hooks/useRevealTarget";
+import { useCompanyTimezone } from "../hooks/useCompanyTimezone";
 import { useAuthStore } from "../store/authStore";
+import { useSettingsStore } from "../store/settingsStore";
+import { companyDate } from "../utils/companyDate";
+import { businessMoney } from "../utils/businessFormat";
 import { getAllProducts } from "../api/products";
 import { formatQuantity, isMeterUnit } from "../utils/formatQuantity";
 import { getInventoryQuantity } from "../utils/inventoryQuantity";
@@ -34,13 +38,7 @@ import "./DailySales.css";
 import { getWarehouses } from "../api/warehouseOperations";
 import { getInventoryProduct } from "../api/advancedOperations";
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
 const requestKey = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-const money = (value) =>
-  new Intl.NumberFormat("de-DE", {
-    style: "currency",
-    currency: "EUR",
-  }).format(Number(value || 0));
 
 function defaultSalePrice(product, unitDefinition = null) {
   const basePrice = Number(product?.selling_price ?? product?.price ?? 0);
@@ -139,8 +137,13 @@ export default function DailySales() {
   const reveal = useRevealTarget();
   const user = useAuthStore((state) => state.user);
   const permissions = useAuthStore((state) => state.permissions);
+  const timeZone = useCompanyTimezone();
+  const currency = useSettingsStore((state) => state.base_currency);
+  const money = value => businessMoney(value, currency, language);
   const [params] = useSearchParams();
-  const [date, setDate] = useState(/^\d{4}-\d{2}-\d{2}$/.test(params.get('date')||'')?params.get('date'):todayIso());
+  const requestedDate = params.get('date') || '';
+  const [selectedDate, setDate] = useState(null);
+  const date = selectedDate ?? (/^\d{4}-\d{2}-\d{2}$/.test(requestedDate) ? requestedDate : companyDate(timeZone));
   const [source, setSource] = useState('');
   const [sales, setSales] = useState([]);
   const [products, setProducts] = useState([]);
@@ -152,6 +155,7 @@ export default function DailySales() {
   const [rows, setRows] = useState([emptyRow()]);
   const [notes, setNotes] = useState("");
   const [dayNotes, setDayNotes] = useState("");
+  const [dayContext, setDayContext] = useState(null);
   const [dayNotesSaving, setDayNotesSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -195,38 +199,45 @@ export default function DailySales() {
     [t],
   );
 
-  const loadProducts = useCallback(async ({ silent = false } = {}) => {
+  const referenceOnly = !permissions.some(permission => ['inventory.view','products.manage'].includes(permission));
+  const loadProducts = useCallback(async () => {
     const requestId = ++productsRequestRef.current;
     try {
-      const data = await getAllProducts({reference_only: !permissions.some(p=>['inventory.view','products.manage'].includes(p))});
+      const data = await getAllProducts({ reference_only: referenceOnly });
       const list = data.data || data || [];
       if (requestId !== productsRequestRef.current) return list;
       setProducts(list);
       return list;
     } catch {
-      if (!silent && requestId === productsRequestRef.current) setProducts([]);
+      if (requestId === productsRequestRef.current) setProducts([]);
       return [];
     }
-  }, []);
+  }, [referenceOnly]);
 
   const loadDayNotes = useCallback(async (targetDate, { silent = false } = {}) => {
     const requestId = ++notesRequestRef.current;
     try {
       const data = await getDailySalesDayNotes(targetDate);
       if (requestId !== notesRequestRef.current) return;
+      setDayContext({ date: targetDate, closed: typeof data.day_closed === "boolean" ? data.day_closed : null });
       if (!dayNotesDirtyRef.current) {
         setDayNotes(data.notes || "");
       }
     } catch {
       if (requestId !== notesRequestRef.current) return;
+      setDayContext({ date: targetDate, closed: null });
       if (!silent && !dayNotesDirtyRef.current) setDayNotes("");
     }
   }, []);
 
   useEffect(() => {
-    loadProducts();
-    getWarehouses().then((data) => setWarehouses(data || [])).catch(() => setWarehouses([]));
-  }, [loadProducts]);
+    if (!editorOpen) return;
+    let active = true;
+    void loadProducts();
+    getWarehouses().then((data) => { if (active) setWarehouses(data || []); })
+      .catch(() => { if (active) setWarehouses([]); });
+    return () => { active = false; };
+  }, [editorOpen, loadProducts]);
 
   useEffect(() => {
     dayNotesDirtyRef.current = false;
@@ -251,7 +262,6 @@ export default function DailySales() {
         refreshTimerRef.current = null;
         void Promise.all([
           loadDay(date, false),
-          loadProducts({ silent: true }),
           loadDayNotes(date, { silent: true }),
         ]);
       }, 350);
@@ -266,7 +276,7 @@ export default function DailySales() {
         refreshTimerRef.current = null;
       }
     };
-  }, [date, editorOpen, loadDay, loadProducts, loadDayNotes]);
+  }, [date, editorOpen, loadDay, loadDayNotes]);
 
   const editorTotal = useMemo(
     () => rows.reduce((sum, row) => row.product_name.trim() ? sum + Number(row.line_total || 0) : sum, 0),
@@ -285,8 +295,8 @@ export default function DailySales() {
     [sales],
   );
   const visibleSales = sales.filter((sale) => !source || (source === "order" ? Boolean(sale.outbound_dispatch) : !sale.outbound_dispatch));
-  const dayClosed =
-    sales.length > 0 && sales.every((sale) => sale.status === "finalized");
+  const confirmedDay = dayContext?.date === date ? dayContext.closed : undefined;
+  const dayClosed = confirmedDay === true;
 
   const stockErrors = useMemo(() => {
     const requested = new Map();
@@ -409,7 +419,7 @@ export default function DailySales() {
       : row));
     try {
       const inventory = await getInventoryProduct(productId, { warehouse_id: warehouseId });
-      const today = todayIso();
+      const today = companyDate(timeZone);
       const options = (inventory?.lots || []).flatMap((lot) => {
         const expiry = String(lot.expiry_at || "").slice(0, 10);
         return (lot.balances || [])
@@ -619,7 +629,7 @@ export default function DailySales() {
     setMessage("");
     try {
       await saveEditor();
-      await Promise.all([loadDay(date, false), loadProducts()]);
+      await Promise.all([loadDay(date, false), loadDayNotes(date, { silent: true })]);
       setMessage(t("dailySales.saleSaved"));
       reveal("daily-sales-feedback");
     } catch (err) {
@@ -638,7 +648,7 @@ export default function DailySales() {
     try {
       await finalizeDailySalesDay(date);
       setConfirmClose(false);
-      await Promise.all([loadDay(date, false), loadProducts()]);
+      await Promise.all([loadDay(date, false), loadDayNotes(date, { silent: true })]);
       setMessage(t("dailySales.dayFinalized"));
     } catch (err) {
       setError(err.message || t("dailySales.finalizeError"));
@@ -655,7 +665,7 @@ export default function DailySales() {
       await deleteDailySale(deleteTarget.id);
       if (editorId === deleteTarget.id) resetEditor();
       setDeleteTarget(null);
-      await Promise.all([loadDay(date, false), loadProducts()]);
+      await Promise.all([loadDay(date, false), loadDayNotes(date, { silent: true })]);
       setMessage(t("dailySales.saleDeleted"));
     } catch (err) {
       setError(err.message || t("dailySales.deleteError"));
@@ -693,7 +703,7 @@ export default function DailySales() {
           <input
             type="date"
             value={date}
-            onChange={(event) => setDate(event.target.value)}
+            onChange={(event) => setDate(event.target.value || null)}
           />
         </label>
         <div className="daily-sales-toolbar-actions">
@@ -719,7 +729,7 @@ export default function DailySales() {
               !canFinalize ||
               saving ||
               !sales.length ||
-              dayClosed
+              confirmedDay !== false
             }
             onClick={() => {
               setConfirmClose(true);
@@ -798,7 +808,7 @@ export default function DailySales() {
             <span
               className={`status-pill ${dayClosed ? "status-paid" : "status-unpaid"}`}
             >
-              {dayClosed ? t("dailySales.dayClosed") : t("dailySales.dayOpen")}
+              {confirmedDay === null ? "—" : confirmedDay === undefined ? t("common.loading") : dayClosed ? t("dailySales.dayClosed") : t("dailySales.dayOpen")}
             </span>
           </div>
           <AimsLogo size="md" showText={false} />

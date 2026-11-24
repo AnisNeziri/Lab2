@@ -60,21 +60,14 @@ import { useTranslation } from "../hooks/useTranslation";
 import { useDialog } from '../hooks/useDialog';
 import { useUnsavedNavigation } from '../hooks/useUnsavedNavigation';
 import { useAuthStore } from "../store/authStore";
+import { useSettingsStore } from "../store/settingsStore";
+import { useCompanyTimezone } from "../hooks/useCompanyTimezone";
+import { addCalendarDays as addDays, companyDate } from "../utils/companyDate";
+import { businessMoney } from "../utils/businessFormat";
+import { canOpenPage } from "../config/pageAccess";
 import { formatQuantity, isMeterUnit } from "../utils/formatQuantity";
 import { getInventoryQuantity } from "../utils/inventoryQuantity";
 import "./Invoices.css";
-
-const todayIso = () => {
-  const date = new Date();
-  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-  return date.toISOString().slice(0, 10);
-};
-
-const addDays = (dateString, days) => {
-  const date = new Date(`${dateString}T12:00:00`);
-  date.setDate(date.getDate() + Number(days || 0));
-  return date.toISOString().slice(0, 10);
-};
 
 const daysBetween = (fromDate, toDate, fallback = 0) => {
   if (!fromDate || !toDate) return fallback;
@@ -153,8 +146,7 @@ const emptyItem = (profile, index = 0) => ({
   warehouse_id: "",
 });
 
-function emptyInvoiceForm(profile) {
-  const issued = todayIso();
+function emptyInvoiceForm(profile, issued) {
   const dueDays = Number(profile?.default_payment_terms_days ?? 14);
   return {
     customer_id: "",
@@ -296,9 +288,9 @@ function buyerSnapshot(invoice) {
   };
 }
 
-function invoiceFormFromRecord(invoice, profile) {
+function invoiceFormFromRecord(invoice, profile, today) {
   const buyer = buyerSnapshot(invoice);
-  const issueDate = String(invoice.invoice_date || invoice.issued_at || todayIso()).slice(0, 10);
+  const issueDate = String(invoice.invoice_date || invoice.issued_at || today).slice(0, 10);
   const storedDueDate = invoice.due_at || invoice.due_date
     ? String(invoice.due_at || invoice.due_date).slice(0, 10)
     : "";
@@ -320,10 +312,14 @@ function invoiceFormFromRecord(invoice, profile) {
     buyer_email: buyer.email,
     save_customer: false,
     issued_at: issueDate,
-    supply_at: String(invoice.supply_date || invoice.supply_at || invoice.invoice_date || todayIso()).slice(0, 10),
+    supply_at: String(invoice.supply_date || invoice.supply_at || invoice.invoice_date || today).slice(0, 10),
     due_at: dueDate,
     due_days: String(daysBetween(issueDate, dueDate, defaultDueDays)),
     payment_terms: String(invoice.payment_terms ?? profile?.default_payment_terms ?? ""),
+    currency: invoice.currency,
+    exchange_rate: invoice.exchange_snapshot?.rate || "",
+    exchange_rate_date: invoice.exchange_snapshot?.date || "",
+    exchange_rate_source: invoice.exchange_snapshot?.source || "",
     notes: invoice.notes || "",
     tax_treatment: validTaxTreatment(invoice.tax_treatment, profile),
     issue_now: false,
@@ -599,18 +595,24 @@ function CompanyProfileModal({ open, profile, onClose, onSave, t }) {
 
 function InvoiceEditor({ open, invoice, profile, products, customers, canSaveCustomer, onClose, onSaved, t, language }) {
   const {codes:taxCodes,error:taxCodeError}=useTaxCodes();
-  const [form, setForm] = useState(() => emptyInvoiceForm(profile));
+  const timeZone = useCompanyTimezone();
+  const baseCurrency = useSettingsStore(state => state.base_currency);
+  const [form, setForm] = useState(() => emptyInvoiceForm(profile, companyDate(timeZone)));
+  const currency = form.currency || baseCurrency;
+  const foreign = currency !== baseCurrency;
+  const tr = (en, sq) => language === "sq" ? sq : en;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    setForm(invoice ? invoiceFormFromRecord(invoice, profile) : emptyInvoiceForm(profile));
+    const today = companyDate(timeZone);
+    setForm(invoice ? invoiceFormFromRecord(invoice, profile, today) : emptyInvoiceForm(profile, today));
     setError("");
-  }, [invoice, open, profile]);
+  }, [invoice, open, profile, timeZone]);
 
   const money = useCallback(
-    (value) => new Intl.NumberFormat(language === "sq" ? "sq-AL" : "en-IE", { style: "currency", currency: "EUR" }).format(Number(value || 0)),
-    [language],
+    (value) => businessMoney(value, currency, language),
+    [currency, language],
   );
   const totals = useMemo(() => invoiceTotals(form.items), [form.items]);
   const productMap = useMemo(
@@ -665,7 +667,7 @@ function InvoiceEditor({ open, invoice, profile, products, customers, canSaveCus
       description: product.name || "",
       sku: product.sku || "",
       unit: product.unit || "pcs",
-      unit_price: String(Number(product.selling_price ?? product.price ?? 0)),
+      unit_price: foreign ? "" : String(Number(product.selling_price ?? product.price ?? 0)),
       tax_code_id:product.default_tax_code_id||"",
       vat_rate: taxCode?.rate||validVatRate(18, taxTreatment, profile),
       tax_treatment: taxTreatment,
@@ -801,6 +803,8 @@ function InvoiceEditor({ open, invoice, profile, products, customers, canSaveCus
       save_customer: canSaveCustomer && !form.customer_id && Boolean(form.save_customer),
       issue_now: false,
       invoice_date: form.issued_at,
+      currency,
+      ...(foreign ? { exchange_rate: form.exchange_rate, exchange_rate_date: form.exchange_rate_date, exchange_rate_source: form.exchange_rate_source } : {}),
       supply_date: form.supply_at || form.issued_at,
       due_date: form.due_at || null,
       payment_terms: form.payment_terms.trim() || null,
@@ -941,6 +945,20 @@ function InvoiceEditor({ open, invoice, profile, products, customers, canSaveCus
             <div><h3>{t("invoice.documentDetails")}</h3><p>{t("invoice.documentDetailsHint")}</p></div>
           </div>
           <div className="invoice-form-grid cols-4">
+            {baseCurrency === "EUR" && !profile.is_vat_registered && !invoice?.daily_sale_id && <label>
+              {tr("Invoice currency", "Valuta e faturës")}
+              <select value={currency} onChange={e => {
+                const next = e.target.value;
+                setForm(current => ({ ...current, currency: next, items: current.items.map(item => ({ ...item, unit_price: "" })) }));
+              }}>
+                {["EUR", "USD", "GBP", "CHF", "ALL", "RSD", "TRY", "CNY"].map(code => <option key={code}>{code}</option>)}
+              </select>
+            </label>}
+            {foreign && <>
+              <label>{tr(`EUR per 1 ${currency}`, `EUR për 1 ${currency}`)}<input type="number" min="0.00000001" step="0.00000001" required value={form.exchange_rate || ""} onChange={e => setField("exchange_rate", e.target.value)} /></label>
+              <label>{tr("Rate date", "Data e kursit")}<input type="date" max={form.issued_at} required value={form.exchange_rate_date || ""} onChange={e => setField("exchange_rate_date", e.target.value)} /></label>
+              <label>{tr("Rate evidence", "Dëshmia e kursit")}<input required maxLength={255} value={form.exchange_rate_source || ""} onChange={e => setField("exchange_rate_source", e.target.value)} /></label>
+            </>}
             <label>
               {t("invoice.issueDate")}<span aria-hidden="true">*</span>
               <input type="date" required value={form.issued_at} onChange={(e) => setIssueDate(e.target.value)} />
@@ -1138,6 +1156,11 @@ function InvoiceEditor({ open, invoice, profile, products, customers, canSaveCus
 }
 
 function PaymentModal({ invoice, open, onClose, onSuccess, money, t }) {
+  const timeZone = useCompanyTimezone();
+  const baseCurrency = useSettingsStore(state => state.base_currency);
+  const { language } = useTranslation();
+  const tr = (en, sq) => language === "sq" ? sq : en;
+  const foreign = Boolean(invoice?.exchange_snapshot && invoice?.currency !== baseCurrency);
   const total = Number(invoice?.grand_total ?? invoice?.total_amount ?? 0);
   const balance = Math.max(
     0,
@@ -1147,23 +1170,25 @@ function PaymentModal({ invoice, open, onClose, onSuccess, money, t }) {
   const [method, setMethod] = useState("cash");
   const [financialAccountId, setFinancialAccountId] = useState("");
   const [financialAccounts, setFinancialAccounts] = useState([]);
-  const [paymentDate, setPaymentDate] = useState(todayIso());
+  const [paymentDate, setPaymentDate] = useState(() => companyDate(timeZone));
   const [reference, setReference] = useState("");
   const [idempotencyKey, setIdempotencyKey] = useState(createRequestId);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [exchange, setExchange] = useState({});
 
   useEffect(() => {
     setAmount(balance ? String(balance) : "");
-    setMethod("cash");
+    setMethod(foreign ? "bank_transfer" : "cash");
+    setExchange({});
     setFinancialAccountId("");
-    setPaymentDate(todayIso());
+    setPaymentDate(companyDate(timeZone));
     setReference("");
     setIdempotencyKey(createRequestId());
     setNote("");
     setError("");
-  }, [invoice?.id, open]);
+  }, [invoice?.id, open, timeZone, foreign]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -1197,6 +1222,7 @@ function PaymentModal({ invoice, open, onClose, onSuccess, money, t }) {
         payment_method: method,
         financial_account_id: financialAccountId ? Number(financialAccountId) : undefined,
         payment_date: paymentDate,
+        ...(foreign ? exchange : {}),
         reference_number: reference.trim() || undefined,
         idempotency_key: idempotencyKey,
         note: note.trim() || undefined,
@@ -1210,7 +1236,7 @@ function PaymentModal({ invoice, open, onClose, onSuccess, money, t }) {
   };
 
   return (
-    <Modal open={open} busy={saving} title={t("invoice.recordPayment")} description={`${invoice?.invoice_number || ""} · ${money(balance)} ${t("invoice.remaining").toLowerCase()}`} onClose={onClose}>
+    <Modal open={open} busy={saving} title={t("invoice.recordPayment")} description={`${invoice?.invoice_number || ""} · ${money(balance, invoice?.currency)} ${t("invoice.remaining").toLowerCase()}`} onClose={onClose}>
       <form className="invoice-payment-form" onSubmit={submit}>
         {error ? <div className="invoice-alert is-error">{error}</div> : null}
         <label>
@@ -1220,28 +1246,33 @@ function PaymentModal({ invoice, open, onClose, onSuccess, money, t }) {
         <label>
           {t("invoice.paymentMethod")}
           <select value={method} onChange={(e) => setMethod(e.target.value)}>
-            <option value="cash">{t("invoice.methodCash")}</option>
+            {!foreign && <option value="cash">{t("invoice.methodCash")}</option>}
             <option value="bank_transfer">{t("invoice.methodBank")}</option>
             <option value="card">{t("invoice.methodCard")}</option>
-            <option value="cheque">{t("invoice.methodCheque")}</option>
-            <option value="other">{t("invoice.methodOther")}</option>
+            {!foreign && <option value="cheque">{t("invoice.methodCheque")}</option>}
+            {!foreign && <option value="other">{t("invoice.methodOther")}</option>}
           </select>
         </label>
         <label>
           {t("invoice.paymentDate")}
-          <input type="date" max={todayIso()} required value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
+          <input type="date" max={companyDate(timeZone)} required value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
         </label>
         <label>
           {t("payments.moneyAccount")}
-          <select value={financialAccountId} onChange={(e) => setFinancialAccountId(e.target.value)}>
-            <option value="">{t("payments.noMoneyAccount")}</option>
-            {financialAccounts.map((account) => (
+          <select required={foreign} value={financialAccountId} onChange={(e) => setFinancialAccountId(e.target.value)}>
+            <option value="">{foreign ? tr("Select EUR bank account", "Zgjidh llogarinë bankare në EUR") : t("payments.noMoneyAccount")}</option>
+            {financialAccounts.filter(account => !foreign || (account.type === "bank" && account.currency === "EUR")).map((account) => (
               <option key={account.id} value={account.id}>
-                {account.name} · {account.type === "cashbox" ? t("finance.cash") : t("finance.bankTransfer")} ({account.currency || "EUR"})
+                {account.name} · {account.type === "cashbox" ? t("finance.cash") : t("finance.bankTransfer")} ({account.currency || baseCurrency})
               </option>
             ))}
           </select>
         </label>
+        {foreign && <>
+          <label>{tr(`EUR received per 1 ${invoice.currency}`, `EUR të pranuara për 1 ${invoice.currency}`)}<input type="number" min="0.00000001" step="0.00000001" required value={exchange.exchange_rate || ""} onChange={e => setExchange({ ...exchange, exchange_rate: e.target.value })} /></label>
+          <label>{tr("Rate date", "Data e kursit")}<input type="date" max={paymentDate} required value={exchange.exchange_rate_date || ""} onChange={e => setExchange({ ...exchange, exchange_rate_date: e.target.value })} /></label>
+          <label>{tr("Bank rate evidence", "Dëshmia bankare e kursit")}<input required maxLength={255} value={exchange.exchange_rate_source || ""} onChange={e => setExchange({ ...exchange, exchange_rate_source: e.target.value })} /></label>
+        </>}
         <label>
           {t("invoice.paymentReference")}
           <input maxLength="255" value={reference} onChange={(e) => setReference(e.target.value)} placeholder={t("invoice.paymentReferencePlaceholder")} />
@@ -1377,7 +1408,7 @@ function ReasonModal({ action, invoice, open, onClose, onConfirm, t }) {
   );
 }
 
-function statusKey(invoice) {
+function statusKey(invoice, today) {
   const rawStatus = String(invoice?.status || "draft").toLowerCase();
   const documentType = String(invoice?.document_type || "invoice").toLowerCase();
   const documentStatus = ["unpaid", "partially_paid", "paid", "sent", "overdue"].includes(rawStatus)
@@ -1399,12 +1430,12 @@ function statusKey(invoice) {
     && documentStatus === "issued"
     && remaining > 0
     && Boolean(dueDate)
-    && dueDate < todayIso();
+    && dueDate < today;
   return { rawStatus, documentStatus, paymentStatus, documentType, isOverdue };
 }
 
-function StatusPills({ invoice, t }) {
-  const { documentStatus, paymentStatus, documentType, isOverdue } = statusKey(invoice);
+function StatusPills({ invoice, t, today }) {
+  const { documentStatus, paymentStatus, documentType, isOverdue } = statusKey(invoice, today);
   const displayStatus = documentType === "credit_note" ? "credit_note" : documentStatus;
   const label = (status) => t(`invoice.status.${status}`);
   return (
@@ -1422,15 +1453,18 @@ function StatusPills({ invoice, t }) {
 
 function InvoiceDetail({ invoice, profile, open, onClose, onEdit, onIssue, onPayment, onReversePayment, onPdf, onExcel, onPrint, onReason, canProcessPayments, actionError, busy, money, date, t, language }) {
   const permissionsForInvoice=useAuthStore(s=>s.permissions);
+  const capabilities = useAuthStore(s => s.user?.commercial?.capabilities);
+  const timeZone = useCompanyTimezone();
   if (!invoice) return null;
   const buyer = buyerSnapshot(invoice);
   const seller = invoice.company_snapshot || invoice.seller_snapshot || profile;
   const total = Number(invoice.total_amount ?? invoice.grand_total ?? 0);
   const paid = Number(invoice.source_settlement?.settled ?? invoice.total_paid ?? 0);
   const remaining = Number(invoice.source_settlement?.outstanding ?? invoice.remaining_balance ?? Math.max(0, total - paid));
-  const { documentStatus, documentType } = statusKey(invoice);
+  const today = companyDate(timeZone);
+  const { documentStatus, documentType } = statusKey(invoice, today);
   const isCreditNote = documentType === "credit_note";
-  const signedMoney = (value) => money(isCreditNote ? -Math.abs(Number(value || 0)) : Number(value || 0));
+  const signedMoney = (value) => money(isCreditNote ? -Math.abs(Number(value || 0)) : Number(value || 0), invoice.currency);
   const isDraft = documentStatus === "draft";
   const terminal = documentType === "credit_note"
     || ["void", "voided", "cancelled", "credited", "credit_note"].includes(documentStatus);
@@ -1440,7 +1474,8 @@ function InvoiceDetail({ invoice, profile, open, onClose, onEdit, onIssue, onPay
     <Modal open={open} title={invoice.invoice_number || t("invoice.draftInvoice")} description={buyer.name} onClose={onClose} wide warnOnUnsaved={false} closeOnBackdrop>
       <div className="invoice-detail"><EntityDocuments entityType="invoice" entityId={invoice.id}/>
         {invoice.daily_sale?.outbound_dispatch?.order?.intake&&<p><Link to={`/order-hub?intake=${invoice.daily_sale.outbound_dispatch.order.intake.id}`}>{language==='sq'?'Porosia burimore':'Source order'} {invoice.daily_sale.outbound_dispatch.order.order_number}</Link> · {invoice.daily_sale.sale_number}</p>}
-        <div className="invoice-detail-status"><StatusPills invoice={invoice} t={t} /></div><Link to={"/fiscalization?invoice="+invoice.id}>{language==="sq"?"Gjendja / kuponi fiskal TEST":"Fiscalization status / TEST receipt"}</Link>
+        <div className="invoice-detail-status"><StatusPills invoice={invoice} t={t} today={today} /></div>
+        {canOpenPage('/fiscalization', permissionsForInvoice, capabilities) && <Link to={"/fiscalization?invoice="+invoice.id}>{language==="sq"?"Gjendja / kuponi fiskal TEST":"Fiscalization status / TEST receipt"}</Link>}
         {actionError ? <div className="invoice-alert is-error" role="alert"><AlertTriangle size={16} />{actionError}</div> : null}
         <div className="invoice-detail-parties">
           <article>
@@ -1487,9 +1522,9 @@ function InvoiceDetail({ invoice, profile, open, onClose, onEdit, onIssue, onPay
             <div><dt>{t("invoice.subtotal")}</dt><dd>{signedMoney(invoice.subtotal ?? total)}</dd></div>
             <div><dt>{t("invoice.discountTotal")}</dt><dd>{signedMoney(invoice.discount_total || 0)}</dd></div>
             <div><dt>{t("invoice.vatTotal")}</dt><dd>{signedMoney(invoice.vat_total || 0)}</dd></div>
-            <div className="grand-total"><dt>{t("invoice.grandTotal")}</dt><dd>{money(invoice.signed_total ?? (isCreditNote ? -total : total))}</dd></div>
-            <div><dt>{invoice.source_settlement?.basis === 'customer_ledger' ? (language === 'sq' ? 'Shlyer përmes regjistrit të klientit' : 'Settled through customer ledger') : t("invoice.paid")}</dt><dd>{money(paid)}</dd></div>
-            <div className="remaining-total"><dt>{t("invoice.remaining")}</dt><dd>{money(remaining)}</dd></div>
+            <div className="grand-total"><dt>{t("invoice.grandTotal")}</dt><dd>{money(invoice.signed_total ?? (isCreditNote ? -total : total), invoice.currency)}</dd></div>
+            <div><dt>{invoice.source_settlement?.basis === 'customer_ledger' ? (language === 'sq' ? 'Shlyer përmes regjistrit të klientit' : 'Settled through customer ledger') : t("invoice.paid")}</dt><dd>{money(paid, invoice.currency)}</dd></div>
+            <div className="remaining-total"><dt>{t("invoice.remaining")}</dt><dd>{money(remaining, invoice.currency)}</dd></div>
           </dl>
         </div>
 
@@ -1507,7 +1542,7 @@ function InvoiceDetail({ invoice, profile, open, onClose, onEdit, onIssue, onPay
                   <EntityDocuments compact entityType="payment" entityId={payment.id}/>
                   <span>
                     <Banknote size={15} />
-                    <strong>{money(payment.amount)}</strong>
+                    <strong>{money(payment.amount, payment.currency || invoice.currency)}</strong>
                     <small>{date(payment.payment_date || payment.paid_at || payment.created_at)} · {payment.payment_method}</small>
                   </span>
                   <span className={`invoice-payment-state state-${paymentStatus}`}>{t(`invoice.paymentStatus.${paymentStatus}`)}</span>
@@ -1547,6 +1582,8 @@ function InvoiceDetail({ invoice, profile, open, onClose, onEdit, onIssue, onPay
 
 export default function Invoices() {
   const { t, language } = useTranslation();
+  const baseCurrency = useSettingsStore(state => state.base_currency);
+  const today = companyDate(useCompanyTimezone());
   const location = useLocation();
   const permissions = useAuthStore((state) => state.permissions);
   const canManageInvoiceProfile = permissions.includes("invoice_profile.manage");
@@ -1576,8 +1613,8 @@ export default function Invoices() {
   const createRequestHandled = useRef("");
 
   const money = useCallback(
-    (value) => new Intl.NumberFormat(language === "sq" ? "sq-AL" : "en-IE", { style: "currency", currency: "EUR" }).format(Number(value || 0)),
-    [language],
+    (value, currency) => businessMoney(value, currency || baseCurrency, language),
+    [language, baseCurrency],
   );
   const date = useCallback(
     (value) => value ? new Intl.DateTimeFormat(language === "sq" ? "sq-AL" : "en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(String(value).slice(0, 10) + "T12:00:00")) : "—",
@@ -1957,9 +1994,9 @@ export default function Invoices() {
                     <td><strong className="invoice-number">{invoice.invoice_number || t("invoice.draftInvoice")}</strong>{invoice.original_invoice_id ? <small>{t("invoice.correctionDocument")}</small> : null}</td>
                     <td><strong>{buyer.name || "—"}</strong><small>{buyer.fiscal_number || buyer.vat_number || ""}</small></td>
                     <td>{date(invoice.issued_at || invoice.invoice_date)}</td>
-                    <td><StatusPills invoice={invoice} t={t} /></td>
-                    <td><strong>{money(displayedTotal)}</strong></td>
-                    <td><strong className={remaining > 0 ? "amount-due" : "amount-paid"}>{money(remaining)}</strong></td>
+                    <td><StatusPills invoice={invoice} t={t} today={today} /></td>
+                    <td><strong>{money(displayedTotal, invoice.currency)}</strong></td>
+                    <td><strong className={remaining > 0 ? "amount-due" : "amount-paid"}>{money(remaining, invoice.currency)}</strong></td>
                     <td>
                       <div className="invoice-row-actions">
                         <button type="button" className="secondary" disabled={actionBusy === `detail-${invoice.id}`} onClick={() => openDetail(invoice)}>

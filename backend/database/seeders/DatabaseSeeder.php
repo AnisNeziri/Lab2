@@ -6,6 +6,8 @@ use App\Models\Company;
 use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 class DatabaseSeeder extends Seeder
 {
@@ -13,6 +15,15 @@ class DatabaseSeeder extends Seeder
 
     public function run(): void
     {
+        $database = DB::connection();
+        $name = basename(str_replace('\\', '/', $database->getDatabaseName()));
+        $fixture = (app()->environment('testing') && $name === ':memory:')
+            || (app()->environment('e2e') && $name === 'e2e.sqlite')
+            || (app()->environment('local') && config('synthetic.allow_predictable_seed') && $name === 'demo.sqlite');
+        if (! $fixture || $database->getDriverName() !== 'sqlite' || config('security.desktop_license_file')) {
+            throw new RuntimeException('Demo accounts require a dedicated development or browser test SQLite fixture.');
+        }
+
         $company = Company::updateOrCreate(
             ['name' => 'Enterprise Demo Co.'],
             ['address' => '123 Enterprise Blvd, Business City, BC 10001']

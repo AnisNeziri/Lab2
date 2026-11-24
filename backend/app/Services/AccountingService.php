@@ -42,17 +42,32 @@ class AccountingService
         ['1000', 'Cash', 'asset', '100', 'debit', true, true, 'operating'], ['1010', 'Bank', 'asset', '100', 'debit', true, true, 'operating'],
         ['1100', 'Accounts Receivable', 'asset', '100', 'debit', true, true, 'operating'], ['1150', 'Recoverable Input VAT', 'asset', '100', 'debit', true, true, 'operating'], ['1200', 'Inventory', 'asset', '100', 'debit', true, true, 'operating'],
         ['1300', 'Supplier Advances', 'asset', '100', 'debit', true, true, 'operating'], ['1400', 'Inventory Received Not Invoiced', 'asset', '100', 'debit', true, true, 'operating'],
+        ['1500', 'Fixed Asset Cost', 'asset', '100', 'debit', true, true, 'investing'],
+        ['1510', 'Accumulated Depreciation', 'asset', '100', 'credit', true, true, 'investing'],
+        ['1520', 'Accumulated Asset Impairment', 'asset', '100', 'credit', true, true, 'investing'],
         ['200', 'Liabilities', 'liability', null, 'credit', false, true, null], ['2000', 'Accounts Payable', 'liability', '200', 'credit', true, true, 'operating'],
         ['2100', 'Goods Receipt Clearing', 'liability', '200', 'credit', true, true, 'operating'], ['2150', 'Output VAT Payable', 'liability', '200', 'credit', true, true, 'operating'], ['2200', 'Customer Advances', 'liability', '200', 'credit', true, true, 'operating'],
+        ['2300', 'Current Corporate Income Tax Payable', 'liability', '200', 'credit', true, true, 'operating'],
         ['300', 'Equity', 'equity', null, 'credit', false, true, null], ['3000', 'Owner Equity', 'equity', '300', 'credit', true, true, 'financing'], ['3100', 'Retained Earnings', 'equity', '300', 'credit', true, true, 'financing'],
         ['400', 'Revenue', 'revenue', null, 'credit', false, true, null], ['4000', 'Sales Revenue', 'revenue', '400', 'credit', true, true, 'operating'], ['4200', 'Realized FX Gain', 'revenue', '400', 'credit', true, true, 'operating'],
+        ['4210', 'Unrealized FX Gain', 'revenue', '400', 'credit', true, true, null],
+        ['4220', 'Fixed Asset Disposal Gain', 'revenue', '400', 'credit', true, true, null],
         ['500', 'Cost of Sales', 'expense', null, 'debit', false, true, null], ['5000', 'Cost of Goods Sold', 'expense', '500', 'debit', true, true, 'operating'],
         ['600', 'Operating Expenses', 'expense', null, 'debit', false, true, null], ['6000', 'Operating Expense', 'expense', '600', 'debit', true, true, 'operating'],
         ['6100', 'Inventory Adjustments', 'expense', '600', 'debit', true, true, 'operating'], ['6200', 'Inventory Loss and Damage', 'expense', '600', 'debit', true, true, 'operating'],
         ['6300', 'Realized FX Loss', 'expense', '600', 'debit', true, true, 'operating'], ['6400', 'Freight and Handling', 'expense', '600', 'debit', true, true, 'operating'],
+        ['6310', 'Unrealized FX Loss', 'expense', '600', 'debit', true, true, null],
+        ['6500', 'Fixed Asset Depreciation', 'expense', '600', 'debit', true, true, 'operating'],
+        ['6510', 'Fixed Asset Impairment', 'expense', '600', 'debit', true, true, 'operating'],
+        ['6520', 'Fixed Asset Disposal Loss', 'expense', '600', 'debit', true, true, 'investing'],
+        ['6900', 'Current Corporate Income Tax', 'expense', '600', 'debit', true, true, 'operating'],
     ];
 
-    public const MAPPINGS = ['cash' => '1000', 'bank' => '1010', 'accounts_receivable' => '1100', 'input_vat' => '1150', 'inventory' => '1200', 'supplier_advances' => '1300', 'inventory_received_not_invoiced' => '1400', 'accounts_payable' => '2000', 'goods_receipt_clearing' => '2100', 'output_vat' => '2150', 'customer_advances' => '2200', 'equity' => '3000', 'retained_earnings' => '3100', 'sales_revenue' => '4000', 'fx_gain' => '4200', 'cost_of_goods_sold' => '5000', 'operating_expense' => '6000', 'inventory_adjustments' => '6100', 'inventory_loss_damage' => '6200', 'fx_loss' => '6300', 'freight' => '6400', 'customs' => '1200', 'landed_cost' => '1200'];
+    public const MAPPINGS = ['cash' => '1000', 'bank' => '1010', 'accounts_receivable' => '1100', 'input_vat' => '1150', 'inventory' => '1200', 'supplier_advances' => '1300', 'inventory_received_not_invoiced' => '1400', 'accounts_payable' => '2000', 'goods_receipt_clearing' => '2100', 'output_vat' => '2150', 'customer_advances' => '2200', 'equity' => '3000', 'retained_earnings' => '3100', 'sales_revenue' => '4000', 'fx_gain' => '4200', 'cost_of_goods_sold' => '5000', 'operating_expense' => '6000', 'inventory_adjustments' => '6100', 'inventory_loss_damage' => '6200', 'fx_loss' => '6300', 'freight' => '6400', 'customs' => '1200', 'landed_cost' => '1200',
+        'fixed_asset_cost' => '1500', 'fixed_asset_accumulated_depreciation' => '1510', 'fixed_asset_accumulated_impairment' => '1520',
+        'fixed_asset_depreciation' => '6500', 'fixed_asset_impairment' => '6510', 'fixed_asset_disposal_loss' => '6520', 'fixed_asset_disposal_gain' => '4220',
+        'fx_unrealized_gain' => '4210', 'fx_unrealized_loss' => '6310',
+        'corporate_tax_payable' => '2300', 'corporate_tax_expense' => '6900'];
 
     public function initialize(): array
     {
@@ -63,7 +78,8 @@ class AccountingService
             foreach (self::DEFAULTS as [$code,$name,$type,$parentCode,$normal,$posting,$system,$cashFlow]) {
                 $parent = $parentCode ? $byCode->get($parentCode) : null;
                 $account = AccountingAccount::query()->firstOrCreate(['company_id' => $company, 'code' => $code], ['name' => $name, 'type' => $type, 'parent_id' => $parent?->id, 'normal_balance' => $normal, 'is_posting' => $posting, 'is_system' => $system, 'is_active' => true, 'cash_flow_class' => $cashFlow, 'statement_group' => match ($code) {
-                    '5000' => 'cost_of_sales','4200' => 'other_income','6300' => 'other_expense',default => $type === 'revenue' ? 'revenue' : ($type === 'expense' ? 'operating_expense' : null)
+                    '5000' => 'cost_of_sales','4200', '4210', '4220' => 'other_income','6300', '6310', '6520' => 'other_expense', '6900' => 'income_tax',
+                    default => $type === 'revenue' ? 'revenue' : ($type === 'expense' ? 'operating_expense' : null)
                 }]);
                 $byCode->put($code, $account);
             }
@@ -150,6 +166,18 @@ class AccountingService
             $this->lockCompany();
             foreach ($rows as $key => $id) {
                 $a = AccountingAccount::query()->findOrFail($id);
+                $assetMapping = str_starts_with($key, 'fixed_asset_');
+                $reservedForAsset = AccountingPostingMapping::query()->where('mapping_key', 'like', 'fixed_asset_%')->where('accounting_account_id', $id)->where('mapping_key', '!=', $key)->exists();
+                if ($reservedForAsset || ($assetMapping && AccountingPostingMapping::query()->where('accounting_account_id', $id)->where('mapping_key', '!=', $key)->exists())) {
+                    throw ValidationException::withMessages([$key => ['Use a dedicated account for fixed asset postings.']]);
+                }
+                if ($assetMapping) {
+                    $current = AccountingPostingMapping::query()->where('mapping_key', $key)->value('accounting_account_id');
+                    if ($current && (int) $current !== (int) $id && JournalLine::query()->where('accounting_account_id', $current)->exists()) {
+                        throw ValidationException::withMessages([$key => ['Posted asset accounts cannot be changed without a reviewed balance migration.']]);
+                    }
+                    $this->assertAssetAccount($key, $a);
+                }
                 if(str_starts_with($key,'payroll_')) {
                     \App\Services\Workforce\WorkforcePresence::forget((int)Auth::user()->company_id);
                     abort_unless(app(PermissionService::class)->roleHasPermission(Auth::user()->role,'payroll.configure'),403);
@@ -356,19 +384,37 @@ class AccountingService
         $configured = AccountingPostingMapping::query()->whereIn('mapping_key', $required)->count();
         if ($configured < $required->count()) {
             $this->initialize();
-        }$mapped = collect($this->mappings())->keyBy('mapping_key');
+        }
+        $mapped = AccountingPostingMapping::query()->whereIn('mapping_key', $required)->with('account')->get()->keyBy('mapping_key');
         $resolved = array_map(function ($line) use ($mapped) {
             if (isset($line['accounting_account_id'])) {
                 return $line;
             }$mapping = $mapped->get($line['mapping']);
             if (! $mapping) {
                 throw ValidationException::withMessages(['mapping' => ["Posting account '{$line['mapping']}' is not configured."]]);
-            }unset($line['mapping']);
+            }
+            if (str_starts_with($line['mapping'], 'fixed_asset_')) {
+                $this->assertAssetAccount($line['mapping'], $mapping->account);
+                if (AccountingPostingMapping::query()->where('accounting_account_id', $mapping->accounting_account_id)->where('mapping_key', '!=', $line['mapping'])->exists()) {
+                    throw ValidationException::withMessages(['mapping' => ['The fixed asset posting account must be dedicated to its control.']]);
+                }
+            }
+            unset($line['mapping']);
 
             return ['accounting_account_id' => $mapping->accounting_account_id, ...$line];
         }, $lines);
 
         return $this->createAndPost(['posting_date' => $date, 'description' => $description, 'source_module' => $module, 'source_type' => $sourceType, 'source_id' => $sourceId, 'source_key' => $sourceKey, 'currency' => $currency, 'exchange_rate' => $rate, 'exchange_rate_date' => $rateSnapshot['date'] ?? null, 'exchange_rate_source' => $rateSnapshot['source'] ?? null, 'lines' => $resolved]);
+    }
+
+    private function assertAssetAccount(string $key, ?AccountingAccount $account): void
+    {
+        $isAsset = in_array($key, FixedAssetService::CONTROLS, true);
+        $type = $isAsset ? 'asset' : ($key === 'fixed_asset_disposal_gain' ? 'revenue' : 'expense');
+        $expectedBalance = $type === 'revenue' || in_array($key, array_slice(FixedAssetService::CONTROLS, 1), true) ? 'credit' : 'debit';
+        if (! $account || $account->type !== $type || $account->normal_balance !== $expectedBalance) {
+            throw ValidationException::withMessages([$key => ['Select an account with the required fixed asset type and normal balance.']]);
+        }
     }
 
     public function postCustomerDebt(CustomerDebtTransaction $transaction): JournalEntry
@@ -427,13 +473,14 @@ class AccountingService
         if ($expense->document_type === 'opening_balance') {
             return $this->postMapped('supplier_accounting', 'expense', $expense->id, 'expense:'.$expense->id, $expense->invoice_date->toDateString(), 'Opening supplier position '.$expense->document_number, [['mapping' => 'equity', 'debit' => $expense->gross_amount], ['mapping' => 'accounts_payable', 'credit' => $expense->gross_amount]], $expense->currency, 1);
         }
+        $assetEntry = app(FixedAssetService::class)->billPostingEntry($expense);
         $gross = Money::normalize(abs((float) $expense->gross_amount_eur));
         $deductible = Money::normalize(abs((float) $expense->deductible_vat_amount_eur));
         $selfAssessed = Money::normalize($expense->self_assessed_vat_amount_eur ?? 0);
         $expenseAmount = Money::subtract(Money::add($gross,$selfAssessed), $deductible);
         $creditNote = $expense->document_type === 'credit_note';
         $lines = [];
-        $expenseMapping = $expense->category === 'inventory' && $expense->purchase_order_id ? 'goods_receipt_clearing' : 'operating_expense';
+        $expenseMapping = $assetEntry ? 'fixed_asset_cost' : ($expense->category === 'inventory' && $expense->purchase_order_id ? 'goods_receipt_clearing' : 'operating_expense');
         if (Money::compare($expenseAmount, '0') > 0) {
             $lines[] = ['mapping' => $expenseMapping, $creditNote ? 'credit' : 'debit' => $expenseAmount];
         }
@@ -443,6 +490,9 @@ class AccountingService
         if (Money::compare($selfAssessed,0)>0) $lines[] = [...($expense->tax_snapshot['output_account_id'] ?? null ? ['accounting_account_id'=>$expense->tax_snapshot['output_account_id']] : ['mapping'=>'output_vat']), $creditNote ? 'debit' : 'credit' => $selfAssessed];
         $lines[] = ['mapping' => 'accounts_payable', $creditNote ? 'debit' : 'credit' => $gross];
         $entry = $this->postMapped('supplier_accounting', 'expense', $expense->id, 'expense:'.$expense->id, $expense->invoice_date->toDateString(), 'Supplier document '.$expense->document_number, $lines, $expense->currency, $expense->exchange_rate, ['date' => $expense->exchange_rate_date, 'source' => $expense->exchange_rate_source]);
+        if ($assetEntry && ! $assetEntry->journal_entry_id) {
+            $assetEntry->update(['journal_entry_id' => $entry->id]);
+        }
         if (! $creditNote) {
             app(BusinessEventService::class)->record('supplier.payable_recognized', $expense, $expense->document_number, ['journal_entry_id' => $entry->id, 'amount' => $gross], "supplier-payable:{$expense->id}");
         }
@@ -459,7 +509,9 @@ class AccountingService
         if ($payment->financial_account_id) {
             $financial = FinancialAccount::query()->findOrFail($payment->financial_account_id);
             $settlement = ['accounting_account_id' => $this->ensureFinancialAccount($financial)->id, 'credit' => $cash];
-        }$lines = [['mapping' => 'accounts_payable', 'debit' => $carrying], $settlement];
+        }
+        $assetCost = \App\Models\FixedAssetEntry::query()->where('expense_id', $expense->id)->whereNotNull('journal_entry_id')->exists();
+        $lines = [['mapping' => 'accounts_payable', 'debit' => $carrying, 'dimensions' => $assetCost ? ['cash_flow_class' => 'investing'] : null], $settlement];
         $difference = Money::subtract($cash, $carrying);
         if (Money::compare($difference, '0') > 0) {
             $lines[] = ['mapping' => 'fx_loss', 'debit' => $difference];
@@ -575,9 +627,12 @@ class AccountingService
         $expense = $sum('operating_expense', false);
         $gain = $sum('other_income', true);
         $loss = $sum('other_expense', false);
+        $tax = $sum('income_tax', false);
         $operating = $revenue - $cogs - $expense;
+        $beforeTax = $operating + $gain - $loss;
 
-        return ['from' => $from, 'to' => $to, 'currency' => $tb['currency'], 'revenue' => Money::decimal($revenue), 'cost_of_goods_sold' => Money::decimal($cogs), 'gross_profit' => Money::decimal($revenue - $cogs), 'operating_expenses' => Money::decimal($expense), 'operating_profit' => Money::decimal($operating), 'other_gains' => Money::decimal($gain), 'other_losses' => Money::decimal($loss), 'other_gains_losses' => Money::decimal($gain - $loss), 'net_profit' => Money::decimal($operating + $gain - $loss), 'accounts' => $rows->whereIn('type', ['revenue', 'expense'])->values()];
+        return ['from' => $from, 'to' => $to, 'currency' => $tb['currency'], 'revenue' => Money::decimal($revenue), 'cost_of_goods_sold' => Money::decimal($cogs), 'gross_profit' => Money::decimal($revenue - $cogs), 'operating_expenses' => Money::decimal($expense), 'operating_profit' => Money::decimal($operating), 'other_gains' => Money::decimal($gain), 'other_losses' => Money::decimal($loss), 'other_gains_losses' => Money::decimal($gain - $loss),
+            'profit_before_tax' => Money::decimal($beforeTax), 'income_tax' => Money::decimal($tax), 'net_profit' => Money::decimal($beforeTax - $tax), 'accounts' => $rows->whereIn('type', ['revenue', 'expense'])->values()];
     }
 
     public function balanceSheet(?string $to): array
@@ -662,7 +717,9 @@ class AccountingService
             }
         }
         $financialMovementCodes = ['opening_balance', 'manual_adjustment_in', 'manual_adjustment_out', 'import_adjustment_in', 'import_adjustment_out', 'purchase_receipt', 'daily_sale', 'daily_sale_reversal', 'invoice_sale', 'invoice_credit', 'reconciliation_adjustment', 'legacy_stock_in', 'legacy_stock_out', 'customer_return', 'supplier_return', 'damage_received', 'damage_writeoff', 'sample', 'internal_use', 'stock_count'];
-        foreach (StockMovement::query()->where('affects_company_quantity', true)->whereNotNull('cost_total')->whereIn('movement_code', $financialMovementCodes)->when($start, fn ($q) => $q->whereDate('occurred_at', '>=', $start))->get(['id', 'movement_code', 'cost_total']) as $movement) {
+        foreach (StockMovement::query()->where('affects_company_quantity', true)->whereNotNull('cost_total')->whereIn('movement_code', $financialMovementCodes)
+            ->where(fn ($q) => $q->whereRaw('ROUND(cost_total, 2) <> 0')->orWhereRaw('ROUND(COALESCE(inventory_value_before, 0), 2) <> ROUND(COALESCE(inventory_value_after, 0), 2)'))
+            ->when($start, fn ($q) => $q->whereDate('occurred_at', '>=', $start))->get(['id', 'movement_code', 'cost_total']) as $movement) {
             $key = 'missing-posting:stock-movement:'.$movement->id;
             $exists = JournalEntry::query()->where('source_module', 'inventory')->where('source_key', 'stock-movement:'.$movement->id)->exists();
             if (! $exists) {
@@ -724,16 +781,21 @@ class AccountingService
     public function reconciliation(bool $recordExceptions = true): array
     {
         $gl=$this->controlBalances();
-        $invoiceDebt = Invoice::query()->where('document_type', 'invoice')->whereIn('status', ['issued', 'partially_paid', 'paid'])->whereNull('daily_sale_id')
-            ->whereDoesntHave('debtTransactions')->sum(DB::raw('CASE WHEN (CASE WHEN grand_total>total_amount THEN grand_total ELSE total_amount END)>total_paid THEN (CASE WHEN grand_total>total_amount THEN grand_total ELSE total_amount END)-total_paid ELSE 0 END'));
+        $invoicePositions = app(ReceivableReports::class)->positions('9999-12-31')->where('source', 'invoice');
+        $unvaluedInvoices = (clone $invoicePositions)->whereNull('base_outstanding')->count();
+        $invoiceDebt = $invoicePositions->sum('base_outstanding');
         $ar = round((float) Customer::query()->sum('current_debt') + (float) $invoiceDebt, 2);
         $customerAdvances = round((float) Customer::query()->sum('current_credit'), 2);
         $ap = round((float) app(PayableReports::class)->positions('9999-12-31')->sum('base_outstanding'), 2);
-        $allocated = DB::table('supplier_invoice_payment_allocations')->where('company_id', Auth::user()->company_id)->selectRaw('purchase_order_payment_id,SUM(amount) amount')->groupBy('purchase_order_payment_id');
-        $supplierAdvances = round((float) PurchaseOrderPayment::query()->where('status', 'completed')->leftJoinSub($allocated, 'a', 'a.purchase_order_payment_id', '=', 'purchase_order_payments.id')
-            ->sum(DB::raw('(purchase_order_payments.amount-COALESCE(a.amount,0))*COALESCE(purchase_order_payments.exchange_rate,1)')), 2);
-        $inventory = (float) Product::query()->sum(DB::raw('ROUND(COALESCE(inventory_value,quantity*COALESCE(weighted_average_cost,purchase_price,0)),2)'));
         $baseCurrency = CompanyCurrency::forCompanyId((int) Auth::user()->company_id);
+        $advancePayments = PurchaseOrderPayment::query()->where('status', 'completed')->where('purchase_order_payments.amount', '>', 0);
+        $advancesWithoutRate = (clone $advancePayments)->missingCurrencyEvidence($baseCurrency)->count();
+        $allocated = DB::table('supplier_invoice_payment_allocations')->where('company_id', Auth::user()->company_id)->selectRaw('purchase_order_payment_id,SUM(amount) amount')->groupBy('purchase_order_payment_id');
+        $supplierAdvances = $advancePayments->leftJoinSub($allocated, 'a', 'a.purchase_order_payment_id', '=', 'purchase_order_payments.id')
+            ->selectRaw('COALESCE(SUM(ROUND(purchase_order_payments.amount * CASE WHEN purchase_order_payments.currency = ? THEN 1 ELSE purchase_order_payments.exchange_rate END, 2) - ROUND(COALESCE(a.amount, 0) * CASE WHEN purchase_order_payments.currency = ? THEN 1 ELSE purchase_order_payments.exchange_rate END, 2)), 0) amount', [$baseCurrency, $baseCurrency])->value('amount');
+        $inventory = (float) Product::query()->sum(DB::raw('ROUND(COALESCE(inventory_value,quantity*COALESCE(weighted_average_cost,purchase_price,0)),2)'));
+        $uncostedMovements = StockMovement::query()->missingValuation(Auth::user()->company->accounting_start_date?->toDateString())->count();
+        $unvaluedStock = Product::query()->where('quantity', '>', 0)->whereNull('inventory_value')->whereNull('weighted_average_cost')->whereNull('purchase_price')->count();
         $cashTransactions = FinancialAccountTransaction::query()->where('status', 'posted')->selectRaw("COALESCE(SUM((CASE WHEN type IN ('inflow','transfer_in','adjustment_in','refund_in') THEN 1 ELSE -1 END)*amount*(CASE WHEN currency=? THEN 1 ELSE COALESCE(exchange_rate,0) END)),0) amount", [$baseCurrency])->value('amount');
         $cash = round((float) FinancialAccount::query()->where('currency', $baseCurrency)->sum('opening_balance') + (float) $cashTransactions
             + (float) DailySale::query()->whereDoesntHave('outboundDispatch', fn ($q) => $q->whereHas('order', fn ($o) => $o->where('payment_type', '!=', 'cash')))->sum('total_amount')
@@ -746,13 +808,32 @@ class AccountingService
             'accounts_receivable' => $this->reconciliationRow('accounts_receivable', $ar, $gl['accounts_receivable'], ['account_codes' => ['1100'], 'drilldown_url' => '/customer-debts', 'affected' => Customer::query()->where('current_debt', '>', 0)->orderByDesc('current_debt')->limit(10)->get(['id', 'name', 'current_debt'])]),
             'customer_advances' => $this->reconciliationRow('customer_advances', $customerAdvances, -$gl['customer_advances'], ['account_codes' => ['2200'], 'drilldown_url' => '/customer-debts', 'affected' => Customer::query()->where('current_credit', '>', 0)->orderByDesc('current_credit')->limit(10)->get(['id', 'name', 'current_credit'])]),
             'accounts_payable' => $this->reconciliationRow('accounts_payable', $ap, -$gl['accounts_payable'], ['account_codes' => ['2000'], 'drilldown_url' => '/finance']),
-            'supplier_advances' => $this->reconciliationRow('supplier_advances', $supplierAdvances, $gl['supplier_advances'], ['account_codes' => ['1300'], 'drilldown_url' => '/purchase-orders']),
+            'supplier_advances' => $this->reconciliationRow('supplier_advances', (float) $supplierAdvances, $gl['supplier_advances'], ['account_codes' => ['1300'], 'drilldown_url' => '/purchase-orders']),
             'inventory' => $this->reconciliationRow('inventory', $inventory, $gl['inventory'], ['account_codes' => ['1200'], 'drilldown_url' => '/stock', 'affected' => Product::query()->orderByDesc('inventory_value')->limit(10)->get(['id', 'name', 'sku', 'quantity', 'inventory_value'])]),
             'cash_bank' => $this->reconciliationRow('cash_bank', $cash, $gl['cash_bank'], ['account_codes' => ['1000', '1010'], 'drilldown_url' => '/money-accounts']),
         ];
+        if ($uncostedMovements || $unvaluedStock) {
+            $rows['inventory'] = [...$rows['inventory'], 'operational_amount' => null, 'difference' => null,
+                'reconciled' => false, 'status' => 'evidence_required', 'uncosted_movements' => $uncostedMovements, 'unvalued_products' => $unvaluedStock,
+                'evidence_issues' => ['Inventory valuation is incomplete. Review source costs for quantity movements and on-hand stock.']];
+        }
+        if ($unvaluedInvoices) {
+            $rows['accounts_receivable'] = [...$rows['accounts_receivable'], 'operational_amount' => null, 'difference' => null,
+                'reconciled' => false, 'status' => 'evidence_required',
+                'evidence_issues' => ['Historical EUR valuation is missing for one or more foreign-currency invoices.']];
+        }
+        if ($advancesWithoutRate) {
+            $rows['supplier_advances'] = [...$rows['supplier_advances'], 'operational_amount' => null, 'difference' => null,
+                'reconciled' => false, 'status' => 'evidence_required', 'missing_currency_evidence' => $advancesWithoutRate,
+                'evidence_issues' => ['Review the original currency and dated exchange-rate evidence for supplier payments before reconciling advances.']];
+        }
         if ($recordExceptions) {
             foreach ($rows as $key => $row) {
                 $exceptionKey = 'control-mismatch:'.$key;
+                if ($row['status'] === 'evidence_required') {
+                    $this->exception($exceptionKey, $key.'_source_evidence', 'critical', $row['evidence_issues'][0], $row);
+                    continue;
+                }
                 if (! $row['reconciled']) {
                     $this->exception($exceptionKey, $key.'_control_mismatch', abs((float) $row['difference']) >= 100 ? 'critical' : 'warning', ucwords(str_replace('_', ' ', $key)).' subledger does not reconcile to the General Ledger.', $row);
                 } else {

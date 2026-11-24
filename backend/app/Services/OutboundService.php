@@ -300,6 +300,12 @@ class OutboundService
     private function dispatch(SalesOrder $o,array $d): void
     {
         app(OutboundCreditService::class)->authorize($o);
+        if ($o->payment_type === 'cash') {
+            $policy = app(\App\Services\Kosovo\CashPaymentPolicy::class);
+            if ($policy->applies()) {
+                $policy->assertAllowed(\App\Support\CompanyClock::today()->toDateString(), $o->total_amount, $o->customer?->customer_type, 'cash');
+            }
+        }
         $packages=$o->packages()->whereIn('id',$d['package_ids']??[])->whereNull('outbound_dispatch_id')->with('items.allocation.item.product')->get();
         if($packages->isEmpty()||$packages->count()!==count(array_unique($d['package_ids']??[])))$this->fail('Select undispatched packages belonging to this order.');
         $dispatch=OutboundDispatch::create(['company_id'=>$o->company_id,'sales_order_id'=>$o->id,'reference'=>'DSP-'.$o->id.'-'.($o->dispatches()->count()+1),'dispatched_at'=>now(),'driver'=>$d['driver']??null,'vehicle'=>$d['vehicle']??null,'notes'=>$d['notes']??null,'created_by'=>Auth::id()]);

@@ -34,6 +34,46 @@ class DC8SecurityCommercialTest extends TestCase
         return $this->withHeader('Authorization', 'Bearer '.app(JwtService::class)->issueTokens($actor)['access_token']);
     }
     private function commercial(string $path): string { return '/api/commercial'.$path.'?company_id='.$this->apiCompany->id; }
+
+    public function test_distribution_defaults_keep_finance_and_intelligence_but_respect_permissions(): void
+    {
+        $this->apiCompany->update(['timezone' => 'Europe/Belgrade', 'capability_settings' => [
+            'package' => 'distribution', 'capabilities' => Entitlements::PACKAGES['distribution'],
+        ]]);
+
+        $this->getJson('/api/me')->assertOk()->assertJsonPath('business_timezone', 'Europe/Belgrade')
+            ->assertJsonFragment(['package' => 'distribution']);
+        $this->getJson('/api/accounting/control-center')->assertOk();
+        $this->postJson('/api/intelligence-assistant/ask', ['question' => 'How do I check an order?'])->assertOk();
+        $this->getJson('/api/tax/available-codes')->assertOk()->assertJsonStructure(['codes']);
+        $this->getJson('/api/fiscalization')->assertOk();
+
+        $this->apiCompany->update(['capability_settings' => [
+            'package' => 'distribution', 'capabilities' => array_values(array_diff(Entitlements::PACKAGES['distribution'], ['tax'])),
+        ]]);
+        $this->getJson('/api/tax/available-codes')->assertOk()->assertJsonStructure(['codes']);
+        $this->postJson('/api/tax/configuration/initialize')->assertForbidden()->assertJsonPath('code', 'CAPABILITY_NOT_ENABLED');
+        $this->getJson('/api/fiscalization')->assertForbidden()->assertJsonPath('code', 'CAPABILITY_NOT_ENABLED');
+    }
+
+    public function test_the_predictable_demo_seeder_refuses_production_even_when_opted_in(): void
+    {
+        config(['synthetic.allow_predictable_seed' => true]);
+        $previous = app()->environment();
+        app()->instance('env', 'production');
+
+        try {
+            (new \Database\Seeders\DatabaseSeeder)->run();
+            $this->fail('The demo seeder ran in production.');
+        } catch (\RuntimeException $error) {
+            $this->assertStringContainsString('dedicated development', $error->getMessage());
+        } finally {
+            app()->instance('env', $previous);
+        }
+
+        $this->assertDatabaseMissing('users', ['email' => 'admin@enterprise.com']);
+    }
+
     private function cborHead(int $major,int $size): string {return $size<24?chr(($major<<5)|$size):($size<256?chr(($major<<5)|24).chr($size):chr(($major<<5)|25).pack('n',$size));}
     private function bytes(string $x): string {return $this->cborHead(2,strlen($x)).$x;}
     private function text(string $x): string {return $this->cborHead(3,strlen($x)).$x;}
