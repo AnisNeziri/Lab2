@@ -18,6 +18,44 @@ async function preferences(page, theme, language) {
   await expect(page.locator('html')).toHaveAttribute('lang',language)
 }
 
+test('compact sidebar, task link and product details have clear spacing and navigation', async ({page}, testInfo) => {
+  await page.setViewportSize({ width: 1214, height: 893 })
+  await login(page)
+  const sidebar = page.getByRole('complementary', { name: 'Main navigation' })
+  await expect(sidebar.locator('.sidebar-nav > .sidebar-group')).toHaveCount(5)
+  const workspace = sidebar.getByRole('combobox', { name: 'My workspace' })
+  await expect(workspace).toHaveCSS('background-color', 'rgb(29, 41, 59)')
+  await sidebar.screenshot({ path: testInfo.outputPath('compact-sidebar.png') })
+  await page.goto('/integrations')
+  await expect(sidebar.getByRole('button', { name: 'Company', exact: true })).toHaveAttribute('aria-expanded', 'true')
+  await expect(sidebar.getByRole('link', { name: 'Company Connections' })).toHaveAttribute('aria-current', 'page')
+  const stock = sidebar.getByRole('button', { name: 'Stock & purchasing' })
+  await stock.click()
+  const purchasing = sidebar.getByRole('button', { name: 'Purchasing & suppliers' })
+  await purchasing.click()
+  await sidebar.getByRole('link', { name: 'Purchase Orders', exact: true }).click()
+  await expect(page).toHaveURL(/\/purchase-orders$/)
+  await expect(purchasing).toHaveAttribute('aria-expanded', 'true')
+  await page.goto('/automation-studio')
+  const tasks = page.getByRole('link', { name: 'Open My Tasks', exact: true })
+  await expect(tasks).toHaveCSS('border-top-style', 'solid')
+  await expect(tasks).toHaveCSS('min-height', '40px')
+  await page.screenshot({ path: testInfo.outputPath('compact-sidebar-and-my-tasks.png') })
+  await tasks.click()
+  await expect(page).toHaveURL(/\/action-center\?view=mine&status=active$/)
+
+  await page.goto('/products')
+  await page.getByRole('button', { name: 'Add product', exact: true }).click()
+  const logistics = page.locator('.product-advanced-section').filter({ hasText: 'Logistics, identifiers and attributes' })
+  await logistics.locator('summary').click()
+  const gaps = await logistics.evaluate(section => {
+    const [fields, barcodes, attributes] = [...section.children].slice(1).map(child => child.getBoundingClientRect())
+    return [barcodes.top - fields.bottom, attributes.top - barcodes.bottom]
+  })
+  expect(Math.min(...gaps)).toBeGreaterThanOrEqual(10)
+  await logistics.screenshot({ path: testInfo.outputPath('product-logistics-spacing.png') })
+})
+
 test('all module routes, representative hovers, themes and languages at laptop size', async ({page}, testInfo) => {
   test.setTimeout(480_000)
   await page.setViewportSize({width:1366,height:768})

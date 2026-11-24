@@ -9,6 +9,9 @@ const DEFAULT_GROUPS = {
   purchasing: false,
   shipments: false,
   finance: false,
+  "stock-supply": false,
+  company: false,
+  workforce: false,
   intelligence: false,
   operations: false,
   settings: false,
@@ -29,12 +32,12 @@ export const useSidebarNavStore = create(
         });
       },
 
-      ensureGroupOpen(groupId) {
-        if (get().expandedGroups[groupId]) return;
+      ensureGroupsOpen(...groupIds) {
+        if (groupIds.every(id => get().expandedGroups[id])) return;
         set({
           expandedGroups: {
             ...get().expandedGroups,
-            [groupId]: true,
+            ...Object.fromEntries(groupIds.map(id => [id, true])),
           },
         });
       },

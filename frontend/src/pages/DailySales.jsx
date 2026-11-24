@@ -11,8 +11,11 @@ import {
   X,
 } from "lucide-react";
 import AimsLogo from "../components/AimsLogo";
+import Disclosure from "../components/Disclosure";
+import WorkspaceModal from "../components/WorkspaceModal";
 import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from "../hooks/useTranslation";
+import { useRevealTarget } from "../hooks/useRevealTarget";
 import { useAuthStore } from "../store/authStore";
 import { getAllProducts } from "../api/products";
 import { formatQuantity, isMeterUnit } from "../utils/formatQuantity";
@@ -73,11 +76,12 @@ function warehouseAvailableQuantity(product, warehouseId) {
 function emptyRow(index = 1) {
   return {
     key: `row-${Date.now()}-${index}`,
+    unlisted: false,
     product_id: "",
     product_name: "",
     unit: "pcs",
     quantity: 1,
-    unit_price: 0,
+    unit_price: "",
     line_total: 0,
     stock_available: null,
     inventory_unit: "pcs",
@@ -97,6 +101,7 @@ function emptyRow(index = 1) {
 function mapRow(item) {
   return {
     key: `row-${item.id}`,
+    unlisted: !item.product_id,
     product_id: item.product_id || "",
     product_name: item.product_name,
     unit: item.unit,
@@ -131,6 +136,7 @@ function saleSequence(sale, fallback) {
 
 export default function DailySales() {
   const { t, language } = useTranslation();
+  const reveal = useRevealTarget();
   const user = useAuthStore((state) => state.user);
   const permissions = useAuthStore((state) => state.permissions);
   const [params] = useSearchParams();
@@ -141,6 +147,7 @@ export default function DailySales() {
   const [warehouses, setWarehouses] = useState([]);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorId, setEditorId] = useState(null);
+  const [removedProduct, setRemovedProduct] = useState(false);
   const [saleNumber, setSaleNumber] = useState("");
   const [rows, setRows] = useState([emptyRow()]);
   const [notes, setNotes] = useState("");
@@ -262,7 +269,7 @@ export default function DailySales() {
   }, [date, editorOpen, loadDay, loadProducts, loadDayNotes]);
 
   const editorTotal = useMemo(
-    () => rows.reduce((sum, row) => sum + Number(row.line_total || 0), 0),
+    () => rows.reduce((sum, row) => row.product_name.trim() ? sum + Number(row.line_total || 0) : sum, 0),
     [rows],
   );
   const nextSequence = useMemo(
@@ -273,14 +280,11 @@ export default function DailySales() {
       ) + 1,
     [sales],
   );
-  const savedTotal = useMemo(
-    () =>
-      sales
-        .filter((sale) => sale.id !== editorId)
-        .reduce((sum, sale) => sum + Number(sale.total_amount || 0), 0),
-    [sales, editorId],
+  const dayTotal = useMemo(
+    () => sales.reduce((sum, sale) => sum + Number(sale.total_amount || 0), 0),
+    [sales],
   );
-  const dayTotal = savedTotal + (editorOpen ? editorTotal : 0);
+  const visibleSales = sales.filter((sale) => !source || (source === "order" ? Boolean(sale.outbound_dispatch) : !sale.outbound_dispatch));
   const dayClosed =
     sales.length > 0 && sales.every((sale) => sale.status === "finalized");
 
@@ -333,6 +337,7 @@ export default function DailySales() {
 
   function startNewSale() {
     submissionKeyRef.current = requestKey();
+    setRemovedProduct(false);
     setEditorOpen(true);
     setEditorId(null);
     setSaleNumber("");
@@ -349,6 +354,7 @@ export default function DailySales() {
   function editSale(sale) {
     if (sale.status !== "draft") return;
     submissionKeyRef.current = null;
+    setRemovedProduct(false);
     setEditorOpen(true);
     setEditorId(sale.id);
     setSaleNumber(sale.sale_number);
@@ -444,15 +450,7 @@ export default function DailySales() {
       (item) => String(item.id) === String(productId),
     );
     if (!product) {
-      updateRow(key, {
-        product_id: "",
-        product_name: "",
-        stock_available: null,
-        tracking_mode: "none",
-        location_id: "",
-        serial_options: [],
-        selected_serial_ids: [],
-      });
+      updateRow(key, { ...emptyRow(), key });
       return;
     }
     const defaultWarehouse = product.default_warehouse_id || warehouses.find((warehouse) => warehouse.is_default)?.id || "";
@@ -476,6 +474,13 @@ export default function DailySales() {
     if ((product.tracking_mode || "none") === "serial" && defaultWarehouse) {
       void loadSerialOptions(key, product.id, defaultWarehouse);
     }
+  }
+
+  function switchItemMode(row) {
+    if (row.product_name.trim()) setRemovedProduct(true);
+    const unlisted = !row.unlisted;
+    updateRow(row.key, { ...emptyRow(), key: row.key, unlisted, quantity: row.quantity });
+    reveal(`${row.key}-${unlisted ? "unlisted-name" : "catalog-product"}`);
   }
 
   function selectSaleUnit(key, unitCode) {
@@ -526,12 +531,14 @@ export default function DailySales() {
 
   const addProduct = () =>
     setRows((current) => [...current, emptyRow(current.length + 1)]);
-  const removeProduct = (key) =>
+  function removeProduct(row) {
+    if (row.product_name.trim()) setRemovedProduct(true);
     setRows((current) =>
       current.length === 1
         ? [emptyRow()]
-        : current.filter((row) => row.key !== key),
+        : current.filter((item) => item.key !== row.key),
     );
+  }
 
   function payload() {
     return {
@@ -557,8 +564,11 @@ export default function DailySales() {
     };
   }
 
-  async function saveEditor(closeAfter = true) {
+  async function saveEditor() {
     if (!editorOpen) return null;
+    if (rows.some(row => row.unlisted && !row.product_name.trim())) {
+      throw new Error(t("dailySales.unlistedNameRequired"));
+    }
     const data = payload();
     if (!data.items.length) throw new Error(t("dailySales.addProductRequired"));
     const incomplete = rows.some((row) => {
@@ -568,6 +578,7 @@ export default function DailySales() {
         !Number.isFinite(Number(row.quantity)) || !Number.isFinite(Number(row.unit_price));
     });
     if (incomplete) throw new Error(t("dailySales.numberFieldsRequired"));
+    if (editorTotal <= 0) throw new Error(t("dailySales.positiveTotalRequired"));
     if (canOverrideExpired && allowExpiredOverride && expiredOverrideReason.trim().length < 5) {
       throw new Error(t("dailySales.expiredOverrideReasonRequired"));
     }
@@ -577,11 +588,12 @@ export default function DailySales() {
       submissionKeyRef.current ||= requestKey();
       data.idempotency_key = submissionKeyRef.current;
     }
-    const saved = editorId
-      ? await updateDailySale(editorId, data)
-      : await createDailySale(data);
-    if (closeAfter) resetEditor();
-    return saved;
+    if (editorId) {
+      await updateDailySale(editorId, data);
+    } else {
+      await createDailySale(data);
+    }
+    resetEditor();
   }
 
   async function handleSaveDayNotes() {
@@ -606,11 +618,13 @@ export default function DailySales() {
     setError("");
     setMessage("");
     try {
-      await saveEditor(true);
+      await saveEditor();
       await Promise.all([loadDay(date, false), loadProducts()]);
       setMessage(t("dailySales.saleSaved"));
+      reveal("daily-sales-feedback");
     } catch (err) {
       setError(err.message || t("dailySales.saveError"));
+      reveal("daily-sale-save-error");
     } finally {
       setSaving(false);
     }
@@ -622,9 +636,6 @@ export default function DailySales() {
     setError("");
     setMessage("");
     try {
-      if (editorOpen && rows.some((row) => row.product_name.trim())) {
-        await saveEditor(true);
-      }
       await finalizeDailySalesDay(date);
       setConfirmClose(false);
       await Promise.all([loadDay(date, false), loadProducts()]);
@@ -707,10 +718,13 @@ export default function DailySales() {
             disabled={
               !canFinalize ||
               saving ||
-              (!sales.length && !editorOpen) ||
+              !sales.length ||
               dayClosed
             }
-            onClick={() => setConfirmClose(true)}
+            onClick={() => {
+              setConfirmClose(true);
+              reveal("daily-sales-close");
+            }}
           >
             <CheckCircle2 size={17} />
             {dayClosed ? t("dailySales.dayClosed") : t("dailySales.closeDay")}
@@ -718,13 +732,13 @@ export default function DailySales() {
         </div>
       </section>
 
-      {error ? <div className="form-error-banner no-print">{error}</div> : null}
+      {error && !editorOpen ? <div className="form-error-banner no-print" role="alert">{error}</div> : null}
       {message ? (
-        <div className="success-banner no-print">{message}</div>
+        <div id="daily-sales-feedback" className="success-banner no-print" role="status" tabIndex={-1}>{message}</div>
       ) : null}
 
       {confirmClose ? (
-        <section className="card daily-sales-confirm no-print">
+        <section id="daily-sales-close" tabIndex={-1} className="card daily-sales-confirm no-print">
           <h3>{t("dailySales.closeDay")}</h3>
           <p>{t("dailySales.closeDayConfirm")}</p>
           <div className="form-actions">
@@ -744,7 +758,7 @@ export default function DailySales() {
       ) : null}
 
       {deleteTarget ? (
-        <section className="card daily-sales-confirm danger-confirmation no-print">
+        <section id="daily-sales-delete" tabIndex={-1} className="card daily-sales-confirm danger-confirmation no-print">
           <h3>{t("dailySales.deleteSale")}</h3>
           <p>
             {t("dailySales.deleteSaleConfirm", {
@@ -797,91 +811,95 @@ export default function DailySales() {
           </div>
           <div>
             <span>{t("dailySales.salesCount")}</span>
-            <strong>{sales.length + (editorOpen && !editorId ? 1 : 0)}</strong>
+            <strong>{sales.length}</strong>
           </div>
         </section>
 
-        <section className="daily-sales-day-notes no-print">
-          <label htmlFor="daily-sales-day-notes">
-            <span>{t("dailySales.dayNotes")}</span>
-            <textarea
-              id="daily-sales-day-notes"
-              rows="3"
-              value={dayNotes}
-              onChange={(event) => {
-                dayNotesDirtyRef.current = true;
-                setDayNotes(event.target.value);
-              }}
-              placeholder={t("dailySales.dayNotesPlaceholder")}
-            />
-          </label>
+        <Disclosure title={t("dailySales.dayNotes")} className="daily-sales-day-notes no-print">
+          <textarea
+            id="daily-sales-day-notes"
+            aria-label={t("dailySales.dayNotes")}
+            rows="3"
+            value={dayNotes}
+            onChange={(event) => {
+              dayNotesDirtyRef.current = true;
+              setDayNotes(event.target.value);
+            }}
+            placeholder={t("dailySales.dayNotesPlaceholder")}
+          />
           <button type="button" className="secondary" disabled={dayNotesSaving} onClick={handleSaveDayNotes}>
             {dayNotesSaving ? t("common.loading") : t("dailySales.saveDayNotes")}
           </button>
-        </section>
+        </Disclosure>
 
         {editorOpen ? (
-          <section className="daily-sale-entry daily-sale-editor no-print">
-            <div className="daily-sale-entry-heading">
-              <div>
-                <span>
-                  {t("dailySales.saleNumber", {
-                    number: editorId
-                      ? saleSequence(
-                          sales.find((sale) => sale.id === editorId),
-                          nextSequence,
-                        )
-                      : nextSequence,
-                  })}
-                </span>
-                <small>{saleNumber || t("dailySales.assignedOnSave")}</small>
+          <WorkspaceModal
+            title={t(editorId ? "dailySales.editSale" : "dailySales.addSale")}
+            className="daily-sale-dialog no-print"
+            onClose={resetEditor}
+            busy={saving}
+            protectForms
+            warnOnUnsaved={removedProduct}
+          >
+            {({ close }) => (
+              <form
+                className="daily-sale-editor"
+                noValidate
+                onChange={() => { if (error) setError(""); }}
+                onSubmit={(event) => { event.preventDefault(); handleSave(); }}
+              >
+              <div className="daily-sale-entry-heading">
+                <div>
+                  <span>
+                    {t("dailySales.saleNumber", {
+                      number: editorId
+                        ? saleSequence(
+                            sales.find((sale) => sale.id === editorId),
+                            nextSequence,
+                          )
+                        : nextSequence,
+                    })}
+                  </span>
+                  <small>{saleNumber || t("dailySales.assignedOnSave")}</small>
+                </div>
+                <div className="daily-sale-entry-total">
+                  <span>{t("dailySales.saleTotal")}</span>
+                  <strong>{money(editorTotal)}</strong>
+                </div>
               </div>
-              <div className="daily-sale-entry-total">
-                <span>{t("dailySales.saleTotal")}</span>
-                <strong>{money(editorTotal)}</strong>
-              </div>
-            </div>
-            <table className="daily-sales-table">
-              <thead>
-                <tr>
-                  <th>{t("dailySales.line")}</th>
-                  <th>{t("dailySales.colProduct")}</th>
-                  <th>{t("dailySales.colUnit")}</th>
-                  <th>{t("dailySales.colQuantity")}</th>
-                  <th>{t("dailySales.colPrice")}</th>
-                  <th>{t("dailySales.colAmount")}</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
+              {error && <p id="daily-sale-save-error" className="form-error-banner" role="alert" tabIndex={-1}>{error}</p>}
+              <div className="daily-sale-lines">
                 {rows.map((row, index) => (
-                  <tr key={row.key}>
-                    <td className="daily-sales-line-number">{index + 1}</td>
-                    <td>
+                  <fieldset className={`daily-sale-line${row.unlisted ? " daily-sale-line-unlisted" : ""}`} key={row.key} disabled={saving}>
+                    <legend>{t("dailySales.line")} {index + 1}</legend>
+                    {row.unlisted ? <>
+                      <label className="daily-sale-product">{t("dailySales.customItemName")}
+                        <input id={`${row.key}-unlisted-name`} value={row.product_name} onChange={(event) => updateRow(row.key, { product_name: event.target.value })} />
+                      </label>
+                      <label className="daily-sale-unlisted-unit">{t("dailySales.colUnit")}
+                        <input value={row.unit} onChange={(event) => updateRow(row.key, { unit: event.target.value })} />
+                      </label>
+                    </> : <div className="daily-sale-product">
                       <div className="daily-sales-product-cell">
-                        <select
-                          value={row.product_id}
-                          onChange={(event) =>
-                            selectProduct(row.key, event.target.value)
-                          }
-                        >
-                          <option value="">
-                            {t("dailySales.selectProduct")}
-                          </option>
-                          {products.map((product) => (
-                            <option key={product.id} value={product.id}>
-                              {product.name} ({formatQuantity(getInventoryQuantity(product, "available"), product.unit, language)} {product.unit})
+                        <label>
+                          {t("dailySales.catalogProduct")}
+                          <select
+                            id={`${row.key}-catalog-product`}
+                            value={row.product_id}
+                            onChange={(event) =>
+                              selectProduct(row.key, event.target.value)
+                            }
+                          >
+                            <option value="">
+                              {t("dailySales.selectProduct")}
                             </option>
-                          ))}
-                        </select>
-                        <input
-                          value={row.product_name}
-                          onChange={(event) =>
-                            updateRow(row.key, {
-                              product_name: event.target.value,
-                            })
-                          }
-                        />
+                            {products.map((product) => (
+                              <option key={product.id} value={product.id}>
+                                {product.name}{product.sku ? ` · ${product.sku}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                         {row.stock_available != null ? (
                           <small>
                             {t("dailySales.stock")}: {formatQuantity(row.stock_available, row.inventory_unit, language)}{" "}
@@ -896,179 +914,173 @@ export default function DailySales() {
                             {stockErrors[row.key]}
                           </small>
                         ) : null}
-                        {row.tracking_mode === "serial" ? (
-                          <div className="daily-sales-serial-picker">
-                            <div>
-                              <strong>{t("dailySales.selectSerials")}</strong>
-                              <span>{row.selected_serial_ids.length}/{Number.isInteger(baseQuantity(row)) ? baseQuantity(row) : "—"}</span>
-                            </div>
-                            {row.trace_loading ? <small>{t("dailySales.loadingSerials")}</small> : null}
-                            {!row.trace_loading && row.serial_options.length === 0 ? <small>{t("dailySales.noSerials")}</small> : null}
-                            <div className="daily-sales-serial-options">
-                              {row.serial_options.map((option) => {
-                                const checked = row.selected_serial_ids.includes(Number(option.id));
-                                const selectedOption = row.serial_options.find((candidate) => row.selected_serial_ids.includes(Number(candidate.id)));
-                                const differentLocation = selectedOption
-                                  && String(option.location_id ?? 0) !== String(selectedOption.location_id ?? 0);
-                                const blockedExpired = option.is_expired && !allowExpiredOverride;
-                                return (
-                                  <label key={`${option.id}-${option.location_id ?? 0}`} className={(differentLocation && !checked) || blockedExpired ? "is-disabled" : ""}>
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      disabled={(differentLocation && !checked) || blockedExpired}
-                                      onChange={(event) => toggleSerial(row.key, option, event.target.checked)}
-                                    />
-                                    <span>{option.serial_number}<small>{option.location_name || t("dailySales.savedSerial")}{option.is_expired ? ` · ${t("dailySales.expiredSerial")}` : ""}</small></span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                            {row.trace_error ? <small className="daily-sales-error">{row.trace_error}</small> : null}
-                            {serialErrors[row.key] ? <small className="daily-sales-error">{serialErrors[row.key]}</small> : null}
-                          </div>
-                        ) : null}
                       </div>
-                    </td>
-                    <td>
-                      {row.product_id ? (
-                        <div className="daily-sale-unit-cell">
-                          <select value={row.unit} onChange={(event) => selectSaleUnit(row.key, event.target.value)}>
-                            {(() => { const product = products.find((candidate) => String(candidate.id) === String(row.product_id)); return [product?.unit || "pcs", ...(product?.units || []).filter((unit) => unit.is_active !== false).map((unit) => unit.code)].filter((unit, index, all) => all.indexOf(unit) === index).map((unit) => <option key={unit} value={unit}>{unit}</option>) })()}
-                          </select>
-                          <select value={row.warehouse_id} onChange={(event) => selectSaleWarehouse(row.key, event.target.value)}>
-                            <option value="">{t("productUnits.useCompanyDefault")}</option>
-                            {warehouses.filter((warehouse) => warehouse.is_active).map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
-                          </select>
-                          {row.conversion_mode === "fixed" ? <small>1 {row.unit} = {formatQuantity(row.conversion_factor, row.inventory_unit, language)} {row.inventory_unit}. {t("dailySales.stockDeduction")}: {formatQuantity(Number(row.quantity || 0) * Number(row.conversion_factor || 0), row.inventory_unit, language)} {row.inventory_unit}</small> : null}
-                          {row.conversion_mode === "variable" ? <label className="daily-sale-measured">{t("dailySales.actualMeasured")} ({row.inventory_unit})<input required type="number" min="0.001" step="0.001" value={row.actual_base_quantity} onChange={(event) => updateRow(row.key, { actual_base_quantity: event.target.value })} /></label> : null}
-                        </div>
-                      ) : (
-                        <input
-                          value={row.unit}
-                          onChange={(event) =>
-                            updateRow(row.key, { unit: event.target.value })
-                          }
-                        />
-                      )}
-                    </td>
-                    <td>
+                    </div>}
+                    <label>
+                      {t("dailySales.colQuantity")}
                       <input
                         type="number"
                         min={isMeterUnit(row.unit) ? "0.001" : "1"}
                         step={isMeterUnit(row.unit) ? "0.001" : "1"}
                         value={row.quantity}
-                        onChange={(event) =>
-                          updateRow(row.key, { quantity: event.target.value })
-                        }
+                        onChange={(event) => updateRow(row.key, { quantity: event.target.value })}
                       />
-                    </td>
-                    <td>
+                    </label>
+                    <label>
+                      {t("dailySales.colPrice")}
                       <input
                         type="number"
                         min="0"
                         step="0.01"
                         value={row.unit_price}
-                        onChange={(event) =>
-                          updateRow(row.key, { unit_price: event.target.value })
-                        }
+                        onChange={(event) => updateRow(row.key, { unit_price: event.target.value })}
                       />
-                    </td>
-                    <td className="daily-sales-amount">
-                      {money(row.line_total)}
-                    </td>
-                    <td>
+                    </label>
+                    <div className="daily-sale-line-details">
+                      {row.product_id && (
+                        <div className="daily-sale-unit-cell">
+                          <label>{t("dailySales.colUnit")}<select value={row.unit} onChange={(event) => selectSaleUnit(row.key, event.target.value)}>
+                            {(() => { const product = products.find((candidate) => String(candidate.id) === String(row.product_id)); return [product?.unit || "pcs", ...(product?.units || []).filter((unit) => unit.is_active !== false).map((unit) => unit.code)].filter((unit, index, all) => all.indexOf(unit) === index).map((unit) => <option key={unit} value={unit}>{unit}</option>) })()}
+                          </select></label>
+                          <label>{t("dailySales.pickWarehouse")}<select value={row.warehouse_id} onChange={(event) => selectSaleWarehouse(row.key, event.target.value)}>
+                            <option value="">{t("productUnits.useCompanyDefault")}</option>
+                            {warehouses.filter((warehouse) => warehouse.is_active).map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
+                          </select></label>
+                          {row.conversion_mode === "fixed" ? <small>1 {row.unit} = {formatQuantity(row.conversion_factor, row.inventory_unit, language)} {row.inventory_unit}. {t("dailySales.stockDeduction")}: {formatQuantity(Number(row.quantity || 0) * Number(row.conversion_factor || 0), row.inventory_unit, language)} {row.inventory_unit}</small> : null}
+                          {row.conversion_mode === "variable" ? <label className="daily-sale-measured">{t("dailySales.actualMeasured")} ({row.inventory_unit})<input required type="number" min="0.001" step="0.001" value={row.actual_base_quantity} onChange={(event) => updateRow(row.key, { actual_base_quantity: event.target.value })} /></label> : null}
+                        </div>
+                      )}
+                      {row.product_id && <Disclosure title={t("dailySales.itemLabelTitle")}>
+                        <label>{t("dailySales.itemLabel")}<input value={row.product_name} onChange={(event) => updateRow(row.key, { product_name: event.target.value })}/></label>
+                      </Disclosure>}
+                      <button type="button" className="daily-sale-source-switch" onClick={() => switchItemMode(row)}>
+                        {t(row.unlisted ? "dailySales.useCatalogItem" : "dailySales.addCustomItem")}
+                      </button>
+                    </div>
+                    {row.tracking_mode === "serial" ? (
+                      <div className="daily-sales-serial-picker daily-sale-trace">
+                        <div>
+                          <strong>{t("dailySales.selectSerials")}</strong>
+                          <span>{row.selected_serial_ids.length}/{Number.isInteger(baseQuantity(row)) ? baseQuantity(row) : "—"}</span>
+                        </div>
+                        {row.trace_loading ? <small>{t("dailySales.loadingSerials")}</small> : null}
+                        {!row.trace_loading && row.serial_options.length === 0 ? <small>{t("dailySales.noSerials")}</small> : null}
+                        <div className="daily-sales-serial-options">
+                          {row.serial_options.map((option) => {
+                            const checked = row.selected_serial_ids.includes(Number(option.id));
+                            const selectedOption = row.serial_options.find((candidate) => row.selected_serial_ids.includes(Number(candidate.id)));
+                            const differentLocation = selectedOption
+                              && String(option.location_id ?? 0) !== String(selectedOption.location_id ?? 0);
+                            const blockedExpired = option.is_expired && !allowExpiredOverride;
+                            return (
+                              <label key={`${option.id}-${option.location_id ?? 0}`} className={(differentLocation && !checked) || blockedExpired ? "is-disabled" : ""}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={(differentLocation && !checked) || blockedExpired}
+                                  onChange={(event) => toggleSerial(row.key, option, event.target.checked)}
+                                />
+                                <span>{option.serial_number}<small>{option.location_name || t("dailySales.savedSerial")}{option.is_expired ? ` · ${t("dailySales.expiredSerial")}` : ""}</small></span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        {row.trace_error ? <small className="daily-sales-error">{row.trace_error}</small> : null}
+                        {serialErrors[row.key] ? <small className="daily-sales-error">{serialErrors[row.key]}</small> : null}
+                      </div>
+                    ) : null}
+                    <div className="daily-sale-line-total">
+                      <div>{t("dailySales.colAmount")} <strong>{money(row.line_total)}</strong></div>
                       <button
                         type="button"
                         className="daily-sales-icon-button"
                         aria-label={t("dailySales.removeProduct")}
-                        onClick={() => removeProduct(row.key)}
+                        onClick={() => removeProduct(row)}
                       >
                         <X size={17} />
                       </button>
-                    </td>
-                  </tr>
+                    </div>
+                  </fieldset>
                 ))}
-              </tbody>
-            </table>
-            <button
-              type="button"
-              className="daily-sales-add-product"
-              onClick={addProduct}
-            >
-              <Plus size={16} /> {t("dailySales.addProduct")}
-            </button>
-            <div className="daily-sale-editor-footer">
-              <label>
-                {t("dailySales.saleNotes")}
-                <textarea
-                  rows="2"
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                />
-              </label>
-              {canOverrideExpired ? (
-                <div className="daily-sales-expired-override">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={allowExpiredOverride}
-                      onChange={(event) => {
-                        const enabled = event.target.checked;
-                        setAllowExpiredOverride(enabled);
-                        if (!enabled) {
-                          setExpiredOverrideReason("");
-                          setRows((current) => current.map((row) => {
-                            const selectedIds = row.selected_serial_ids.filter((id) => !row.serial_options.find((option) => Number(option.id) === Number(id))?.is_expired);
-                            const firstSelected = row.serial_options.find((option) => selectedIds.includes(Number(option.id)));
-                            return {
-                              ...row,
-                              selected_serial_ids: selectedIds,
-                              location_id: firstSelected?.location_id != null ? String(firstSelected.location_id) : "",
-                            };
-                          }));
-                        }
-                      }}
-                    />
-                    <span>{t("dailySales.expiredOverride")}</span>
-                  </label>
-                  {allowExpiredOverride ? (
-                    <input
-                      value={expiredOverrideReason}
-                      minLength="5"
-                      onChange={(event) => setExpiredOverrideReason(event.target.value)}
-                      placeholder={t("dailySales.expiredOverrideReason")}
-                    />
-                  ) : null}
-                </div>
-              ) : null}
-              <div className="form-actions">
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={handleSave}
-                >
-                  <Save size={16} /> {t("dailySales.saveSale")}
-                </button>
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={saving}
-                  onClick={resetEditor}
-                >
-                  {t("dailySales.cancel")}
-                </button>
               </div>
-            </div>
-          </section>
+              <button
+                type="button"
+                className="daily-sales-add-product"
+                disabled={saving}
+                onClick={addProduct}
+              >
+                <Plus size={16} /> {t("dailySales.addProduct")}
+              </button>
+              <Disclosure title={t("dailySales.saleOptions")} className="daily-sale-editor-options">
+                <label>
+                  {t("dailySales.saleNotes")}
+                  <textarea
+                    rows="2"
+                    disabled={saving}
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                  />
+                </label>
+                {canOverrideExpired ? (
+                  <div className="daily-sales-expired-override">
+                    <label>
+                      <input
+                        type="checkbox"
+                        disabled={saving}
+                        checked={allowExpiredOverride}
+                        onChange={(event) => {
+                          const enabled = event.target.checked;
+                          setAllowExpiredOverride(enabled);
+                          if (!enabled) {
+                            setExpiredOverrideReason("");
+                            setRows((current) => current.map((row) => {
+                              const selectedIds = row.selected_serial_ids.filter((id) => !row.serial_options.find((option) => Number(option.id) === Number(id))?.is_expired);
+                              const firstSelected = row.serial_options.find((option) => selectedIds.includes(Number(option.id)));
+                              return {
+                                ...row,
+                                selected_serial_ids: selectedIds,
+                                location_id: firstSelected?.location_id != null ? String(firstSelected.location_id) : "",
+                              };
+                            }));
+                          }
+                        }}
+                      />
+                      <span>{t("dailySales.expiredOverride")}</span>
+                    </label>
+                    {allowExpiredOverride ? (
+                      <input
+                        value={expiredOverrideReason}
+                        disabled={saving}
+                        minLength="5"
+                        onChange={(event) => setExpiredOverrideReason(event.target.value)}
+                        placeholder={t("dailySales.expiredOverrideReason")}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
+              </Disclosure>
+                <div className="form-actions">
+                  <button type="submit" className="workspace-primary" disabled={saving}>
+                    <Save size={16} /> {t("dailySales.saveSale")}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={saving}
+                    onClick={close}
+                  >
+                    {t("dailySales.cancel")}
+                  </button>
+                </div>
+              </form>
+            )}
+          </WorkspaceModal>
         ) : null}
 
         {loading ? (
           <p className="daily-sales-empty">{t("common.loading")}</p>
-        ) : sales.some(sale=>!source||(source==='order'?!!sale.outbound_dispatch:!sale.outbound_dispatch)) ? (
-          sales
-            .filter(sale=>!source||(source==='order'?!!sale.outbound_dispatch:!sale.outbound_dispatch))
-            .filter((sale) => sale.id !== editorId)
+        ) : visibleSales.length ? (
+          visibleSales
             .map((sale, index) => (
               <section className="daily-sale-entry" key={sale.id}>
                 <div className="daily-sale-entry-heading">
@@ -1100,7 +1112,10 @@ export default function DailySales() {
                           <button
                             type="button"
                             className="danger"
-                            onClick={() => setDeleteTarget(sale)}
+                            onClick={() => {
+                              setDeleteTarget(sale);
+                              reveal("daily-sales-delete");
+                            }}
                           >
                             <Trash2 size={15} /> {t("dailySales.delete")}
                           </button>
@@ -1113,34 +1128,36 @@ export default function DailySales() {
                     <strong>{money(sale.total_amount)}</strong>
                   </div>
                 </div>
-                <table className="daily-sales-table">
-                  <thead>
-                    <tr>
-                      <th>{t("dailySales.line")}</th>
-                      <th>{t("dailySales.colProduct")}</th>
-                      <th>{t("dailySales.colUnit")}</th>
-                      <th>{t("dailySales.colQuantity")}</th>
-                      <th>{t("dailySales.colPrice")}</th>
-                      <th>{t("dailySales.colAmount")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sale.items?.map((item, itemIndex) => (
-                      <tr key={item.id}>
-                        <td className="daily-sales-line-number">
-                          {itemIndex + 1}
-                        </td>
-                        <td>{item.product_name}</td>
-                        <td>{item.unit}</td>
-                        <td>{Number(item.quantity)}</td>
-                        <td>{money(item.unit_price)}</td>
-                        <td className="daily-sales-amount">
-                          {money(item.line_total)}
-                        </td>
+                <div className="table-wrap">
+                  <table className="daily-sales-table">
+                    <thead>
+                      <tr>
+                        <th>{t("dailySales.line")}</th>
+                        <th>{t("dailySales.colProduct")}</th>
+                        <th>{t("dailySales.colUnit")}</th>
+                        <th>{t("dailySales.colQuantity")}</th>
+                        <th>{t("dailySales.colPrice")}</th>
+                        <th>{t("dailySales.colAmount")}</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {sale.items?.map((item, itemIndex) => (
+                        <tr key={item.id}>
+                          <td className="daily-sales-line-number">
+                            {itemIndex + 1}
+                          </td>
+                          <td>{item.product_name}</td>
+                          <td>{item.unit}</td>
+                          <td>{Number(item.quantity)}</td>
+                          <td>{money(item.unit_price)}</td>
+                          <td className="daily-sales-amount">
+                            {money(item.line_total)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
                 {sale.notes ? (
                   <p className="daily-sale-notes">
                     <strong>{t("dailySales.saleNotes")}:</strong> {sale.notes}
@@ -1148,14 +1165,14 @@ export default function DailySales() {
                 ) : null}
               </section>
             ))
-        ) : !editorOpen ? (
+        ) : (
           <div className="daily-sales-empty">
-            <p>{t("dailySales.noSalesForDate")}</p>
-            <button type="button" className="no-print" onClick={startNewSale}>
+            <p>{t(sales.length ? "dailySales.noSalesForSource" : "dailySales.noSalesForDate")}</p>
+            {!sales.length && <button type="button" className="no-print" onClick={startNewSale}>
               <Plus size={16} /> {t("dailySales.addFirstSale")}
-            </button>
+            </button>}
           </div>
-        ) : null}
+        )}
 
         <footer className="daily-sales-day-total">
           <span>{t("dailySales.dayTotal")}</span>

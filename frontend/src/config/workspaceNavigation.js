@@ -18,3 +18,23 @@ export function personalizedNavigation(permissions, enable3d, role, value, capab
   }).filter(g=>g.items.length)
   return {groups,favorites}
 }
+
+const sidebarSections = [
+  { id: 'overview', en: 'Workspace', sq: 'Hapësira e punës', direct: 'overview', subgroups: ['intelligence'] },
+  { id: 'sales', en: 'Sales & customers', sq: 'Shitjet dhe klientët', direct: 'sales' },
+  { id: 'stock-supply', en: 'Stock & purchasing', sq: 'Stoku dhe blerjet', subgroups: ['inventory', 'purchasing', 'shipments'] },
+  { id: 'finance', en: 'Finance', sq: 'Financat', direct: 'finance' },
+  { id: 'company', en: 'Company', sq: 'Kompania', subgroups: ['workforce', 'operations', 'settings'] },
+]
+
+// Group the filtered sidebar for display while keeping the original groups for saved preferences.
+export function groupSidebarNavigation(groups, role) {
+  if (role === 'superadmin') return groups.map(group => ({ ...group, subgroups: [] }))
+
+  const byId = new Map(groups.map(group => [group.id, group]))
+  return sidebarSections.map(section => ({
+    ...section,
+    items: byId.get(section.direct)?.items ?? [],
+    subgroups: groups.filter(group => section.subgroups?.includes(group.id)),
+  })).filter(section => section.items.length || section.subgroups.length)
+}

@@ -35,7 +35,7 @@
 
 .daily-sales-toolbar-actions button,
 .daily-sale-entry-actions button,
-.daily-sale-editor-footer button,
+.daily-sale-editor .form-actions button,
 .daily-sales-add-product {
   display: inline-flex;
   align-items: center;
@@ -56,8 +56,7 @@
   color: #111827;
   border: 2px solid #111827;
   padding: 1.5rem;
-  min-width: 760px;
-  overflow: hidden;
+  min-width: 0;
 }
 
 .daily-sales-book-header {
@@ -117,19 +116,9 @@
   font-size: 1.15rem;
 }
 
-.daily-sales-day-notes {
+.daily-sales-day-notes .workspace-disclosure-body {
   display: grid;
   gap: 0.65rem;
-  margin: 0 0 1rem;
-  padding: 0.85rem;
-  border: 1px solid #94a3b8;
-  background: #f8fafc;
-}
-
-.daily-sales-day-notes label {
-  display: grid;
-  gap: 0.4rem;
-  font-weight: 700;
 }
 
 .daily-sales-day-notes textarea {
@@ -147,11 +136,6 @@
   margin-top: 1rem;
   border: 1px solid #111827;
   break-inside: avoid;
-}
-
-.daily-sale-editor {
-  border: 2px solid #0f766e;
-  box-shadow: 0 8px 24px rgba(15, 118, 110, 0.1);
 }
 
 .daily-sale-entry-heading {
@@ -222,21 +206,9 @@
   text-align: left;
 }
 
-.daily-sales-table input,
-.daily-sales-table select {
-  width: 100%;
-  min-width: 74px;
-  border: 1px solid #94a3b8;
-  border-radius: 5px;
-  padding: 0.4rem 0.45rem;
-  background: #fff;
-  color: #111827;
-}
-
 .daily-sales-product-cell {
   display: grid;
   gap: 0.35rem;
-  min-width: 230px;
 }
 
 .daily-sales-product-cell small {
@@ -319,14 +291,10 @@
   color: #0f766e;
 }
 
-.daily-sale-editor-footer {
+.daily-sale-editor-options .workspace-disclosure-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
-  align-items: end;
-  padding: 0.85rem;
-  border-top: 1px solid #94a3b8;
-  background: #f8fafc;
 }
 
 .daily-sales-expired-override {
@@ -336,10 +304,10 @@
   max-width: 310px;
 }
 
-.daily-sales-expired-override > label {
+.daily-sale-editor-options .daily-sales-expired-override > label {
   display: flex;
-  grid-template-columns: none;
   align-items: center;
+  justify-content: flex-start;
   gap: 0.45rem;
   color: #b45309;
 }
@@ -352,14 +320,14 @@
   padding: 0.5rem;
 }
 
-.daily-sale-editor-footer label {
+.daily-sale-editor-options label {
   display: grid;
   gap: 0.35rem;
   font-size: 0.82rem;
   font-weight: 700;
 }
 
-.daily-sale-editor-footer textarea {
+.daily-sale-editor-options textarea {
   width: 100%;
   border: 1px solid #94a3b8;
   border-radius: 6px;
@@ -431,26 +399,11 @@ html.dark .daily-sales-day-summary div,
 html.dark .daily-sales-day-notes,
 html.dark .daily-sale-entry-heading,
 html.dark .daily-sales-table th,
-html.dark .daily-sale-editor-footer,
 html[data-theme="dark"] .daily-sales-day-summary div,
 html[data-theme="dark"] .daily-sales-day-notes,
 html[data-theme="dark"] .daily-sale-entry-heading,
-html[data-theme="dark"] .daily-sales-table th,
-html[data-theme="dark"] .daily-sale-editor-footer {
+html[data-theme="dark"] .daily-sales-table th {
   background: #0f172a;
-  color: #e2e8f0;
-}
-
-html.dark .daily-sales-table input,
-html.dark .daily-sales-table select,
-html.dark .daily-sales-day-notes textarea,
-html.dark .daily-sale-editor-footer textarea,
-html[data-theme="dark"] .daily-sales-table input,
-html[data-theme="dark"] .daily-sales-table select,
-html[data-theme="dark"] .daily-sales-day-notes textarea,
-html[data-theme="dark"] .daily-sale-editor-footer textarea {
-  background: #0f172a;
-  border-color: #64748b;
   color: #e2e8f0;
 }
 
@@ -489,23 +442,17 @@ html[data-theme="dark"] .daily-sales-add-product {
 }
 html.dark .daily-sales-table td,
 html[data-theme="dark"] .daily-sales-table td { border-color: var(--border-color); background: var(--card-bg); }
-html.dark .daily-sales-table input,
-html.dark .daily-sales-table select,
 html.dark .daily-sales-day-notes textarea,
-html.dark .daily-sale-editor-footer textarea,
+html.dark .daily-sale-editor-options textarea,
 html.dark .daily-sales-date-picker input,
-html[data-theme="dark"] .daily-sales-table input,
-html[data-theme="dark"] .daily-sales-table select,
 html[data-theme="dark"] .daily-sales-day-notes textarea,
-html[data-theme="dark"] .daily-sale-editor-footer textarea,
+html[data-theme="dark"] .daily-sale-editor-options textarea,
 html[data-theme="dark"] .daily-sales-date-picker input {
   border-color: var(--border-color) !important;
   background: #0f172a !important;
   color: var(--text-color) !important;
   box-shadow: none;
 }
-html.dark .daily-sales-table option,
-html[data-theme="dark"] .daily-sales-table option { background: #0f172a; color: var(--text-color); }
 html.dark .daily-sales-day-summary span,
 html.dark .daily-sale-entry-total span,
 html.dark .daily-sale-entry-heading small,
@@ -515,15 +462,142 @@ html[data-theme="dark"] .daily-sale-entry-total span,
 html[data-theme="dark"] .daily-sale-entry-heading small,
 html[data-theme="dark"] .daily-sales-product-cell small { color: var(--text-muted); }
 
-@media (max-width: 900px) {
-  .daily-sales-toolbar,
-  .daily-sale-editor-footer {
+.workspace-modal.daily-sale-dialog {
+  width: min(820px, 100%);
+}
+
+.daily-sale-editor {
+  display: grid;
+  gap: 1rem;
+}
+
+.daily-sale-editor .daily-sale-entry-heading {
+  grid-template-columns: minmax(0, 1fr) auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--ui-radius-sm);
+  background: var(--surface-soft);
+}
+
+.daily-sale-lines {
+  display: grid;
+  gap: .85rem;
+}
+
+.daily-sale-line {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: .7rem;
+  margin: 0;
+  min-width: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--ui-radius-sm);
+  padding: .85rem;
+}
+
+.daily-sale-line-unlisted {
+  grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr));
+}
+
+.daily-sale-line :is(input, select) { scroll-margin-block-start: 5rem; }
+
+.daily-sale-line .daily-sale-source-switch {
+  justify-self: start;
+}
+
+.daily-sale-line legend {
+  padding-inline: .35rem;
+  font-weight: 700;
+}
+
+.daily-sale-line label:not(.daily-sales-serial-options label) {
+  display: grid;
+  gap: .35rem;
+  font-size: .85rem;
+  font-weight: 600;
+}
+
+.workspace-modal .daily-sale-line :is(input:not([type="checkbox"]), select) {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--ui-control-height);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--ui-radius-sm);
+  background-color: var(--input-bg);
+  color: var(--text-color);
+}
+
+.daily-sale-line .workspace-disclosure-body {
+  display: grid;
+  gap: .65rem;
+}
+
+.daily-sale-line-details {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: .65rem;
+}
+
+.daily-sale-unit-cell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: .65rem;
+}
+
+.daily-sale-unit-cell > :is(small, .daily-sale-measured) {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+}
+
+.daily-sale-trace {
+  grid-column: 1 / -1;
+}
+
+.daily-sale-line-total {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--border-color);
+  padding-top: .55rem;
+}
+
+.daily-sale-editor .daily-sales-add-product {
+  justify-self: start;
+  margin: 0;
+}
+
+.daily-sales-confirm,
+#daily-sales-feedback,
+#daily-sale-save-error {
+  scroll-margin-block-start: 1rem;
+}
+
+@media screen {
+  .daily-sales-day-total { display: none; }
+}
+
+@media screen and (max-width: 900px) {
+  .daily-sales-toolbar {
     grid-template-columns: 1fr;
   }
 
-  .daily-sales-page {
-    overflow-x: auto;
+  .daily-sales-paper {
+    padding: 1rem;
   }
+}
+
+@media screen and (max-width: 600px) {
+  .daily-sale-line { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .daily-sale-product { grid-column: 1 / -1; }
+  .daily-sale-unlisted-unit { grid-column: 1 / -1; }
+  .daily-sales-book-header { grid-template-columns: minmax(0, 1fr) auto; gap: .65rem; }
+  .daily-sales-book-header > :last-child { display: none; }
+  .daily-sale-entry-heading { grid-template-columns: minmax(0, 1fr) auto; gap: .7rem; }
+  .daily-sale-entry-actions { grid-column: 1 / -1; order: 1; }
+  .daily-sale-entry-total { min-width: 0; }
+  .daily-sale-entry .daily-sales-table { min-width: 420px; }
 }
 
 @media print {
@@ -572,6 +646,8 @@ html[data-theme="dark"] .daily-sales-product-cell small { color: var(--text-mute
   .daily-sales-day-total {
     border-color: #111 !important;
   }
-}
 
-.daily-sale-unit-cell{display:grid;gap:.35rem;min-width:150px}.daily-sale-unit-cell select{min-width:140px}.daily-sale-unit-cell small{color:var(--text-muted,#64748b)}.daily-sale-measured{display:grid;gap:.25rem;font-size:.74rem;color:var(--primary-color,#258cf4)}.daily-sale-measured input{width:100%}
+  .daily-sale-entry .table-wrap {
+    overflow: visible;
+  }
+}

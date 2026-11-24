@@ -4684,6 +4684,7 @@ html[data-theme='dark'] .tracking-alerts-empty {
 .product-advanced-section[open] > summary { padding-bottom: .8rem; border-bottom: 1px solid var(--border-color, #d9e1ec); }
 .advanced-section-action { justify-self: start; }
 .advanced-list-editor { display: grid; gap: .55rem; padding: .75rem; border: 1px solid var(--border-color, #d9e1ec); border-radius: 12px; background: var(--surface-soft, var(--page-bg, #f4f7fb)); }
+.inventory-settings-editor > .advanced-list-editor { margin-block-start: .85rem; }
 .advanced-list-heading { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
 .advanced-list-row { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(130px, 1fr) auto; gap: .55rem; align-items: center; }
 .product-lifecycle { display: inline-flex; padding: .25rem .55rem; border-radius: 999px; font-size: .76rem; font-weight: 800; text-transform: capitalize; }

@@ -1,5 +1,5 @@
 import AutomationLibrary from '../components/AutomationLibrary'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
 import PageHeader from '../components/PageHeader'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -70,7 +70,10 @@ export default function AutomationStudio() {
   useEffect(()=>{if(catalog && params.get('new')==='1'){newRule();setParams({})}},[Boolean(catalog),params.get('new')])
   const change=(key,value)=>setDraft(d=>({...d,[key]:value})), changeAction=(i,key,value)=>change('actions',draft.actions.map((a,j)=>i===j?{...a,[key]:value}:a))
   return <main className="automation-page page-shell"><PageHeader title={t('Automation Studio','Studio e automatizimit')} description={t('When something happens, check conditions and prepare the next safe action.','Kur diçka ndodh, kontrollo kushtet dhe përgatit veprimin e sigurt vijues.')} actions={catalog&&can('automations.create')&&<button className="workspace-primary" onClick={newRule}>{t('Advanced · custom rule','Avancuar · rregull i veçantë')}</button>}/>
-    <section className="auto-panel everyday-automation-intro"><div><h2>{t('Daily work happens in My Tasks','Puna ditore bëhet te Detyrat e mia')}</h2><p>{t('Use templates below to prepare review work. Custom rules and diagnostics are for administrators.','Përdor modelet më poshtë për të përgatitur punë për shqyrtim. Rregullat e veçanta dhe diagnostikimi janë për administratorët.')}</p></div><Link className="workspace-primary" to="/action-center?view=mine&status=active">{t('Open My Tasks','Hap Detyrat e mia')}</Link></section>{error&&<p role="alert" className="page-error">{error}</p>}{!catalog&&<p role="status">{t('Loading…','Duke ngarkuar…')}</p>}
+    <section className="auto-panel everyday-automation-intro">
+      <div><h2>{t('Daily work happens in My Tasks','Puna ditore bëhet te Detyrat e mia')}</h2><p>{t('Use templates below to prepare review work.','Përdor modelet më poshtë për të përgatitur punë për shqyrtim.')}</p></div>
+      <Link className="everyday-tasks-link" to="/action-center?view=mine&status=active">{t('Open My Tasks','Hap Detyrat e mia')}<ArrowRight size={16} aria-hidden="true"/></Link>
+    </section>{error&&<p role="alert" className="page-error">{error}</p>}{!catalog&&<p role="status">{t('Loading…','Duke ngarkuar…')}</p>}
     {can('automations.health.view')&&<details className="auto-health-disclosure"><summary>{t('Automation health and pause controls','Gjendja e automatizimit dhe kontrollet e pauzës')}</summary><AutomationHealth t={t} language={language}/></details>}
     {detailLoading&&<p role="status">{t('Loading automation…','Duke ngarkuar automatizimin…')}</p>}
     {catalog&&<>

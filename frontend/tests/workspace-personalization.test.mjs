@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {widgetCatalog,availableWidgets,defaultDashboard,normalizeDashboard,moveWidget} from '../src/config/dashboardWidgets.js'
 import {navigationGroups,permittedNavigation} from '../src/config/navigation.js'
-import {defaultNavigation,normalizeNavigation,personalizedNavigation} from '../src/config/workspaceNavigation.js'
+import {defaultNavigation,groupSidebarNavigation,normalizeNavigation,personalizedNavigation} from '../src/config/workspaceNavigation.js'
 import {matchingCommands} from '../src/config/commandCatalog.js'
 import {createDashboardResources} from '../src/components/dashboard/dashboardResources.js'
 
@@ -66,6 +66,19 @@ test('all permitted navigation remains searchable in both languages even when hi
   assert.ok(matchingCommands('mësimi i vendimeve',all,'sq').some(c=>c.path==='/decision-learning'))
   assert.equal(matchingCommands('financial',inventory).length,0)
   assert.equal(navigationGroups.flatMap(g=>g.items).length,new Set(navigationGroups.flatMap(g=>g.items).map(i=>i.id)).size)
+})
+
+test('compact sidebar nests existing groups without adding or losing permitted entries', () => {
+  const sections = groupSidebarNavigation(navigationGroups, 'admin')
+  const ids = groups => groups.flatMap(group => group.items.map(entry => entry.id))
+  assert.equal(sections.length, 5)
+  assert.deepEqual(sections.flatMap(section => [...ids([section]), ...ids(section.subgroups)]).sort(), ids(navigationGroups).sort())
+  const staffGroups = personalizedNavigation(inventory, false, 'staff', { favorites: ['products'] }).groups
+  const staff = groupSidebarNavigation(staffGroups, 'staff')
+  assert.deepEqual(staff.flatMap(section => [...ids([section]), ...ids(section.subgroups)]).sort(), ids(staffGroups).sort())
+  const platform = groupSidebarNavigation(permittedNavigation([], false, 'superadmin'), 'superadmin')
+  assert.deepEqual(ids(platform), ['superadmin', 'system-health', 'cms'])
+  assert.deepEqual(platform[0].subgroups, [])
 })
 
 test('widget reads deduplicate and cap concurrency at four',async()=>{
