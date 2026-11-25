@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import * as api from "../../api/accounting";
 import WorkspaceModal from "../WorkspaceModal";
 import FinanceClosingRates from "./FinanceClosingRates";
-import FinanceCorporateTaxReview from "./FinanceCorporateTaxReview";
+import FinanceTaxDisposition, { taxStatus } from "./FinanceTaxDisposition";
 import { ReasonAction } from "./FinanceSubledgers";
 import {
   Badge,
@@ -85,17 +85,20 @@ export default function FinancePeriods() {
                         )
                       : t("Not ready to close", "Nuk është gati për mbyllje")}
                   </h3>
-                  <CheckList checks={r.checks} />
+                  <CheckList checks={r.checks.map(check => {
+                    if (check.code === "tax_review_current" && check.tax) return { ...check, label: taxStatus(check.tax.state, t) };
+                    if (check.code === "accounting_mapping_conflicts") return { ...check, label: t("Review fixed-asset and corporate-tax posting accounts.", "Shqyrto llogaritë e postimit për asetet fikse dhe tatimin e korporatave.") };
+                    return check;
+                  })} />
                   <p className="fc-caption">{r.basis}</p>
                   <p className="fc-caption">{r.retained_earnings_policy}</p>
                   <div className="fc-toolbar">
                     {can("accounting.reports.view") && <button type="button" className="secondary" onClick={() => setShowRates(true)}>
                       {t("Closing currency review", "Shqyrtimi i valutave në mbyllje")}
                     </button>}
-                    {can("accounting.reports.view") && String(period.starts_at).slice(5, 10) === "01-01" && String(period.ends_at).slice(5, 10) === "12-31" &&
-                      String(period.starts_at).slice(0, 4) === String(period.ends_at).slice(0, 4) &&
+                    {can("accounting.reports.view") && r.corporate_tax?.period_scope === "annual" &&
                       <button type="button" className="secondary" onClick={() => setShowTax(true)}>
-                        {t("Corporate tax worksheet", "Fleta e tatimit të korporatave")}
+                        {t("Annual corporate-tax review", "Shqyrtimi vjetor i tatimit të korporatave")}
                       </button>}
                     {period.status === "open" && (
                       <button
@@ -145,6 +148,9 @@ export default function FinancePeriods() {
                 {period.closed_by} · <DateValue value={period.closed_at} time />
               </p>
               <p>{period.change_reason}</p>
+              {period.close_snapshot.period_scope === "interim" && <p>
+                {t("Interim close only", "Vetëm mbyllje ndërmjetëse")}
+              </p>}
               {period.close_snapshot.historical && (
                 <p className="fc-caption">
                   {period.close_snapshot.archive_reason}
@@ -164,7 +170,7 @@ export default function FinancePeriods() {
         </>
       )}
       {showRates && period && <FinanceClosingRates key={period.id} period={period} onClose={() => setShowRates(false)} />}
-      {showTax && period && <FinanceCorporateTaxReview key={period.id} period={period} onClose={() => setShowTax(false)} />}
+      {showTax && period && <FinanceTaxDisposition key={period.id} period={period} onClose={() => setShowTax(false)} />}
       <p>
         <Link to="/accounting?tab=reconciliation">
           {t("Open financial reconciliation", "Hap rakordimin financiar")} ↗

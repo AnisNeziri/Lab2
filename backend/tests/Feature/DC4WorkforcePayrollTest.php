@@ -179,6 +179,61 @@ class DC4WorkforcePayrollTest extends TestCase
         $this->getJson('/api/payroll/'.$run.'/export?type=declaration')->assertOk()->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
     }
 
+    public function test_asset_and_payroll_posts_use_separate_expenses_and_invalidate_tax_review(): void
+    {
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-12-31 14:00:00', 'Europe/Belgrade'));
+        $this->setupPayroll();
+        \App\Models\InvoiceProfile::create($this->tenantAttributes(['legal_name' => 'Synthetic combined fixture', 'country_code' => 'XK', 'registered_address' => 'Audit office']));
+        $employee = $this->employee();
+        $this->assertGreaterThan(0, $employee);
+        $run = $this->payrollRun();
+        $hash = $this->approve($run);
+        $date = '2026-12-31';
+        $id = $this->postJson('/api/accounting/periods', ['name' => 'Synthetic combined year', 'starts_at' => '2026-01-01', 'ends_at' => $date])->assertCreated()->json('id');
+        $path = "/api/accounting/periods/$id";
+        $this->postJson("$path/tax-disposition", ['jurisdiction' => 'XK', 'regime' => 'actual_income',
+            'regime_name' => 'Synthetic actual income', 'effective_from' => '2026-01-01', 'effective_to' => $date,
+            'policy_reference' => 'Synthetic joint-workflow policy', 'reason' => 'Approved synthetic policy for the combined test.'])->assertCreated();
+        $input = ['rate_percent' => '10', 'policy_reference' => 'Synthetic rate for combined control'];
+        $review = function () use ($path, $input) {
+            $preview = $this->postJson("$path/tax-preview", $input)->assertOk()->json();
+
+            return $this->postJson("$path/tax-review", [...$input, 'fingerprint' => $preview['fingerprint']])->assertCreated()->json();
+        };
+        $review();
+        $payroll = $this->postJson("/api/payroll/$run/post", ['fingerprint' => $hash])->assertOk()->json('journal_entry_id');
+        $this->getJson("$path/tax-disposition")->assertOk()->assertJsonPath('state', 'stale_review');
+        $review();
+        $bill = $this->postJson('/api/finance/expenses', [
+            'vendor_name' => 'Synthetic supplier', 'vendor_business_number' => '811111111', 'document_type' => 'purchase_invoice',
+            'document_number' => 'COMBINED-ASSET', 'invoice_date' => $date, 'received_date' => $date, 'currency' => 'EUR',
+            'source_type' => 'domestic', 'asset_treatment' => 'investment', 'category' => 'capital_asset',
+            'business_purpose' => 'Synthetic combined asset review', 'net_amount' => 365, 'vat_rate' => 0, 'vat_amount' => 0,
+            'vat_treatment' => 'non_vat', 'input_vat_eligible' => false,
+        ])->assertCreated()->json('id');
+        $category = $this->postJson('/api/accounting/fixed-assets/categories', [
+            'name' => 'Combined control', 'minimum_cost' => 200, 'useful_life_months' => 12, 'policy_reference' => 'Synthetic approved useful life',
+        ])->assertCreated()->json('id');
+        $asset = $this->postJson("/api/accounting/fixed-assets/bills/$bill", [
+            'category_id' => $category, 'asset_number' => 'COMBINED-01', 'name' => 'Synthetic equipment', 'residual_value' => 0,
+            'reason' => 'Synthetic documented acquisition.',
+        ])->assertCreated()->json('id');
+        $this->postJson("/api/finance/expenses/$bill/post")->assertOk();
+        $this->postJson("/api/accounting/fixed-assets/$asset/in-service", ['date' => $date, 'reason' => 'Synthetic first use.'])->assertOk();
+        $entry = ['kind' => 'depreciation', 'date' => $date, 'reason' => 'Synthetic day of depreciation.', 'request_key' => 'combined-asset-one'];
+        $depreciation = $this->postJson("/api/accounting/fixed-assets/$asset/entries", $entry)->assertCreated()->assertJsonPath('depreciation_delta', '1.00')->json('journal_entry_id');
+        $this->postJson("/api/accounting/fixed-assets/$asset/entries", $entry)->assertSuccessful()->assertJsonPath('journal_entry_id', $depreciation);
+        $this->getJson("$path/tax-disposition")->assertOk()->assertJsonPath('state', 'stale_review');
+        $approved = $review();
+        $this->assertSame('-946.00', $approved['snapshot']['profit_before_tax']);
+        $this->assertSame('0.00', $approved['snapshot']['current_tax']);
+        $this->assertSame($approved['id'], $review()['id']);
+        $this->assertSame(0, JournalEntry::where('source_module', 'corporate_tax')->count());
+        $this->assertSame('945.00', JournalEntry::findOrFail($payroll)->total_debit);
+        $this->assertSame('6530', JournalEntry::findOrFail($depreciation)->lines()->first()->account->code);
+        $this->assertTrue(app(\App\Services\FixedAssetService::class)->reconciliation($date)['reconciled']);
+    }
+
     public function test_closed_period_posting_is_atomic_and_reversal_preserves_lineage(): void
     {
         $this->setupPayroll();

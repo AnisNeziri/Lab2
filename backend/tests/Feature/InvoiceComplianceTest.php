@@ -142,6 +142,9 @@ class InvoiceComplianceTest extends TestCase
         $profit = $accounting->profitAndLoss(null, $date);
         $this->assertSame('820.00', $profit['net_profit']);
         $this->assertSame('1445.00', $accounting->cashFlow(null, $date)['closing_cash']);
+        $this->postJson("$path/tax-disposition", ['jurisdiction' => 'XK', 'regime' => 'actual_income',
+            'regime_name' => 'Synthetic actual income', 'effective_from' => '2025-01-01', 'effective_to' => $date,
+            'policy_reference' => 'Synthetic year-end policy version 1', 'reason' => 'Synthetic accounting approval for this fiscal year.'])->assertCreated();
         $taxInputs = ['rate_percent' => '10', 'policy_reference' => 'Synthetic actual-income policy. Separate book and tax depreciation.', 'adjustments' => [
             ['direction' => 'add', 'amount' => '1.00', 'reason' => 'Add back synthetic book depreciation.'],
             ['direction' => 'deduct', 'amount' => '0.60', 'reason' => 'Deduct independently approved synthetic tax depreciation.'],
@@ -162,6 +165,26 @@ class InvoiceComplianceTest extends TestCase
         $this->assertSame('737.96', $next['retained_earnings_brought_forward']);
         $this->assertSame('-16.00', $next['current_earnings']);
         $this->assertSame('1721.96', $next['total_equity']);
+        // The following period starts after the prior revaluation has reversed.
+        // USD 100 settles at 0.92 for EUR 92 against EUR 90 carrying value.
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-01-31 14:00:00', 'Europe/Belgrade'));
+        $this->postJson('/api/payments', ['invoice_id' => $invoice, 'financial_account_id' => $bank->id, 'amount' => 100,
+            'payment_method' => 'bank_transfer', 'payment_date' => '2026-01-20', 'exchange_rate' => '0.92',
+            'exchange_rate_date' => '2026-01-20', 'exchange_rate_source' => 'Synthetic following-period settlement',
+            'idempotency_key' => 'january-settlement'])->assertCreated();
+        $january = $this->postJson('/api/accounting/periods', ['name' => 'Synthetic January', 'starts_at' => '2026-01-01', 'ends_at' => '2026-01-31'])->assertCreated()->json('id');
+        $path = "/api/accounting/periods/$january";
+        $rates = ['USD' => ['exchange_rate' => '0.92', 'exchange_rate_date' => '2026-01-31', 'exchange_rate_source' => 'Synthetic following-period closing quote']];
+        // AR USD 400: 368 - 360 = 8. AP USD 100: 92 - 90 = 2.
+        $januaryFx = $this->postJson("$path/fx-preview", ['rates' => $rates])->assertOk()
+            ->assertJsonPath('adjustments.ar', '8.00')->assertJsonPath('adjustments.ap', '2.00')->json();
+        $approval = ['rates' => $rates, 'fingerprint' => $januaryFx['fingerprint'], 'reason' => 'Reviewed independent January rates.'];
+        $id = $this->postJson("$path/fx-approve", $approval)->assertCreated()->json('id');
+        $this->postJson("$path/fx-approve", $approval)->assertCreated()->assertJsonPath('id', $id);
+        $januaryControl = collect(app(\App\Services\DatedFinancialReconciliation::class)->report('2026-01-31')['rows'])->keyBy('control');
+        $this->assertSame('368.00', $januaryControl['accounts_receivable']['gl_amount']);
+        $this->assertSame('457.00', $januaryControl['accounts_payable']['gl_amount']);
+        $this->assertSame('-8.00', $accounting->balanceSheet('2026-01-31')['current_earnings']);
         $this->travelBack();
     }
 

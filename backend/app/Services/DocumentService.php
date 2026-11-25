@@ -277,6 +277,7 @@ return DocumentType::orderBy('name')->get();
     public function action(Document $document, string $action, array $data): array
     {
         return DB::transaction(function () use ($document, $action, $data) {
+            Company::whereKey(Auth::user()->company_id)->lockForUpdate()->firstOrFail();
             $d = $this->document($document->id);
             $d = Document::whereKey($d->id)->lockForUpdate()->firstOrFail();
             switch ($action) {

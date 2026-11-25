@@ -244,9 +244,20 @@ class FinancialControlService
         $checks[] = $this->check('fixed_asset_depreciation', 'Depreciation is posted through period end', $assets->outstandingDepreciationCount($to), 'assets');
         $checks[] = $this->check('closing_fx', 'Foreign monetary balances have current closing review', app(FxRevaluationService::class)->readyForClose($period) ? 0 : 1, 'periods');
         $incomeTax = app(\App\Services\Kosovo\CorporateTaxReviewService::class);
-        if ($incomeTax->latest($period)) {
-            $checks[] = $this->check('tax_review_current', 'Approved current tax agrees with the pre-tax ledger result', $incomeTax->readyIfReviewed($period) ? 0 : 1, 'periods');
+        $tax = $incomeTax->readiness($period);
+        if ($tax['state'] !== 'not_annual') {
+            $label = match ($tax['state']) {
+                'missing_policy' => 'Record the corporate-tax policy and applicability for this year.',
+                'unsupported_year_end' => 'This range includes a fiscal year-end. Only a complete configured fiscal year can be finalized.',
+                'unsupported' => 'This regime needs separately reviewed tax treatment before closing.',
+                'unresolved', 'stale_policy' => 'Review and approve the current annual corporate-tax policy.',
+                'review_required', 'legacy_review', 'stale_review' => 'Calculate and approve a current corporate-tax worksheet.',
+                'journal_conflict' => 'Reconcile current-tax postings before closing.',
+                default => 'Annual corporate-tax disposition is current.',
+            };
+            $checks[] = [...$this->check('tax_review_current', $label, $tax['ready'] ? 0 : 1, 'periods'), 'tax' => $tax];
         }
+        $checks[] = $this->check('accounting_mapping_conflicts', 'Resolve conflicting fixed-asset or corporate-tax posting accounts.', count(app(AccountingMappingPolicy::class)->diagnostics()), 'settings');
         foreach ($reconciliation['rows'] as $row) {
             $checks[] = [...$this->check($row['control'], ucwords(str_replace('_', ' ', $row['control'])).' reconciles at period end', $row['reconciled'] ? 0 : 1, 'reconciliation'), 'difference' => $row['difference'], 'detail' => implode(' ', $row['evidence_issues'])];
         }
@@ -286,7 +297,7 @@ class FinancialControlService
         $attention = collect($checks)->contains(fn ($c) => ! $c['passed']);
 
         return ['period' => $period, 'checked_at' => now()->toIso8601String(), 'status' => $blocked ? 'BLOCKED' : ($attention ? 'ATTENTION' : 'READY'),
-            'ready_to_close' => ! $blocked, 'checks' => $checks, 'reconciliation' => $reconciliation, 'current_reconciliation' => $currentReconciliation, 'inventory' => $inventory,
+            'ready_to_close' => ! $blocked, 'checks' => $checks, 'corporate_tax' => $tax, 'reconciliation' => $reconciliation, 'current_reconciliation' => $currentReconciliation, 'inventory' => $inventory,
             'retained_earnings_policy' => 'Current earnings are derived dynamically from posted revenue and expense journals across fiscal-year boundaries. No duplicate closing/opening profit journal is generated.',
             'basis' => 'Period-end financial statements and independently dated subledger/GL comparisons, plus current operational integrity checks. Missing historical evidence blocks closing.'];
     }

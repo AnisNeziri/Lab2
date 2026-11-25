@@ -74,7 +74,7 @@ class PortableBackupService
             'financial_intelligence_snapshots','financial_intelligence_observations','financial_intelligence_policies',
             'accounting_accounts', 'accounting_periods', 'accounting_posting_mappings',
             'journal_entries', 'journal_lines', 'accounting_exceptions', 'accounting_recovery_attempts',
-            'fixed_asset_categories', 'fixed_assets', 'fixed_asset_entries', 'fx_revaluations', 'corporate_tax_reviews',
+            'fixed_asset_categories', 'fixed_assets', 'fixed_asset_entries', 'fx_revaluations', 'corporate_tax_dispositions', 'corporate_tax_reviews',
             'invoice_profiles', 'invoice_sequences', 'invoices', 'invoice_items',
             'payment_transactions', 'expenses', 'expense_payments',
             'supplier_invoice_items', 'supplier_invoice_payment_allocations',
@@ -117,7 +117,7 @@ class PortableBackupService
         'journal_entries', 'journal_lines', 'accounting_exceptions', 'accounting_recovery_attempts',
         'financial_accounts', 'invoice_profiles', 'invoice_sequences', 'invoices', 'invoice_items', 'payment_transactions',
         'expenses', 'expense_payments', 'customer_debt_entries', 'customer_debt_transactions',
-        'fixed_asset_categories', 'fixed_assets', 'fixed_asset_entries', 'fx_revaluations', 'corporate_tax_reviews',
+        'fixed_asset_categories', 'fixed_assets', 'fixed_asset_entries', 'fx_revaluations', 'corporate_tax_dispositions', 'corporate_tax_reviews',
         'customer_settlement_allocations', 'customer_allocation_requests',
         'purchase_orders', 'purchase_order_items', 'purchase_order_payments', 'purchase_order_changes', 'procurement_awards',
         'supplier_invoice_payment_allocations',
@@ -1046,8 +1046,20 @@ class PortableBackupService
                 }
             }
             unset($adjustment);
+            if (! empty($snapshot['posting_account_ids'])) {
+                foreach ($snapshot['posting_account_ids'] as &$accountId) {
+                    $accountId = (int) ($idMap['accounting_accounts'][(string) $accountId]
+                        ?? throw ValidationException::withMessages(['file' => 'A current-tax posting account could not be restored.']));
+                }
+                unset($accountId);
+            }
+            $snapshot['historical'] = true;
+            // The original source approval and hash remain historical evidence.
+            // Never treat a reconstructed snapshot as newly approved.
             $row['snapshot'] = json_encode($snapshot, JSON_THROW_ON_ERROR);
-            $row['fingerprint'] = hash('sha256', $row['snapshot']);
+        }
+        if ($table === 'corporate_tax_dispositions') {
+            $row['historical'] = true;
         }
         if($table==='accounting_periods'&&!empty($row['close_snapshot'])){
             $proof=json_decode((string)$row['close_snapshot'],true,512,JSON_THROW_ON_ERROR);

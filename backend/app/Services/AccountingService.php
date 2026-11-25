@@ -42,12 +42,12 @@ class AccountingService
         ['1000', 'Cash', 'asset', '100', 'debit', true, true, 'operating'], ['1010', 'Bank', 'asset', '100', 'debit', true, true, 'operating'],
         ['1100', 'Accounts Receivable', 'asset', '100', 'debit', true, true, 'operating'], ['1150', 'Recoverable Input VAT', 'asset', '100', 'debit', true, true, 'operating'], ['1200', 'Inventory', 'asset', '100', 'debit', true, true, 'operating'],
         ['1300', 'Supplier Advances', 'asset', '100', 'debit', true, true, 'operating'], ['1400', 'Inventory Received Not Invoiced', 'asset', '100', 'debit', true, true, 'operating'],
-        ['1500', 'Fixed Asset Cost', 'asset', '100', 'debit', true, true, 'investing'],
+        ['1530', 'Fixed Asset Cost', 'asset', '100', 'debit', true, true, 'investing'],
         ['1510', 'Accumulated Depreciation', 'asset', '100', 'credit', true, true, 'investing'],
         ['1520', 'Accumulated Asset Impairment', 'asset', '100', 'credit', true, true, 'investing'],
         ['200', 'Liabilities', 'liability', null, 'credit', false, true, null], ['2000', 'Accounts Payable', 'liability', '200', 'credit', true, true, 'operating'],
         ['2100', 'Goods Receipt Clearing', 'liability', '200', 'credit', true, true, 'operating'], ['2150', 'Output VAT Payable', 'liability', '200', 'credit', true, true, 'operating'], ['2200', 'Customer Advances', 'liability', '200', 'credit', true, true, 'operating'],
-        ['2300', 'Current Corporate Income Tax Payable', 'liability', '200', 'credit', true, true, 'operating'],
+        ['2350', 'Current Corporate Income Tax Payable', 'liability', '200', 'credit', true, true, 'operating'],
         ['300', 'Equity', 'equity', null, 'credit', false, true, null], ['3000', 'Owner Equity', 'equity', '300', 'credit', true, true, 'financing'], ['3100', 'Retained Earnings', 'equity', '300', 'credit', true, true, 'financing'],
         ['400', 'Revenue', 'revenue', null, 'credit', false, true, null], ['4000', 'Sales Revenue', 'revenue', '400', 'credit', true, true, 'operating'], ['4200', 'Realized FX Gain', 'revenue', '400', 'credit', true, true, 'operating'],
         ['4210', 'Unrealized FX Gain', 'revenue', '400', 'credit', true, true, null],
@@ -57,23 +57,28 @@ class AccountingService
         ['6100', 'Inventory Adjustments', 'expense', '600', 'debit', true, true, 'operating'], ['6200', 'Inventory Loss and Damage', 'expense', '600', 'debit', true, true, 'operating'],
         ['6300', 'Realized FX Loss', 'expense', '600', 'debit', true, true, 'operating'], ['6400', 'Freight and Handling', 'expense', '600', 'debit', true, true, 'operating'],
         ['6310', 'Unrealized FX Loss', 'expense', '600', 'debit', true, true, null],
-        ['6500', 'Fixed Asset Depreciation', 'expense', '600', 'debit', true, true, 'operating'],
-        ['6510', 'Fixed Asset Impairment', 'expense', '600', 'debit', true, true, 'operating'],
+        ['6530', 'Fixed Asset Depreciation', 'expense', '600', 'debit', true, true, 'operating'],
+        ['6540', 'Fixed Asset Impairment', 'expense', '600', 'debit', true, true, 'operating'],
         ['6520', 'Fixed Asset Disposal Loss', 'expense', '600', 'debit', true, true, 'investing'],
         ['6900', 'Current Corporate Income Tax', 'expense', '600', 'debit', true, true, 'operating'],
     ];
 
     public const MAPPINGS = ['cash' => '1000', 'bank' => '1010', 'accounts_receivable' => '1100', 'input_vat' => '1150', 'inventory' => '1200', 'supplier_advances' => '1300', 'inventory_received_not_invoiced' => '1400', 'accounts_payable' => '2000', 'goods_receipt_clearing' => '2100', 'output_vat' => '2150', 'customer_advances' => '2200', 'equity' => '3000', 'retained_earnings' => '3100', 'sales_revenue' => '4000', 'fx_gain' => '4200', 'cost_of_goods_sold' => '5000', 'operating_expense' => '6000', 'inventory_adjustments' => '6100', 'inventory_loss_damage' => '6200', 'fx_loss' => '6300', 'freight' => '6400', 'customs' => '1200', 'landed_cost' => '1200',
-        'fixed_asset_cost' => '1500', 'fixed_asset_accumulated_depreciation' => '1510', 'fixed_asset_accumulated_impairment' => '1520',
-        'fixed_asset_depreciation' => '6500', 'fixed_asset_impairment' => '6510', 'fixed_asset_disposal_loss' => '6520', 'fixed_asset_disposal_gain' => '4220',
+        'fixed_asset_cost' => '1530', 'fixed_asset_accumulated_depreciation' => '1510', 'fixed_asset_accumulated_impairment' => '1520',
+        'fixed_asset_depreciation' => '6530', 'fixed_asset_impairment' => '6540', 'fixed_asset_disposal_loss' => '6520', 'fixed_asset_disposal_gain' => '4220',
         'fx_unrealized_gain' => '4210', 'fx_unrealized_loss' => '6310',
-        'corporate_tax_payable' => '2300', 'corporate_tax_expense' => '6900'];
+        'corporate_tax_payable' => '2350', 'corporate_tax_expense' => '6900'];
 
     public function initialize(): array
     {
         $company = (int) Auth::user()->company_id;
 
         return DB::transaction(function () use ($company) {
+            $this->lockCompany();
+            $policy = app(AccountingMappingPolicy::class);
+            $names = array_column(self::DEFAULTS, 1, 0);
+            $existingMappings = AccountingPostingMapping::query()->get()->keyBy('mapping_key');
+            $responsibilities = $existingMappings->groupBy('accounting_account_id');
             $byCode = AccountingAccount::query()->get()->keyBy('code');
             foreach (self::DEFAULTS as [$code,$name,$type,$parentCode,$normal,$posting,$system,$cashFlow]) {
                 $parent = $parentCode ? $byCode->get($parentCode) : null;
@@ -84,7 +89,14 @@ class AccountingService
                 $byCode->put($code, $account);
             }
             foreach (self::MAPPINGS as $key => $code) {
+                if ($existingMappings->has($key)) {
+                    continue;
+                }
                 $account = $byCode->get($code);
+                if (($policy->protected($key) && $account->name !== $names[$code])
+                    || $policy->problem($key, $account, $responsibilities->get($account->id, collect())->pluck('mapping_key')->all())) {
+                    continue;
+                }
                 AccountingPostingMapping::query()->firstOrCreate(['company_id' => $company, 'mapping_key' => $key], ['accounting_account_id' => $account->id, 'updated_by' => Auth::id()]);
             }
 
@@ -128,7 +140,7 @@ class AccountingService
                 }$parentId = $parent->parent_id;
             }
             $group = $data['statement_group'] ?? $account->statement_group;
-            $allowed = $data['type'] === 'revenue' ? ['revenue', 'other_income'] : ($data['type'] === 'expense' ? ['cost_of_sales', 'operating_expense', 'other_expense'] : []);
+            $allowed = $data['type'] === 'revenue' ? ['revenue', 'other_income'] : ($data['type'] === 'expense' ? ['cost_of_sales', 'operating_expense', 'other_expense', 'income_tax'] : []);
             if ($group && ! in_array($group, $allowed, true)) {
                 throw ValidationException::withMessages(['statement_group' => ['Choose a statement classification matching the account type.']]);
             }
@@ -166,29 +178,23 @@ class AccountingService
             $this->lockCompany();
             foreach ($rows as $key => $id) {
                 $a = AccountingAccount::query()->findOrFail($id);
-                $assetMapping = str_starts_with($key, 'fixed_asset_');
-                $reservedForAsset = AccountingPostingMapping::query()->where('mapping_key', 'like', 'fixed_asset_%')->where('accounting_account_id', $id)->where('mapping_key', '!=', $key)->exists();
-                if ($reservedForAsset || ($assetMapping && AccountingPostingMapping::query()->where('accounting_account_id', $id)->where('mapping_key', '!=', $key)->exists())) {
-                    throw ValidationException::withMessages([$key => ['Use a dedicated account for fixed asset postings.']]);
-                }
-                if ($assetMapping) {
+                if (str_starts_with($key, 'fixed_asset_') || str_starts_with($key, 'corporate_tax_')) {
                     $current = AccountingPostingMapping::query()->where('mapping_key', $key)->value('accounting_account_id');
                     if ($current && (int) $current !== (int) $id && JournalLine::query()->where('accounting_account_id', $current)->exists()) {
-                        throw ValidationException::withMessages([$key => ['Posted asset accounts cannot be changed without a reviewed balance migration.']]);
+                        throw ValidationException::withMessages([$key => ['A posted control account cannot be changed without a reviewed balance migration.']]);
                     }
-                    $this->assertAssetAccount($key, $a);
                 }
                 if(str_starts_with($key,'payroll_')) {
                     \App\Services\Workforce\WorkforcePresence::forget((int)Auth::user()->company_id);
                     abort_unless(app(PermissionService::class)->roleHasPermission(Auth::user()->role,'payroll.configure'),403);
-                    $definition=\App\Services\Workforce\PayrollService::ACCOUNTS[substr($key,8)]??null;
-                    if(!$definition || $a->type!==$definition[2] || AccountingPostingMapping::where('accounting_account_id',$id)->where('mapping_key','!=',$key)->exists()) throw ValidationException::withMessages([$key=>'Use a separate payroll account of the expected type.']);
+                    if (! isset(\App\Services\Workforce\PayrollService::ACCOUNTS[substr($key, 8)])) {
+                        throw ValidationException::withMessages([$key => ['Unknown payroll mapping.']]);
+                    }
                     $current=AccountingPostingMapping::where('mapping_key',$key)->value('accounting_account_id');
                     if($current && (int)$current!==(int)$id && \App\Models\PayrollRun::whereIn('status',['posted','paid','closed','reversed'])->exists()) throw ValidationException::withMessages([$key=>'Posted payroll control mappings cannot be changed without a reviewed balance migration.']);
-                } elseif(AccountingPostingMapping::where('mapping_key','like','payroll_%')->where('accounting_account_id',$id)->exists()) throw ValidationException::withMessages([$key=>'A payroll control account cannot be reused by another subledger.']);
-                if (! $a->is_active || ! $a->is_posting) {
-                    throw ValidationException::withMessages([$key => ['Mapping requires an active posting account.']]);
-                }AccountingPostingMapping::query()->updateOrCreate(['company_id' => Auth::user()->company_id, 'mapping_key' => $key], ['accounting_account_id' => $a->id, 'updated_by' => Auth::id()]);
+                }
+                app(AccountingMappingPolicy::class)->assertCompatible($key, $a);
+                AccountingPostingMapping::query()->updateOrCreate(['company_id' => Auth::user()->company_id, 'mapping_key' => $key], ['accounting_account_id' => $a->id, 'updated_by' => Auth::id()]);
             }
         });
         $after = $this->mappings();
@@ -201,18 +207,27 @@ class AccountingService
     {
         $company = Auth::user()->company;
 
-        return ['fiscal_year_start_month' => (int) ($company->fiscal_year_start_month ?: 1), 'supplier_match_quantity_tolerance' => (string) ($company->supplier_match_quantity_tolerance ?? config('procurement.matching.quantity_tolerance', .001)), 'supplier_match_price_tolerance' => (string) ($company->supplier_match_price_tolerance ?? config('procurement.matching.unit_price_tolerance', .02)), 'supplier_match_tax_tolerance' => (string) ($company->supplier_match_tax_tolerance ?? config('procurement.matching.tax_tolerance', .02))];
+        return ['fiscal_year_start_month' => (int) ($company->fiscal_year_start_month ?: 1), 'supplier_match_quantity_tolerance' => (string) ($company->supplier_match_quantity_tolerance ?? config('procurement.matching.quantity_tolerance', .001)), 'supplier_match_price_tolerance' => (string) ($company->supplier_match_price_tolerance ?? config('procurement.matching.unit_price_tolerance', .02)), 'supplier_match_tax_tolerance' => (string) ($company->supplier_match_tax_tolerance ?? config('procurement.matching.tax_tolerance', .02)),
+            'mapping_issues' => app(AccountingMappingPolicy::class)->diagnostics()];
     }
 
     public function saveControls(array $data): array
     {
-        $company = Auth::user()->company;
-        $before = $this->controls();
-        $company->update($data);
-        $after = $this->controls();
-        $this->audit('accounting.controls.updated', $company, $before, $after);
+        return DB::transaction(function () use ($data) {
+            $this->lockCompany();
+            $company = Auth::user()->company->refresh();
+            if (isset($data['fiscal_year_start_month'])
+                && (int) $data['fiscal_year_start_month'] !== ($company->fiscal_year_start_month ?: 1)
+                && AccountingPeriod::query()->exists()) {
+                throw ValidationException::withMessages(['fiscal_year_start_month' => ['The fiscal calendar cannot change after accounting periods have been created.']]);
+            }
+            $before = $this->controls();
+            $company->update($data);
+            $after = $this->controls();
+            $this->audit('accounting.controls.updated', $company, $before, $after);
 
-        return $after;
+            return $after;
+        });
     }
 
     public function periods(): array
@@ -258,12 +273,12 @@ class AccountingService
                 if (! $readiness['ready_to_close']) {
                     throw ValidationException::withMessages(['period' => ['This period is blocked: '.collect($readiness['checks'])->filter(fn ($c) => $c['required'] && ! $c['passed'])->pluck('label')->implode('; ')]]);
                 }
-                $proof = ['checked_at' => $readiness['checked_at'], 'checked_by' => Auth::id(), 'checks' => $readiness['checks'], 'reconciliation' => $readiness['reconciliation'], 'inventory' => $readiness['inventory'], 'journal_watermark' => JournalEntry::query()->whereIn('status', ['posted', 'reversed'])->max('id')];
+                $proof = ['checked_at' => $readiness['checked_at'], 'checked_by' => Auth::id(), 'period_scope' => $readiness['corporate_tax']['period_scope'], 'checks' => $readiness['checks'], 'reconciliation' => $readiness['reconciliation'], 'inventory' => $readiness['inventory'], 'journal_watermark' => JournalEntry::query()->whereIn('status', ['posted', 'reversed'])->max('id')];
                 $proof['fingerprint'] = hash('sha256', json_encode($proof, JSON_THROW_ON_ERROR));
                 $values += ['closed_by' => Auth::id(), 'closed_at' => now(), 'close_snapshot' => $proof];
             }
             if ($old === 'closed') {
-                $values += ['reopened_by' => Auth::id(), 'reopened_at' => now()];
+                $values += ['reopened_by' => Auth::id(), 'reopened_at' => now(), 'tax_review_revision' => $period->tax_review_revision + 1];
             }
             $previousCloseProof=$period->close_snapshot;
             $period->update($values);
@@ -380,41 +395,36 @@ class AccountingService
 
     public function postMapped(string $module, string $sourceType, int $sourceId, string $sourceKey, string $date, string $description, array $lines, string $currency = 'EUR', mixed $rate = 1, array $rateSnapshot = []): JournalEntry
     {
+        return DB::transaction(function () use ($module, $sourceType, $sourceId, $sourceKey, $date, $description, $lines, $currency, $rate, $rateSnapshot) {
+            $this->lockCompany();
+            return $this->postWithMappings($module, $sourceType, $sourceId, $sourceKey, $date, $description, $lines, $currency, $rate, $rateSnapshot);
+        });
+    }
+
+    private function postWithMappings(string $module, string $sourceType, int $sourceId, string $sourceKey, string $date, string $description, array $lines, string $currency, mixed $rate, array $rateSnapshot): JournalEntry
+    {
         $required = collect($lines)->pluck('mapping')->filter()->unique();
         $configured = AccountingPostingMapping::query()->whereIn('mapping_key', $required)->count();
         if ($configured < $required->count()) {
             $this->initialize();
         }
         $mapped = AccountingPostingMapping::query()->whereIn('mapping_key', $required)->with('account')->get()->keyBy('mapping_key');
-        $resolved = array_map(function ($line) use ($mapped) {
+        $responsibilities = AccountingPostingMapping::query()->whereIn('accounting_account_id', $mapped->pluck('accounting_account_id'))->get()->groupBy('accounting_account_id');
+        $policy = app(AccountingMappingPolicy::class);
+        $resolved = array_map(function ($line) use ($mapped, $responsibilities, $policy) {
             if (isset($line['accounting_account_id'])) {
                 return $line;
             }$mapping = $mapped->get($line['mapping']);
             if (! $mapping) {
                 throw ValidationException::withMessages(['mapping' => ["Posting account '{$line['mapping']}' is not configured."]]);
             }
-            if (str_starts_with($line['mapping'], 'fixed_asset_')) {
-                $this->assertAssetAccount($line['mapping'], $mapping->account);
-                if (AccountingPostingMapping::query()->where('accounting_account_id', $mapping->accounting_account_id)->where('mapping_key', '!=', $line['mapping'])->exists()) {
-                    throw ValidationException::withMessages(['mapping' => ['The fixed asset posting account must be dedicated to its control.']]);
-                }
-            }
+            $policy->assertCompatible($line['mapping'], $mapping->account, $responsibilities->get($mapping->accounting_account_id, collect())->pluck('mapping_key')->all());
             unset($line['mapping']);
 
             return ['accounting_account_id' => $mapping->accounting_account_id, ...$line];
         }, $lines);
 
         return $this->createAndPost(['posting_date' => $date, 'description' => $description, 'source_module' => $module, 'source_type' => $sourceType, 'source_id' => $sourceId, 'source_key' => $sourceKey, 'currency' => $currency, 'exchange_rate' => $rate, 'exchange_rate_date' => $rateSnapshot['date'] ?? null, 'exchange_rate_source' => $rateSnapshot['source'] ?? null, 'lines' => $resolved]);
-    }
-
-    private function assertAssetAccount(string $key, ?AccountingAccount $account): void
-    {
-        $isAsset = in_array($key, FixedAssetService::CONTROLS, true);
-        $type = $isAsset ? 'asset' : ($key === 'fixed_asset_disposal_gain' ? 'revenue' : 'expense');
-        $expectedBalance = $type === 'revenue' || in_array($key, array_slice(FixedAssetService::CONTROLS, 1), true) ? 'credit' : 'debit';
-        if (! $account || $account->type !== $type || $account->normal_balance !== $expectedBalance) {
-            throw ValidationException::withMessages([$key => ['Select an account with the required fixed asset type and normal balance.']]);
-        }
     }
 
     public function postCustomerDebt(CustomerDebtTransaction $transaction): JournalEntry

@@ -17,6 +17,8 @@ export const getAccountingPeriodReadiness=(id)=>apiRequest(`/accounting/periods/
 export const previewClosingRates=(id,rates={})=>apiRequest(`/accounting/periods/${id}/fx-preview`,json('POST',{rates}))
 export const approveClosingRates=(id,p)=>apiRequest(`/accounting/periods/${id}/fx-approve`,json('POST',p))
 export const getTaxReview=(id)=>apiRequest(`/accounting/periods/${id}/tax-review`)
+export const getTaxDisposition=(id)=>apiRequest(`/accounting/periods/${id}/tax-disposition`)
+export const approveTaxDisposition=(id,p)=>apiRequest(`/accounting/periods/${id}/tax-disposition`,json('POST',p))
 export const previewTaxReview=(id,p)=>apiRequest(`/accounting/periods/${id}/tax-preview`,json('POST',p))
 export const approveTaxReview=(id,p)=>apiRequest(`/accounting/periods/${id}/tax-review`,json('POST',p))
 export const getJournals=(p={})=>apiRequest(buildApiUrl('/accounting/journals',p))

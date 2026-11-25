@@ -9,10 +9,10 @@ class AccountingPeriod extends Model
 {
     use BelongsToCompany;
 
-    protected $fillable = ['company_id', 'name', 'starts_at', 'ends_at', 'status', 'closed_by', 'closed_at', 'reopened_by', 'reopened_at', 'change_reason', 'close_snapshot'];
+    protected $fillable = ['company_id', 'name', 'starts_at', 'ends_at', 'status', 'closed_by', 'closed_at', 'reopened_by', 'reopened_at', 'change_reason', 'close_snapshot', 'tax_review_revision'];
 
     protected function casts(): array
     {
-        return ['starts_at' => 'date', 'ends_at' => 'date', 'closed_at' => 'datetime', 'reopened_at' => 'datetime', 'close_snapshot' => 'array'];
+        return ['starts_at' => 'date', 'ends_at' => 'date', 'closed_at' => 'datetime', 'reopened_at' => 'datetime', 'close_snapshot' => 'array', 'tax_review_revision' => 'integer'];
     }
 }

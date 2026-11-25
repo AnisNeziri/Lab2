@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import * as api from "../../api/accounting";
-import WorkspaceModal from "../WorkspaceModal";
 import { Amount, Field, MoneyTable, QueryState, errorMessage, useFinance, useFinanceQuery } from "./FinanceShared";
 
 const emptyAdjustment = () => ({ direction: "add", amount: "", reason: "", journal_entry_id: "" });
@@ -51,7 +50,8 @@ export default function FinanceCorporateTaxReview({ period, onClose }) {
     ["taxable_profit", t("Taxable profit", "Fitimi i tatueshëm")],
     ["current_tax", t("Current tax estimate", "Tatimi aktual i llogaritur")],
   ];
-  return <WorkspaceModal title={t("Corporate income tax worksheet", "Fleta e tatimit në të ardhurat e korporatave")} onClose={onClose} wide>
+  return <section className="fc-panel">
+    <h3>{t("Corporate income tax worksheet", "Fleta e tatimit në të ardhurat e korporatave")}</h3>
     <p>{t("Use this internal worksheet for an approved actual-income regime. Enter separately supported tax adjustments, including the difference between book and tax depreciation.", "Përdore këtë fletë të brendshme për regjimin e miratuar sipas të ardhurave reale. Shëno korrigjimet e dokumentuara, duke përfshirë dallimin mes zhvlerësimit kontabël dhe atij tatimor.")}</p>
     <QueryState query={previous}>{saved => saved?.snapshot && <p>
       {t("Latest approved current tax", "Tatimi aktual i miratuar së fundi")} <Amount value={saved.snapshot.current_tax} currency="EUR" />
@@ -74,6 +74,7 @@ export default function FinanceCorporateTaxReview({ period, onClose }) {
         </select></Field>
         <Field label={t("EUR amount", "Shuma në EUR")} required type="number" step="0.01" min="0.01" value={line.amount} onChange={e => change(index, "amount", e.target.value)} />
         <Field label={t("Evidence or reason", "Dëshmia ose arsyeja")} required minLength={5} maxLength={500} value={line.reason} onChange={e => change(index, "reason", e.target.value)} />
+        <Field label={t("Source journal ID (optional)", "ID e ditarit burimor (opsionale)")} type="number" min={1} step={1} value={line.journal_entry_id ?? ""} onChange={e => change(index, "journal_entry_id", e.target.value)} />
         <button type="button" className="secondary" onClick={() => { setCalculation(null); setLines(current => current.filter((_, i) => i !== index)); }}>{t("Remove", "Hiq")}</button>
       </fieldset>)}
       <button type="button" className="secondary" onClick={() => { setCalculation(null); setLines(current => [...current, emptyAdjustment()]); }}>{t("Add an adjustment", "Shto një korrigjim")}</button>
@@ -82,5 +83,5 @@ export default function FinanceCorporateTaxReview({ period, onClose }) {
         <button disabled={busy || saving || (calculation && !canApprove)}>{calculation ? t("Approve and post current tax", "Mirato dhe posto tatimin aktual") : t("Calculate for review", "Llogarit për shqyrtim")}</button>
       </div>
     </form>
-  </WorkspaceModal>;
+  </section>;
 }

@@ -31,6 +31,11 @@ Reviewed 24–25 November 2026 for a proposed wholesale and importing company. C
 - The proposed migrations add fixed-asset policy and movement records, invoice/payment FX snapshots, closing revaluation records and current-tax worksheets. They ran on isolated SQLite and MariaDB only. Company portable backups include the new tables and remap journal/source references. Installation-level acceptance remains a separate gate.
 - The continued accounting groups passed 175 SQLite tests and 69 MariaDB 11.4.13 tests. The frontend passed 113 tests and the production web build. The isolated browser posted asset depreciation and a closing FX adjustment, reopened the approved exchange-rate evidence, and calculated the tax worksheet on desktop and checked mobile layouts. The tax calculation shown in the browser was a preview. Posting and fiscal year closure were verified separately through the synthetic automated scenario.
 
+## DC39.3 control corrections
+
+- The annual close guard now requires a company-specific dated tax disposition, an authorized and current worksheet for the supported actual-income regime, or separately evidenced treatment where the worksheet is inapplicable. Unsupported or unconfirmed regimes keep the period blocked. This remains an internal accounting control. [DC39.3 verification](DC39_3_ACCOUNTING_INTEGRITY.md)
+- Worksheet approval now tracks the underlying ledger, classification and source evidence. Prior approvals are retained, and restored or legacy approvals need requalification. Fixed-asset and tax defaults were separated from payroll while preserving existing mappings and journal history. Populated chart exceptions require accountant-reviewed correction.
+
 ## Launch evidence needed
 
 1. Confirm the company profile, actual operating policies, tax registrations and legal status with its accountant.

@@ -179,8 +179,12 @@ function OpeningSetup({ data, accounts, run }) {
 }
 function Mappings({ rows, controls, accounts, run }) {
   const tx = useUiText();
+  const { t } = useFinance();
+  const issues = controls?.mapping_issues || [];
+  const current = Object.fromEntries(rows.map(row => [row.mapping_key, row.accounting_account_id]));
   const [values, setValues] = useState({}),
     [limits, setLimits] = useState(controls || {});
+  const changes = Object.fromEntries(Object.entries(values).filter(([key, id]) => id && Number(current[key]) !== Number(id)));
   useEffect(
     () =>
       setValues(
@@ -200,7 +204,15 @@ function Mappings({ rows, controls, accounts, run }) {
             "Operational posting rules point to your company’s accounts instead of hard-coded account IDs.",
           )}
         </p>
-        {rows.map((r) => (
+        {issues.length > 0 && <div role="alert" className="fc-error mapping-conflicts">
+          <strong>{t("Posting account conflicts", "Konflikte në llogaritë e postimit")}</strong>
+          <p>{t("Review the listed mappings and affected journals. Ask your accountant to plan a correction before changing an account with posting history.", "Shqyrto lidhjet e listuara dhe ditarët e prekur. Kërko nga kontabilisti një plan korrigjimi para ndryshimit të një llogarie me postime.")}</p>
+          <ul>{issues.map(issue => <li key={issue.mapping}>
+            {issue.mapping.replaceAll("_", " ")} · {issue.code}
+            {issue.prior_postings > 0 && <> · {issue.prior_postings} {t("postings to review", "postime për shqyrtim")}</>}
+          </li>)}</ul>
+        </div>}
+        {[...rows, ...issues.filter(issue => !current[issue.mapping]).map(issue => ({ mapping_key: issue.mapping }))].map((r) => (
           <label key={r.mapping_key}>
             {r.mapping_key.replaceAll("_", " ")}
             <select
@@ -212,7 +224,8 @@ function Mappings({ rows, controls, accounts, run }) {
                 })
               }
             >
-              {accounts.map((a) => (
+              <option value="">{t("Select account", "Zgjidh llogarinë")}</option>
+              {accounts.filter(a => a.is_posting && a.is_active).map((a) => (
                 <option value={a.id} key={a.id}>
                   {a.code} · {a.name}
                 </option>
@@ -220,7 +233,7 @@ function Mappings({ rows, controls, accounts, run }) {
             </select>
           </label>
         ))}
-        <button onClick={() => run(() => api.saveAccountingMappings(values))}>
+        <button disabled={!Object.keys(changes).length} onClick={() => run(() => api.saveAccountingMappings(changes))}>
           {tx("Save mappings")}
         </button>
       </div>

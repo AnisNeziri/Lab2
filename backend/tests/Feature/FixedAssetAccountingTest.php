@@ -40,8 +40,8 @@ class FixedAssetAccountingTest extends TestCase
         $this->postJson("/api/finance/expenses/$extra/post")->assertOk();
         $this->postJson("/api/accounting/fixed-assets/$asset/in-service", ['date' => $assetDate, 'reason' => 'Installation acceptance recorded.'])->assertOk();
 
-        $this->assertJournal("expense:$expense", ['1500' => '3650.00', '1150' => '657.00', '2000' => '-4307.00']);
-        $this->assertJournal("expense:$extra", ['1500' => '118.00', '2000' => '-118.00']);
+        $this->assertJournal("expense:$expense", ['1530' => '3650.00', '1150' => '657.00', '2000' => '-4307.00']);
+        $this->assertJournal("expense:$extra", ['1530' => '118.00', '2000' => '-118.00']);
         $get = "/api/accounting/fixed-assets/$asset";
         $this->getJson("$get?as_of=2025-01-31")->assertOk()->assertJsonPath('cost', '3768.00')
             ->assertJsonPath('depreciation_due', '320.02');
@@ -59,7 +59,7 @@ class FixedAssetAccountingTest extends TestCase
         $disposal = $this->postJson("$get/entries", [
             'kind' => 'write_off', 'date' => '2025-02-28', 'reason' => 'Synthetic loss without proceeds.', 'request_key' => 'write-off',
         ])->assertCreated()->assertJsonPath('cost_delta', '-3768.00')->json('id');
-        $this->assertJournal("fixed-asset-entry:$disposal", ['1500' => '-3768.00', '1510' => '571.52', '1520' => '447.98', '6520' => '2748.50']);
+        $this->assertJournal("fixed-asset-entry:$disposal", ['1530' => '-3768.00', '1510' => '571.52', '1520' => '447.98', '6520' => '2748.50']);
         $this->postJson("/api/finance/expenses/$expense/reverse", ['reason' => 'Attempt before reversing downstream asset activity.'])->assertUnprocessable();
         $this->postJson("/api/accounting/fixed-assets/entries/$disposal/reverse", ['date' => '2025-03-01', 'reason' => 'Correct the synthetic disposal.'])->assertCreated();
         $this->getJson("$get?as_of=2025-02-28")->assertOk()->assertJsonPath('net_book_value', '0.00');
@@ -97,7 +97,7 @@ class FixedAssetAccountingTest extends TestCase
         $sale = $this->postJson("/api/accounting/fixed-assets/$asset/sale", ['invoice_id' => $invoice, 'reason' => 'Synthetic asset sale approved.'])->assertCreated()->json('id');
         $this->deleteJson("/api/invoices/$invoice")->assertUnprocessable();
         $this->postJson("/api/invoices/$invoice/issue")->assertOk();
-        $this->assertJournal("fixed-asset-entry:$sale", ['1500' => '-500.00', '4000' => '700.00', '4220' => '-200.00']);
+        $this->assertJournal("fixed-asset-entry:$sale", ['1530' => '-500.00', '4000' => '700.00', '4220' => '-200.00']);
         $this->getJson("/api/accounting/fixed-assets/$asset")->assertOk()->assertJsonPath('net_book_value', '0.00');
         $bank = app(\App\Services\FinancialAccountService::class)->createAccount(['name' => 'Synthetic disposal bank', 'type' => 'bank', 'currency' => 'EUR', 'opening_balance' => 0]);
         $payment = $this->postJson('/api/payments', ['invoice_id' => $invoice, 'amount' => 700, 'payment_date' => $date,

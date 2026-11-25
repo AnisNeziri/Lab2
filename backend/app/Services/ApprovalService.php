@@ -245,6 +245,10 @@ class ApprovalService
         }
         return DB::transaction(function () use ($request, $decision, $comment) {
             $user = Auth::user();
+            if ($request->entity_type === 'document_version') {
+                // A linked document decision is part of annual tax evidence.
+                DB::table('companies')->where('id', $user->company_id)->lockForUpdate()->first();
+            }
             $request = ApprovalRequest::withoutGlobalScopes()
                 ->where('company_id', $user->company_id)
                 ->lockForUpdate()

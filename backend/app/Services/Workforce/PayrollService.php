@@ -19,6 +19,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\WorkforceRecord;
 use App\Services\AccountingService;
+use App\Services\AccountingMappingPolicy;
 use App\Services\FinancialAccountService;
 use App\Support\CompanyCurrency;
 use App\Support\Money;
@@ -49,8 +50,11 @@ class PayrollService
             $this->workforce->lock();
             $this->accounting->initialize();
             $mapping = [];
+            $policy = app(AccountingMappingPolicy::class);
             foreach (self::ACCOUNTS as $key => [$code,$name,$type]) {
-                if (AccountingPostingMapping::where('mapping_key', 'payroll_'.$key)->exists()) {
+                $existing = AccountingPostingMapping::where('mapping_key', 'payroll_'.$key)->with('account')->first();
+                if ($existing) {
+                    $policy->assertCompatible('payroll_'.$key, $existing->account);
                     continue;
                 }
                 $account = AccountingAccount::where('code', $code)->first();
@@ -85,6 +89,7 @@ class PayrollService
 
         return ['mappings' => AccountingPostingMapping::where('mapping_key', 'like', 'payroll_%')->with('account:id,code,name,type,is_active,is_posting')->get(),
             'accounts' => AccountingAccount::where('is_active', true)->where('is_posting', true)->orderBy('code')->get(['id', 'code', 'name', 'type']),
+            'mapping_issues' => app(AccountingMappingPolicy::class)->diagnostics(payroll: true),
             'rules' => PayrollRule::orderByDesc('effective_from')->get(), 'required_mappings' => array_keys(self::ACCOUNTS),
             'automatic_edi_filing' => false, 'statutory_due_day' => 15, 'due_date_qualification' => '1–15 of the following month; verify official non-working-day extensions. Declaration is payment based, not an accrual filing.'];
     }
@@ -157,12 +162,15 @@ class PayrollService
     private function mappingIds(): array
     {
         $rows = AccountingPostingMapping::where('mapping_key', 'like', 'payroll_%')->with('account')->get()->keyBy('mapping_key');
+        $responsibilities = AccountingPostingMapping::whereIn('accounting_account_id', $rows->pluck('accounting_account_id'))->get()->groupBy('accounting_account_id');
+        $policy = app(AccountingMappingPolicy::class);
         $ids = [];
         foreach (self::ACCOUNTS as $key => $definition) {
             $a = $rows->get('payroll_'.$key)?->account;
             if (! $a || ! $a->is_active || ! $a->is_posting || $a->type !== $definition[2]) {
                 $this->workforce->fail("Payroll accounting mapping '$key' is missing or invalid.");
             }
+            $policy->assertCompatible('payroll_'.$key, $a, $responsibilities->get($a->id, collect())->pluck('mapping_key')->all());
             $ids[$key] = $a->id;
         }
         if (count(array_unique($ids)) !== count($ids)) {

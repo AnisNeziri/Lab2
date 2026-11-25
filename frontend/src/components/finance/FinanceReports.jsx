@@ -683,6 +683,7 @@ function AccountForm({ original, onClose }) {
               "operating_expense",
               "other_income",
               "other_expense",
+              "income_tax",
             ].map((x) => (
               <option key={x} value={x}>
                 {x.replaceAll("_", " ")}
